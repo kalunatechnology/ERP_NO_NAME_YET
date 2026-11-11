@@ -34,7 +34,7 @@ export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
 
   // Dock only when there is room for both navigation and the workspace.
-  const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  const [rightPanelOpen, setRightPanelOpen] = useState(false);
   // Mobile left sidebar state
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   // Mobile right panel (notifications/feed) state
@@ -45,7 +45,7 @@ export function AppShell({ children }: AppShellProps) {
   /* Restore persisted right-panel collapse state */
   useEffect(() => {
     const stored = localStorage.getItem("erp.rightPanel");
-    if (stored === "false") setRightPanelOpen(false);
+    if (stored === "true") setRightPanelOpen(true);
   }, []);
 
   /* Close mobile drawers on route change */
@@ -208,7 +208,7 @@ export function AppShell({ children }: AppShellProps) {
           {/* Docked notifications on wide desktop screens. */}
           <div
             className="hidden 2xl:flex flex-shrink-0 flex-col border-l border-text-tertiary bg-bg-light transition-[width] duration-200 overflow-hidden relative h-full"
-            style={{ width: rightPanelOpen ? "260px" : "36px" }}
+            style={{ width: rightPanelOpen ? "var(--right-panel-w, 260px)" : "36px" }}
           >
             {rightPanelOpen ? (
               <RightPanel onToggleCollapse={toggleRightPanel} />

@@ -12,6 +12,10 @@
     --font-fira-sans-condensed: "Fira Sans", sans-serif;
   }
 
+  @media (min-width: 1900px) {
+    :root { --right-panel-w: 320px; }
+  }
+
   html {
     @apply scroll-smooth;
   }

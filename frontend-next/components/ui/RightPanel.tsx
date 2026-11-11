@@ -126,7 +126,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
     <>
       <aside
         className={cn(
-          "flex h-full min-w-0 w-full select-none flex-col overflow-y-auto overscroll-contain bg-[#FDFDFD] px-4 pb-6 pt-5",
+          "flex h-full min-w-0 w-full select-none flex-col overflow-y-auto overscroll-contain bg-[#DCE5EF] px-4 pb-6 pt-5",
           isMobile && "w-[min(360px,100vw)] shadow-2xl"
         )}
         role="complementary"

@@ -32,7 +32,7 @@ function deltaText(value: number): string {
 export class BudgetingService {
   static async getOptions(companyId: string) {
     await ensureCompanyDepartmentsAndCostCenters(companyId);
-    const [fiscalYears, fiscalPeriods, accounts, costCenters, projects, departments, coreDepartments] = await Promise.all([
+    const [fiscalYears, fiscalPeriods, accounts, costCenters, projects, departments, coreDepartments, requestTickets, purchaseOrders] = await Promise.all([
       prisma.fin_fiscal_year.findMany({ where: { company_id: companyId }, orderBy: { start_date: 'desc' } }),
       prisma.fin_fiscal_period.findMany({ where: { company_id: companyId }, orderBy: { period_number: 'asc' } }),
       prisma.fin_account.findMany({ where: { company_id: companyId, status: 'ACTIVE', account_type: 'EXPENSE' }, orderBy: { account_code: 'asc' } }),
@@ -40,7 +40,56 @@ export class BudgetingService {
       prisma.project_project.findMany({ where: { company_id: companyId, lifecycle_status: { not: 'CANCELLED' } }, select: { id: true, project_code: true, project_name: true }, orderBy: { project_code: 'asc' } }),
       prisma.master_department.findMany({ where: { company_id: companyId }, orderBy: { department_code: 'asc' } }),
       (prisma as any).core_department.findMany({ where: { company_id: companyId, is_active: true }, orderBy: { name: 'asc' } }).catch(() => []),
+      prisma.request_ticket.findMany({ where: { company_id: companyId, request_type: 'FUND_REQUEST', cancelled_at: null }, orderBy: { created_at: 'desc' }, take: 100 }),
+      prisma.proc_purchase_order.findMany({ where: { company_id: companyId, status: 'APPROVED' }, orderBy: { order_date: 'desc' }, take: 100 }),
     ]);
+
+    const requestIds = requestTickets.map((request) => request.id);
+    const workflowIds = requestTickets.map((request) => request.workflow_instance_id);
+    const documentIds = purchaseOrders.map((order) => order.document_id).filter((id): id is string => Boolean(id));
+    const [requestWorkflows, requestEvents, orderDocuments, requestReservations] = await Promise.all([
+      workflowIds.length ? prisma.core_workflow_instance.findMany({ where: { company_id: companyId, id: { in: workflowIds } }, select: { id: true, current_state: true } }) : Promise.resolve([]),
+      requestIds.length ? prisma.core_audit_event.findMany({ where: { company_id: companyId, entity_name: 'core_internal_request', event_type: 'CREATE_REQUEST', entity_id: { in: requestIds } }, select: { entity_id: true, after_data: true }, orderBy: { occurred_at: 'asc' } }) : Promise.resolve([]),
+      documentIds.length ? prisma.core_business_document.findMany({ where: { company_id: companyId, id: { in: documentIds } }, select: { id: true, document_number: true } }) : Promise.resolve([]),
+      requestIds.length ? prisma.fin_budget_reservation.findMany({ where: { company_id: companyId, source_type: 'REQUEST', source_id: { in: requestIds }, status: { in: ['OPEN', 'PARTIALLY_RELEASED', 'PENDING_APPROVAL'] } }, select: { source_id: true, allocation_id: true, amount: true, remaining_amount: true, status: true } }) : Promise.resolve([]),
+    ]);
+    const workflowById = new Map(requestWorkflows.map((row) => [row.id, row.current_state]));
+    const eventByRequestId = new Map(requestEvents.map((row) => [row.entity_id, row.after_data as Record<string, any> | null]));
+    const orderNumberByDocumentId = new Map(orderDocuments.map((row) => [row.id, row.document_number]));
+    const reservationByRequestId = new Map(requestReservations.map((row) => [row.source_id, row]));
+    const projectById = new Map(projects.map((row) => [row.id, row]));
+    const fundRequests = requestTickets.map((request) => {
+      const payload = eventByRequestId.get(request.id) ?? {};
+      const reservation = reservationByRequestId.get(request.id);
+      return {
+        id: request.id,
+        request_number: request.request_number,
+        title: request.title,
+        description: request.description,
+        request_type: request.request_type,
+        status: workflowById.get(request.workflow_instance_id) ?? request.status,
+        request_status: request.status,
+        amount: Number(payload.amount ?? 0),
+        project_id: request.project_id,
+        project_name: projectById.get(request.project_id ?? '')?.project_name ?? null,
+        budget_category: payload.budget_category ?? null,
+        created_at: request.created_at,
+        budget_allocation_id: request.budget_allocation_id ?? reservation?.allocation_id ?? null,
+        budget_reservation_id: request.budget_reservation_id ?? null,
+        committed_amount: reservation ? Number(reservation.amount) : 0,
+        remaining_commitment: reservation ? Number(reservation.remaining_amount) : 0,
+        has_active_commitment: Boolean(reservation),
+      };
+    });
+    const approvedPurchaseOrders = purchaseOrders.map((order) => ({
+      id: order.id,
+      order_number: order.document_id ? orderNumberByDocumentId.get(order.document_id) ?? order.document_id : order.id,
+      document_id: order.document_id,
+      status: order.status,
+      order_date: order.order_date,
+      total_amount: Number(order.total_amount ?? 0),
+      supplier_party_id: order.supplier_party_id,
+    }));
 
     const activeCostCentersMap = new Map<string, any>();
     for (const row of costCenters.filter((r) => isActiveMasterStatus(r.status))) {
@@ -100,14 +149,59 @@ export class BudgetingService {
       cost_centers: Array.from(activeCostCentersMap.values()),
       projects,
       departments: Array.from(activeDepartmentsMap.values()),
+      fund_requests: fundRequests,
+      purchase_orders: approvedPurchaseOrders,
     };
   }
 
   static async listPlans(companyId: string) {
-    return prisma.fin_budget.findMany({
+    const plans = await prisma.fin_budget.findMany({
       where: { company_id: companyId },
-      include: { allocations: { include: { period_allocations: true } } },
+      include: { allocations: { include: { period_allocations: true, ledger_entries: { select: { fiscal_period_id: true, allocated_delta: true, actual_delta: true } } } } },
       orderBy: [{ created_at: 'desc' }, { budget_name: 'asc' }],
+    });
+    const planIds = plans.map((plan) => plan.id);
+    const [completedReservations, reservationHistory, revisionHistory, transferHistory] = planIds.length ? await Promise.all([
+      prisma.fin_budget_reservation.findMany({ where: { company_id: companyId, budget_id: { in: planIds }, status: 'RECOGNIZED' }, select: { budget_id: true }, distinct: ['budget_id'] }),
+      prisma.fin_budget_reservation.findMany({ where: { company_id: companyId, budget_id: { in: planIds } }, select: { budget_id: true, source_type: true, source_id: true } }),
+      prisma.fin_budget_revision.findMany({ where: { company_id: companyId, budget_id: { in: planIds } }, select: { budget_id: true }, distinct: ['budget_id'] }),
+      prisma.fin_budget_transfer.findMany({ where: { company_id: companyId, budget_id: { in: planIds } }, select: { budget_id: true }, distinct: ['budget_id'] }),
+    ]) : [[], [], [], []];
+    const requestIds = [...new Set(reservationHistory.filter((row) => row.source_type === 'REQUEST').map((row) => row.source_id))];
+    const requestTickets = requestIds.length ? await prisma.request_ticket.findMany({ where: { company_id: companyId, id: { in: requestIds } }, select: { id: true, workflow_instance_id: true } }) : [];
+    const workflowIds = requestTickets.map((ticket) => ticket.workflow_instance_id);
+    const disbursedWorkflows = workflowIds.length ? await prisma.core_workflow_instance.findMany({
+      where: { company_id: companyId, id: { in: workflowIds }, current_state: { in: ['DISBURSED', 'PENDING_LPJ_VERIFICATION', 'COMPLETED', 'CLOSED'] } },
+      select: { id: true },
+    }) : [];
+    const disbursedWorkflowIds = new Set(disbursedWorkflows.map((workflow) => workflow.id));
+    const disbursedPlanIds = new Set(reservationHistory.filter((row) => row.source_type === 'REQUEST' && requestTickets.some((ticket) => ticket.id === row.source_id && disbursedWorkflowIds.has(ticket.workflow_instance_id))).map((row) => row.budget_id));
+    const completedPlanIds = new Set([...completedReservations.map((row) => row.budget_id), ...disbursedPlanIds]);
+    const planIdsWithHistory = new Set([...reservationHistory, ...revisionHistory, ...transferHistory].map((row: any) => row.budget_id));
+    return plans.map((plan) => {
+      const canEdit = plan.status !== 'CLOSED' && !completedPlanIds.has(plan.id);
+      const hasLedger = plan.allocations.some((allocation) => allocation.ledger_entries.length > 0);
+      const hasCommitmentOrActual = plan.allocations.some((allocation) => allocation.ledger_entries.some((entry) => Number(entry.actual_delta) !== 0 || Number(entry.committed_delta) !== 0));
+      const hasOtherBudgetaryHistory = plan.allocations.some((allocation) => allocation.ledger_entries.some((entry) => entry.entry_type !== 'BASELINE' && entry.entry_type !== 'PLAN_EDIT'));
+      const canChangePeriodMode = plan.status !== 'ACTIVE' || plan.period_mode !== 'ANNUAL' || (!planIdsWithHistory.has(plan.id) && !hasCommitmentOrActual && !hasOtherBudgetaryHistory);
+      return {
+        ...plan,
+        can_edit: canEdit,
+        can_change_period_mode: canChangePeriodMode,
+        can_delete: plan.status === 'DRAFT' && !hasLedger && !planIdsWithHistory.has(plan.id),
+        allocations: plan.allocations.map((allocation) => {
+          const totalDelta = allocation.ledger_entries.reduce((sum, entry) => sum + Number(entry.allocated_delta), 0);
+          return {
+            ...allocation,
+            budget_amount: Number(allocation.budget_amount ?? 0) + totalDelta,
+            period_allocations: allocation.period_allocations.map((period) => ({
+              ...period,
+              amount: Number(period.amount) + allocation.ledger_entries.filter((entry) => entry.fiscal_period_id === period.fiscal_period_id).reduce((sum, entry) => sum + Number(entry.allocated_delta), 0),
+            })),
+            ledger_entries: undefined,
+          };
+        }),
+      };
     });
   }
 
@@ -200,7 +294,168 @@ export class BudgetingService {
     return { fiscal_year_id: fiscalYearId ?? null, totals, allocation_count: allocations.length, over_budget_count: allocations.filter((row) => row.over_budget).length, allocations, plans: plans.map(({ allocations: _allocations, ...plan }) => plan) };
   }
 
-  static async createPlan(companyId: string, tenantId: string | null, userId: string, input: any) {
+  private static async assertDraftPlanCanBeChanged(tx: any, companyId: string, planId: string) {
+    const plan = await tx.fin_budget.findFirst({ where: { id: planId, company_id: companyId } });
+    if (!plan) throw new NotFoundError('Budget plan');
+    if (plan.status !== 'DRAFT') throw new ConflictError('Budget Plan hanya dapat diedit atau dihapus saat masih berstatus DRAFT.');
+    const [ledgerCount, reservationCount, revisionCount, transferCount] = await Promise.all([
+      tx.fin_budget_ledger.count({ where: { company_id: companyId, budget_id: planId } }),
+      tx.fin_budget_reservation.count({ where: { company_id: companyId, budget_id: planId } }),
+      tx.fin_budget_revision.count({ where: { company_id: companyId, budget_id: planId } }),
+      tx.fin_budget_transfer.count({ where: { company_id: companyId, budget_id: planId } }),
+    ]);
+    if (ledgerCount || reservationCount || revisionCount || transferCount) {
+      throw new ConflictError('Budget Plan sudah memiliki jejak transaksi dan tidak dapat diedit atau dihapus.');
+    }
+    return plan;
+  }
+
+  static async updatePlan(companyId: string, tenantId: string | null, userId: string, planId: string, input: any) {
+    await this.assertPlanCanBeEdited(prisma, companyId, planId);
+    return this.createPlan(companyId, tenantId, userId, input, planId);
+  }
+
+  private static async assertPlanCanBeEdited(tx: any, companyId: string, planId: string) {
+    const plan = await tx.fin_budget.findFirst({
+      where: { id: planId, company_id: companyId },
+      include: { allocations: { include: { period_allocations: true, ledger_entries: true } } },
+    });
+    if (!plan) throw new NotFoundError('Budget plan');
+    if (plan.status === 'CLOSED') throw new ConflictError('Budget Plan yang sudah ditutup tidak dapat diedit.');
+    if (!['DRAFT', 'PENDING_APPROVAL', 'REJECTED', 'ACTIVE'].includes(plan.status)) throw new ConflictError('Status Budget Plan tidak mengizinkan perubahan.');
+    const [completedReservation, disbursedRequest] = await Promise.all([
+      tx.fin_budget_reservation.findFirst({ where: { company_id: companyId, budget_id: planId, status: 'RECOGNIZED' }, select: { id: true } }),
+      this.hasDisbursedRequest(tx, companyId, planId),
+    ]);
+    if (completedReservation || disbursedRequest) throw new ConflictError('Pencairan sudah selesai; Budget Plan tidak dapat diedit.');
+    return plan;
+  }
+
+  private static async hasDisbursedRequest(tx: any, companyId: string, planId: string) {
+    const reservations = await tx.fin_budget_reservation.findMany({
+      where: { company_id: companyId, budget_id: planId, source_type: 'REQUEST' }, select: { source_id: true },
+    });
+    if (!reservations.length) return false;
+    const tickets = await tx.request_ticket.findMany({
+      where: { company_id: companyId, id: { in: reservations.map((row: any) => row.source_id) } }, select: { workflow_instance_id: true },
+    });
+    if (!tickets.length) return false;
+    const workflow = await tx.core_workflow_instance.findFirst({
+      where: { company_id: companyId, id: { in: tickets.map((ticket: any) => ticket.workflow_instance_id) }, current_state: { in: ['DISBURSED', 'PENDING_LPJ_VERIFICATION', 'COMPLETED', 'CLOSED'] } },
+      select: { id: true },
+    });
+    return Boolean(workflow);
+  }
+
+  private static async updateActivePlan(tx: any, companyId: string, plan: any, input: any, normalized: any[], userId: string, total: number) {
+    const targetPeriodMode = String(input.period_mode ?? 'ANNUAL').toUpperCase();
+    const switchingAnnualToPeriod = plan.period_mode === 'ANNUAL' && targetPeriodMode !== 'ANNUAL';
+    const switchingPeriodToAnnual = plan.period_mode !== 'ANNUAL' && targetPeriodMode === 'ANNUAL';
+    if (String(input.fiscal_year_id) !== String(plan.fiscal_year_id)) throw new ConflictError('Tahun fiskal tidak dapat diubah setelah Budget Plan aktif.');
+    if (switchingAnnualToPeriod) {
+      const [reservationCount, revisionCount, transferCount] = await Promise.all([
+        tx.fin_budget_reservation.count({ where: { company_id: companyId, budget_id: plan.id } }),
+        tx.fin_budget_revision.count({ where: { company_id: companyId, budget_id: plan.id } }),
+        tx.fin_budget_transfer.count({ where: { company_id: companyId, budget_id: plan.id } }),
+      ]);
+      const hasCommittedAmounts = plan.allocations.some((allocation: any) => allocation.ledger_entries.some((entry: any) => Number(entry.committed_delta) !== 0 || Number(entry.actual_delta) !== 0));
+      if (reservationCount || revisionCount || transferCount || hasCommittedAmounts) throw new ConflictError('Mode periode Tahunan hanya dapat diubah setelah Budget Plan aktif jika belum ada komitmen atau transaksi anggaran.');
+    }
+    if (new Set(normalized.map((row) => row.id)).size !== normalized.length || normalized.length !== plan.allocations.length || normalized.some((row) => !plan.allocations.some((current: any) => current.id === row.id))) {
+      throw new ConflictError('Alokasi yang sudah aktif tidak dapat ditambah atau dihapus; ubah pagu pada alokasi yang ada.');
+    }
+    const now = new Date();
+    const updatedPlan = await tx.fin_budget.update({ where: { id: plan.id }, data: {
+      budget_name: requiredText(input.budget_name, 'Nama anggaran'),
+      budget_type: requiredText(input.budget_type ?? plan.budget_type, 'Jenis anggaran', 60).toUpperCase(),
+      control_policy: String(input.control_policy ?? plan.control_policy).toUpperCase(),
+      carry_forward: Boolean(input.carry_forward), period_mode: targetPeriodMode,
+    } });
+    for (const row of normalized) {
+      const current = plan.allocations.find((allocation: any) => allocation.id === row.id);
+      if (row.account_id !== current.account_id || row.cost_center_id !== current.cost_center_id || row.project_id !== current.project_id || row.department_id !== current.department_id) {
+        throw new ConflictError('Akun, cost center, proyek, dan departemen tidak dapat diubah setelah alokasi memiliki riwayat transaksi.');
+      }
+      const currentPeriods = current.period_allocations.map((period: any) => period.fiscal_period_id).sort();
+      const nextPeriods = row.periods.map((period: any) => period.fiscal_period_id).sort();
+      if (!switchingAnnualToPeriod && !switchingPeriodToAnnual && currentPeriods.join('|') !== nextPeriods.join('|')) throw new ConflictError('Periode alokasi yang aktif tidak dapat ditambah atau dihapus.');
+      const ledgerAllocated = current.ledger_entries.reduce((sum: number, entry: any) => sum + Number(entry.allocated_delta), 0);
+      const effectiveTotal = Number(current.budget_amount ?? 0) + ledgerAllocated;
+      const committedTotal = current.ledger_entries.reduce((sum: number, entry: any) => sum + Number(entry.committed_delta), 0);
+      const actualTotal = current.ledger_entries.reduce((sum: number, entry: any) => sum + Number(entry.actual_delta), 0);
+      if (row.budget_amount + MONEY_EPSILON < committedTotal + actualTotal) throw new ConflictError(`Pagu alokasi ${current.allocation_name || ''} tidak boleh di bawah komitmen dan actual yang sudah tercatat.`);
+      await tx.fin_budget_line.update({ where: { id: current.id }, data: { allocation_name: row.allocation_name, description: row.description, ...(switchingAnnualToPeriod ? { budget_amount: 0 } : {}) } });
+      if (switchingAnnualToPeriod) {
+        const baseOffset = -effectiveTotal;
+        if (Math.abs(baseOffset) > MONEY_EPSILON) await tx.fin_budget_ledger.create({ data: {
+          id: crypto.randomUUID(), tenant_id: plan.tenant_id, company_id: companyId, budget_id: plan.id, allocation_id: current.id,
+          source_type: 'BUDGET_PLAN', source_id: plan.id, source_line_id: current.id, entry_type: 'PLAN_EDIT',
+          allocated_delta: baseOffset, committed_delta: 0, actual_delta: 0,
+          description: 'Konversi pagu tahunan ke alokasi periode.',
+          idempotency_key: `BUDGET_PLAN_EDIT:${plan.id}:${current.id}:ANNUAL_TO_PERIOD:${crypto.randomUUID()}`, posted_by_id: userId, posted_at: now,
+        } });
+        await tx.fin_budget_period_allocation.createMany({ data: row.periods.map((period: any) => ({
+          id: crypto.randomUUID(), tenant_id: plan.tenant_id, company_id: companyId, budget_id: plan.id, allocation_id: current.id,
+          fiscal_period_id: period.fiscal_period_id, amount: 0, created_by_id: userId,
+        })) });
+        for (const period of row.periods) if (period.amount > MONEY_EPSILON) await tx.fin_budget_ledger.create({ data: {
+          id: crypto.randomUUID(), tenant_id: plan.tenant_id, company_id: companyId, budget_id: plan.id, allocation_id: current.id,
+          fiscal_period_id: period.fiscal_period_id, source_type: 'BUDGET_PLAN', source_id: plan.id, source_line_id: current.id, entry_type: 'PLAN_EDIT',
+          allocated_delta: period.amount, committed_delta: 0, actual_delta: 0,
+          description: 'Alokasi periode dari perubahan Budget Plan.',
+          idempotency_key: `BUDGET_PLAN_EDIT:${plan.id}:${current.id}:${period.fiscal_period_id}:${crypto.randomUUID()}`, posted_by_id: userId, posted_at: now,
+        } });
+      } else if (switchingPeriodToAnnual) {
+        await tx.fin_budget_period_allocation.deleteMany({ where: { company_id: companyId, allocation_id: current.id } });
+        const delta = Math.round((row.budget_amount - effectiveTotal) * 100) / 100;
+        if (Math.abs(delta) > MONEY_EPSILON) await tx.fin_budget_ledger.create({ data: {
+          id: crypto.randomUUID(), tenant_id: plan.tenant_id, company_id: companyId, budget_id: plan.id, allocation_id: current.id,
+          source_type: 'BUDGET_PLAN', source_id: plan.id, source_line_id: current.id, entry_type: 'PLAN_EDIT',
+          allocated_delta: delta, committed_delta: 0, actual_delta: 0,
+          description: `Penyesuaian pagu tahunan: ${delta >= 0 ? '+' : ''}${delta.toFixed(2)}`,
+          idempotency_key: `BUDGET_PLAN_EDIT:${plan.id}:${current.id}:PERIOD_TO_ANNUAL:${crypto.randomUUID()}`, posted_by_id: userId, posted_at: now,
+        } });
+      } else if (currentPeriods.length === 0) {
+        const delta = Math.round((row.budget_amount - effectiveTotal) * 100) / 100;
+        if (Math.abs(delta) > MONEY_EPSILON) await tx.fin_budget_ledger.create({ data: {
+          id: crypto.randomUUID(), tenant_id: plan.tenant_id, company_id: companyId, budget_id: plan.id, allocation_id: current.id,
+          source_type: 'BUDGET_PLAN', source_id: plan.id, source_line_id: current.id, entry_type: 'PLAN_EDIT',
+          allocated_delta: delta, committed_delta: 0, actual_delta: 0,
+          description: `Penyesuaian pagu Budget Plan: ${delta >= 0 ? '+' : ''}${delta.toFixed(2)}`,
+          idempotency_key: `BUDGET_PLAN_EDIT:${plan.id}:${current.id}:${crypto.randomUUID()}`, posted_by_id: userId, posted_at: now,
+        } });
+      } else {
+        for (const period of row.periods) {
+          const currentPeriod = current.period_allocations.find((item: any) => item.fiscal_period_id === period.fiscal_period_id);
+          const effectiveAmount = Number(currentPeriod.amount) + current.ledger_entries.filter((entry: any) => entry.fiscal_period_id === period.fiscal_period_id).reduce((sum: number, entry: any) => sum + Number(entry.allocated_delta), 0);
+          const periodCommitted = current.ledger_entries.filter((entry: any) => entry.fiscal_period_id === period.fiscal_period_id).reduce((sum: number, entry: any) => sum + Number(entry.committed_delta), 0);
+          const periodActual = current.ledger_entries.filter((entry: any) => entry.fiscal_period_id === period.fiscal_period_id).reduce((sum: number, entry: any) => sum + Number(entry.actual_delta), 0);
+          if (period.amount + MONEY_EPSILON < periodCommitted + periodActual) throw new ConflictError('Pagu periode tidak boleh di bawah komitmen dan actual yang sudah tercatat.');
+          const delta = Math.round((period.amount - effectiveAmount) * 100) / 100;
+          if (Math.abs(delta) > MONEY_EPSILON) await tx.fin_budget_ledger.create({ data: {
+            id: crypto.randomUUID(), tenant_id: plan.tenant_id, company_id: companyId, budget_id: plan.id, allocation_id: current.id,
+            fiscal_period_id: period.fiscal_period_id, source_type: 'BUDGET_PLAN', source_id: plan.id, source_line_id: current.id, entry_type: 'PLAN_EDIT',
+            allocated_delta: delta, committed_delta: 0, actual_delta: 0,
+            description: `Penyesuaian pagu periode Budget Plan: ${delta >= 0 ? '+' : ''}${delta.toFixed(2)}`,
+            idempotency_key: `BUDGET_PLAN_EDIT:${plan.id}:${current.id}:${period.fiscal_period_id}:${crypto.randomUUID()}`, posted_by_id: userId, posted_at: now,
+          } });
+        }
+      }
+    }
+    return { ...updatedPlan, total_allocated: total, allocation_count: normalized.length };
+  }
+
+  static async deleteDraftPlan(companyId: string, planId: string) {
+    return prisma.$transaction(async (tx) => {
+      const plan = await this.assertDraftPlanCanBeChanged(tx, companyId, planId);
+      await tx.fin_budget_line.deleteMany({ where: { company_id: companyId, budget_id: planId } });
+      await tx.fin_budget.delete({ where: { id: planId } });
+      return { id: planId, status: 'DELETED' };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+
+  static async createPlan(companyId: string, tenantId: string | null, userId: string, input: any, existingPlanId?: string) {
+    if (existingPlanId) await this.assertPlanCanBeEdited(prisma, companyId, existingPlanId);
     const name = requiredText(input.budget_name, 'Nama anggaran');
     const fiscalYearId = requiredText(input.fiscal_year_id, 'Tahun fiskal');
     const budgetType = requiredText(input.budget_type ?? 'OPERATING', 'Jenis anggaran', 60).toUpperCase();
@@ -252,28 +507,37 @@ export class BudgetingService {
         if (Math.abs(periodTotal - amount) > MONEY_EPSILON) throw new ValidationError('Jumlah pembagian periode harus sama dengan pagu alokasi.');
         if (periods.length !== new Set(periods.map((period: any) => period.fiscal_period_id)).size) throw new ValidationError('Periode fiskal tidak boleh diduplikasi.');
       }
-      normalized.push({ id: crypto.randomUUID(), allocation_name: String(row.allocation_name ?? '').trim() || `${account!.account_code} ${account!.account_name} · ${resolvedCenter.cost_center_code} ${resolvedCenter.cost_center_name}`, description: row.description ? String(row.description).trim().slice(0, 1000) : null, account_id: accountId, cost_center_id: costCenterId, project_id: projectId, department_id: departmentId, budget_amount: amount, periods });
+      normalized.push({ id: existingPlanId && row.id ? requiredText(row.id, 'Alokasi') : crypto.randomUUID(), allocation_name: String(row.allocation_name ?? '').trim() || `${account!.account_code} ${account!.account_name} · ${resolvedCenter.cost_center_code} ${resolvedCenter.cost_center_name}`, description: row.description ? String(row.description).trim().slice(0, 1000) : null, account_id: accountId, cost_center_id: costCenterId, project_id: projectId, department_id: departmentId, budget_amount: amount, periods });
     }
     const total = normalized.reduce((sum, row) => sum + row.budget_amount, 0);
     return prisma.$transaction(async (tx) => {
-      const plan = await tx.fin_budget.create({ data: {
-        id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId,
-        budget_name: name, budget_type: budgetType, fiscal_year_id: fiscalYearId, currency_id: input.currency_id ?? null,
-        control_policy: policy, period_mode: periodMode, carry_forward: Boolean(input.carry_forward), status: 'DRAFT',
-      } });
+      const editablePlan = existingPlanId ? await this.assertPlanCanBeEdited(tx, companyId, existingPlanId) : null;
+      if (editablePlan?.status === 'ACTIVE') return this.updateActivePlan(tx, companyId, editablePlan, input, normalized, userId, total);
+      const savedPlan = existingPlanId
+        ? await tx.fin_budget.update({ where: { id: existingPlanId }, data: {
+            budget_name: name, budget_type: budgetType, fiscal_year_id: fiscalYearId, currency_id: input.currency_id ?? null,
+            control_policy: policy, period_mode: periodMode, carry_forward: Boolean(input.carry_forward), status: 'DRAFT',
+            submitted_by: null, submitted_at: null, approval_note: null, rejected_by: null, approved_by: null, approved_at: null,
+          } })
+        : await tx.fin_budget.create({ data: {
+            id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId,
+            budget_name: name, budget_type: budgetType, fiscal_year_id: fiscalYearId, currency_id: input.currency_id ?? null,
+            control_policy: policy, period_mode: periodMode, carry_forward: Boolean(input.carry_forward), status: 'DRAFT',
+          } });
+      if (existingPlanId) await tx.fin_budget_line.deleteMany({ where: { company_id: companyId, budget_id: existingPlanId } });
       for (const allocation of normalized) {
         await tx.fin_budget_line.create({ data: {
-          id: allocation.id, tenant_id: tenantId, company_id: companyId, created_by_id: userId, budget_id: plan.id,
+          id: allocation.id, tenant_id: tenantId, company_id: companyId, created_by_id: userId, budget_id: savedPlan.id,
           account_id: allocation.account_id, cost_center_id: allocation.cost_center_id, project_id: allocation.project_id,
           department_id: allocation.department_id, budget_amount: allocation.budget_amount,
           allocation_name: allocation.allocation_name, description: allocation.description,
         } });
         if (allocation.periods.length) await tx.fin_budget_period_allocation.createMany({ data: allocation.periods.map((period) => ({
-          id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, budget_id: plan.id, allocation_id: allocation.id,
+          id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, budget_id: savedPlan.id, allocation_id: allocation.id,
           fiscal_period_id: period.fiscal_period_id, amount: period.amount, created_by_id: userId,
         })) });
       }
-      return { ...plan, total_allocated: total, allocation_count: normalized.length };
+      return { ...savedPlan, total_allocated: total, allocation_count: normalized.length };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 

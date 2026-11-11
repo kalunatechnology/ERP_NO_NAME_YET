@@ -1773,6 +1773,12 @@ financeRouter.get('/budget-lines', requireFinanceRole([RoleCode.FINANCE, RoleCod
 financeRouter.post('/budgets', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
   try { sendSuccess(res, await BudgetingService.createPlan(activeCompanyId(req), req.tenantId ?? null, authenticatedFinanceUserId(req), req.body), 201); } catch (err) { next(err); }
 });
+financeRouter.put('/budgets/:id', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.updatePlan(activeCompanyId(req), req.tenantId ?? null, authenticatedFinanceUserId(req), req.params.id, req.body)); } catch (err) { next(err); }
+});
+financeRouter.delete('/budgets/:id', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.deleteDraftPlan(activeCompanyId(req), req.params.id)); } catch (err) { next(err); }
+});
 financeRouter.post('/budgets/:id/submit', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
   try { sendSuccess(res, await BudgetingService.submitPlan(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req))); } catch (err) { next(err); }
 });

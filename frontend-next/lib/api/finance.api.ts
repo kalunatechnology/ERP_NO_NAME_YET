@@ -245,26 +245,27 @@ export async function fetchRealMonthlyStackedData(): Promise<RealMonthlyStackedR
     const monthlyTop = new Array(12).fill(0);
 
     // 1. Process Actual Realized Inflow & Payments
-    receipts.filter((r: any) => r.status === "POSTED").forEach((r: any) => {
-      const dt = new Date(r.payment_date || r.created_at || Date.now());
+    const addToMonth = (target: number[], dateValue: unknown, amountValue: unknown) => {
+      if (!dateValue || amountValue == null) return;
+      const dt = new Date(String(dateValue));
+      const amount = Number(amountValue);
+      if (Number.isNaN(dt.getTime()) || !Number.isFinite(amount) || amount <= 0) return;
       const m = dt.getMonth();
-      const amtJt = Number(r.amount || 0) / 1_000_000;
-      if (m >= 0 && m < 12) monthlyBottom[m] += amtJt;
+      const amtJt = amount / 1_000_000;
+      if (m >= 0 && m < 12) target[m] += amtJt;
+    };
+
+    receipts.filter((r: any) => r.status === "POSTED").forEach((r: any) => {
+      addToMonth(monthlyBottom, r.payment_date || r.created_at, r.amount);
     });
 
     // 2. Process Projected & WIP Allocations
     proposals.forEach((p: any) => {
-      const dt = new Date(p.created_at || Date.now());
-      const m = dt.getMonth();
-      const amtJt = Number(p.amount || p.total_amount || 0) / 1_000_000;
-      if (m >= 0 && m < 12) monthlyTop[m] += amtJt;
+      addToMonth(monthlyTop, p.created_at, p.total_amount ?? p.amount);
     });
 
     costs.forEach((c: any) => {
-      const dt = new Date(c.date || c.created_at || Date.now());
-      const m = dt.getMonth();
-      const amtJt = Number(c.amount || 0) / 1_000_000;
-      if (m >= 0 && m < 12) monthlyTop[m] += amtJt;
+      addToMonth(monthlyTop, c.transaction_date, c.total_cost ?? c.amount);
     });
 
     let highestTotal = 0;

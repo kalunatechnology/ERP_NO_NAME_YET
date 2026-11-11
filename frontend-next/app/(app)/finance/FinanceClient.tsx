@@ -185,6 +185,7 @@ export default function FinanceClient() {
   const [costEntries, setCostEntries] = useState<any[]>([]);
   const [wipPostingReadiness, setWipPostingReadiness] = useState<Record<string, WipPostingReadiness>>({});
   const [fundings, setFundings] = useState<any[]>([]);
+  const [fundRequests, setFundRequests] = useState<any[]>([]);
   const [proposals, setProposals] = useState<any[]>([]);
   const [vendorBills, setVendorBills] = useState<any[]>([]);
   const [customerReceipts, setCustomerReceipts] = useState<any[]>([]);
@@ -262,7 +263,7 @@ export default function FinanceClient() {
   const [selectedBillForPay, setSelectedBillForPay] = useState<any>(null);
 
   const [costForm, setCostForm] = useState({ project: "", category: "MATERIAL", division_id: "", amount: "", description: "" });
-  const [fundingForm, setFundingForm] = useState({ amount: "", need_type: "", purpose: "" });
+  const [fundingForm, setFundingForm] = useState({ amount: "", need_type: "", purpose: "", project_id: "" });
   const [billingForm, setBillingForm] = useState({
     project: "",
     amount: 0,
@@ -340,12 +341,13 @@ export default function FinanceClient() {
         ? `?start_date=${encodeURIComponent(financePeriodStart)}&end_date=${encodeURIComponent(financePeriodEnd)}`
         : "";
       const balanceSheetDateQuery = financePeriodEnd ? `?as_of_date=${encodeURIComponent(financePeriodEnd)}` : "";
-      const [costRes, wipReadinessRes, fundRes, propRes, apRes, receiptRes, paymentRes, bankMatchPaymentRes, tbRes, jeRes, plRes, bsRes, stmtLinesRes, reconciliationRes, bankRes, accountRes, projectOptionRes, vendorOptionRes, divisionRes, fiscalPeriodRes, fiscalYearRes] = await Promise.all([
+      const [costRes, wipReadinessRes, fundRes, fundingOptionsRes, propRes, apRes, receiptRes, paymentRes, bankMatchPaymentRes, tbRes, jeRes, plRes, bsRes, stmtLinesRes, reconciliationRes, bankRes, accountRes, projectOptionRes, vendorOptionRes, divisionRes, fiscalPeriodRes, fiscalYearRes] = await Promise.all([
         safeGet(`/api/v1/finance/project-cost-entries/?page_size=50${financeDateRangeQuery("transaction_date")}`, "costing"),
         canOperateFinance
           ? safeGet("/api/v1/finance/project-cost-entries/wip-readiness", "costing")
           : Promise.resolve({ data: [] }),
         safeGet(`/api/v1/finance/project-fundings/?page_size=50${financeDateRangeQuery("start_date")}`, "fundings"),
+        safeGet("/api/v1/finance/budgeting/options", "fundings"),
         safeGet(`/api/v1/finance/billing-proposals/?page_size=50${financeDateRangeQuery("created_at")}`, "billing"),
         safeGet(`/api/v1/finance/billing-documents/?billing_type=SUPPLIER_INVOICE&page_size=50${financeDateRangeQuery("invoice_date")}`, "ap"),
         safeGet(`/api/v1/finance/customer-receipts/?page_size=50${financeDateRangeQuery("payment_date")}`, "ar"),
@@ -381,6 +383,8 @@ export default function FinanceClient() {
         normalizeList<WipPostingReadiness>(wipReadinessRes.data).rows.map((item) => [item.entry_id, item]),
       ));
       setFundings(normalizeList(fundRes.data).rows);
+      const fundingOptions = fundingOptionsRes.data?.data ?? fundingOptionsRes.data;
+      setFundRequests(Array.isArray(fundingOptions?.fund_requests) ? fundingOptions.fund_requests : []);
       setProposals(normalizeList(propRes.data).rows);
 
       setVendorBills(normalizeList(apRes.data).rows);
@@ -1183,6 +1187,8 @@ export default function FinanceClient() {
         ) : (
           <TabFundingProyek
             fundings={fundings}
+            fundRequests={fundRequests}
+            projects={financeProjectOptions}
             onRefresh={() => loadFinanceData(true)}
             onRequestModalOpen={() => setIsFundingModalOpen(true)}
             readOnly={!canOperateFinance}
@@ -2587,14 +2593,20 @@ export default function FinanceClient() {
                 toast.error("Jenis kebutuhan dan detail / keterangan wajib diisi.");
                 return;
               }
-              await api.post("/api/v1/finance/project-fundings/", {
-                funding_type: "INTERNAL",
-                purpose: `${fundingForm.need_type}\n${fundingForm.purpose.trim()}`,
-                requested_amount: amount,
+              const title = `${fundingForm.need_type} - ${fundingForm.purpose.trim()}`.slice(0, 60);
+              const response = await api.post("/api/v1/requests", {
+                request_type: "FUND_REQUEST",
+                title,
+                description: `${fundingForm.need_type}\n${fundingForm.purpose.trim()}`,
+                amount,
+                project_id: fundingForm.project_id || undefined,
+                budget_category: "OPERATIONAL",
+                is_draft: false,
               });
-              toast.success("Request dana berhasil diajukan!");
+              const createdRequest = response.data?.data ?? response.data;
+              toast.success(`Request dana ${createdRequest.request_number || createdRequest.id || ""} berhasil diajukan.`);
               setIsFundingModalOpen(false);
-              setFundingForm({ amount: "", need_type: "", purpose: "" });
+              setFundingForm({ amount: "", need_type: "", purpose: "", project_id: "" });
               await loadFinanceData(true);
             } catch (error) {
               toast.error(getApiErrorDetail(error, "Permintaan dana belum dapat diajukan. Periksa nominal dan data kebutuhan, lalu coba lagi."));
@@ -2635,6 +2647,13 @@ export default function FinanceClient() {
               <option value="Operasional dan Perjalanan Proyek">Operasional dan Perjalanan Proyek</option>
               <option value="Perangkat Lunak dan Infrastruktur Digital">Perangkat Lunak dan Infrastruktur Digital</option>
               <option value="Lainnya">Lainnya</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="funding-project" className="text-xs font-semibold text-text-primary block mb-1">Proyek</label>
+            <select id="funding-project" value={fundingForm.project_id} onChange={e => setFundingForm({ ...fundingForm, project_id: e.target.value })} className="input">
+              <option value="">Pilih proyek (opsional)</option>
+              {financeProjectOptions.map((project: any) => <option key={project.id} value={project.id}>{project.project_code ? `${project.project_code} · ` : ""}{project.project_name || project.name || project.id}</option>)}
             </select>
           </div>
           <div>
@@ -3493,11 +3512,15 @@ export default function FinanceClient() {
  */
 function TabFundingProyek({
   fundings,
+  fundRequests,
+  projects,
   onRefresh,
   onRequestModalOpen,
   readOnly = false,
 }: {
   fundings: any[];
+  fundRequests: any[];
+  projects: any[];
   onRefresh: () => void;
   onRequestModalOpen: () => void;
   readOnly?: boolean;
@@ -3519,6 +3542,10 @@ function TabFundingProyek({
   const getFundingAmount = (f: any): number => {
     return Number(f.amount ?? f.funding_amount ?? f.requested_amount ?? f.approved_limit ?? f.total_amount ?? 0);
   };
+  const fundingRows = [
+    ...fundRequests.map((request) => ({ ...request, _canonical_request: true, purpose: request.description || request.title, requested_amount: request.amount, project_name: request.project_name || projects.find((project) => String(project.id) === String(request.project_id))?.project_name })),
+    ...fundings,
+  ];
 
 /**
  * handleDecision coordinates the UI behavior represented by this function.
@@ -3593,6 +3620,7 @@ function TabFundingProyek({
         <table className="w-full data-table text-xs text-left min-w-[580px]">
           <thead>
             <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider border-b">
+              <th className="py-3 px-4 font-bold">ID Request / Funding</th>
               <th className="py-3 px-4 font-bold">Keperluan / Tujuan</th>
               <th className="py-3 px-4 font-bold">Sumber Dana</th>
               <th className="py-3 px-4 font-bold">Jumlah Dana</th>
@@ -3601,22 +3629,26 @@ function TabFundingProyek({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {fundings.length === 0 ? (
+            {fundingRows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-8 text-center text-xs text-text-secondary">
+                <td colSpan={6} className="py-8 text-center text-xs text-text-secondary">
                   Belum ada permohonan pendanaan proyek.
                 </td>
               </tr>
             ) : (
-              fundings.map((f: any) => {
+              fundingRows.map((f: any) => {
                 const amount = getFundingAmount(f);
                 const status = (f.status || "DRAFT").toUpperCase();
-                const isPending = ["DRAFT", "SUBMITTED", "VERIFIED", "PENDING"].includes(status);
+                const isPending = !f._canonical_request && ["DRAFT", "SUBMITTED", "VERIFIED", "PENDING"].includes(status);
                 const isApproved = status === "APPROVED";
                 const isDisbursed = status === "DISBURSED" || status === "ACTIVE";
 
                 return (
                   <tr key={f.id} className="hover:bg-brand-light-green/20">
+                    <td className="py-3 px-4 align-top font-mono text-[10px]">
+                      {f.request_number || f.document_id || f.id}
+                      <span className="mt-1 block max-w-44 break-all text-[9px] text-text-secondary" title={f.id}>{f.id}</span>
+                    </td>
                     <td className="py-3 px-4 font-semibold text-text-primary">
                       <div className="whitespace-pre-line">{f.description || f.purpose || f.title || "Pengajuan Dana Operasional"}</div>
                       {f.project_name && (
@@ -3648,7 +3680,9 @@ function TabFundingProyek({
                       </span>
                     </td>
                     <td className="py-3 px-4 text-right whitespace-nowrap">
-                      {readOnly ? (
+                      {f._canonical_request ? (
+                        <a href={`/requests?requestId=${encodeURIComponent(f.id)}`} className="text-xs font-bold text-brand-deep-green underline">Lihat Request</a>
+                      ) : readOnly ? (
                         <span className="text-2xs text-text-secondary font-medium">
                           {isDisbursed ? "Funding Disbursed" : isApproved ? "Disetujui" : status}
                         </span>

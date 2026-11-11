@@ -126,7 +126,7 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
 
   return (
     <header
-      className="flex items-center justify-between bg-white border-b border-[#EFEFEF] flex-shrink-0 px-4 sm:px-6 gap-3 sm:gap-4 z-30 relative"
+      className="flex items-center justify-between bg-[#E6EDF6] border-b border-[#CBD6E4] flex-shrink-0 px-4 sm:px-6 gap-3 sm:gap-4 z-30 relative"
       style={{ height: "var(--topbar-h, 68px)" }}
     >
       {/* Left: Hamburger (mobile) + Clean Breadcrumb */}
