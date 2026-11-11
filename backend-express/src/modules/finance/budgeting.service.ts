@@ -157,7 +157,7 @@ export class BudgetingService {
   static async listPlans(companyId: string) {
     const plans = await prisma.fin_budget.findMany({
       where: { company_id: companyId },
-      include: { allocations: { include: { period_allocations: true, ledger_entries: { select: { fiscal_period_id: true, allocated_delta: true, actual_delta: true } } } } },
+      include: { allocations: { include: { period_allocations: true, ledger_entries: { select: { fiscal_period_id: true, allocated_delta: true, committed_delta: true, actual_delta: true, entry_type: true } } } } },
       orderBy: [{ created_at: 'desc' }, { budget_name: 'asc' }],
     });
     const planIds = plans.map((plan) => plan.id);
