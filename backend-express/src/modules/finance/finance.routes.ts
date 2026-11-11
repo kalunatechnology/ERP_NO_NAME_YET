@@ -23,6 +23,7 @@ import { validateCustomerReceipt } from './customer-receipt.validation';
 import { CustomerReceiptService } from './customer-receipt.service';
 import { BudgetingService } from './budgeting.service';
 import { hasModuleOverride } from '../../utils/module-permissions';
+import { PayrollService } from './payroll.service';
 
 export const financeRouter = Router();
 
@@ -293,6 +294,48 @@ financeRouter.get('/bank-accounts/:id/balance', async (req: Request, res: Respon
   } catch (err) {
     next(err);
   }
+});
+
+// Payroll employee and run management. Salary is accrued to GL first; net salary
+// payment is a separate bank transaction so statutory liabilities remain payable.
+financeRouter.get('/payroll/employees', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try { sendSuccess(res, await PayrollService.listEmployees(activeCompanyId(req))); } catch (err) { next(err); }
+});
+financeRouter.post('/payroll/employees', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try { sendSuccess(res, await PayrollService.createEmployee(activeCompanyId(req), req.tenantId ?? null, authenticatedFinanceUserId(req), req.body), 201); } catch (err) { next(err); }
+});
+financeRouter.put('/payroll/employees/:id', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try { sendSuccess(res, await PayrollService.updateEmployee(activeCompanyId(req), req.params.id, req.body)); } catch (err) { next(err); }
+});
+financeRouter.get('/payroll/runs', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try { sendSuccess(res, await PayrollService.listRuns(activeCompanyId(req))); } catch (err) { next(err); }
+});
+financeRouter.post('/payroll/runs', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try { sendSuccess(res, await PayrollService.createRun(activeCompanyId(req), req.tenantId ?? null, authenticatedFinanceUserId(req), req.body), 201); } catch (err) { next(err); }
+});
+financeRouter.put('/payroll/runs/:id', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try { sendSuccess(res, await PayrollService.createRun(activeCompanyId(req), req.tenantId ?? null, authenticatedFinanceUserId(req), req.body, req.params.id)); } catch (err) { next(err); }
+});
+financeRouter.delete('/payroll/runs/:id', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try { sendSuccess(res, await PayrollService.deleteDraft(activeCompanyId(req), req.params.id)); } catch (err) { next(err); }
+});
+financeRouter.post('/payroll/runs/:id/submit', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try { sendSuccess(res, await PayrollService.setStatus(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), 'SUBMIT')); } catch (err) { next(err); }
+});
+financeRouter.post('/payroll/runs/:id/approve', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), enforceSoD({
+  getCreatorId: async (req) => (await prisma.fin_payroll_run.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) }, select: { created_by_id: true } }))?.created_by_id ?? null,
+  action: 'approve-payroll-run',
+}), async (req, res, next) => {
+  try { sendSuccess(res, await PayrollService.setStatus(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), 'APPROVE')); } catch (err) { next(err); }
+});
+financeRouter.post('/payroll/runs/:id/post', requireFinanceRole([RoleCode.FINANCE]), enforceSoD({
+  getCreatorId: async (req) => (await prisma.fin_payroll_run.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) }, select: { created_by_id: true } }))?.created_by_id ?? null,
+  action: 'post-payroll-run',
+}), async (req, res, next) => {
+  try { sendSuccess(res, await PayrollService.post(activeCompanyId(req), req.tenantId ?? null, req.params.id, authenticatedFinanceUserId(req))); } catch (err) { next(err); }
+});
+financeRouter.post('/payroll/runs/:id/pay', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try { sendSuccess(res, await PayrollService.pay(activeCompanyId(req), req.tenantId ?? null, req.params.id, authenticatedFinanceUserId(req), req.body)); } catch (err) { next(err); }
 });
 
 // =============================================================================

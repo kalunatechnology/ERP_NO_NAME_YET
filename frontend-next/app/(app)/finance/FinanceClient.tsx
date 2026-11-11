@@ -42,6 +42,8 @@ import { FinanceModuleSidebar } from "@/components/finance/FinanceModuleSidebar"
 import dynamic from "next/dynamic";
 
 const FixedAssetsWorkspace          = dynamic(() => import("@/components/finance/FixedAssetsWorkspace"),          { ssr: false });
+const ChartOfAccountsWorkspace      = dynamic(() => import("@/components/finance/ChartOfAccountsWorkspace").then(m => m.ChartOfAccountsWorkspace), { ssr: false });
+const PayrollWorkspace              = dynamic(() => import("@/components/finance/PayrollWorkspace").then(m => m.PayrollWorkspace), { ssr: false });
 const PeriodClosingWorkspace        = dynamic(() => import("@/components/finance/PeriodClosingWorkspace"),        { ssr: false });
 const AuditTrailWorkspace           = dynamic(() => import("@/components/finance/AuditTrailWorkspace"),           { ssr: false });
 const ExecutiveAuditReportWorkspace = dynamic(() => import("@/components/finance/ExecutiveAuditReportWorkspace").then(m => m.ExecutiveAuditReportWorkspace), { ssr: false });
@@ -59,6 +61,8 @@ const FINANCE_TABS = [
   { id: "billing", label: "Billing Termin", icon: Receipt },
   { id: "ar", label: "Piutang", icon: RotateCcw },
   { id: "cashbank", label: "Kas & Bank", icon: WalletCards },
+  { id: "coa", label: "Chart of Accounts", icon: BookOpen },
+  { id: "payroll", label: "Payroll", icon: Banknote },
   { id: "gl", label: "Buku Besar", icon: LibraryBig },
   { id: "lapkeu", label: "Laporan Keuangan", icon: FileBarChart },
   { id: "banking_hub", label: "Rekonsiliasi", icon: Link2 },
@@ -2095,6 +2099,9 @@ export default function FinanceClient() {
           </div>
         )
       )}
+
+      {activeTab === "coa" && <ChartOfAccountsWorkspace canOperate={canOperateFinance} />}
+      {activeTab === "payroll" && <PayrollWorkspace canOperate={canOperateFinance} />}
 
       {/* ── TAB: LAPORAN KEUANGAN ────────────────── */}
       {activeTab === "lapkeu" && (

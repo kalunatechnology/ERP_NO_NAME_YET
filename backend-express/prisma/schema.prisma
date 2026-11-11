@@ -1405,7 +1405,10 @@ model master_employee {
   party_id             String?  @map("party_id")
   department_id        String?  @map("department_id")
   employee_number      String
+  employee_name        String?  @map("employee_name")
   employment_status    String
+  monthly_salary       Decimal? @map("monthly_salary") @db.Decimal(18, 2)
+  cost_center_id       String?  @map("cost_center_id")
   standard_hourly_rate Decimal?
 
   @@unique([company_id, user_id])
@@ -4668,6 +4671,58 @@ model fin_payment {
 
   @@index([tenant_id, company_id])
   @@map("fin_payment")
+}
+
+model fin_payroll_run {
+  id                         String    @id @default(uuid())
+  tenant_id                  String?   @map("tenant_id")
+  company_id                 String    @map("company_id")
+  run_number                 String    @map("run_number")
+  period_start               DateTime  @map("period_start") @db.Date
+  period_end                 DateTime  @map("period_end") @db.Date
+  payment_date               DateTime? @map("payment_date") @db.Date
+  status                     String    @default("DRAFT")
+  gross_total                Decimal   @default(0) @map("gross_total") @db.Decimal(18, 2)
+  deduction_total            Decimal   @default(0) @map("deduction_total") @db.Decimal(18, 2)
+  employer_contribution_total Decimal  @default(0) @map("employer_contribution_total") @db.Decimal(18, 2)
+  net_total                  Decimal   @default(0) @map("net_total") @db.Decimal(18, 2)
+  journal_entry_id           String?   @unique @map("journal_entry_id")
+  payment_journal_entry_id   String?   @unique @map("payment_journal_entry_id")
+  bank_account_id            String?   @map("bank_account_id")
+  created_by_id              String?   @map("created_by_id")
+  approved_by_id             String?   @map("approved_by_id")
+  approved_at                DateTime? @map("approved_at")
+  created_at                 DateTime  @default(now()) @map("created_at")
+  updated_at                 DateTime  @updatedAt @map("updated_at")
+  lines                      fin_payroll_line[]
+
+  @@unique([company_id, run_number], map: "fin_payroll_run_company_number_key")
+  @@index([company_id, period_start, period_end], map: "fin_payroll_run_company_period_idx")
+  @@map("fin_payroll_run")
+}
+
+model fin_payroll_line {
+  id                String   @id @default(uuid())
+  tenant_id         String?  @map("tenant_id")
+  company_id        String   @map("company_id")
+  payroll_run_id    String   @map("payroll_run_id")
+  employee_id       String   @map("employee_id")
+  employee_number   String   @map("employee_number")
+  employee_name     String   @map("employee_name")
+  cost_center_id    String?  @map("cost_center_id")
+  gross_salary      Decimal  @default(0) @map("gross_salary") @db.Decimal(18, 2)
+  allowances        Decimal  @default(0) @db.Decimal(18, 2)
+  employee_tax      Decimal  @default(0) @map("employee_tax") @db.Decimal(18, 2)
+  employee_bpjs     Decimal  @default(0) @map("employee_bpjs") @db.Decimal(18, 2)
+  employer_bpjs     Decimal  @default(0) @map("employer_bpjs") @db.Decimal(18, 2)
+  net_salary        Decimal  @default(0) @map("net_salary") @db.Decimal(18, 2)
+  created_at        DateTime @default(now()) @map("created_at")
+  updated_at        DateTime @updatedAt @map("updated_at")
+  payroll_run       fin_payroll_run @relation(fields: [payroll_run_id], references: [id], onDelete: Cascade)
+
+  @@unique([payroll_run_id, employee_id], map: "fin_payroll_line_run_employee_key")
+  @@index([company_id, employee_id], map: "fin_payroll_line_company_employee_idx")
+  @@map("fin_payroll_line")
 }
 
 model fin_payment_allocation {

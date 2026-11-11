@@ -38,6 +38,9 @@ export const DEFAULT_COA = [
   { code: '2120', name: 'Hutang Pajak (PPN / PPh)', type: 'LIABILITY', balance: 'CREDIT', parent_code: null },
   { code: '2130', name: 'Beban Yang Masih Harus Dibayar (Accrued)', type: 'LIABILITY', balance: 'CREDIT', parent_code: null },
   { code: '2140', name: 'Uang Muka Pelanggan', type: 'LIABILITY', balance: 'CREDIT', parent_code: null },
+  { code: '2150', name: 'Utang Gaji Bersih', type: 'LIABILITY', balance: 'CREDIT', parent_code: null },
+  { code: '2160', name: 'Utang PPh 21 Karyawan', type: 'LIABILITY', balance: 'CREDIT', parent_code: null },
+  { code: '2170', name: 'Utang BPJS Karyawan & Perusahaan', type: 'LIABILITY', balance: 'CREDIT', parent_code: null },
   // 3000 - EKUITAS
   { code: '3100', name: 'Modal Disetor (Capital Stock)', type: 'EQUITY', balance: 'CREDIT', parent_code: null },
   { code: '3200', name: 'Laba Ditahan (Retained Earnings)', type: 'EQUITY', balance: 'CREDIT', parent_code: null },
@@ -601,7 +604,7 @@ export class FinanceService {
 
       if (paymentId) {
         const payment = await tx.fin_payment.findFirst({
-          where: { id: paymentId, company_id: companyId, status: 'POSTED', payment_type: { in: ['OUTGOING', 'CUSTOMER_RECEIPT'] } },
+          where: { id: paymentId, company_id: companyId, status: 'POSTED', payment_type: { in: ['OUTGOING', 'PAYROLL', 'CUSTOMER_RECEIPT'] } },
           select: { amount: true, bank_account_id: true },
         });
         if (!payment) {
