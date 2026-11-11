@@ -346,7 +346,9 @@ export default function FinanceClient() {
         canOperateFinance
           ? safeGet("/api/v1/finance/project-cost-entries/wip-readiness", "costing")
           : Promise.resolve({ data: [] }),
-        safeGet(`/api/v1/finance/project-fundings/?page_size=50${financeDateRangeQuery("start_date")}`, "fundings"),
+        // Funding requests are workflow items and may not have a finance start_date yet.
+        // Filtering by the selected accounting period hides valid pending requests with a null start_date.
+        safeGet("/api/v1/finance/project-fundings/?page_size=100", "fundings"),
         safeGet("/api/v1/finance/budgeting/options", "fundings"),
         safeGet(`/api/v1/finance/billing-proposals/?page_size=50${financeDateRangeQuery("created_at")}`, "billing"),
         safeGet(`/api/v1/finance/billing-documents/?billing_type=SUPPLIER_INVOICE&page_size=50${financeDateRangeQuery("invoice_date")}`, "ap"),

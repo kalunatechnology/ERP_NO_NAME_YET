@@ -163,7 +163,7 @@ export class BudgetingService {
     const planIds = plans.map((plan) => plan.id);
     const [completedReservations, reservationHistory, revisionHistory, transferHistory] = planIds.length ? await Promise.all([
       prisma.fin_budget_reservation.findMany({ where: { company_id: companyId, budget_id: { in: planIds }, status: 'RECOGNIZED' }, select: { budget_id: true }, distinct: ['budget_id'] }),
-      prisma.fin_budget_reservation.findMany({ where: { company_id: companyId, budget_id: { in: planIds } }, select: { budget_id: true, source_type: true, source_id: true } }),
+      prisma.fin_budget_reservation.findMany({ where: { company_id: companyId, budget_id: { in: planIds } }, select: { budget_id: true, source_type: true, source_id: true, status: true } }),
       prisma.fin_budget_revision.findMany({ where: { company_id: companyId, budget_id: { in: planIds } }, select: { budget_id: true }, distinct: ['budget_id'] }),
       prisma.fin_budget_transfer.findMany({ where: { company_id: companyId, budget_id: { in: planIds } }, select: { budget_id: true }, distinct: ['budget_id'] }),
     ]) : [[], [], [], []];
@@ -178,12 +178,16 @@ export class BudgetingService {
     const disbursedPlanIds = new Set(reservationHistory.filter((row) => row.source_type === 'REQUEST' && requestTickets.some((ticket) => ticket.id === row.source_id && disbursedWorkflowIds.has(ticket.workflow_instance_id))).map((row) => row.budget_id));
     const completedPlanIds = new Set([...completedReservations.map((row) => row.budget_id), ...disbursedPlanIds]);
     const planIdsWithHistory = new Set([...reservationHistory, ...revisionHistory, ...transferHistory].map((row: any) => row.budget_id));
+    const plansWithOpenReservations = new Set(reservationHistory.filter((row) => ['PENDING_APPROVAL', 'OPEN', 'PARTIALLY_RELEASED'].includes(row.status)).map((row) => row.budget_id));
     return plans.map((plan) => {
       const canEdit = plan.status !== 'CLOSED' && !completedPlanIds.has(plan.id);
       const hasLedger = plan.allocations.some((allocation) => allocation.ledger_entries.length > 0);
-      const hasCommitmentOrActual = plan.allocations.some((allocation) => allocation.ledger_entries.some((entry) => Number(entry.actual_delta) !== 0 || Number(entry.committed_delta) !== 0));
-      const hasOtherBudgetaryHistory = plan.allocations.some((allocation) => allocation.ledger_entries.some((entry) => entry.entry_type !== 'BASELINE' && entry.entry_type !== 'PLAN_EDIT'));
-      const canChangePeriodMode = plan.status !== 'ACTIVE' || plan.period_mode !== 'ANNUAL' || (!planIdsWithHistory.has(plan.id) && !hasCommitmentOrActual && !hasOtherBudgetaryHistory);
+      const hasCommitmentOrActual = plan.allocations.some((allocation) => {
+        const committed = allocation.ledger_entries.reduce((sum, entry) => sum + Number(entry.committed_delta), 0);
+        const actual = allocation.ledger_entries.reduce((sum, entry) => sum + Number(entry.actual_delta), 0);
+        return committed > MONEY_EPSILON || actual > MONEY_EPSILON;
+      });
+      const canChangePeriodMode = plan.status !== 'ACTIVE' || (!completedPlanIds.has(plan.id) && !plansWithOpenReservations.has(plan.id) && !hasCommitmentOrActual);
       return {
         ...plan,
         can_edit: canEdit,
@@ -353,13 +357,13 @@ export class BudgetingService {
     const switchingPeriodToAnnual = plan.period_mode !== 'ANNUAL' && targetPeriodMode === 'ANNUAL';
     if (String(input.fiscal_year_id) !== String(plan.fiscal_year_id)) throw new ConflictError('Tahun fiskal tidak dapat diubah setelah Budget Plan aktif.');
     if (switchingAnnualToPeriod) {
-      const [reservationCount, revisionCount, transferCount] = await Promise.all([
-        tx.fin_budget_reservation.count({ where: { company_id: companyId, budget_id: plan.id } }),
-        tx.fin_budget_revision.count({ where: { company_id: companyId, budget_id: plan.id } }),
-        tx.fin_budget_transfer.count({ where: { company_id: companyId, budget_id: plan.id } }),
-      ]);
-      const hasCommittedAmounts = plan.allocations.some((allocation: any) => allocation.ledger_entries.some((entry: any) => Number(entry.committed_delta) !== 0 || Number(entry.actual_delta) !== 0));
-      if (reservationCount || revisionCount || transferCount || hasCommittedAmounts) throw new ConflictError('Mode periode Tahunan hanya dapat diubah setelah Budget Plan aktif jika belum ada komitmen atau transaksi anggaran.');
+      const activeReservation = await tx.fin_budget_reservation.findFirst({ where: { company_id: companyId, budget_id: plan.id, status: { in: ['PENDING_APPROVAL', 'OPEN', 'PARTIALLY_RELEASED'] } }, select: { id: true } });
+      const hasCommittedAmounts = plan.allocations.some((allocation: any) => {
+        const committed = allocation.ledger_entries.reduce((sum: number, entry: any) => sum + Number(entry.committed_delta), 0);
+        const actual = allocation.ledger_entries.reduce((sum: number, entry: any) => sum + Number(entry.actual_delta), 0);
+        return committed > MONEY_EPSILON || actual > MONEY_EPSILON;
+      });
+      if (activeReservation || hasCommittedAmounts) throw new ConflictError('Pembagian periode belum dapat diubah selama masih ada komitmen atau actual yang terbuka. Selesaikan transaksi anggaran terlebih dahulu.');
     }
     if (new Set(normalized.map((row) => row.id)).size !== normalized.length || normalized.length !== plan.allocations.length || normalized.some((row) => !plan.allocations.some((current: any) => current.id === row.id))) {
       throw new ConflictError('Alokasi yang sudah aktif tidak dapat ditambah atau dihapus; ubah pagu pada alokasi yang ada.');

@@ -953,10 +953,35 @@ projectsRouter.get('/projects/:id/financial-performance', async (req: Request, r
  */
 projectsRouter.get('/projects/:id/funding_requests', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const fundings = await prisma.fin_project_funding.findMany({
-      where: { project_id: req.params.id, company_id: activeCompanyId(req) },
+    const companyId = activeCompanyId(req);
+    const [fundings, requests] = await Promise.all([
+      prisma.fin_project_funding.findMany({ where: { project_id: req.params.id, company_id: companyId } }),
+      prisma.request_ticket.findMany({ where: { project_id: req.params.id, company_id: companyId, request_type: 'FUND_REQUEST', cancelled_at: null }, orderBy: { created_at: 'desc' } }),
+    ]);
+    const requestIds = requests.map((request) => request.id);
+    const workflowIds = requests.map((request) => request.workflow_instance_id);
+    const [workflows, requestEvents] = await Promise.all([
+      workflowIds.length ? prisma.core_workflow_instance.findMany({ where: { company_id: companyId, id: { in: workflowIds } }, select: { id: true, current_state: true } }) : Promise.resolve([]),
+      requestIds.length ? prisma.core_audit_event.findMany({ where: { company_id: companyId, entity_name: 'core_internal_request', event_type: 'CREATE_REQUEST', entity_id: { in: requestIds } }, select: { entity_id: true, after_data: true } }) : Promise.resolve([]),
+    ]);
+    const workflowById = new Map(workflows.map((workflow) => [workflow.id, workflow.current_state]));
+    const eventByRequestId = new Map(requestEvents.map((event) => [event.entity_id, event.after_data as Record<string, any> | null]));
+    const fundingRequests = requests.map((request) => {
+      const payload = eventByRequestId.get(request.id) ?? {};
+      return {
+        id: request.id,
+        request_number: request.request_number,
+        title: request.title,
+        description: request.description,
+        amount: Number(payload.amount ?? 0),
+        category: payload.budget_category ?? 'OPERATIONAL',
+        project_id: request.project_id,
+        status: workflowById.get(request.workflow_instance_id) ?? request.status,
+        created_at: request.created_at,
+        source_type: 'REQUEST',
+      };
     });
-    res.json(fundings);
+    res.json([...fundingRequests, ...fundings.map((funding) => ({ ...funding, amount: Number(funding.requested_amount ?? 0), category: funding.funding_type, source_type: 'PROJECT_FUNDING' }))]);
   } catch (err) {
     next(err);
   }

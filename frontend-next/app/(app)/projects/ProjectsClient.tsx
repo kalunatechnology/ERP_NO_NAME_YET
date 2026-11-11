@@ -26,7 +26,7 @@ import {
   createMilestone,
   assignMemberToMainTask, removeTaskAssignment, fetchCompanyUsers,
   fetchProjectFinancialPerformance,
-  fetchProjectFundingRequests, submitProjectFundingRequest,
+  fetchProjectFundingRequests,
   updateProjectFinancials,
   fetchProjectCustomers, getApiErrorDetail,
   fetchProjectPartyOptions, fetchProjectParties, updateProjectParties,
@@ -1104,13 +1104,19 @@ export default function ProjectsClient() {
     if (fundingSaving) return;
     setFundingSaving(true);
     try {
-      await submitProjectFundingRequest(selectedProject.id, {
-        amount,
-        category: fundingRequestForm.category as "OPERATIONAL" | "MATERIAL" | "LOGISTICS" | "EQUIPMENT" | "OTHER",
+      const category = fundingRequestForm.category as "OPERATIONAL" | "MATERIAL" | "LOGISTICS" | "EQUIPMENT" | "OTHER";
+      const response = await api.post("/api/v1/requests", {
+        request_type: "FUND_REQUEST",
+        title: `${category} · ${description}`.slice(0, 60),
         description,
+        amount,
+        budget_category: category,
+        project_id: selectedProject.id,
+        is_draft: false,
       });
 
-      toast.success(`Permintaan dana ${formatRupiah(amount)} berhasil diajukan ke Finance.`);
+      const request = response.data?.data ?? response.data;
+      toast.success(`Permintaan dana ${request.request_number || request.id} sebesar ${formatRupiah(amount)} berhasil diajukan ke Finance.`);
       setFundingRequestForm({ amount: "", category: "", description: "" });
       setFundingRequestErrors({});
       setIsFundingRequestOpen(false);
@@ -2923,7 +2929,7 @@ export default function ProjectsClient() {
                     <div key={f.id} className="py-2.5 flex justify-between items-start text-xs">
                       <div>
                         <span className="font-bold text-text-primary block">{f.description || f.purpose || "Permintaan Anggaran"}</span>
-                        <div className="mt-1 flex items-center gap-2"><CategoryLabel label={f.expense_type || f.category || "OPERATIONAL"} /><span className="text-2xs text-text-secondary">{f.expense_date || "-"}</span></div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2"><CategoryLabel label={f.expense_type || f.category || "OPERATIONAL"} /><span className="text-2xs text-text-secondary">{f.expense_date || f.created_at || "-"}</span><span className="font-mono text-[9px] text-text-secondary" title={f.id}>{f.request_number || f.id}</span></div>
                       </div>
                       <div className="text-right">
                         <strong className="text-brand-deep-green block">{formatRupiah(Number(f.amount))}</strong>
