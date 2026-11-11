@@ -398,7 +398,7 @@ export class BudgetingService {
         const periodIds = [...new Set(normalized.flatMap((allocation) => allocation.periods.map((period: any) => period.fiscal_period_id)))];
         const targetPeriods = await tx.fin_fiscal_period.findMany({ where: { company_id: companyId, fiscal_year_id: plan.fiscal_year_id, id: { in: periodIds } }, select: { id: true, start_date: true, end_date: true } });
         for (const reservation of pendingReservations) {
-          const reservationPeriod = targetPeriods.find((period) => period.start_date && period.end_date && reservation.created_at >= period.start_date && reservation.created_at <= period.end_date);
+          const reservationPeriod = targetPeriods.find((period: (typeof targetPeriods)[number]) => period.start_date && period.end_date && reservation.created_at >= period.start_date && reservation.created_at <= period.end_date);
           if (!reservationPeriod) throw new ConflictError('Periode untuk komitmen yang menunggu persetujuan tidak dapat ditentukan.');
           await tx.fin_budget_reservation.update({ where: { id: reservation.id }, data: { fiscal_period_id: reservationPeriod.id } });
         }
