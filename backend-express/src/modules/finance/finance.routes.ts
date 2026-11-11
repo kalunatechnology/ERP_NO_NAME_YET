@@ -24,6 +24,7 @@ import { CustomerReceiptService } from './customer-receipt.service';
 import { BudgetingService } from './budgeting.service';
 import { hasModuleOverride } from '../../utils/module-permissions';
 import { PayrollService } from './payroll.service';
+import { RecurringExpenseService } from './recurring-expense.service';
 
 export const financeRouter = Router();
 
@@ -336,6 +337,22 @@ financeRouter.post('/payroll/runs/:id/post', requireFinanceRole([RoleCode.FINANC
 });
 financeRouter.post('/payroll/runs/:id/pay', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
   try { sendSuccess(res, await PayrollService.pay(activeCompanyId(req), req.tenantId ?? null, req.params.id, authenticatedFinanceUserId(req), req.body)); } catch (err) { next(err); }
+});
+
+financeRouter.get('/recurring-expenses/rules', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try { sendSuccess(res, await RecurringExpenseService.list(activeCompanyId(req))); } catch (err) { next(err); }
+});
+financeRouter.get('/recurring-expenses/runs', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try { sendSuccess(res, await RecurringExpenseService.listRuns(activeCompanyId(req))); } catch (err) { next(err); }
+});
+financeRouter.post('/recurring-expenses/generate', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try { sendSuccess(res, await RecurringExpenseService.generate(activeCompanyId(req), req.tenantId ?? null, authenticatedFinanceUserId(req), req.body.through_date), 201); } catch (err) { next(err); }
+});
+financeRouter.post('/recurring-expenses/rules', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try { sendSuccess(res, await RecurringExpenseService.save(activeCompanyId(req), req.tenantId ?? null, authenticatedFinanceUserId(req), req.body), 201); } catch (err) { next(err); }
+});
+financeRouter.put('/recurring-expenses/rules/:id', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try { sendSuccess(res, await RecurringExpenseService.save(activeCompanyId(req), req.tenantId ?? null, authenticatedFinanceUserId(req), req.body, req.params.id)); } catch (err) { next(err); }
 });
 
 // =============================================================================

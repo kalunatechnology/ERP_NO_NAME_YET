@@ -16,7 +16,7 @@ import {
   BookOpen, BarChart3, Activity, Banknote, ArrowLeftRight, TrendingDown,
   AlertTriangle, CheckSquare, Clock, Eye, LayoutDashboard, Crown, BriefcaseBusiness,
   ClipboardList, Receipt, RotateCcw, WalletCards, LibraryBig, FileBarChart,
-  Link2, Calculator, CalendarRange, HardHat, Send, Info, Search, ChevronLeft, ChevronRight, ChevronDown, CircleDollarSign
+  Link2, Calculator, CalendarRange, CalendarClock, HardHat, Send, Info, Search, ChevronLeft, ChevronRight, ChevronDown, CircleDollarSign
 } from "lucide-react";
 import { cn, formatMoney, formatRupiah, formatDate, getStatusColor, localDateKey } from "@/lib/utils";
 import api from "@/lib/api/axios";
@@ -44,6 +44,8 @@ import dynamic from "next/dynamic";
 const FixedAssetsWorkspace          = dynamic(() => import("@/components/finance/FixedAssetsWorkspace"),          { ssr: false });
 const ChartOfAccountsWorkspace      = dynamic(() => import("@/components/finance/ChartOfAccountsWorkspace").then(m => m.ChartOfAccountsWorkspace), { ssr: false });
 const PayrollWorkspace              = dynamic(() => import("@/components/finance/PayrollWorkspace").then(m => m.PayrollWorkspace), { ssr: false });
+const RecurringExpensesWorkspace    = dynamic(() => import("@/components/finance/RecurringExpensesWorkspace").then(m => m.RecurringExpensesWorkspace), { ssr: false });
+const TaxCoaMappingWorkspace         = dynamic(() => import("@/components/finance/TaxCoaMappingWorkspace").then(m => m.TaxCoaMappingWorkspace), { ssr: false });
 const PeriodClosingWorkspace        = dynamic(() => import("@/components/finance/PeriodClosingWorkspace"),        { ssr: false });
 const AuditTrailWorkspace           = dynamic(() => import("@/components/finance/AuditTrailWorkspace"),           { ssr: false });
 const ExecutiveAuditReportWorkspace = dynamic(() => import("@/components/finance/ExecutiveAuditReportWorkspace").then(m => m.ExecutiveAuditReportWorkspace), { ssr: false });
@@ -63,6 +65,8 @@ const FINANCE_TABS = [
   { id: "cashbank", label: "Kas & Bank", icon: WalletCards },
   { id: "coa", label: "Chart of Accounts", icon: BookOpen },
   { id: "payroll", label: "Payroll", icon: Banknote },
+  { id: "recurring_expenses", label: "Biaya Eksternal", icon: CalendarClock },
+  { id: "tax_setup", label: "Pajak & COA", icon: Scale },
   { id: "gl", label: "Buku Besar", icon: LibraryBig },
   { id: "lapkeu", label: "Laporan Keuangan", icon: FileBarChart },
   { id: "banking_hub", label: "Rekonsiliasi", icon: Link2 },
@@ -2102,6 +2106,8 @@ export default function FinanceClient() {
 
       {activeTab === "coa" && <ChartOfAccountsWorkspace canOperate={canOperateFinance} />}
       {activeTab === "payroll" && <PayrollWorkspace canOperate={canOperateFinance} />}
+      {activeTab === "recurring_expenses" && <RecurringExpensesWorkspace canOperate={canOperateFinance} />}
+      {activeTab === "tax_setup" && <TaxCoaMappingWorkspace canOperate={canOperateFinance} />}
 
       {/* ── TAB: LAPORAN KEUANGAN ────────────────── */}
       {activeTab === "lapkeu" && (

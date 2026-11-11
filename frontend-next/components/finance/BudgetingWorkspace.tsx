@@ -23,6 +23,7 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
   const [reservations, setReservations] = useState<AnyRow[]>([]);
   const [ledger, setLedger] = useState<AnyRow[]>([]);
   const [yearId, setYearId] = useState("");
+  const [budgetScope, setBudgetScope] = useState<"PROJECT" | "COMPANY">("PROJECT");
   const [tab, setTab] = useState<"overview" | "plans" | "workflow" | "ledger">("overview");
   const [loading, setLoading] = useState(true);
   const [optionsLoading, setOptionsLoading] = useState(true);
@@ -46,6 +47,19 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
 
   const selectedPeriods = useMemo(() => options.fiscal_periods.filter((period) => String(period.fiscal_year_id) === String(planForm.fiscal_year_id)).sort((a, b) => Number(a.period_number) - Number(b.period_number)), [options.fiscal_periods, planForm.fiscal_year_id]);
   const allocationRows: AnyRow[] = dashboard?.allocations ?? [];
+  const scopedAllocationRows = allocationRows.filter((row) => budgetScope === "PROJECT" ? Boolean(row.project_id) : !row.project_id);
+  const scopedAllocationIds = new Set(scopedAllocationRows.map((row) => String(row.id)));
+  const scopedReservations = reservations.filter((row) => scopedAllocationIds.has(String(row.allocation_id)));
+  const scopedPlans: AnyRow[] = plans.map((plan: AnyRow): AnyRow => ({
+    ...plan,
+    allocations: (plan.allocations ?? []).filter((row: AnyRow) => budgetScope === "PROJECT" ? Boolean(row.project_id) : !row.project_id),
+  })).filter((plan: AnyRow) => plan.allocations.length > 0 || (plan.allocations?.length === 0 && budgetScope === "COMPANY" && plan.budget_type !== "PROJECT"));
+  const scopedTotals = scopedAllocationRows.reduce((totals, row) => ({
+    allocated: totals.allocated + Number(row.allocated ?? 0),
+    committed: totals.committed + Number(row.committed ?? 0),
+    actual: totals.actual + Number(row.actual ?? 0),
+    available: totals.available + Number(row.available ?? 0),
+  }), { allocated: 0, committed: 0, actual: 0, available: 0 });
   const fiscalPeriodLabel = (allocationPeriod: AnyRow) => {
     const fiscalPeriod = options.fiscal_periods.find((period) => String(period.id) === String(allocationPeriod.fiscal_period_id));
     const periodNumber = fiscalPeriod?.period_number ?? allocationPeriod.period_number;
@@ -257,7 +271,7 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
             <select aria-label="Tahun fiskal Budgeting" value={yearId} onChange={(event) => { setYearId(event.target.value); void load(event.target.value); }} className="rounded-xl border border-[#D9D9D9] bg-white px-3 py-2 text-xs font-bold">
               <option value="">Semua tahun fiskal</option>{options.fiscal_years.map((year) => <option key={year.id} value={year.id}>{year.fiscal_year_name}</option>)}
             </select>
-            {canOperate && <button type="button" onClick={() => { setEditingPlanId(null); setEditingPlanIsActive(false); setEditingPlanCanChangePeriodMode(true); setPlanForm({ budget_name: "", fiscal_year_id: yearId || options.fiscal_years[0]?.id || "", budget_type: "OPERATING", control_policy: "HARD_STOP", period_mode: "ANNUAL", carry_forward: false, allocations: [blankAllocation()] }); setShowPlanForm(true); }} className="inline-flex items-center gap-2 rounded-xl bg-[#2649B3] px-4 py-2 text-xs font-bold text-white hover:bg-[#1E3A8A]"><Plus size={15} /> Rencana baru</button>}
+            {canOperate && <button type="button" onClick={() => { setEditingPlanId(null); setEditingPlanIsActive(false); setEditingPlanCanChangePeriodMode(true); setPlanForm({ budget_name: "", fiscal_year_id: yearId || options.fiscal_years[0]?.id || "", budget_type: budgetScope === "PROJECT" ? "PROJECT" : "OPERATING", control_policy: "HARD_STOP", period_mode: "ANNUAL", carry_forward: false, allocations: [blankAllocation()] }); setShowPlanForm(true); }} className="inline-flex items-center gap-2 rounded-xl bg-[#2649B3] px-4 py-2 text-xs font-bold text-white hover:bg-[#1E3A8A]"><Plus size={15} /> Rencana baru</button>}
             <button type="button" onClick={() => void refresh()} disabled={loading} className="rounded-xl border border-[#D9D9D9] p-2 text-[#4F5050] hover:bg-slate-50" aria-label="Muat ulang"><RefreshCw size={16} className={cn(loading && "animate-spin")} /></button>
           </div>
         </div>
@@ -265,6 +279,11 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
           {([ ["overview", "Ikhtisar"], ["plans", `Rencana (${plans.length})`], ["workflow", `Persetujuan (${queue.plans.length + queue.revisions.length + queue.transfers.length + queue.reservations.length})`], ["ledger", "Ledger audit"] ] as const).map(([id, label]) => (
             <button key={id} type="button" onClick={() => setTab(id)} className={cn("border-b-2 px-3 py-2 text-xs font-bold", tab === id ? "border-[#2649B3] text-[#2649B3]" : "border-transparent text-[#6B7280] hover:text-[#090909]")}>{label}</button>
           ))}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-2">
+          <span className="px-2 text-[10px] font-bold uppercase tracking-wide text-[#6B7280]">Lingkup anggaran</span>
+          {([["PROJECT", "Budget Proyek"], ["COMPANY", "Budget Perusahaan / Operasional"]] as const).map(([scope, label]) => <button key={scope} type="button" onClick={() => setBudgetScope(scope)} className={cn("rounded-lg px-3 py-2 text-xs font-bold", budgetScope === scope ? "bg-[#2649B3] text-white" : "bg-white text-[#4F5050] hover:bg-blue-50")}>{label}</button>)}
+          <span className="ml-auto text-[10px] text-[#6B7280]">{budgetScope === "PROJECT" ? "Alokasi dengan proyek terpilih" : "Alokasi kantor/internal tanpa proyek"} · ikhtisar & rencana</span>
         </div>
       </section>
 
@@ -274,20 +293,20 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
 
       {!loading && tab === "overview" && <>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {[["Allocated", dashboard?.totals?.allocated, "Dana yang disahkan", "text-[#2649B3]"], ["Committed", dashboard?.totals?.committed, "Komitmen terbuka", "text-amber-700"], ["Actual", dashboard?.totals?.actual, "Beban yang diposting", "text-violet-700"], ["Available", dashboard?.totals?.available, "Sisa setelah komitmen & actual", Number(dashboard?.totals?.available ?? 0) < 0 ? "text-red-700" : "text-emerald-700"]].map(([label, amount, hint, color]) => (
+          {[["Allocated", scopedTotals.allocated, "Dana yang disahkan", "text-[#2649B3]"], ["Committed", scopedTotals.committed, "Komitmen terbuka", "text-amber-700"], ["Actual", scopedTotals.actual, "Beban yang diposting", "text-violet-700"], ["Available", scopedTotals.available, "Sisa setelah komitmen & actual", Number(scopedTotals.available ?? 0) < 0 ? "text-red-700" : "text-emerald-700"]].map(([label, amount, hint, color]) => (
             <div key={String(label)} className="rounded-2xl border border-[#D9D9D9] bg-white p-4 shadow-2xs"><div className="text-[10px] font-extrabold uppercase tracking-wider text-[#6B7280]">{label}</div><div className={cn("mt-2 text-xl font-black", String(color))}>{fmt(amount)}</div><div className="mt-1 text-[10px] text-[#6B7280]">{hint}</div></div>
           ))}
         </div>
         {canOperate && <div className="flex flex-wrap gap-2">
-          <button onClick={() => { setAction("RESERVATION"); setActionForm({ allocation_id: allocationRows[0]?.id ?? "", source_type: "REQUEST", source_id: "", source_line_id: "", fiscal_period_id: "", amount: "", description: "", request_query: "", invoice_query: "" }); }} className="inline-flex items-center gap-2 rounded-xl border border-[#D9D9D9] bg-white px-3 py-2 text-xs font-bold text-[#2649B3] hover:bg-[#F7FBFF]"><ShieldCheck size={14} /> Catat komitmen</button>
-          <button onClick={() => { setAction("REVISION"); setActionForm({ allocation_id: allocationRows[0]?.id ?? "", revision_type: "INCREASE", amount: "", reason: "", fiscal_period_id: "" }); }} className="inline-flex items-center gap-2 rounded-xl border border-[#D9D9D9] bg-white px-3 py-2 text-xs font-bold text-[#2649B3] hover:bg-[#F7FBFF]"><FilePlus2 size={14} /> Ajukan revisi</button>
-          <button onClick={() => { setAction("TRANSFER"); setActionForm({ from_allocation_id: allocationRows[0]?.id ?? "", to_allocation_id: allocationRows[1]?.id ?? "", amount: "", reason: "" }); }} className="inline-flex items-center gap-2 rounded-xl border border-[#D9D9D9] bg-white px-3 py-2 text-xs font-bold text-[#2649B3] hover:bg-[#F7FBFF]"><ArrowLeftRight size={14} /> Ajukan transfer</button>
+          <button onClick={() => { setAction("RESERVATION"); setActionForm({ allocation_id: scopedAllocationRows[0]?.id ?? "", source_type: "REQUEST", source_id: "", source_line_id: "", fiscal_period_id: "", amount: "", description: "", request_query: "", invoice_query: "" }); }} className="inline-flex items-center gap-2 rounded-xl border border-[#D9D9D9] bg-white px-3 py-2 text-xs font-bold text-[#2649B3] hover:bg-[#F7FBFF]"><ShieldCheck size={14} /> Catat komitmen</button>
+          <button onClick={() => { setAction("REVISION"); setActionForm({ allocation_id: scopedAllocationRows[0]?.id ?? "", revision_type: "INCREASE", amount: "", reason: "", fiscal_period_id: "" }); }} className="inline-flex items-center gap-2 rounded-xl border border-[#D9D9D9] bg-white px-3 py-2 text-xs font-bold text-[#2649B3] hover:bg-[#F7FBFF]"><FilePlus2 size={14} /> Ajukan revisi</button>
+          <button onClick={() => { setAction("TRANSFER"); setActionForm({ from_allocation_id: scopedAllocationRows[0]?.id ?? "", to_allocation_id: scopedAllocationRows[1]?.id ?? "", amount: "", reason: "" }); }} className="inline-flex items-center gap-2 rounded-xl border border-[#D9D9D9] bg-white px-3 py-2 text-xs font-bold text-[#2649B3] hover:bg-[#F7FBFF]"><ArrowLeftRight size={14} /> Ajukan transfer</button>
         </div>}
-        <AllocationTable rows={allocationRows} plans={plans} canOperate={canOperate} onEditPlan={(budgetId) => { const plan = plans.find((row) => String(row.id) === String(budgetId)); if (plan?.can_edit) startEditPlan(plan); }} onSelectLedger={(id) => { setLedgerAllocationId(id); setTab("ledger"); void load(yearId); }} />
-        <ReservationTable rows={reservations} onSettle={(row, kind) => { setSettling({ row, kind }); setSettlementForm({ amount: String(row.remaining_amount ?? ""), reason: kind === "recognize" ? "Pengakuan beban akrual" : "Pelepasan komitmen" }); }} />
+        <AllocationTable rows={scopedAllocationRows} plans={plans} canOperate={canOperate} onEditPlan={(budgetId) => { const plan = plans.find((row) => String(row.id) === String(budgetId)); if (plan?.can_edit) startEditPlan(plan); }} onSelectLedger={(id) => { setLedgerAllocationId(id); setTab("ledger"); void load(yearId); }} />
+        <ReservationTable rows={scopedReservations} onSettle={(row, kind) => { setSettling({ row, kind }); setSettlementForm({ amount: String(row.remaining_amount ?? ""), reason: kind === "recognize" ? "Pengakuan beban akrual" : "Pelepasan komitmen" }); }} />
       </>}
 
-      {!loading && tab === "plans" && <div className="grid gap-3">{plans.length === 0 ? <Empty text="Belum ada rencana anggaran untuk perusahaan ini." /> : plans.map((plan) => <PlanCard key={plan.id} plan={plan} canOperate={canOperate} onEdit={() => startEditPlan(plan)} onDelete={() => void deleteDraftPlan(plan.id)} onSubmit={() => void postAction(`/budgets/${plan.id}/submit`)} onApprove={() => runApproval("plans", plan.id, true)} onReject={() => runApproval("plans", plan.id, false)} onClose={() => { setClosingPlanId(plan.id); setCloseReason(""); }} />)}</div>}
+      {!loading && tab === "plans" && <div className="grid gap-3">{scopedPlans.length === 0 ? <Empty text={budgetScope === "PROJECT" ? "Belum ada alokasi Budget Plan untuk proyek." : "Belum ada alokasi Budget Plan untuk perusahaan/internal."} /> : scopedPlans.map((plan) => <PlanCard key={plan.id} plan={plan} canOperate={canOperate} onEdit={() => startEditPlan(plan)} onDelete={() => void deleteDraftPlan(plan.id)} onSubmit={() => void postAction(`/budgets/${plan.id}/submit`)} onApprove={() => runApproval("plans", plan.id, true)} onReject={() => runApproval("plans", plan.id, false)} onClose={() => { setClosingPlanId(plan.id); setCloseReason(""); }} />)}</div>}
 
       {!loading && tab === "workflow" && <WorkflowQueue queue={queue} onApprove={runApproval} onReject={runApproval} />}
 
@@ -320,7 +339,7 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
                   if (matchingDept) setAllocation(index, "department_id", matchingDept.id);
                 }
               }} className={inputClass}><option value="">{optionsLoading ? "Memuat cost center…" : options.cost_centers.length ? "Pilih cost center" : "Belum ada cost center aktif"}</option>{options.cost_centers.map((center) => <option key={center.id} value={center.id}>{center.cost_center_code || center.code} — {center.cost_center_name || center.name}</option>)}</select></Field>
-              <Field label="Proyek (opsional)"><select disabled={editingPlanIsActive} value={row.project_id} onChange={(event) => setAllocation(index, "project_id", event.target.value)} className={inputClass}><option value="">Semua proyek</option>{options.projects.map((project) => <option key={project.id} value={project.id}>{project.project_code} — {project.project_name}</option>)}</select></Field>
+              <Field label={budgetScope === "PROJECT" ? "Proyek *" : "Proyek (opsional)"}><select required={budgetScope === "PROJECT"} disabled={editingPlanIsActive} value={row.project_id} onChange={(event) => setAllocation(index, "project_id", event.target.value)} className={inputClass}><option value="">{budgetScope === "PROJECT" ? "Pilih proyek" : "Kantor / semua proyek"}</option>{options.projects.map((project) => <option key={project.id} value={project.id}>{project.project_code} — {project.project_name}</option>)}</select></Field>
               <Field label="Departemen / Divisi (opsional)"><select disabled={editingPlanIsActive || optionsLoading} value={row.department_id} onChange={(event) => {
                 const nextDeptId = event.target.value;
                 setAllocation(index, "department_id", nextDeptId);

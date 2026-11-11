@@ -20,7 +20,7 @@ interface FinanceModuleSidebarProps {
 const groups = [
   { id: "summary", label: "Ringkasan", items: ["overview", "executive_report", "profit"] },
   { id: "operations", label: "Operasional Proyek", items: ["costing", "budgeting", "fundings", "billing", "ap", "ar"] },
-  { id: "accounting", label: "Akuntansi", items: ["cashbank", "coa", "payroll", "gl", "lapkeu", "banking_hub", "period_closing"] },
+  { id: "accounting", label: "Akuntansi", items: ["cashbank", "coa", "payroll", "recurring_expenses", "tax_setup", "gl", "lapkeu", "banking_hub", "period_closing"] },
   { id: "administration", label: "Administrasi", items: ["company_master", "tax", "assets", "audit_trail"] },
 ] as const;
 

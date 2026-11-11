@@ -1348,11 +1348,15 @@ model master_tax_code {
   tax_code          String
   tax_name          String
   tax_type          String
+  tax_direction     String?   @map("tax_direction")
   tax_rate          Decimal?
   effective_from    DateTime?
   effective_to      DateTime?
   input_account_id  String?   @map("input_account_id")
   output_account_id String?   @map("output_account_id")
+  payable_account_id String?  @map("payable_account_id")
+  is_recoverable    Boolean   @default(true) @map("is_recoverable")
+  status            String    @default("ACTIVE")
 
   @@index([tenant_id, company_id])
   @@map("master_tax_code")
@@ -5092,6 +5096,11 @@ model fin_recurring_payment_rule {
   party_id           String?   @map("party_id")
   bank_account_id    String?   @map("bank_account_id")
   expense_account_id String?   @map("expense_account_id")
+  description        String    @default("")
+  project_id         String?   @map("project_id")
+  cost_center_id     String?   @map("cost_center_id")
+  budget_allocation_id String? @map("budget_allocation_id")
+  input_tax_code_id  String?   @map("input_tax_code_id")
   currency_id        String?   @map("currency_id")
   rule_code          String    @unique
   amount             Decimal?
@@ -5114,6 +5123,8 @@ model fin_recurring_payment_run {
   id                String    @id @default(uuid())
   recurring_rule_id String?   @map("recurring_rule_id")
   payment_id        String?   @map("payment_id")
+  billing_document_id String? @map("billing_document_id")
+  run_key           String?   @unique @map("run_key")
   scheduled_date    DateTime?
   executed_at       DateTime?
   run_status        String
