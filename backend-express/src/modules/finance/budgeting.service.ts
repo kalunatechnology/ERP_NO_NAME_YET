@@ -32,7 +32,7 @@ function deltaText(value: number): string {
 export class BudgetingService {
   static async getOptions(companyId: string) {
     await ensureCompanyDepartmentsAndCostCenters(companyId);
-    const [fiscalYears, fiscalPeriods, accounts, costCenters, projects, departments, coreDepartments, requestTickets, purchaseOrders] = await Promise.all([
+    const [fiscalYears, fiscalPeriods, accounts, costCenters, projects, departments, coreDepartments, requestTickets, purchaseOrders, legacyFundings] = await Promise.all([
       prisma.fin_fiscal_year.findMany({ where: { company_id: companyId }, orderBy: { start_date: 'desc' } }),
       prisma.fin_fiscal_period.findMany({ where: { company_id: companyId }, orderBy: { period_number: 'asc' } }),
       prisma.fin_account.findMany({ where: { company_id: companyId, status: 'ACTIVE', account_type: 'EXPENSE' }, orderBy: { account_code: 'asc' } }),
@@ -42,23 +42,25 @@ export class BudgetingService {
       (prisma as any).core_department.findMany({ where: { company_id: companyId, is_active: true }, orderBy: { name: 'asc' } }).catch(() => []),
       prisma.request_ticket.findMany({ where: { company_id: companyId, request_type: 'FUND_REQUEST', cancelled_at: null }, orderBy: { created_at: 'desc' }, take: 100 }),
       prisma.proc_purchase_order.findMany({ where: { company_id: companyId, status: 'APPROVED' }, orderBy: { order_date: 'desc' }, take: 100 }),
+      prisma.fin_project_funding.findMany({ where: { company_id: companyId, status: { notIn: ['REJECTED', 'CANCELLED', 'DISBURSED'] } }, orderBy: { created_at: 'desc' }, take: 100 }),
     ]);
 
     const requestIds = requestTickets.map((request) => request.id);
+    const allFundingRequestIds = [...requestIds, ...legacyFundings.map((funding) => funding.id)];
     const workflowIds = requestTickets.map((request) => request.workflow_instance_id);
     const documentIds = purchaseOrders.map((order) => order.document_id).filter((id): id is string => Boolean(id));
     const [requestWorkflows, requestEvents, orderDocuments, requestReservations] = await Promise.all([
       workflowIds.length ? prisma.core_workflow_instance.findMany({ where: { company_id: companyId, id: { in: workflowIds } }, select: { id: true, current_state: true } }) : Promise.resolve([]),
       requestIds.length ? prisma.core_audit_event.findMany({ where: { company_id: companyId, entity_name: 'core_internal_request', event_type: 'CREATE_REQUEST', entity_id: { in: requestIds } }, select: { entity_id: true, after_data: true }, orderBy: { occurred_at: 'asc' } }) : Promise.resolve([]),
       documentIds.length ? prisma.core_business_document.findMany({ where: { company_id: companyId, id: { in: documentIds } }, select: { id: true, document_number: true } }) : Promise.resolve([]),
-      requestIds.length ? prisma.fin_budget_reservation.findMany({ where: { company_id: companyId, source_type: 'REQUEST', source_id: { in: requestIds }, status: { in: ['OPEN', 'PARTIALLY_RELEASED', 'PENDING_APPROVAL'] } }, select: { source_id: true, allocation_id: true, amount: true, remaining_amount: true, status: true } }) : Promise.resolve([]),
+      allFundingRequestIds.length ? prisma.fin_budget_reservation.findMany({ where: { company_id: companyId, source_type: 'REQUEST', source_id: { in: allFundingRequestIds }, status: { in: ['OPEN', 'PARTIALLY_RELEASED', 'PENDING_APPROVAL'] } }, select: { source_id: true, allocation_id: true, amount: true, remaining_amount: true, status: true } }) : Promise.resolve([]),
     ]);
     const workflowById = new Map(requestWorkflows.map((row) => [row.id, row.current_state]));
     const eventByRequestId = new Map(requestEvents.map((row) => [row.entity_id, row.after_data as Record<string, any> | null]));
     const orderNumberByDocumentId = new Map(orderDocuments.map((row) => [row.id, row.document_number]));
     const reservationByRequestId = new Map(requestReservations.map((row) => [row.source_id, row]));
     const projectById = new Map(projects.map((row) => [row.id, row]));
-    const fundRequests = requestTickets.map((request) => {
+    const fundRequests = [ ...requestTickets.map((request) => {
       const payload = eventByRequestId.get(request.id) ?? {};
       const reservation = reservationByRequestId.get(request.id);
       return {
@@ -79,8 +81,31 @@ export class BudgetingService {
         committed_amount: reservation ? Number(reservation.amount) : 0,
         remaining_commitment: reservation ? Number(reservation.remaining_amount) : 0,
         has_active_commitment: Boolean(reservation),
+        legacy_funding: false,
       };
-    });
+    }), ...legacyFundings.map((funding) => {
+      const reservation = reservationByRequestId.get(funding.id);
+      return {
+        id: funding.id,
+        request_number: funding.document_id || `FUND-${funding.id.slice(0, 8).toUpperCase()}`,
+        title: funding.purpose || 'Permintaan dana proyek',
+        description: funding.purpose || '',
+        request_type: 'FUND_REQUEST',
+        status: funding.status,
+        request_status: funding.status,
+        amount: Number(funding.requested_amount ?? 0),
+        project_id: funding.project_id,
+        project_name: projectById.get(funding.project_id ?? '')?.project_name ?? null,
+        budget_category: funding.funding_type,
+        created_at: funding.created_at,
+        budget_allocation_id: reservation?.allocation_id ?? null,
+        budget_reservation_id: null,
+        committed_amount: reservation ? Number(reservation.amount) : 0,
+        remaining_commitment: reservation ? Number(reservation.remaining_amount) : 0,
+        has_active_commitment: Boolean(reservation),
+        legacy_funding: true,
+      };
+    })];
     const approvedPurchaseOrders = purchaseOrders.map((order) => ({
       id: order.id,
       order_number: order.document_id ? orderNumberByDocumentId.get(order.document_id) ?? order.document_id : order.id,
@@ -178,7 +203,7 @@ export class BudgetingService {
     const disbursedPlanIds = new Set(reservationHistory.filter((row) => row.source_type === 'REQUEST' && requestTickets.some((ticket) => ticket.id === row.source_id && disbursedWorkflowIds.has(ticket.workflow_instance_id))).map((row) => row.budget_id));
     const completedPlanIds = new Set([...completedReservations.map((row) => row.budget_id), ...disbursedPlanIds]);
     const planIdsWithHistory = new Set([...reservationHistory, ...revisionHistory, ...transferHistory].map((row: any) => row.budget_id));
-    const plansWithOpenReservations = new Set(reservationHistory.filter((row) => ['PENDING_APPROVAL', 'OPEN', 'PARTIALLY_RELEASED'].includes(row.status)).map((row) => row.budget_id));
+    const plansWithOpenReservations = new Set(reservationHistory.filter((row) => ['OPEN', 'PARTIALLY_RELEASED'].includes(row.status)).map((row) => row.budget_id));
     return plans.map((plan) => {
       const canEdit = plan.status !== 'CLOSED' && !completedPlanIds.has(plan.id);
       const hasLedger = plan.allocations.some((allocation) => allocation.ledger_entries.length > 0);
@@ -191,6 +216,7 @@ export class BudgetingService {
       return {
         ...plan,
         can_edit: canEdit,
+        edit_lock_reason: plan.status === 'CLOSED' ? 'Budget Plan sudah ditutup.' : completedPlanIds.has(plan.id) ? 'Pencairan atau pengakuan actual sudah selesai.' : null,
         can_change_period_mode: canChangePeriodMode,
         can_delete: plan.status === 'DRAFT' && !hasLedger && !planIdsWithHistory.has(plan.id),
         allocations: plan.allocations.map((allocation) => {
@@ -340,8 +366,11 @@ export class BudgetingService {
       where: { company_id: companyId, budget_id: planId, source_type: 'REQUEST' }, select: { source_id: true },
     });
     if (!reservations.length) return false;
+    const sourceIds = reservations.map((row: any) => row.source_id);
+    const legacyDisbursed = await tx.fin_project_funding.findFirst({ where: { company_id: companyId, id: { in: sourceIds }, status: 'DISBURSED' }, select: { id: true } });
+    if (legacyDisbursed) return true;
     const tickets = await tx.request_ticket.findMany({
-      where: { company_id: companyId, id: { in: reservations.map((row: any) => row.source_id) } }, select: { workflow_instance_id: true },
+      where: { company_id: companyId, id: { in: sourceIds } }, select: { workflow_instance_id: true },
     });
     if (!tickets.length) return false;
     const workflow = await tx.core_workflow_instance.findFirst({
@@ -357,13 +386,23 @@ export class BudgetingService {
     const switchingPeriodToAnnual = plan.period_mode !== 'ANNUAL' && targetPeriodMode === 'ANNUAL';
     if (String(input.fiscal_year_id) !== String(plan.fiscal_year_id)) throw new ConflictError('Tahun fiskal tidak dapat diubah setelah Budget Plan aktif.');
     if (switchingAnnualToPeriod) {
-      const activeReservation = await tx.fin_budget_reservation.findFirst({ where: { company_id: companyId, budget_id: plan.id, status: { in: ['PENDING_APPROVAL', 'OPEN', 'PARTIALLY_RELEASED'] } }, select: { id: true } });
+      const activeReservation = await tx.fin_budget_reservation.findFirst({ where: { company_id: companyId, budget_id: plan.id, status: { in: ['OPEN', 'PARTIALLY_RELEASED'] } }, select: { id: true } });
       const hasCommittedAmounts = plan.allocations.some((allocation: any) => {
         const committed = allocation.ledger_entries.reduce((sum: number, entry: any) => sum + Number(entry.committed_delta), 0);
         const actual = allocation.ledger_entries.reduce((sum: number, entry: any) => sum + Number(entry.actual_delta), 0);
         return committed > MONEY_EPSILON || actual > MONEY_EPSILON;
       });
       if (activeReservation || hasCommittedAmounts) throw new ConflictError('Pembagian periode belum dapat diubah selama masih ada komitmen atau actual yang terbuka. Selesaikan transaksi anggaran terlebih dahulu.');
+      const pendingReservations = await tx.fin_budget_reservation.findMany({ where: { company_id: companyId, budget_id: plan.id, status: 'PENDING_APPROVAL', fiscal_period_id: null } });
+      if (pendingReservations.length) {
+        const periodIds = [...new Set(normalized.flatMap((allocation) => allocation.periods.map((period: any) => period.fiscal_period_id)))];
+        const targetPeriods = await tx.fin_fiscal_period.findMany({ where: { company_id: companyId, fiscal_year_id: plan.fiscal_year_id, id: { in: periodIds } }, select: { id: true, start_date: true, end_date: true } });
+        for (const reservation of pendingReservations) {
+          const reservationPeriod = targetPeriods.find((period) => period.start_date && period.end_date && reservation.created_at >= period.start_date && reservation.created_at <= period.end_date);
+          if (!reservationPeriod) throw new ConflictError('Periode untuk komitmen yang menunggu persetujuan tidak dapat ditentukan.');
+          await tx.fin_budget_reservation.update({ where: { id: reservation.id }, data: { fiscal_period_id: reservationPeriod.id } });
+        }
+      }
     }
     if (new Set(normalized.map((row) => row.id)).size !== normalized.length || normalized.length !== plan.allocations.length || normalized.some((row) => !plan.allocations.some((current: any) => current.id === row.id))) {
       throw new ConflictError('Alokasi yang sudah aktif tidak dapat ditambah atau dihapus; ubah pagu pada alokasi yang ada.');
@@ -615,7 +654,9 @@ export class BudgetingService {
     return prisma.$transaction(async (tx) => {
       if (sourceType === 'REQUEST') {
         const source = await tx.request_ticket.findFirst({ where: { id: sourceId, company_id: companyId }, select: { status: true } });
-        if (!source || ['DRAFT', 'CANCELLED', 'REJECTED'].includes(String(source.status).toUpperCase())) throw new ValidationError('Request tidak ditemukan, belum terdaftar, atau sudah dibatalkan.');
+        const legacyFunding = source ? null : await tx.fin_project_funding.findFirst({ where: { id: sourceId, company_id: companyId }, select: { status: true } });
+        const requestStatus = String(source?.status ?? legacyFunding?.status ?? '').toUpperCase();
+        if ((!source && !legacyFunding) || ['DRAFT', 'CANCELLED', 'REJECTED', 'DISBURSED', 'CLOSED'].includes(requestStatus)) throw new ValidationError('Request tidak ditemukan, belum terdaftar, atau sudah dibatalkan.');
       } else if (sourceType === 'PURCHASE_ORDER') {
         const source = await tx.proc_purchase_order.findFirst({ where: { id: sourceId, company_id: companyId }, select: { status: true } });
         if (!source) throw new NotFoundError('Purchase Order');
