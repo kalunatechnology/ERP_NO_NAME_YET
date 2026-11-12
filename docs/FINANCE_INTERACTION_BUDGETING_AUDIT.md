@@ -31,6 +31,12 @@ Mutation paths with direct financial side effects identified in the inspected Fi
 
 ## Verification and limits
 
+## Payroll budget matching and button UX follow-up
+
+- Payroll posting previously required a Budget Plan row with `department_id = null`, even when account 6100 and the payroll Cost Center matched. The Budgeting form can set a department when its code matches the Cost Center, so this predicate incorrectly rejected valid allocations. Posting now compares the employee department when recorded; for legacy employee rows without one, it follows the same unique code mapping used by the Budgeting form. It validates the payroll fiscal period allocation as well and reports the uncovered Cost Center names.
+- Payroll expense journal lines now carry the resolved department dimension so `recordJournalActuals` records actual cost against the same budget allocation that passed the preflight check.
+- Added common cursor, hover, press, and keyboard-focus feedback for native buttons and elements with `role="button"`; disabled controls use a disabled cursor and reduced-motion preferences are respected. Payroll also displays a blocking process indicator during mutation and explains that an APPROVED run must be posted to GL before payment is available.
+
 - Frontend TypeScript validation passed with `frontend-next/node_modules/.bin/tsc.cmd --noEmit` after the final frontend edits.
 - Prisma validation passed with `backend-express/node_modules/.bin/prisma.cmd validate`. No schema migration was introduced because `fin_budget_line.project_id` and `cost_center_id` are already nullable.
 - Backend TypeScript validation was attempted with `backend-express/node_modules/.bin/tsc.cmd --noEmit` but the local dependency installation is missing `bcryptjs`, causing TS2307 in the existing `src/utils/password.ts`. No live database migration or runtime transaction test was run.

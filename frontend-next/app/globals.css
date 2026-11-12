@@ -28,6 +28,38 @@
     @apply box-border;
   }
 
+  /* Make native and custom action buttons feel clickable consistently, even
+     when a component uses only utility classes instead of a shared variant. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+    transition: filter 140ms ease, transform 100ms ease, box-shadow 140ms ease;
+  }
+  button:not(:disabled):hover,
+  [role="button"]:not([aria-disabled="true"]):hover {
+    filter: brightness(0.97);
+  }
+  button:not(:disabled):active,
+  [role="button"]:not([aria-disabled="true"]):active {
+    transform: translateY(1px) scale(0.99);
+  }
+  button:disabled,
+  [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+  button:focus-visible,
+  [role="button"]:focus-visible {
+    outline: 2px solid #2649B3;
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    button,
+    [role="button"] {
+      transition-duration: 0.01ms !important;
+    }
+  }
+
   /* Custom scrollbar */
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }

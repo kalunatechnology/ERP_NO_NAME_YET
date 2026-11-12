@@ -170,8 +170,27 @@ export class PayrollService {
       const date = new Date(run.period_end);
       const period = await PeriodClosingService.ensureOpenPostingPeriod(tx, date, companyId, tenantId, userId);
       const costCenterIds = [...new Set(run.lines.map((line) => line.cost_center_id).filter((id): id is string => Boolean(id)))];
-      const activeCostCenters = await tx.master_cost_center.findMany({ where: { company_id: companyId, id: { in: costCenterIds }, status: 'ACTIVE' }, select: { id: true } });
+      const activeCostCenters = await tx.master_cost_center.findMany({ where: { company_id: companyId, id: { in: costCenterIds }, status: 'ACTIVE' }, select: { id: true, cost_center_code: true, cost_center_name: true } });
       if (activeCostCenters.length !== costCenterIds.length) throw new ValidationError('Setiap baris payroll harus memakai cost center aktif milik perusahaan.');
+      const employees = await tx.master_employee.findMany({ where: { company_id: companyId, id: { in: run.lines.map((line) => line.employee_id) } }, select: { id: true, department_id: true } });
+      const departmentByEmployeeId = new Map(employees.map((employee) => [employee.id, employee.department_id]));
+      const [masterDepartments, coreDepartments] = await Promise.all([
+        tx.master_department.findMany({ where: { company_id: companyId, status: 'ACTIVE' }, select: { id: true, department_code: true } }),
+        (tx as any).core_department.findMany({ where: { company_id: companyId, is_active: true }, select: { id: true, code: true, is_cost_center: true } }).catch(() => []),
+      ]);
+      const departmentIdsByCode = new Map<string, string[]>();
+      for (const department of masterDepartments) {
+        const code = String(department.department_code ?? '').trim().toUpperCase();
+        if (code) departmentIdsByCode.set(code, [...(departmentIdsByCode.get(code) ?? []), department.id]);
+      }
+      for (const department of coreDepartments.filter((row: any) => row.is_cost_center !== false)) {
+        const code = String(department.code ?? '').trim().toUpperCase();
+        if (code) departmentIdsByCode.set(code, [...(departmentIdsByCode.get(code) ?? []), department.id]);
+      }
+      const defaultDepartmentIdsByCostCenterId = new Map(activeCostCenters.map((center) => [
+        center.id,
+        departmentIdsByCode.get(String(center.cost_center_code ?? '').trim().toUpperCase()) ?? [],
+      ]));
       await FinanceService.ensureStandardCOA(companyId, tx);
       const [expense, salaryPayable, taxPayable, bpjsPayable] = await Promise.all([
         tx.fin_account.findFirst({ where: { company_id: companyId, account_code: '6100', status: 'ACTIVE', account_type: 'EXPENSE' } }),
@@ -181,15 +200,38 @@ export class PayrollService {
       ]);
       if (!expense || !salaryPayable || !taxPayable || !bpjsPayable) throw new ValidationError('COA Payroll belum lengkap. Pastikan 6100, 2150, 2160, dan 2170 aktif.');
       const fiscalPeriod = await tx.fin_fiscal_period.findFirst({ where: { id: period.id, company_id: companyId }, select: { fiscal_year_id: true } });
-      const budgetLines = fiscalPeriod?.fiscal_year_id ? await tx.fin_budget_line.findMany({ where: { company_id: companyId, account_id: expense.id, cost_center_id: { in: costCenterIds }, project_id: null, department_id: null, budget: { status: 'ACTIVE', fiscal_year_id: fiscalPeriod.fiscal_year_id } }, select: { cost_center_id: true } }) : [];
-      const budgetedCostCenters = new Set(budgetLines.map((line) => line.cost_center_id));
-      const missingBudget = costCenterIds.filter((id) => !budgetedCostCenters.has(id));
-      if (missingBudget.length) throw new ValidationError('Payroll belum memiliki alokasi anggaran aktif akun 6100 untuk semua cost center. Buat dan setujui Budget Plan terlebih dahulu.');
+      const budgetLines = fiscalPeriod?.fiscal_year_id ? await tx.fin_budget_line.findMany({
+        where: { company_id: companyId, account_id: expense.id, cost_center_id: { in: costCenterIds }, project_id: null, budget: { status: 'ACTIVE', fiscal_year_id: fiscalPeriod.fiscal_year_id } },
+        select: { cost_center_id: true, department_id: true, period_allocations: { select: { fiscal_period_id: true, amount: true } } },
+      }) : [];
+      const uncoveredLines: typeof run.lines = [];
+      const budgetDepartmentByEmployeeId = new Map<string, string | null>();
+      for (const line of run.lines) {
+        const employeeDepartmentId = departmentByEmployeeId.get(line.employee_id) ?? null;
+        const candidates = budgetLines.filter((budgetLine) => budgetLine.cost_center_id === line.cost_center_id
+          && (!budgetLine.period_allocations.length || budgetLine.period_allocations.some((allocation) => allocation.fiscal_period_id === period.id && Number(allocation.amount) > 0)));
+        const inferredDepartments = line.cost_center_id ? defaultDepartmentIdsByCostCenterId.get(line.cost_center_id) ?? [] : [];
+        const matching = employeeDepartmentId
+          ? candidates.filter((budgetLine) => !budgetLine.department_id || budgetLine.department_id === employeeDepartmentId)
+          : candidates.filter((budgetLine) => !budgetLine.department_id || inferredDepartments.includes(budgetLine.department_id));
+        if (matching.length) {
+          budgetDepartmentByEmployeeId.set(line.employee_id, matching.find((budgetLine) => budgetLine.department_id)?.department_id ?? null);
+          continue;
+        }
+        uncoveredLines.push(line);
+      }
+      if (uncoveredLines.length) {
+        const missing = [...new Set(uncoveredLines.map((line) => {
+          const center = activeCostCenters.find((item) => item.id === line.cost_center_id);
+          return center ? `${center.cost_center_code} — ${center.cost_center_name}` : String(line.cost_center_id);
+        }))];
+        throw new ValidationError(`Budget aktif akun 6100 untuk tahun/periode ${String(run.period_end).slice(0, 10)} belum mencakup Cost Center: ${missing.join(', ')}. Cocokkan akun, Cost Center, departemen karyawan, dan alokasi periode.`);
+      }
       const journalBook = await FinanceService.ensureJournal(companyId, 'GJ', 'General Journal', 'GENERAL', tx);
       const doc = await FinanceDocumentService.ensure(tx, { tenantId, companyId, userId, documentType: 'PAYROLL', documentNumber: run.run_number, documentDate: run.period_end, postingDate: date, status: 'POSTED' });
       const journalId = crypto.randomUUID();
       await tx.fin_journal_entry.create({ data: { id: journalId, tenant_id: tenantId, company_id: companyId, created_by_id: userId, journal_id: journalBook.id, fiscal_period_id: period.id, entry_number: run.run_number, posting_date: date, description: `Akrual payroll ${run.run_number}`, source_document_id: doc.id, status: 'POSTED' } });
-      const journalLines: any[] = run.lines.map((line) => ({ id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId, journal_entry_id: journalId, account_id: expense.id, cost_center_id: line.cost_center_id, debit_base: new Prisma.Decimal(Number(line.gross_salary) + Number(line.allowances) + Number(line.employer_bpjs)), credit_base: new Prisma.Decimal(0), transaction_amount: new Prisma.Decimal(Number(line.gross_salary) + Number(line.allowances) + Number(line.employer_bpjs)) }));
+      const journalLines: any[] = run.lines.map((line) => ({ id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId, journal_entry_id: journalId, account_id: expense.id, cost_center_id: line.cost_center_id, department_id: budgetDepartmentByEmployeeId.get(line.employee_id) ?? departmentByEmployeeId.get(line.employee_id) ?? null, debit_base: new Prisma.Decimal(Number(line.gross_salary) + Number(line.allowances) + Number(line.employer_bpjs)), credit_base: new Prisma.Decimal(0), transaction_amount: new Prisma.Decimal(Number(line.gross_salary) + Number(line.allowances) + Number(line.employer_bpjs)) }));
       const taxTotal = run.lines.reduce((sum, line) => sum + Number(line.employee_tax), 0);
       const bpjsTotal = run.lines.reduce((sum, line) => sum + Number(line.employee_bpjs) + Number(line.employer_bpjs), 0);
       journalLines.push({ id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId, journal_entry_id: journalId, account_id: salaryPayable.id, credit_base: new Prisma.Decimal(Number(run.net_total)), debit_base: new Prisma.Decimal(0), transaction_amount: new Prisma.Decimal(Number(run.net_total)) });
