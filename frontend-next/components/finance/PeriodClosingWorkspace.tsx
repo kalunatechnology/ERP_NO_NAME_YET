@@ -128,6 +128,11 @@ export default function PeriodClosingWorkspace() {
   const [selectedYearId, setSelectedYearId] = useState<string>('');
   const [yearEndLoading, setYearEndLoading] = useState(false);
   const [yearEndResult, setYearEndResult] = useState<YearEndResult | null>(null);
+  const activeYearEndRequest = closingRequests.find((request) =>
+    request.closing_type === 'YEAR_END'
+    && request.document_id === selectedYearId
+    && ['PENDING_APPROVAL', 'APPROVED'].includes(request.status)
+  );
 
   // Rollback states
   const [rollbackYearId, setRollbackYearId] = useState<string | null>(null);
@@ -239,12 +244,22 @@ export default function PeriodClosingWorkspace() {
   useEffect(() => { loadData(); }, [loadData]);
 
   const closePeriod = async (periodId: string) => {
+    const activeRequest = closingRequests.find((request) =>
+      request.closing_type === 'MONTHLY'
+      && request.fiscal_period_id === periodId
+      && ['PENDING_APPROVAL', 'APPROVED'].includes(request.status)
+    );
+    if (activeRequest) {
+      setActiveSection('requests');
+      showToast('Permintaan penutupan untuk periode ini sudah aktif.', 'error');
+      return;
+    }
     setClosingPeriodId(periodId);
     setClosingLoading(true);
     try {
       await api.post('/api/v1/finance/period-closings/request', { closing_type: 'MONTHLY', fiscal_period_id: periodId });
       showToast('Permintaan tutup periode tercatat dan menunggu persetujuan Finance.', 'success');
-      loadData();
+      await loadData();
     } catch (err: any) {
       showToast(getUserFacingApiError(err, 'Permintaan tutup periode belum dapat dibuat. Periksa status periode dan hak akses.'), 'error');
     } finally {
@@ -289,6 +304,11 @@ const reopenPeriod = async (periodId: string) => {
 
 const executeYearEnd = async () => {
   if (!selectedYearId) return;
+  if (activeYearEndRequest) {
+    setActiveSection('requests');
+    showToast('Permintaan tutup buku tahunan untuk tahun ini sudah aktif.', 'error');
+    return;
+  }
   setYearEndLoading(true);
   setYearEndResult(null);
   try {
@@ -426,7 +446,13 @@ const executeYearEnd = async () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {visiblePeriods.map(p => (
+                {visiblePeriods.map(p => {
+                  const activeRequest = closingRequests.find((request) =>
+                    request.closing_type === 'MONTHLY'
+                    && request.fiscal_period_id === p.id
+                    && ['PENDING_APPROVAL', 'APPROVED'].includes(request.status)
+                  );
+                  return (
                   <tr key={p.id} className="hover:bg-slate-50/70 transition-colors">
                     <td className="py-2.5 px-3 text-slate-500 font-mono text-xs">{p.period_number ?? '—'}</td>
                     <td className="py-2.5 px-3 text-slate-900 font-semibold">Periode #{p.period_number ?? '—'} <span className="ml-1 text-xs font-medium text-slate-500">Kuartal {Math.ceil(Number(p.period_number || 1) / 3)}</span></td>
@@ -439,8 +465,36 @@ const executeYearEnd = async () => {
                     </td>
                     <td className="py-2.5 px-3">
                       <div className="flex gap-1.5">
-                        {p.status === 'OPEN' && canOperateFinance && (
+                        {p.status === 'OPEN' && canOperateFinance && (activeRequest?.status === 'APPROVED' ? (
                           <button
+                            type="button"
+                            onClick={() => executeClosing(activeRequest.id)}
+                            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#203D91] text-white hover:bg-[#182E6E] transition-all shadow-2xs"
+                          >
+                            Jalankan Penutupan
+                          </button>
+                        ) : activeRequest?.status === 'PENDING_APPROVAL' ? (
+                          activeRequest.requested_by !== user?.id ? (
+                            <button
+                              type="button"
+                              onClick={() => approveClosing(activeRequest.id)}
+                              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-600 hover:text-white transition-all shadow-2xs"
+                            >
+                              Setujui Penutupan
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setActiveSection('requests')}
+                              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 transition-all"
+                              title="Permintaan sudah diajukan dan menunggu persetujuan Finance lain."
+                            >
+                              Menunggu Persetujuan
+                            </button>
+                          )
+                        ) : (
+                          <button
+                            type="button"
                             onClick={() => closePeriod(p.id)}
                             disabled={!hasEnded(p.end_date) || (closingLoading && closingPeriodId === p.id)}
                             title={!hasEnded(p.end_date) ? 'Penutupan tersedia setelah periode berakhir.' : undefined}
@@ -448,7 +502,7 @@ const executeYearEnd = async () => {
                           >
                             {closingLoading && closingPeriodId === p.id ? 'Memproses…' : hasEnded(p.end_date) ? 'Ajukan Penutupan' : 'Menunggu Akhir Periode'}
                           </button>
-                        )}
+                        ))}
                         {p.status === 'CLOSED' && (
                           <button
                             onClick={() => reopenPeriod(p.id)}
@@ -460,7 +514,8 @@ const executeYearEnd = async () => {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -521,13 +576,43 @@ const executeYearEnd = async () => {
               <option key={y.id} value={y.id}>{y.fiscal_year_name}</option>
             ))}
           </select>
-          <button
-            onClick={executeYearEnd}
-            disabled={!selectedYearId || yearEndLoading}
-            className="px-4 py-2 text-sm font-semibold rounded-lg bg-[#203D91] text-white hover:bg-[#182E6E] transition-colors shadow-2xs disabled:opacity-50"
-          >
-            {yearEndLoading ? 'Memproses…' : 'Ajukan Tutup Buku Tahunan'}
-          </button>
+          {activeYearEndRequest?.status === 'APPROVED' ? (
+            <button
+              type="button"
+              onClick={() => executeClosing(activeYearEndRequest.id)}
+              className="px-4 py-2 text-sm font-semibold rounded-lg bg-[#203D91] text-white hover:bg-[#182E6E] transition-colors shadow-2xs"
+            >
+              Jalankan Tutup Buku Tahunan
+            </button>
+          ) : activeYearEndRequest?.status === 'PENDING_APPROVAL' ? (
+            activeYearEndRequest.requested_by !== user?.id ? (
+              <button
+                type="button"
+                onClick={() => approveClosing(activeYearEndRequest.id)}
+                className="px-4 py-2 text-sm font-semibold rounded-lg bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-600 hover:text-white transition-colors"
+              >
+                Setujui Tutup Buku Tahunan
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setActiveSection('requests')}
+                className="px-4 py-2 text-sm font-semibold rounded-lg bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 transition-colors"
+                title="Permintaan sudah diajukan dan menunggu persetujuan Finance lain."
+              >
+                Menunggu Persetujuan
+              </button>
+            )
+          ) : (
+            <button
+              type="button"
+              onClick={executeYearEnd}
+              disabled={!selectedYearId || yearEndLoading}
+              className="px-4 py-2 text-sm font-semibold rounded-lg bg-[#203D91] text-white hover:bg-[#182E6E] transition-colors shadow-2xs disabled:opacity-50"
+            >
+              {yearEndLoading ? 'Memproses…' : 'Ajukan Tutup Buku Tahunan'}
+            </button>
+          )}
         </div>
 
         {/* Year-End Result */}
