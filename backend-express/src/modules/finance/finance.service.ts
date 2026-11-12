@@ -279,6 +279,71 @@ export class FinanceService {
     };
   }
 
+  static async createBankAccountWithOpeningBalance(params: {
+    companyId: string; tenantId: string | null; userId: string;
+    bankName: string; accountNumber: string; accountName: string;
+    openingAmount: number; openingDate: Date | string; offsetAccountId?: string;
+  }) {
+    const { companyId, tenantId, userId } = params;
+    const bankName = String(params.bankName ?? '').trim();
+    const accountNumber = String(params.accountNumber ?? '').trim();
+    const accountName = String(params.accountName ?? '').trim();
+    const openingAmount = Number(params.openingAmount ?? 0);
+    const openingDate = params.openingDate instanceof Date ? params.openingDate : new Date(String(params.openingDate));
+    if (!bankName || !accountNumber || !accountName) throw new ValidationError('Nama bank, nomor rekening, dan nama pemilik rekening wajib diisi.');
+    if (!Number.isFinite(openingAmount) || openingAmount < 0) throw new ValidationError('Saldo awal harus berupa nominal nol atau lebih.');
+    if (Number.isNaN(openingDate.getTime())) throw new ValidationError('Tanggal saldo awal tidak valid.');
+
+    return prisma.$transaction(async (tx) => {
+      const duplicate = await tx.fin_bank_account.findFirst({ where: { company_id: companyId, account_number: accountNumber } });
+      if (duplicate) throw new ValidationError('Nomor rekening ini sudah terdaftar pada perusahaan.');
+      const coaMap = await this.ensureStandardCOA(companyId, tx);
+      const bankParent = coaMap.get('1120');
+      if (!bankParent) throw new NotFoundError('COA Bank Perusahaan (1120)');
+      const offsetAccount = await tx.fin_account.findFirst({
+        where: { id: params.offsetAccountId || coaMap.get('3200')?.id || '', company_id: companyId, status: 'ACTIVE', account_type: { in: ['EQUITY', 'LIABILITY'] }, normal_balance: 'CREDIT' },
+      });
+      if (openingAmount > 0 && !offsetAccount) throw new ValidationError('Pilih akun sumber saldo awal yang aktif (ekuitas atau kewajiban dengan saldo normal kredit).');
+
+      const bankLedger = await tx.fin_account.create({ data: {
+        id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId,
+        parent_account_id: bankParent.id,
+        account_code: `1120-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
+        account_name: `${bankName} · ${accountNumber}`,
+        account_type: 'ASSET', normal_balance: 'DEBIT', allow_manual_posting: true,
+        reconciliation_required: true, status: 'ACTIVE',
+      } });
+      const bankAccount = await tx.fin_bank_account.create({ data: {
+        id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId,
+        ledger_account_id: bankLedger.id, bank_name: bankName, account_number: accountNumber,
+        account_name: accountName, status: 'ACTIVE',
+      } });
+
+      let openingJournalId: string | null = null;
+      if (openingAmount > 0 && offsetAccount) {
+        const { PeriodClosingService } = await import('./period-closing.service');
+        await PeriodClosingService.assertPeriodOpen(openingDate, companyId);
+        const fiscalPeriod = await tx.fin_fiscal_period.findFirst({ where: { company_id: companyId, start_date: { lte: openingDate }, end_date: { gte: openingDate } }, select: { id: true } });
+        const journalBook = await this.ensureJournal(companyId, 'GJ', 'General Journal', 'GENERAL', tx);
+        openingJournalId = crypto.randomUUID();
+        const journalEntryId = openingJournalId;
+        await tx.fin_journal_entry.create({ data: {
+          id: journalEntryId, tenant_id: tenantId, company_id: companyId, created_by_id: userId,
+          journal_id: journalBook.id, fiscal_period_id: fiscalPeriod?.id ?? null,
+          entry_number: `OPEN-BANK-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+          posting_date: openingDate, description: `Saldo awal rekening ${bankName} ${accountNumber}`,
+          source_document_id: bankAccount.id, status: 'POSTED',
+        } });
+        const amount = new Decimal(openingAmount);
+        await tx.fin_journal_line.createMany({ data: [
+          { id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId, journal_entry_id: journalEntryId, account_id: bankLedger.id, debit_base: amount, credit_base: new Decimal(0), transaction_amount: amount },
+          { id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId, journal_entry_id: journalEntryId, account_id: offsetAccount.id, debit_base: new Decimal(0), credit_base: amount, transaction_amount: amount },
+        ] });
+      }
+      return { bank_account: bankAccount, ledger_account: bankLedger, opening_journal_id: openingJournalId };
+    }, FINANCE_TRANSACTION_OPTIONS);
+  }
+
   // ---------------------------------------------------------------------------
   // 4. JURNAL REVERSAL / STORNO ENGINE
   //    Pembatalan transaksi yang immutable — TIDAK menghapus data asli.

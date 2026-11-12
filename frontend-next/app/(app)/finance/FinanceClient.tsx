@@ -217,6 +217,8 @@ export default function FinanceClient() {
   const [bankReconciliations, setBankReconciliations] = useState<any[]>([]);
   const [bankMatchPayments, setBankMatchPayments] = useState<any[]>([]);
   const [bankAccounts, setBankAccounts] = useState<FinanceBankAccount[]>([]);
+  const [isBankOpeningFormOpen, setIsBankOpeningFormOpen] = useState(false);
+  const [bankOpeningForm, setBankOpeningForm] = useState({ bank_name: "", account_number: "", account_name: "", opening_amount: "", opening_date: localDateKey(), offset_account_id: "" });
   const [bankImportAccountId, setBankImportAccountId] = useState("");
   const [bankImportFile, setBankImportFile] = useState<File | null>(null);
   const [bankImporting, setBankImporting] = useState(false);
@@ -270,6 +272,7 @@ export default function FinanceClient() {
   const [isMatchModalOpen, setIsMatchModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [isCashReceiptQuickOpen, setIsCashReceiptQuickOpen] = useState(false);
 
   const [selectedBillForMatch, setSelectedBillForMatch] = useState<any>(null);
   const [selectedBillForPay, setSelectedBillForPay] = useState<any>(null);
@@ -306,6 +309,9 @@ export default function FinanceClient() {
     notes: "",
   });
   const [cashBankFilter, setCashBankFilter] = useState<"ALL" | "POSTED" | "PENDING">("ALL");
+  const [cashBankSearch, setCashBankSearch] = useState("");
+  const [apQueueFilter, setApQueueFilter] = useState<"ACTION" | "READY" | "ALL" | "PAID">("ACTION");
+  const [apSearch, setApSearch] = useState("");
   const [receiptErrors, setReceiptErrors] = useState<Record<string, string>>({});
   const [receiptSaving, setReceiptSaving] = useState(false);
   const updateReceiptField = (field: keyof typeof receiptForm, value: string) => {
@@ -584,6 +590,25 @@ export default function FinanceClient() {
     .filter(p => ["APPROVED", "ISSUED", "INVOICED", "POSTED", "PAID"].includes(String(p.status || "").toUpperCase()))
     .reduce((acc, curr) => acc + Number(curr.total_amount ?? curr.amount ?? curr.subtotal ?? 0), 0);
   const postedReceipts = customerReceipts.filter(receipt => receipt.status === "POSTED");
+  const pendingCashReceipts = customerReceipts.filter((receipt) => receipt.status !== "POSTED");
+  const paidVendorBills = vendorBills.filter((bill) => bill.status === "PAID" || bill.payment_status === "PAID" || bill.status === "LUNAS");
+  const cashQuery = cashBankSearch.trim().toLocaleLowerCase("id-ID");
+  const matchesCashQuery = (values: unknown[]) => !cashQuery || values.some((value) => String(value ?? "").toLocaleLowerCase("id-ID").includes(cashQuery));
+  const searchedPendingCashReceipts = pendingCashReceipts.filter((receipt) => matchesCashQuery([receipt.receipt_number, receipt.reference_number, receipt.customer_name, receipt.project_name, receipt.invoice_ref, receipt.bank_account, receipt.amount]));
+  const searchedPostedReceipts = postedReceipts.filter((receipt) => matchesCashQuery([receipt.receipt_number, receipt.reference_number, receipt.customer_name, receipt.project_name, receipt.invoice_ref, receipt.bank_account, receipt.amount]));
+  const searchedPaidVendorBills = paidVendorBills.filter((bill) => matchesCashQuery([bill.supplier_name, bill.invoice_number, bill.bank_account_name, bill.amount, bill.total_amount]));
+  const apQuery = apSearch.trim().toLocaleLowerCase("id-ID");
+  const apActionCount = vendorBills.filter((bill) => !["PAID", "LUNAS", "CANCELLED", "REJECTED"].includes(String(bill.status ?? "").toUpperCase())).length;
+  const apReadyCount = vendorBills.filter((bill) => String(bill.status ?? "").toUpperCase() === "POSTED").length;
+  const apPaidCount = vendorBills.filter((bill) => ["PAID", "LUNAS"].includes(String(bill.status ?? bill.payment_status ?? "").toUpperCase()) || String(bill.payment_status ?? "").toUpperCase() === "PAID").length;
+  const filteredVendorBills = vendorBills.filter((bill) => {
+    const status = String(bill.status ?? "").toUpperCase();
+    const paid = ["PAID", "LUNAS"].includes(status) || String(bill.payment_status ?? "").toUpperCase() === "PAID";
+    const matchesQueue = apQueueFilter === "ALL" || (apQueueFilter === "PAID" ? paid : apQueueFilter === "READY" ? status === "POSTED" && !paid : !paid && !["CANCELLED", "REJECTED"].includes(status));
+    const vendorName = bill.supplier_name || bill.party_name || vendorOptions.find((vendor) => vendor.id === bill.party_id)?.display_name || vendorOptions.find((vendor) => vendor.id === bill.party_id)?.legal_name;
+    const matchesSearch = !apQuery || [vendorName, bill.invoice_number, bill.status, bill.total_amount, bill.amount].some((value) => String(value ?? "").toLocaleLowerCase("id-ID").includes(apQuery));
+    return matchesQueue && matchesSearch;
+  });
   const totalInflowRevenue = receiptSummary?.posted_amount ?? 0;
 
   const profitabilityChart = useMemo(
@@ -785,6 +810,78 @@ export default function FinanceClient() {
       toast.error(err.response?.data?.message || "Gagal menghapus catatan penerimaan.", { id: toastId });
     } finally {
       setReceiptDeletingId(null);
+    }
+  });
+
+  const handleCreateCustomerReceipt = async (event: React.FormEvent) => runFinanceAction("create-customer-receipt", async () => {
+    event.preventDefault();
+    if (receiptSaving) return;
+    const errors: Record<string, string> = {};
+    const amount = Number(receiptForm.amount);
+    const withholdingAmount = receiptForm.withholding_tax_amount ? Number(receiptForm.withholding_tax_amount) : 0;
+    const bank = bankAccounts.find((account) => account.id === receiptForm.bank_account);
+    if (!receiptForm.project_name.trim()) errors.project_name = "Pilih proyek terkait dari daftar atau input manual.";
+    if (!receiptForm.customer_name.trim()) errors.customer_name = "Pilih proyek atau faktur yang memiliki data klien tersimpan.";
+    if (!receiptForm.amount || !Number.isFinite(amount) || amount < 1000) errors.amount = "Nominal uang masuk wajib diisi, minimal Rp 1.000.";
+    if (!Number.isFinite(withholdingAmount) || withholdingAmount < 0) errors.withholding_tax_amount = "Nominal potongan pajak harus valid (>= 0).";
+    if (!bank) errors.bank_account = bankAccounts.length ? "Pilih rekening kas / bank penerima dana." : "Belum ada rekening kas / bank. Tambahkan rekening penerima di menu Kas & Bank terlebih dahulu.";
+    if (!receiptForm.payment_date) errors.payment_date = "Tanggal terima dana wajib diisi.";
+    if (!receiptForm.reference_number.trim()) errors.reference_number = "No. bukti transfer / resi bank klien wajib diisi.";
+    if (receiptForm.invoice_ref) {
+      const linkedInv = customerInvoices.find((invoice) => invoice.id === receiptForm.invoice_ref);
+      if (linkedInv) {
+        if (linkedInv.status !== "POSTED") errors.invoice_ref = "Hanya invoice resmi berstatus POSTED yang dapat dilunasi.";
+        else {
+          const remaining = Number(linkedInv.outstanding_amount ?? (Number(linkedInv.total_amount ?? 0) - Number(linkedInv.paid_amount ?? 0)));
+          if (amount + withholdingAmount > remaining + 0.01) errors.amount = `Total pelunasan (${formatMoney(amount + withholdingAmount)}) melebihi sisa piutang invoice (${formatMoney(remaining)}).`;
+        }
+      }
+    }
+    setReceiptErrors(errors);
+    if (Object.keys(errors).length) {
+      toast.error("Lengkapi data penerimaan yang ditandai di bawah.");
+      document.getElementById(`receipt-${Object.keys(errors)[0]}`)?.focus();
+      return;
+    }
+    setReceiptSaving(true);
+    try {
+      await api.post("/api/v1/finance/customer-receipts/", {
+        payment_type: "CUSTOMER_RECEIPT", bank_account_id: receiptForm.bank_account,
+        payment_date: receiptForm.payment_date, amount, payment_method: receiptForm.payment_method,
+        reference_number: receiptForm.reference_number.trim(),
+        allocation_plan: {
+          project_id: receiptForm.project_id && receiptForm.project_id !== "__CUSTOM__" ? receiptForm.project_id : undefined,
+          customer_name: receiptForm.customer_name.trim(), project_name: receiptForm.project_name.trim(),
+          invoice_id: receiptForm.invoice_ref,
+          invoice_ref: customerInvoices.find((invoice) => invoice.id === receiptForm.invoice_ref)?.invoice_number || "",
+          bank_account: bank?.name, withholding_tax_amount: withholdingAmount,
+          withholding_tax_type: receiptForm.withholding_tax_type, bupot_number: receiptForm.bupot_number.trim(), notes: receiptForm.notes.trim(),
+        },
+      });
+      toast.success(`Penerimaan ${formatMoney(amount)} berhasil disimpan sebagai Draft.`);
+      setIsReceiptModalOpen(false); setIsCashReceiptQuickOpen(false);
+      setReceiptForm({ project_id: "", customer_name: "", project_name: "", invoice_ref: "", amount: "", withholding_tax_amount: "", withholding_tax_type: "PPH_23", bupot_number: "", bank_account: "", payment_date: localDateKey(), payment_method: "BANK_TRANSFER", reference_number: "", notes: "" });
+      await loadFinanceData(true);
+    } catch (error) {
+      const fieldErrors = (error as { response?: { data?: { errors?: Record<string, unknown> } } })?.response?.data?.errors;
+      if (fieldErrors && typeof fieldErrors === "object") setReceiptErrors(Object.fromEntries(Object.entries(fieldErrors).filter(([, value]) => typeof value === "string")) as Record<string, string>);
+      toast.error(getApiErrorDetail(error, "Penerimaan belum tersimpan. Silakan coba kembali."));
+    } finally { setReceiptSaving(false); }
+  });
+
+  const handleCreateBankAccountOpening = async (event: React.FormEvent) => runFinanceAction("create-bank-account-opening", async () => {
+    event.preventDefault();
+    try {
+      const amount = Number(bankOpeningForm.opening_amount || 0);
+      await api.post("/api/v1/finance/bank-accounts/opening", {
+        ...bankOpeningForm, opening_amount: amount,
+      });
+      toast.success(amount > 0 ? `Rekening ditambahkan dan saldo awal ${formatMoney(amount)} dibukukan.` : "Rekening kas/bank berhasil ditambahkan.");
+      setBankOpeningForm({ bank_name: "", account_number: "", account_name: "", opening_amount: "", opening_date: localDateKey(), offset_account_id: "" });
+      setIsBankOpeningFormOpen(false);
+      await loadFinanceData(true);
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Rekening baru belum tersimpan. Periksa nomor rekening, akun sumber saldo, dan periode fiskal."));
     }
   });
 
@@ -1352,6 +1449,12 @@ export default function FinanceClient() {
           </div>
 
           <div className="table-scroll-wrapper">
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-2">
+              <input value={apSearch} onChange={(event) => setApSearch(event.target.value)} placeholder="Cari vendor, nomor invoice, nominal…" aria-label="Cari tagihan vendor" className="input min-w-[220px] flex-1 py-2 text-xs" />
+              <div className="flex flex-wrap gap-1 rounded-lg bg-white p-1">
+                {([["ACTION", `Perlu tindakan (${apActionCount})`], ["READY", `Siap bayar (${apReadyCount})`], ["ALL", `Semua (${vendorBills.length})`], ["PAID", `Lunas (${apPaidCount})`]] as const).map(([filter, label]) => <button key={filter} type="button" onClick={() => setApQueueFilter(filter)} className={cn("rounded-md px-2.5 py-1.5 text-[10px] font-bold transition-colors", apQueueFilter === filter ? "bg-blue-700 text-white" : "text-slate-600 hover:bg-slate-100")}>{label}</button>)}
+              </div>
+            </div>
             <table className="w-full data-table text-xs min-w-[580px]">
               <thead>
               <tr className="bg-gray-50 text-xs uppercase tracking-wide text-text-secondary">
@@ -1363,7 +1466,7 @@ export default function FinanceClient() {
               </tr>
             </thead>
             <tbody>
-              {vendorBills.map(b => {
+              {filteredVendorBills.map(b => {
                 const isPaid = b.status === "PAID" || b.payment_status === "PAID" || b.status === "LUNAS";
                 const isMatched = b.status === "VERIFIED" || b.status === "APPROVED" || b.status === "POSTED";
 
@@ -1448,6 +1551,7 @@ export default function FinanceClient() {
                   </tr>
                 );
               })}
+              {!filteredVendorBills.length && <tr><td colSpan={5} className="py-8 text-center text-xs text-text-secondary">Tidak ada tagihan pada filter ini.</td></tr>}
             </tbody>
           </table>
           </div>
@@ -1755,14 +1859,50 @@ export default function FinanceClient() {
               <p className="text-xs text-text-secondary">Pantau saldo real-time akun bank dan alur mutasi uang masuk vs uang keluar.</p>
             </div>
             <div className="ml-auto flex items-center justify-end gap-2">
-              <button onClick={() => setIsReceiptModalOpen(true)} className="btn-secondary py-1.5 px-3 text-xs gap-1.5 border border-brand-green text-brand-deep-green hover:bg-brand-light-green">
-                <Plus size={13} /> Catat Uang Masuk
+              {canOperateFinance && <button onClick={() => { const offset = ledgerAccounts.find((account) => String(account.account_code) === "3200" && account.status === "ACTIVE"); setBankOpeningForm((current) => ({ ...current, offset_account_id: current.offset_account_id || String(offset?.id ?? "") })); setIsBankOpeningFormOpen((open) => !open); }} className="btn-secondary py-1.5 px-3 text-xs gap-1.5 border border-blue-200 text-blue-800 hover:bg-blue-50">
+                <Plus size={13} /> {isBankOpeningFormOpen ? "Tutup rekening baru" : "Rekening baru + saldo awal"}
+              </button>}
+              <button onClick={() => { setReceiptErrors({}); setReceiptForm((current) => ({ ...current, bank_account: current.bank_account || bankAccounts[0]?.id || "" })); setIsCashReceiptQuickOpen((open) => !open); }} className="btn-secondary py-1.5 px-3 text-xs gap-1.5 border border-brand-green text-brand-deep-green hover:bg-brand-light-green">
+                <Plus size={13} /> {isCashReceiptQuickOpen ? "Tutup input" : "Catat Uang Masuk"}
               </button>
               <button onClick={() => selectFinanceTab("ap")} className="btn-primary py-1.5 px-3 text-xs gap-1.5 bg-brand-deep-green">
                 <CreditCard size={13} /> Bayar dari Tagihan AP
               </button>
             </div>
           </div>
+
+          {canOperateFinance && isBankOpeningFormOpen && <form onSubmit={handleCreateBankAccountOpening} className="rounded-2xl border border-blue-200 bg-blue-50/50 p-4 shadow-xs">
+            <div className="mb-3"><h4 className="text-sm font-extrabold text-blue-950">Tambah rekening Kas & Bank</h4><p className="mt-0.5 text-[10px] text-blue-900">Saldo awal akan masuk ke Buku Besar sebagai jurnal berimbang, sehingga saldo rekening langsung terlihat.</p></div>
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-6">
+              <label className="text-[10px] font-bold text-slate-700">Nama bank<input required value={bankOpeningForm.bank_name} onChange={(event) => setBankOpeningForm({ ...bankOpeningForm, bank_name: event.target.value })} placeholder="BCA / Mandiri / Kas Tunai" className="input mt-1 w-full py-2 text-xs" /></label>
+              <label className="text-[10px] font-bold text-slate-700">Nomor rekening<input required value={bankOpeningForm.account_number} onChange={(event) => setBankOpeningForm({ ...bankOpeningForm, account_number: event.target.value })} placeholder="Nomor rekening" className="input mt-1 w-full py-2 text-xs font-mono" /></label>
+              <label className="text-[10px] font-bold text-slate-700">Atas nama<input required value={bankOpeningForm.account_name} onChange={(event) => setBankOpeningForm({ ...bankOpeningForm, account_name: event.target.value })} placeholder="Nama pemilik" className="input mt-1 w-full py-2 text-xs" /></label>
+              <label className="text-[10px] font-bold text-slate-700">Saldo awal (Rp)<IDRInput value={bankOpeningForm.opening_amount} onChange={(opening_amount) => setBankOpeningForm({ ...bankOpeningForm, opening_amount })} placeholder="0" className="input mt-1 w-full py-2 text-xs font-bold" showPrefix={false} /></label>
+              <label className="text-[10px] font-bold text-slate-700">Tanggal saldo awal<input required={Number(bankOpeningForm.opening_amount || 0) > 0} type="date" value={bankOpeningForm.opening_date} onChange={(event) => setBankOpeningForm({ ...bankOpeningForm, opening_date: event.target.value })} className="input mt-1 w-full py-2 text-xs" /></label>
+              <label className="text-[10px] font-bold text-slate-700">Sumber saldo awal<select required={Number(bankOpeningForm.opening_amount || 0) > 0} value={bankOpeningForm.offset_account_id} onChange={(event) => setBankOpeningForm({ ...bankOpeningForm, offset_account_id: event.target.value })} className="input mt-1 w-full py-2 text-xs"><option value="">Pilih akun lawan</option>{ledgerAccounts.filter((account) => account.status === "ACTIVE" && ["EQUITY", "LIABILITY"].includes(String(account.account_type).toUpperCase()) && String(account.normal_balance).toUpperCase() === "CREDIT").map((account) => <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select></label>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-blue-100 pt-3"><p className="text-[10px] text-slate-600">Jika saldo awal Rp 0, rekening dibuat tanpa jurnal saldo awal.</p><button type="submit" disabled={Boolean(financePending["create-bank-account-opening"])} className="btn-primary inline-flex items-center gap-1.5 py-2 px-4 text-xs font-bold disabled:cursor-wait disabled:opacity-60"><CheckCircle2 size={13} />{financePending["create-bank-account-opening"] ? "Menyimpan…" : "Simpan rekening & saldo"}</button></div>
+          </form>}
+
+          {isCashReceiptQuickOpen && <form noValidate onSubmit={handleCreateCustomerReceipt} className="rounded-2xl border border-blue-200 bg-blue-50/50 p-4 shadow-xs">
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+              <div><h4 className="text-sm font-extrabold text-blue-950">Input cepat uang masuk</h4><p className="mt-0.5 text-[10px] text-blue-900">Pilih proyek atau invoice, isi nominal dan rekening. Transaksi tersimpan sebagai draft untuk persetujuan.</p></div>
+              <button type="button" onClick={() => { setIsCashReceiptQuickOpen(false); setIsReceiptModalOpen(true); }} className="text-[10px] font-bold text-blue-800 underline underline-offset-2">Input lengkap (termasuk potongan pajak)</button>
+            </div>
+            {(receiptErrors.project_name || receiptErrors.customer_name) && <p role="alert" className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-[10px] text-red-700">{receiptErrors.project_name || receiptErrors.customer_name}</p>}
+            <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+              <label className="text-[10px] font-bold text-slate-700">Proyek<select required value={receiptForm.project_id} onChange={(event) => { const projectId = event.target.value; const project = financeProjectOptions.find((row) => String(row.id) === projectId); setReceiptForm((current) => ({ ...current, project_id: projectId, project_name: project?.project_name || project?.name || "", customer_name: project?.customer_name || project?.client_name || "" })); setReceiptErrors((current) => ({ ...current, project_name: "", customer_name: "" })); }} className="input mt-1 w-full py-2 text-xs"><option value="">Pilih proyek</option>{financeProjectOptions.map((project) => <option key={project.id} value={project.id}>{project.project_code ? `${project.project_code} — ` : ""}{project.project_name || project.name}</option>)}</select></label>
+              <label className="text-[10px] font-bold text-slate-700">Invoice / termin<select value={receiptForm.invoice_ref} onChange={(event) => { const invoiceId = event.target.value; const invoice = customerInvoices.find((row) => row.id === invoiceId); const remaining = invoice ? Number(invoice.outstanding_amount ?? (Number(invoice.total_amount ?? 0) - Number(invoice.paid_amount ?? 0))) : 0; setReceiptForm((current) => ({ ...current, invoice_ref: invoiceId, customer_name: invoice?.party?.display_name || invoice?.party?.legal_name || current.customer_name, project_name: invoice?.project?.name || current.project_name, project_id: invoice?.project_id || current.project_id, amount: remaining > 0 ? String(remaining) : current.amount })); setReceiptErrors((current) => ({ ...current, invoice_ref: "", amount: "" })); }} className="input mt-1 w-full py-2 text-xs"><option value="">Tanpa invoice</option>{customerInvoices.filter((invoice) => invoice.status === "POSTED" && Number(invoice.outstanding_amount ?? (Number(invoice.total_amount ?? 0) - Number(invoice.paid_amount ?? 0))) > 0).map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.invoice_number} · sisa {formatMoney(invoice.outstanding_amount ?? Number(invoice.total_amount ?? 0) - Number(invoice.paid_amount ?? 0))}</option>)}</select></label>
+              <label className="text-[10px] font-bold text-slate-700">Nominal masuk (Rp)<IDRInput required placeholder="0" value={receiptForm.amount} onChange={(amount) => updateReceiptField("amount", amount)} className="input mt-1 w-full py-2 text-xs font-bold" showPrefix={false} />{receiptError("amount")}</label>
+              <label className="text-[10px] font-bold text-slate-700">Rekening penerima<select required value={receiptForm.bank_account} onChange={(event) => updateReceiptField("bank_account", event.target.value)} className="input mt-1 w-full py-2 text-xs"><option value="">Pilih rekening</option>{bankAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select>{receiptError("bank_account")}</label>
+              <label className="text-[10px] font-bold text-slate-700">Tanggal<input required type="date" value={receiptForm.payment_date} onChange={(event) => updateReceiptField("payment_date", event.target.value)} className="input mt-1 w-full py-2 text-xs" /></label>
+              <label className="text-[10px] font-bold text-slate-700">No. bukti / referensi<input required value={receiptForm.reference_number} onChange={(event) => updateReceiptField("reference_number", event.target.value)} placeholder="Nomor transfer" className="input mt-1 w-full py-2 text-xs" />{receiptError("reference_number")}</label>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-blue-100 pt-3">
+              <span className="text-[10px] text-slate-600">Klien: <b>{receiptForm.customer_name || "otomatis dari proyek / invoice"}</b> · Metode: transfer bank</span>
+              <button type="submit" disabled={receiptSaving || Boolean(financePending["create-customer-receipt"])} className="btn-primary inline-flex items-center gap-1.5 py-2 px-4 text-xs font-bold disabled:cursor-wait disabled:opacity-60"><CheckCircle2 size={13} />{receiptSaving || financePending["create-customer-receipt"] ? "Menyimpan…" : "Simpan draft"}</button>
+            </div>
+          </form>}
 
           {/* 4 Kartu Rekening Bank */}
           <FinanceSummarySection
@@ -1848,6 +1988,11 @@ export default function FinanceClient() {
               </div>
             </div>
 
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 p-2">
+              <input value={cashBankSearch} onChange={(event) => setCashBankSearch(event.target.value)} placeholder="Cari nomor bukti, lawan transaksi, rekening…" aria-label="Cari mutasi kas dan bank" className="input min-w-[240px] flex-1 py-2 text-xs" />
+              <span className="text-[10px] font-semibold text-slate-500">{cashBankFilter === "PENDING" ? searchedPendingCashReceipts.length : cashBankFilter === "POSTED" ? searchedPostedReceipts.length + searchedPaidVendorBills.length : searchedPendingCashReceipts.length + searchedPostedReceipts.length + searchedPaidVendorBills.length} transaksi ditampilkan</span>
+            </div>
+
             <div className="table-scroll-wrapper border border-text-tertiary/50 rounded-xl">
               <table className="w-full data-table text-xs text-left min-w-[650px]">
                 <thead>
@@ -1862,9 +2007,9 @@ export default function FinanceClient() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {/* Empty state bila belum ada transaksi sesuai filter */}
-                  {((cashBankFilter === "POSTED" && postedReceipts.length === 0 && vendorBills.filter(b => b.status === "PAID").length === 0) ||
-                    (cashBankFilter === "PENDING" && customerReceipts.filter(r => r.status !== "POSTED").length === 0) ||
-                    (cashBankFilter === "ALL" && customerReceipts.length === 0 && vendorBills.filter(b => b.status === "PAID").length === 0)) && (
+                  {((cashBankFilter === "POSTED" && searchedPostedReceipts.length === 0 && searchedPaidVendorBills.length === 0) ||
+                    (cashBankFilter === "PENDING" && searchedPendingCashReceipts.length === 0) ||
+                    (cashBankFilter === "ALL" && searchedPendingCashReceipts.length === 0 && searchedPostedReceipts.length === 0 && searchedPaidVendorBills.length === 0)) && (
                     <tr>
                       <td colSpan={6} className="py-10 text-center text-text-secondary">
                         <div className="flex flex-col items-center justify-center gap-2">
@@ -1879,7 +2024,7 @@ export default function FinanceClient() {
                   )}
 
                   {/* Penerimaan yang masih DRAFT / PENDING (tampil pada filter ALL dan PENDING) */}
-                  {cashBankFilter !== "POSTED" && customerReceipts.filter(r => r.status !== "POSTED").map((rec) => (
+                  {cashBankFilter !== "POSTED" && searchedPendingCashReceipts.map((rec) => (
                     <tr key={`pending-${rec.id}`} className="hover:bg-amber-50/30 bg-amber-50/10">
                       <td className="whitespace-nowrap py-3 px-3 text-xs tabular-nums">{formatDate(rec.payment_date)}</td>
                       <td className="py-3 px-4">
@@ -1922,7 +2067,7 @@ export default function FinanceClient() {
                   ))}
 
                   {/* Mutasi Uang Masuk yang sudah POSTED (tampil pada filter ALL dan POSTED) */}
-                  {cashBankFilter !== "PENDING" && postedReceipts.map((rec) => (
+                  {cashBankFilter !== "PENDING" && searchedPostedReceipts.map((rec) => (
                     <tr key={`in-${rec.id}`} className="hover:bg-brand-light-green/20">
                       <td className="whitespace-nowrap py-3 px-3 text-xs tabular-nums">{formatDate(rec.payment_date)}</td>
                       <td className="py-3 px-4">
@@ -1945,7 +2090,7 @@ export default function FinanceClient() {
                   ))}
 
                   {/* Mutasi Uang Keluar Tagihan Vendor (tampil pada filter ALL dan POSTED) */}
-                  {cashBankFilter !== "PENDING" && vendorBills.filter(b => b.status === "PAID").map((b) => (
+                  {cashBankFilter !== "PENDING" && searchedPaidVendorBills.map((b) => (
                     <tr key={`out-${b.id}`} className="hover:bg-red-50/20">
                       <td className="whitespace-nowrap py-3 px-3 text-xs tabular-nums">{formatDate(b.due_date)}</td>
                       <td className="py-3 px-4">
@@ -3244,82 +3389,7 @@ export default function FinanceClient() {
       >
         <form
           noValidate
-          onSubmit={(e) => runFinanceAction("create-customer-receipt", async () => {
-            e.preventDefault();
-            if (receiptSaving) return;
-            const errors: Record<string, string> = {};
-            const amount = Number(receiptForm.amount);
-            const withholdingAmount = receiptForm.withholding_tax_amount ? Number(receiptForm.withholding_tax_amount) : 0;
-            const bank = bankAccounts.find(account => account.id === receiptForm.bank_account);
-            if (!receiptForm.project_name.trim()) errors.project_name = "Pilih proyek terkait dari daftar atau input manual.";
-            if (!receiptForm.customer_name.trim()) errors.customer_name = "Pilih proyek atau faktur yang memiliki data klien tersimpan.";
-            if (!receiptForm.amount || !Number.isFinite(amount) || amount < 1000) errors.amount = "Nominal uang masuk wajib diisi, minimal Rp 1.000.";
-            if (!Number.isFinite(withholdingAmount) || withholdingAmount < 0) errors.withholding_tax_amount = "Nominal potongan pajak harus valid (>= 0).";
-            if (!bank) errors.bank_account = bankAccounts.length ? "Pilih rekening kas / bank penerima dana." : "Belum ada rekening kas / bank. Tambahkan rekening penerima di menu Kas & Bank terlebih dahulu.";
-            if (!receiptForm.payment_date) errors.payment_date = "Tanggal terima dana wajib diisi.";
-            if (!receiptForm.reference_number.trim()) errors.reference_number = "No. bukti transfer / resi bank klien wajib diisi.";
-
-            if (receiptForm.invoice_ref) {
-              const linkedInv = customerInvoices.find(inv => inv.id === receiptForm.invoice_ref);
-              if (linkedInv) {
-                if (linkedInv.status !== "POSTED") {
-                  errors.invoice_ref = "Hanya invoice resmi berstatus POSTED yang dapat dilunasi.";
-                } else {
-                  const remaining = Number(linkedInv.outstanding_amount ?? (Number(linkedInv.total_amount ?? 0) - Number(linkedInv.paid_amount ?? 0)));
-                  if (amount + withholdingAmount > remaining + 0.01) {
-                    errors.amount = `Total pelunasan (${formatMoney(amount + withholdingAmount)}) melebihi sisa piutang invoice (${formatMoney(remaining)}).`;
-                  }
-                }
-              }
-            }
-
-            setReceiptErrors(errors);
-            if (Object.keys(errors).length) {
-              toast.error("Lengkapi data penerimaan yang ditandai di bawah.");
-              document.getElementById(`receipt-${Object.keys(errors)[0]}`)?.focus();
-              return;
-            }
-            setReceiptSaving(true);
-            try {
-              const createdRes = await api.post("/api/v1/finance/customer-receipts/", {
-                payment_type: "CUSTOMER_RECEIPT",
-                bank_account_id: receiptForm.bank_account,
-                payment_date: receiptForm.payment_date,
-                amount,
-                payment_method: receiptForm.payment_method,
-                reference_number: receiptForm.reference_number.trim(),
-                allocation_plan: {
-                  project_id: receiptForm.project_id && receiptForm.project_id !== "__CUSTOM__" ? receiptForm.project_id : undefined,
-                  customer_name: receiptForm.customer_name.trim(),
-                  project_name: receiptForm.project_name.trim(),
-                  invoice_id: receiptForm.invoice_ref,
-                  invoice_ref: customerInvoices.find(invoice => invoice.id === receiptForm.invoice_ref)?.invoice_number || "",
-                  bank_account: bank?.name,
-                  withholding_tax_amount: withholdingAmount,
-                  withholding_tax_type: receiptForm.withholding_tax_type,
-                  bupot_number: receiptForm.bupot_number.trim(),
-                  notes: receiptForm.notes.trim(),
-                },
-              });
-
-              toast.success(`Penerimaan ${formatMoney(amount)} berhasil disimpan sebagai Draft.`);
-              setIsReceiptModalOpen(false);
-              setReceiptForm({
-                project_id: "", customer_name: "", project_name: "", invoice_ref: "", amount: "",
-                withholding_tax_amount: "", withholding_tax_type: "PPH_23", bupot_number: "",
-                bank_account: "", payment_date: localDateKey(), payment_method: "BANK_TRANSFER", reference_number: "", notes: "",
-              });
-              await loadFinanceData(true);
-            } catch (error) {
-              const fieldErrors = (error as { response?: { data?: { errors?: Record<string, unknown> } } })?.response?.data?.errors;
-              if (fieldErrors && typeof fieldErrors === "object") {
-                setReceiptErrors(Object.fromEntries(Object.entries(fieldErrors).filter(([, value]) => typeof value === "string")) as Record<string, string>);
-              }
-              toast.error(getApiErrorDetail(error, "Penerimaan belum tersimpan. Silakan coba kembali."));
-            } finally {
-              setReceiptSaving(false);
-            }
-          })}
+          onSubmit={handleCreateCustomerReceipt}
           className="flex flex-col gap-4 p-1"
         >
           <CollapsibleGuideline title="Pencatatan penerimaan" tone="blue">

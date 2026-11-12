@@ -1765,6 +1765,17 @@ const allocationCrud = () => createCrudRouter({
   beforeDelete: async (req, existing) => { await assertAllocationDraft(req, {}, existing); },
 });
 financeRouter.use('/payment-lines', allocationCrud());
+financeRouter.post('/bank-accounts/opening', requireFinanceRole([RoleCode.FINANCE]), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await FinanceService.createBankAccountWithOpeningBalance({
+      companyId: activeCompanyId(req), tenantId: req.tenantId ?? null, userId: authenticatedFinanceUserId(req),
+      bankName: req.body.bank_name, accountNumber: req.body.account_number, accountName: req.body.account_name,
+      openingAmount: Number(req.body.opening_amount ?? 0), openingDate: req.body.opening_date || new Date().toISOString(),
+      offsetAccountId: req.body.offset_account_id,
+    });
+    sendSuccess(res, result, 201);
+  } catch (err) { next(err); }
+});
 financeRouter.use('/bank-accounts', createCrudRouter({
   modelName: 'fin_bank_account',
   searchFields: ['account_number', 'bank_name'],
