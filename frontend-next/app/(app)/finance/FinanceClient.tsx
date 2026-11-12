@@ -581,6 +581,42 @@ export default function FinanceClient() {
     }),
     [customerReceipts, costEntries, financePeriodStart, financePeriodEnd],
   );
+  const profitabilityTransactions = useMemo(() => {
+    const startBound = financePeriodStart.slice(0, 10);
+    const endBound = financePeriodEnd.slice(0, 10);
+    const toRow = (record: any, kind: "Penerimaan" | "Biaya proyek", dateValue: unknown, amountValue: unknown) => {
+      if (!dateValue || amountValue == null) return null;
+      const dateText = String(dateValue);
+      const dateKey = dateText.slice(0, 10);
+      if ((startBound && dateKey < startBound) || (endBound && dateKey > endBound)) return null;
+      const amount = Number(amountValue);
+      const date = new Date(dateText);
+      if (!Number.isFinite(amount) || amount <= 0 || Number.isNaN(date.getTime())) return null;
+      const projectId = String(record.project_id ?? record.project ?? record.allocation_plan?.project_id ?? "");
+      const project = financeProjectOptions.find((item) => String(item.id) === projectId);
+      return {
+        id: String(record.id ?? `${kind}-${dateText}-${amount}`),
+        date: dateText,
+        month: date.getMonth(),
+        kind,
+        description: record.description || record.reference_number || record.source_reference || (kind === "Penerimaan" ? "Penerimaan pelanggan" : "Biaya proyek"),
+        projectName: project?.project_name || project?.name || record.project_name || record.allocation_plan?.project_name || (projectId ? `Proyek #${projectId.slice(0, 8)}` : "Tanpa proyek"),
+        amount,
+        status: String(record.status || "—").toUpperCase(),
+      };
+    };
+
+    const receipts = customerReceipts
+      .filter((receipt) => ["POSTED", "PAID", "COMPLETED", "SETTLED"].includes(String(receipt.status || "").toUpperCase()))
+      .map((receipt) => toRow(receipt, "Penerimaan", receipt.payment_date ?? receipt.receipt_date ?? receipt.transaction_date ?? receipt.created_at, receipt.amount ?? receipt.total_amount ?? receipt.paid_amount));
+    const costs = costEntries
+      .filter((entry) => !["REJECTED", "CANCELLED", "VOID"].includes(String(entry.status || "").toUpperCase()))
+      .map((entry) => toRow(entry, "Biaya proyek", entry.transaction_date ?? entry.date ?? entry.created_at, entry.total_cost ?? entry.amount ?? entry.cost_amount ?? entry.total_amount));
+
+    return [...receipts, ...costs]
+      .filter((row): row is NonNullable<typeof row> => Boolean(row))
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [customerReceipts, costEntries, financePeriodStart, financePeriodEnd, financeProjectOptions]);
 
   const totalRevenue = totalBillingRevenue;
   
@@ -1056,12 +1092,68 @@ export default function FinanceClient() {
         <div className="flex flex-col gap-6">
           <MonthlyStackedBarChart
             title="Tren Pendapatan dan Biaya Bulanan"
-            subtitle="Perbandingan pendapatan termin yang terealisasi dan alokasi biaya proyek per bulan fiskal."
+            subtitle="Penerimaan dan biaya dikelompokkan per bulan. Buka rincian transaksi di bawah untuk melihat tanggal dan nominal aslinya."
             primaryLabel="Realisasi Kas"
             secondaryLabel="Alokasi Biaya Proyek"
             data={profitabilityChart.data}
             autoFetch={false}
           />
+
+          <div className="card rounded-2xl p-5 flex flex-col gap-4">
+            <div>
+              <h3 className="text-sm font-semibold text-text-primary">Ringkasan Transaksi per Bulan</h3>
+              <p className="mt-1 text-xs text-text-secondary">Selisih kas = penerimaan yang sudah dibukukan dikurangi biaya proyek. Margin laba per proyek tersedia pada analisis EVM di bawah.</p>
+            </div>
+            <div className="table-scroll-wrapper">
+              <table className="w-full data-table min-w-[620px]">
+                <thead><tr><th>Bulan</th><th>Jumlah transaksi</th><th>Penerimaan</th><th>Biaya proyek</th><th>Selisih kas</th></tr></thead>
+                <tbody>
+                  {profitabilityChart.data.map((month, index) => {
+                    const rows = profitabilityTransactions.filter((row) => row.month === index);
+                    const received = rows.filter((row) => row.kind === "Penerimaan").reduce((sum, row) => sum + row.amount, 0);
+                    const costs = rows.filter((row) => row.kind === "Biaya proyek").reduce((sum, row) => sum + row.amount, 0);
+                    if (rows.length === 0) return null;
+                    const netCash = received - costs;
+                    return (
+                      <tr key={month.month}>
+                        <td className="font-semibold">{month.month}</td>
+                        <td>{rows.length}</td>
+                        <td>{formatMoney(received)}</td>
+                        <td>{formatMoney(costs)}</td>
+                        <td className={cn("font-bold", netCash < 0 ? "text-red-600" : "text-brand-deep-green")}>{formatMoney(netCash)}</td>
+                      </tr>
+                    );
+                  })}
+                  {profitabilityTransactions.length === 0 && <tr><td colSpan={5} className="py-6 text-center text-text-secondary">Tidak ada penerimaan yang sudah dibukukan atau biaya proyek pada rentang fiskal ini.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="card rounded-2xl p-5 flex flex-col gap-4">
+            <div>
+              <h3 className="text-sm font-semibold text-text-primary">Rincian Transaksi Pendapatan dan Biaya</h3>
+              <p className="mt-1 text-xs text-text-secondary">Menampilkan penerimaan berstatus POSTED dan biaya proyek selain REJECTED, CANCELLED, atau VOID dalam periode aktif.</p>
+            </div>
+            <div className="table-scroll-wrapper">
+              <table className="w-full data-table min-w-[760px]">
+                <thead><tr><th>Tanggal</th><th>Jenis</th><th>Keterangan / Referensi</th><th>Proyek</th><th>Nominal</th><th>Status</th></tr></thead>
+                <tbody>
+                  {profitabilityTransactions.map((row) => (
+                    <tr key={`${row.kind}-${row.id}`}>
+                      <td>{formatDate(row.date)}</td>
+                      <td><span className={cn("rounded-full px-2 py-1 text-2xs font-bold", row.kind === "Penerimaan" ? "bg-blue-50 text-blue-700" : "bg-sky-50 text-sky-700")}>{row.kind}</span></td>
+                      <td>{row.description}</td>
+                      <td>{row.projectName}</td>
+                      <td className="font-semibold">{formatMoney(row.amount)}</td>
+                      <td>{row.status}</td>
+                    </tr>
+                  ))}
+                  {profitabilityTransactions.length === 0 && <tr><td colSpan={6} className="py-6 text-center text-text-secondary">Belum ada transaksi yang memenuhi status dan rentang periode untuk ditampilkan.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
 
           <div className="card rounded-2xl p-5 flex flex-col gap-4">
             <h3 className="text-sm font-semibold text-text-primary">Analisis Profitabilitas Proyek berbasis EVM</h3>

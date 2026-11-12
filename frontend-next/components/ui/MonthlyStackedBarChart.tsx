@@ -158,6 +158,17 @@ export function MonthlyStackedBarChart({
   const [startIndex, setStartIndex] = useState(
     Math.min(initialWindowStart, maxStartIndex)
   );
+  useEffect(() => {
+    if (!data?.length) return;
+    const latestDataIndex = data.reduce(
+      (latest, item, index) => item.bottomValue > 0 || item.topValue > 0 ? index : latest,
+      -1,
+    );
+    const nextStart = latestDataIndex < 0
+      ? Math.min(initialWindowStart, maxStartIndex)
+      : Math.min(Math.max(0, latestDataIndex - visibleCount + 1), maxStartIndex);
+    setStartIndex(nextStart);
+  }, [data, initialWindowStart, maxStartIndex, visibleCount]);
   const [hoveredItem, setHoveredItem] = useState<{
     item: MonthlyBarItem;
     x: number;
@@ -504,11 +515,11 @@ export function MonthlyStackedBarChart({
                 </span>
               </div>
               <div className="flex items-center justify-between gap-3 text-xs pt-1">
-                <span className="text-gray-300">Realisasi Kas:</span>
+                <span className="text-gray-300">{primaryLabel}:</span>
                 <span className="font-semibold text-gray-400">Rp 0</span>
               </div>
               <div className="flex items-center justify-between gap-3 text-xs">
-                <span className="text-gray-300">WIP/Proyeksi:</span>
+                <span className="text-gray-300">{secondaryLabel}:</span>
                 <span className="font-semibold text-gray-400">Rp 0</span>
               </div>
               <p className="text-xs text-gray-400 mt-1 border-t border-white/10 pt-1 italic">
