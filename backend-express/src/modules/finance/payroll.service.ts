@@ -42,7 +42,10 @@ function normalizeLines(lines: any[]) {
 export class PayrollService {
   static async listEmployees(companyId: string) {
     const rows = await prisma.master_employee.findMany({
-      where: { company_id: companyId, employment_status: { notIn: ['TERMINATED', 'INACTIVE', 'RESIGNED'] } },
+      // Keep inactive and former employees visible in the master table so their
+      // history can be reviewed and they can be reactivated when appropriate.
+      // Payroll creation independently enforces ACTIVE status for each line.
+      where: { company_id: companyId },
       orderBy: [{ employee_number: 'asc' }],
     });
     const partyIds = [...new Set(rows.map((row) => row.party_id).filter((id): id is string => Boolean(id)))];

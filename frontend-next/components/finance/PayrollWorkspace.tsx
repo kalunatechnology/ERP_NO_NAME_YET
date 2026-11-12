@@ -113,7 +113,54 @@ export function PayrollWorkspace({ canOperate = false }: { canOperate?: boolean 
         <label className="text-[10px] font-bold text-slate-600">Cost center default<select required value={employeeForm.cost_center_id} onChange={(e) => setEmployeeForm({ ...employeeForm, cost_center_id: e.target.value })} className={inputClass}><option value="">Pilih cost center</option>{costCenters.map((cc) => <option key={cc.id} value={cc.id}>{cc.code || cc.cost_center_code} — {cc.name || cc.cost_center_name}</option>)}</select></label>
         <div className="flex gap-2 md:col-span-4 md:justify-end">{employeeForm.id && <button type="button" onClick={() => setEmployeeForm({ id: "", employee_number: "", employee_name: "", monthly_salary: "", cost_center_id: "" })} className="rounded-lg border px-3 py-2 text-xs">Batal</button>}<button disabled={busy} className="inline-flex items-center gap-1 rounded-lg bg-[#2649B3] px-4 py-2 text-xs font-bold text-white"><Check size={14} />{employeeForm.id ? "Simpan karyawan" : "Tambah karyawan"}</button></div>
       </form>}
-      <section className="overflow-hidden rounded-2xl border bg-white"><div className="border-b p-4"><h3 className="text-sm font-extrabold">Master karyawan payroll</h3><p className="text-[10px] text-slate-500">{activeEmployees.length} karyawan aktif · karyawan baru berstatus ACTIVE</p></div><div className="overflow-auto"><table className="w-full min-w-[700px] text-left text-xs"><thead className="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th className="p-3">Nomor</th><th className="p-3">Nama</th><th className="p-3">Gaji pokok</th><th className="p-3">Cost center</th><th className="p-3">Status</th><th className="p-3">Aksi</th></tr></thead><tbody>{employees.map((employee) => <tr key={employee.id} className="border-t"><td className="p-3 font-mono">{employee.employee_number}</td><td className="p-3 font-bold">{employee.employee_name}</td><td className="p-3">{formatMoney(employee.monthly_salary ?? 0)}</td><td className="p-3">{costCenters.find((cc) => cc.id === employee.cost_center_id)?.name ?? costCenters.find((cc) => cc.id === employee.cost_center_id)?.cost_center_name ?? "—"}</td><td className="p-3">{employee.employment_status}</td><td className="p-3"><div className="flex gap-1">{canOperate && employee.employment_status === "ACTIVE" && <button type="button" onClick={() => setEmployeeForm({ id: employee.id, employee_number: employee.employee_number, employee_name: employee.employee_name, monthly_salary: String(employee.monthly_salary ?? ""), cost_center_id: employee.cost_center_id ?? "" })} className="rounded border p-1.5 text-blue-700" title="Edit karyawan"><Pencil size={13} /></button>}{canOperate && <button type="button" onClick={async () => { setBusy(true); try { await api.put(`/api/v1/finance/payroll/employees/${employee.id}`, { employment_status: employee.employment_status === "ACTIVE" ? "INACTIVE" : "ACTIVE" }); await load(); } catch (cause) { setError(getApiErrorDetail(cause, "Status karyawan belum dapat diubah.")); } finally { setBusy(false); } }} className="rounded border px-2 py-1 text-[10px] font-semibold text-slate-600">{employee.employment_status === "ACTIVE" ? "Nonaktifkan" : "Aktifkan"}</button>}</div></td></tr>)}{!employees.length && <tr><td colSpan={6} className="p-8 text-center text-slate-500">Belum ada data karyawan. Tambahkan karyawan dan gaji pokok di atas.</td></tr>}</tbody></table></div></section>
+      <section className="overflow-hidden rounded-2xl border bg-white">
+        <div className="border-b p-4">
+          <h3 className="text-sm font-extrabold">Master karyawan payroll</h3>
+          <p className="text-[10px] text-slate-500">{activeEmployees.length} karyawan aktif · karyawan nonaktif tetap tersimpan dan terlihat</p>
+        </div>
+        <div className="overflow-auto">
+          <table className="w-full min-w-[700px] text-left text-xs">
+            <thead className="bg-slate-50 text-[10px] uppercase text-slate-500">
+              <tr><th className="p-3">Nomor</th><th className="p-3">Nama</th><th className="p-3">Gaji pokok</th><th className="p-3">Cost center</th><th className="p-3">Status</th><th className="p-3">Aksi</th></tr>
+            </thead>
+            <tbody>
+              {employees.map((employee) => {
+                const isActive = employee.employment_status === "ACTIVE";
+                const canToggleStatus = ["ACTIVE", "INACTIVE"].includes(employee.employment_status);
+                return <tr key={employee.id} className="border-t">
+                  <td className="p-3 font-mono">{employee.employee_number}</td>
+                  <td className="p-3 font-bold">{employee.employee_name}</td>
+                  <td className="p-3">{formatMoney(employee.monthly_salary ?? 0)}</td>
+                  <td className="p-3">{costCenters.find((cc) => cc.id === employee.cost_center_id)?.name ?? costCenters.find((cc) => cc.id === employee.cost_center_id)?.cost_center_name ?? "—"}</td>
+                  <td className="p-3"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{employee.employment_status}</span></td>
+                  <td className="p-3">
+                    <div className="flex gap-1">
+                      {canOperate && isActive && <button type="button" disabled={busy} onClick={() => setEmployeeForm({ id: employee.id, employee_number: employee.employee_number, employee_name: employee.employee_name, monthly_salary: String(employee.monthly_salary ?? ""), cost_center_id: employee.cost_center_id ?? "" })} className="rounded border p-1.5 text-blue-700 disabled:opacity-50" title="Edit karyawan"><Pencil size={13} /></button>}
+                      {canOperate && canToggleStatus && <button
+                        type="button"
+                        disabled={busy}
+                        onClick={async () => {
+                          const nextStatus = isActive ? "INACTIVE" : "ACTIVE";
+                          setBusy(true); setError(""); setNotice("");
+                          try {
+                            await api.put(`/api/v1/finance/payroll/employees/${employee.id}`, { employment_status: nextStatus });
+                            await load();
+                            setNotice(`${employee.employee_name} ${nextStatus === "ACTIVE" ? "diaktifkan" : "dinonaktifkan"}.`);
+                          } catch (cause) {
+                            setError(getApiErrorDetail(cause, "Status karyawan belum dapat diubah."));
+                          } finally { setBusy(false); }
+                        }}
+                        className={`rounded border px-2 py-1 text-[10px] font-semibold disabled:opacity-50 ${isActive ? "text-amber-700" : "text-emerald-700"}`}
+                      >{isActive ? "Nonaktifkan" : "Aktifkan"}</button>}
+                    </div>
+                  </td>
+                </tr>;
+              })}
+              {!employees.length && <tr><td colSpan={6} className="p-8 text-center text-slate-500">Belum ada data karyawan. Tambahkan karyawan dan gaji pokok di atas.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </>}
 
     {tab === "runs" && <>

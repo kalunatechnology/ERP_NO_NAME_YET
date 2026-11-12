@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { BookOpen, Check, Pencil, RefreshCw, Search, ShieldOff, X } from "lucide-react";
+import { BookOpen, Check, Pencil, RefreshCw, Search, ShieldCheck, ShieldOff, X } from "lucide-react";
 import api from "@/lib/api/axios";
 import { getApiErrorDetail } from "@/lib/api/project.api";
 
@@ -50,8 +50,13 @@ export function ChartOfAccountsWorkspace({ canOperate = false }: { canOperate?: 
   };
 
   const toggleStatus = async (row: Row) => {
-    setBusy(true); setError("");
-    try { await api.put(`/api/v1/finance/accounts/${row.id}`, { status: row.status === "ACTIVE" ? "INACTIVE" : "ACTIVE" }); await load(); }
+    const nextStatus = row.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await api.put(`/api/v1/finance/accounts/${row.id}`, { status: nextStatus });
+      await load();
+      setNotice(`Akun ${row.account_code} ${nextStatus === "ACTIVE" ? "diaktifkan" : "dinonaktifkan"}.`);
+    }
     catch (cause) { setError(getApiErrorDetail(cause, "Status COA belum dapat diubah.")); }
     finally { setBusy(false); }
   };
@@ -73,7 +78,7 @@ export function ChartOfAccountsWorkspace({ canOperate = false }: { canOperate?: 
     </section>
     <section className="overflow-hidden rounded-2xl border border-[#D9D9D9] bg-white">
       <div className="flex flex-wrap items-center gap-3 border-b p-4"><div className="relative min-w-[220px] flex-1"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(e) => setQuery(e.target.value)} className="w-full rounded-lg border py-2 pl-9 pr-3 text-xs" placeholder="Cari kode, nama, atau tipe akun" /></div><span className="text-xs text-slate-500">{visible.length} akun</span></div>
-      <div className="overflow-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th className="p-3">Kode</th><th className="p-3">Nama akun</th><th className="p-3">Tipe</th><th className="p-3">Saldo normal</th><th className="p-3">Posting</th><th className="p-3">Status</th><th className="p-3 text-right">Aksi</th></tr></thead><tbody>{visible.map((row) => <tr key={row.id} className="border-t"><td className="p-3 font-mono font-bold">{row.account_code}</td><td className="p-3 font-semibold">{row.account_name}</td><td className="p-3">{row.account_type}</td><td className="p-3">{row.normal_balance}</td><td className="p-3">{row.allow_manual_posting ? "Manual diizinkan" : "Otomatis saja"}</td><td className="p-3">{row.status}</td><td className="p-3"><div className="flex justify-end gap-2">{canOperate && <><button type="button" title="Edit nama dan pengaturan" onClick={() => startEdit(row)} className="rounded border p-1.5 text-blue-700"><Pencil size={13} /></button><button type="button" title={row.status === "ACTIVE" ? "Nonaktifkan" : "Aktifkan"} onClick={() => void toggleStatus(row)} className="rounded border p-1.5 text-amber-700"><ShieldOff size={13} /></button></>}</div></td></tr>)}{!visible.length && <tr><td colSpan={7} className="p-8 text-center text-slate-500">Belum ada akun COA.</td></tr>}</tbody></table></div>
+      <div className="overflow-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th className="p-3">Kode</th><th className="p-3">Nama akun</th><th className="p-3">Tipe</th><th className="p-3">Saldo normal</th><th className="p-3">Posting</th><th className="p-3">Status</th><th className="p-3 text-right">Aksi</th></tr></thead><tbody>{visible.map((row) => <tr key={row.id} className="border-t"><td className="p-3 font-mono font-bold">{row.account_code}</td><td className="p-3 font-semibold">{row.account_name}</td><td className="p-3">{row.account_type}</td><td className="p-3">{row.normal_balance}</td><td className="p-3">{row.allow_manual_posting ? "Manual diizinkan" : "Otomatis saja"}</td><td className="p-3"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${row.status === "ACTIVE" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{row.status}</span></td><td className="p-3"><div className="flex justify-end gap-2">{canOperate && <><button type="button" title="Edit nama dan pengaturan" onClick={() => startEdit(row)} disabled={busy} className="rounded border p-1.5 text-blue-700 disabled:opacity-50"><Pencil size={13} /></button><button type="button" onClick={() => void toggleStatus(row)} disabled={busy} className={`inline-flex min-w-[120px] items-center justify-center gap-1 rounded border px-2 py-1.5 text-[10px] font-semibold disabled:opacity-50 ${row.status === "ACTIVE" ? "border-amber-200 text-amber-800 hover:bg-amber-50" : "border-emerald-200 text-emerald-800 hover:bg-emerald-50"}`} title={row.status === "ACTIVE" ? "Nonaktifkan akun" : "Aktifkan akun"}>{row.status === "ACTIVE" ? <><ShieldOff size={13} /> Nonaktifkan</> : <><ShieldCheck size={13} /> Aktifkan</>}</button></>}</div></td></tr>)}{!visible.length && <tr><td colSpan={7} className="p-8 text-center text-slate-500">Belum ada akun COA.</td></tr>}</tbody></table></div>
     </section>
     <p className="text-[10px] text-slate-500">Saldo buku besar dihitung dari jurnal POSTED. COA baru akan muncul pada Trial Balance setelah memiliki jurnal.</p>
   </div>;
