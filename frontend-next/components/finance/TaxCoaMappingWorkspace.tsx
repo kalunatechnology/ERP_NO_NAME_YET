@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Pencil, RefreshCw, ShieldCheck, ShieldOff } from "lucide-react";
 import api from "@/lib/api/axios";
 import { formatMoney } from "@/lib/utils";
@@ -18,6 +18,7 @@ export function TaxCoaMappingWorkspace({ canOperate = false }: { canOperate?: bo
   const [form, setForm] = useState<any>(empty);
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const actionLock = useRef(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -45,7 +46,7 @@ export function TaxCoaMappingWorkspace({ canOperate = false }: { canOperate?: bo
   useEffect(() => { void load(); }, [load]);
 
   const save = async (event: React.FormEvent) => {
-    event.preventDefault(); setBusy(true); setError(""); setNotice("");
+    event.preventDefault(); if (actionLock.current) return; actionLock.current = true; setBusy(true); setError(""); setNotice("");
     try {
       const payload = { tax_code: form.tax_code.trim().toUpperCase(), tax_name: form.tax_name.trim(), tax_type: form.tax_type.trim(), tax_direction: form.tax_direction, tax_rate: Number(form.tax_rate), effective_from: form.effective_from || null, effective_to: form.effective_to || null, input_account_id: form.tax_direction === "INPUT_VAT" ? form.input_account_id || null : null, output_account_id: form.tax_direction === "OUTPUT_VAT" ? form.output_account_id || null : null, payable_account_id: form.tax_direction === "WITHHOLDING" ? form.payable_account_id || null : null, is_recoverable: Boolean(form.is_recoverable), status: form.status || "ACTIVE" };
       if (payload.tax_direction === "INPUT_VAT" && !payload.input_account_id) throw new Error("Pilih COA PPN Masukan.");
@@ -55,7 +56,7 @@ export function TaxCoaMappingWorkspace({ canOperate = false }: { canOperate?: bo
       else await api.post("/api/v1/master-data/tax-codes/", payload);
       setForm(empty); setEditing(null); setNotice("Pemetaan kode pajak tersimpan."); await load();
     } catch (cause: any) { setError(cause?.message || getApiErrorDetail(cause, "Pemetaan pajak gagal disimpan.")); }
-    finally { setBusy(false); }
+    finally { actionLock.current = false; setBusy(false); }
   };
 
   const activeAssets = accounts.filter((account) => account.status === "ACTIVE" && account.account_type === "ASSET");

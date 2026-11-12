@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowLeftRight, Check, ChevronDown, CircleDollarSign, FilePlus2, History, Plus, RefreshCw, Send, ShieldCheck, Pencil, Trash2, X } from "lucide-react";
 import api from "@/lib/api/axios";
 import { cn, formatMoney } from "@/lib/utils";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 
 type AnyRow = Record<string, any>;
 type DraftAllocation = { id?: string; account_id: string; cost_center_id: string; project_id: string; department_id: string; amount: string; allocation_name: string; description: string; periods: Record<string, string> };
@@ -28,6 +29,7 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
   const [loading, setLoading] = useState(true);
   const [optionsLoading, setOptionsLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const { run: runOnce } = useAsyncAction();
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [showPlanForm, setShowPlanForm] = useState(false);
@@ -148,12 +150,12 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
 
   const refresh = async () => load(yearId);
   const notifyError = (cause: any) => setError(cause?.response?.data?.detail || cause?.response?.data?.message || "Permintaan tidak dapat diproses.");
-  const postAction = async (url: string, payload: AnyRow = {}) => {
+  const postAction = async (url: string, payload: AnyRow = {}) => runOnce(url, async () => {
     setBusy(true); setError(""); setNotice("");
     try { await api.post(`${base}${url}`, payload); setNotice("Perubahan berhasil disimpan."); await load(yearId); return true; }
     catch (cause: any) { notifyError(cause); return false; }
     finally { setBusy(false); }
-  };
+  });
 
   const setAllocation = (index: number, key: keyof DraftAllocation, value: any) => setPlanForm((current) => ({ ...current, allocations: current.allocations.map((row, rowIndex) => rowIndex === index ? { ...row, [key]: value } : row) }));
   const setPeriodAmount = (index: number, periodId: string, value: string) => setPlanForm((current) => ({ ...current, allocations: current.allocations.map((row, rowIndex) => rowIndex === index ? { ...row, periods: { ...row.periods, [periodId]: value } } : row) }));
@@ -186,6 +188,7 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
 
   const deleteDraftPlan = async (planId: string) => {
     if (!window.confirm("Hapus Budget Plan draft ini? Tindakan ini tidak dapat dibatalkan.")) return;
+    return runOnce(`delete-plan:${planId}`, async () => {
     setBusy(true); setError(""); setNotice("");
     try {
       await api.delete(`${base}/budgets/${planId}`);
@@ -193,10 +196,13 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
       await load(yearId);
     } catch (cause: any) { notifyError(cause); }
     finally { setBusy(false); }
+    });
   };
 
   const savePlan = async (event: React.FormEvent) => {
-    event.preventDefault(); setBusy(true); setError("");
+    event.preventDefault();
+    return runOnce("save-plan", async () => {
+    setBusy(true); setError("");
     try {
       const payload = {
         ...planForm,
@@ -214,6 +220,7 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
       await load(yearId);
     } catch (cause: any) { notifyError(cause); }
     finally { setBusy(false); }
+    });
   };
 
   const runApproval = (kind: "plans" | "revisions" | "transfers" | "reservations", id: string, approved: boolean) => {
@@ -225,21 +232,24 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
   const confirmReject = async () => {
     if (!rejecting) return;
     const paths: Record<string, string> = { plans: "budgets", revisions: "budget-revisions", transfers: "budget-transfers", reservations: "budget-reservations" };
-    await postAction(`/${paths[rejecting.kind]}/${rejecting.id}/reject`, { reason: rejectReason });
+    const saved = await postAction(`/${paths[rejecting.kind]}/${rejecting.id}/reject`, { reason: rejectReason });
+    if (!saved) return;
     setRejecting(null); setRejectReason("");
   };
 
   const submitSettlement = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!settling) return;
-    await postAction(`/budget-reservations/${settling.row.id}/${settling.kind}`, { amount: Number(settlementForm.amount), reason: settlementForm.reason });
+    const saved = await postAction(`/budget-reservations/${settling.row.id}/${settling.kind}`, { amount: Number(settlementForm.amount), reason: settlementForm.reason });
+    if (!saved) return;
     setSettling(null); setSettlementForm({ amount: "", reason: "" });
   };
 
   const confirmClosePlan = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!closingPlanId) return;
-    await postAction(`/budgets/${closingPlanId}/close`, { reason: closeReason });
+    const saved = await postAction(`/budgets/${closingPlanId}/close`, { reason: closeReason });
+    if (!saved) return;
     setClosingPlanId(null); setCloseReason("");
   };
 
@@ -250,9 +260,9 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
       return;
     }
     let saved = false;
-    if (action === "RESERVATION") saved = await postAction("/budget-reservations", { ...actionForm, amount: Number(actionForm.amount) });
-    if (action === "REVISION") saved = await postAction("/budget-revisions", { ...actionForm, amount: Number(actionForm.amount) });
-    if (action === "TRANSFER") saved = await postAction("/budget-transfers", { ...actionForm, amount: Number(actionForm.amount) });
+    if (action === "RESERVATION") saved = (await postAction("/budget-reservations", { ...actionForm, amount: Number(actionForm.amount) })) ?? false;
+    if (action === "REVISION") saved = (await postAction("/budget-revisions", { ...actionForm, amount: Number(actionForm.amount) })) ?? false;
+    if (action === "TRANSFER") saved = (await postAction("/budget-transfers", { ...actionForm, amount: Number(actionForm.amount) })) ?? false;
     if (saved) { setAction(null); setActionForm({}); }
   };
 
@@ -289,6 +299,7 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
 
       {error && <div role="alert" className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800"><AlertTriangle size={16} className="mt-0.5 shrink-0" />{error}</div>}
       {notice && <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">{notice}</div>}
+      {busy && <div role="status" aria-live="polite" className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-[1px]"><div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-white px-5 py-4 text-sm font-semibold text-blue-900 shadow-xl"><RefreshCw size={18} className="animate-spin" />Sedang memproses perubahan anggaran. Tunggu sampai server merespons…</div></div>}
       {loading ? <div className="rounded-2xl border border-[#D9D9D9] bg-white p-10 text-center text-sm text-[#6B7280]">Memuat data budgeting…</div> : null}
 
       {!loading && tab === "overview" && <>
@@ -303,12 +314,12 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
           <button onClick={() => { setAction("TRANSFER"); setActionForm({ from_allocation_id: scopedAllocationRows[0]?.id ?? "", to_allocation_id: scopedAllocationRows[1]?.id ?? "", amount: "", reason: "" }); }} className="inline-flex items-center gap-2 rounded-xl border border-[#D9D9D9] bg-white px-3 py-2 text-xs font-bold text-[#2649B3] hover:bg-[#F7FBFF]"><ArrowLeftRight size={14} /> Ajukan transfer</button>
         </div>}
         <AllocationTable rows={scopedAllocationRows} plans={plans} canOperate={canOperate} onEditPlan={(budgetId) => { const plan = plans.find((row) => String(row.id) === String(budgetId)); if (plan?.can_edit) startEditPlan(plan); }} onSelectLedger={(id) => { setLedgerAllocationId(id); setTab("ledger"); void load(yearId); }} />
-        <ReservationTable rows={scopedReservations} onSettle={(row, kind) => { setSettling({ row, kind }); setSettlementForm({ amount: String(row.remaining_amount ?? ""), reason: kind === "recognize" ? "Pengakuan beban akrual" : "Pelepasan komitmen" }); }} />
+        <ReservationTable rows={scopedReservations} busy={busy} onSettle={(row, kind) => { setSettling({ row, kind }); setSettlementForm({ amount: String(row.remaining_amount ?? ""), reason: kind === "recognize" ? "Pengakuan beban akrual" : "Pelepasan komitmen" }); }} />
       </>}
 
-      {!loading && tab === "plans" && <div className="grid gap-3">{scopedPlans.length === 0 ? <Empty text={budgetScope === "PROJECT" ? "Belum ada alokasi Budget Plan untuk proyek." : "Belum ada alokasi Budget Plan untuk perusahaan/internal."} /> : scopedPlans.map((plan) => <PlanCard key={plan.id} plan={plan} canOperate={canOperate} onEdit={() => startEditPlan(plan)} onDelete={() => void deleteDraftPlan(plan.id)} onSubmit={() => void postAction(`/budgets/${plan.id}/submit`)} onApprove={() => runApproval("plans", plan.id, true)} onReject={() => runApproval("plans", plan.id, false)} onClose={() => { setClosingPlanId(plan.id); setCloseReason(""); }} />)}</div>}
+      {!loading && tab === "plans" && <div className="grid gap-3">{scopedPlans.length === 0 ? <Empty text={budgetScope === "PROJECT" ? "Belum ada alokasi Budget Plan untuk proyek." : "Belum ada alokasi Budget Plan untuk perusahaan/internal."} /> : scopedPlans.map((plan) => <PlanCard key={plan.id} plan={plan} canOperate={canOperate} busy={busy} onEdit={() => startEditPlan(plan)} onDelete={() => void deleteDraftPlan(plan.id)} onSubmit={() => void postAction(`/budgets/${plan.id}/submit`)} onApprove={() => runApproval("plans", plan.id, true)} onReject={() => runApproval("plans", plan.id, false)} onClose={() => { setClosingPlanId(plan.id); setCloseReason(""); }} />)}</div>}
 
-      {!loading && tab === "workflow" && <WorkflowQueue queue={queue} onApprove={runApproval} onReject={runApproval} />}
+      {!loading && tab === "workflow" && <WorkflowQueue queue={queue} busy={busy} onApprove={runApproval} onReject={runApproval} />}
 
       {!loading && tab === "ledger" && <section className="overflow-hidden rounded-2xl border border-[#D9D9D9] bg-white shadow-2xs">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#EFEFEF] p-4"><div><h3 className="text-sm font-extrabold text-[#090909]">Budget Ledger</h3><p className="mt-1 text-[10px] text-[#6B7280]">Entri posted bersifat append-only; koreksi dicatat dengan reversal.</p></div><select value={ledgerAllocationId} onChange={(event) => { setLedgerAllocationId(event.target.value); void load(yearId); }} className="max-w-full rounded-lg border border-[#D9D9D9] px-3 py-2 text-xs"><option value="">Semua alokasi</option>{allocationRows.map((row) => <option key={row.id} value={row.id}>{titleOf(row)}</option>)}</select></div>
@@ -330,7 +341,7 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
           {planForm.allocations.map((row, index) => <div key={index} className="rounded-xl border border-[#D9D9D9] p-3">
             <div className="grid gap-3 md:grid-cols-2">
               <Field label="Akun beban"><select required disabled={editingPlanIsActive} value={row.account_id} onChange={(event) => setAllocation(index, "account_id", event.target.value)} className={inputClass}><option value="">Pilih akun</option>{options.accounts.map((account) => <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select></Field>
-              <Field label="Cost center"><select required disabled={editingPlanIsActive || optionsLoading} value={row.cost_center_id} onChange={(event) => {
+              <Field label={planForm.budget_type === "PROJECT" ? "Cost center (opsional)" : "Cost center *"}><select required={planForm.budget_type !== "PROJECT"} disabled={editingPlanIsActive || optionsLoading} value={row.cost_center_id} onChange={(event) => {
                 const nextCcId = event.target.value;
                 setAllocation(index, "cost_center_id", nextCcId);
                 if (!row.department_id && nextCcId) {
@@ -338,8 +349,8 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
                   const matchingDept = selectedCc ? options.departments.find((d) => String(d.department_code || d.code || "").toUpperCase() === String(selectedCc.cost_center_code || selectedCc.code || "").toUpperCase()) : null;
                   if (matchingDept) setAllocation(index, "department_id", matchingDept.id);
                 }
-              }} className={inputClass}><option value="">{optionsLoading ? "Memuat cost center…" : options.cost_centers.length ? "Pilih cost center" : "Belum ada cost center aktif"}</option>{options.cost_centers.map((center) => <option key={center.id} value={center.id}>{center.cost_center_code || center.code} — {center.cost_center_name || center.name}</option>)}</select></Field>
-              <Field label={budgetScope === "PROJECT" ? "Proyek *" : "Proyek (opsional)"}><select required={budgetScope === "PROJECT"} disabled={editingPlanIsActive} value={row.project_id} onChange={(event) => setAllocation(index, "project_id", event.target.value)} className={inputClass}><option value="">{budgetScope === "PROJECT" ? "Pilih proyek" : "Kantor / semua proyek"}</option>{options.projects.map((project) => <option key={project.id} value={project.id}>{project.project_code} — {project.project_name}</option>)}</select></Field>
+              }} className={inputClass}><option value="">{optionsLoading ? "Memuat cost center…" : planForm.budget_type === "PROJECT" ? "Tidak dialokasikan ke cost center" : options.cost_centers.length ? "Pilih cost center" : "Belum ada cost center aktif"}</option>{options.cost_centers.map((center) => <option key={center.id} value={center.id}>{center.cost_center_code || center.code} — {center.cost_center_name || center.name}</option>)}</select></Field>
+              <Field label={planForm.budget_type === "PROJECT" ? "Proyek *" : "Proyek (opsional)"}><select required={planForm.budget_type === "PROJECT"} disabled={editingPlanIsActive} value={row.project_id} onChange={(event) => setAllocation(index, "project_id", event.target.value)} className={inputClass}><option value="">{planForm.budget_type === "PROJECT" ? "Pilih proyek" : "Kantor / tanpa proyek"}</option>{options.projects.map((project) => <option key={project.id} value={project.id}>{project.project_code} — {project.project_name}</option>)}</select></Field>
               <Field label="Departemen / Divisi (opsional)"><select disabled={editingPlanIsActive || optionsLoading} value={row.department_id} onChange={(event) => {
                 const nextDeptId = event.target.value;
                 setAllocation(index, "department_id", nextDeptId);
@@ -412,20 +423,20 @@ function AllocationTable({ rows, plans, canOperate, onEditPlan, onSelectLedger }
   </section>;
 }
 
-function ReservationTable({ rows, onSettle }: { rows: AnyRow[]; onSettle: (row: AnyRow, kind: "release" | "recognize") => void }) {
-  return <section className="overflow-hidden rounded-2xl border border-[#D9D9D9] bg-white shadow-2xs"><div className="border-b border-[#EFEFEF] p-4"><h3 className="text-sm font-extrabold text-[#090909]">Komitmen terbuka</h3><p className="mt-1 text-[10px] text-[#6B7280]">Saat beban diakui, komitmen berkurang dan actual bertambah dalam satu mutasi ledger.</p></div><div className="overflow-x-auto"><table className="w-full min-w-[750px] text-left text-xs"><thead className="bg-slate-50 text-[10px] uppercase text-[#6B7280]"><tr>{["Sumber dan ID", "Status", "Nominal awal", "Sisa komitmen", "Keterangan", "Aksi"].map((header) => <th key={header} className="px-3 py-3">{header}</th>)}</tr></thead><tbody>{rows.filter((row) => row.status !== "PENDING_APPROVAL").map((row) => <tr key={row.id} className="border-t border-[#EFEFEF]"><td className="max-w-[240px] px-3 py-3"><div className="font-bold">{row.source_type}</div><div className="mt-1 break-all font-mono text-[9px] text-[#6B7280]" title={row.source_id}>{row.source_id}</div></td><td className="px-3 py-3">{row.status}</td><td className="px-3 py-3">{fmt(row.amount)}</td><td className="px-3 py-3 font-extrabold text-amber-700">{fmt(row.remaining_amount)}</td><td className="max-w-[200px] truncate px-3 py-3" title={row.description}>{row.description || "—"}</td><td className="px-3 py-3"><div className="flex gap-1"><button onClick={() => onSettle(row, "release")} className="rounded-lg border border-[#D9D9D9] px-2 py-1.5 text-[9px] font-bold">Lepas</button><button onClick={() => onSettle(row, "recognize")} className="rounded-lg bg-violet-700 px-2 py-1.5 text-[9px] font-bold text-white">Akui Actual</button></div></td></tr>)}</tbody></table>{rows.filter((row) => row.status !== "PENDING_APPROVAL").length === 0 && <Empty text="Belum ada komitmen aktif." />}</div></section>;
+function ReservationTable({ rows, busy, onSettle }: { rows: AnyRow[]; busy: boolean; onSettle: (row: AnyRow, kind: "release" | "recognize") => void }) {
+  return <section className="overflow-hidden rounded-2xl border border-[#D9D9D9] bg-white shadow-2xs"><div className="border-b border-[#EFEFEF] p-4"><h3 className="text-sm font-extrabold text-[#090909]">Komitmen terbuka</h3><p className="mt-1 text-[10px] text-[#6B7280]">Saat beban diakui, komitmen berkurang dan actual bertambah dalam satu mutasi ledger.</p></div><div className="overflow-x-auto"><table className="w-full min-w-[750px] text-left text-xs"><thead className="bg-slate-50 text-[10px] uppercase text-[#6B7280]"><tr>{["Sumber dan ID", "Status", "Nominal awal", "Sisa komitmen", "Keterangan", "Aksi"].map((header) => <th key={header} className="px-3 py-3">{header}</th>)}</tr></thead><tbody>{rows.filter((row) => row.status !== "PENDING_APPROVAL").map((row) => <tr key={row.id} className="border-t border-[#EFEFEF]"><td className="max-w-[240px] px-3 py-3"><div className="font-bold">{row.source_type}</div><div className="mt-1 break-all font-mono text-[9px] text-[#6B7280]" title={row.source_id}>{row.source_id}</div></td><td className="px-3 py-3">{row.status}</td><td className="px-3 py-3">{fmt(row.amount)}</td><td className="px-3 py-3 font-extrabold text-amber-700">{fmt(row.remaining_amount)}</td><td className="max-w-[200px] truncate px-3 py-3" title={row.description}>{row.description || "—"}</td><td className="px-3 py-3"><div className="flex gap-1"><button disabled={busy} onClick={() => onSettle(row, "release")} className="rounded-lg border border-[#D9D9D9] px-2 py-1.5 text-[9px] font-bold disabled:opacity-50">Lepas</button><button disabled={busy} onClick={() => onSettle(row, "recognize")} className="rounded-lg bg-violet-700 px-2 py-1.5 text-[9px] font-bold text-white disabled:opacity-50">Akui Actual</button></div></td></tr>)}</tbody></table>{rows.filter((row) => row.status !== "PENDING_APPROVAL").length === 0 && <Empty text="Belum ada komitmen aktif." />}</div></section>;
 }
 
-function PlanCard({ plan, canOperate, onEdit, onDelete, onSubmit, onApprove, onReject, onClose }: { plan: AnyRow; canOperate: boolean; onEdit: () => void; onDelete: () => void; onSubmit: () => void; onApprove: () => void; onReject: () => void; onClose: () => void }) {
+function PlanCard({ plan, canOperate, busy, onEdit, onDelete, onSubmit, onApprove, onReject, onClose }: { plan: AnyRow; canOperate: boolean; busy: boolean; onEdit: () => void; onDelete: () => void; onSubmit: () => void; onApprove: () => void; onReject: () => void; onClose: () => void }) {
   const amount = (plan.allocations ?? []).reduce((sum: number, row: AnyRow) => sum + Number(row.budget_amount ?? 0), 0);
-  return <article className="rounded-2xl border border-[#D9D9D9] bg-white p-4 shadow-2xs"><div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start"><div><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-extrabold text-[#090909]">{plan.budget_name}</h3><span className={cn("rounded-full px-2 py-1 text-[9px] font-extrabold", plan.status === "ACTIVE" ? "bg-emerald-100 text-emerald-800" : plan.status === "PENDING_APPROVAL" ? "bg-amber-100 text-amber-800" : plan.status === "REJECTED" ? "bg-red-100 text-red-800" : "bg-slate-100 text-slate-700")}>{plan.status}</span></div><p className="mt-1 text-[10px] text-[#6B7280]">{plan.budget_type} · {plan.period_mode} · {plan.control_policy?.replaceAll("_", " ")} · {plan.allocations?.length ?? 0} alokasi</p><p className="mt-2 text-lg font-black text-[#2649B3]">{fmt(amount)}</p>{plan.approval_note && <p className="mt-1 text-xs text-red-700">Catatan: {plan.approval_note}</p>}</div><div className="flex flex-wrap gap-2">{canOperate && plan.can_edit && <button onClick={onEdit} className="inline-flex items-center gap-1 rounded-lg border border-[#D9D9D9] px-3 py-2 text-[10px] font-bold text-[#2649B3]"><Pencil size={12} />Edit</button>}{canOperate && plan.can_delete && <button onClick={onDelete} className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-2 text-[10px] font-bold text-red-700"><Trash2 size={12} />Hapus</button>}{canOperate && plan.status === "DRAFT" && <button onClick={onSubmit} className="inline-flex items-center gap-1 rounded-lg bg-[#2649B3] px-3 py-2 text-[10px] font-bold text-white"><Send size={12} />Ajukan</button>}{plan.status === "PENDING_APPROVAL" && <><button onClick={onReject} className="rounded-lg border border-red-200 px-3 py-2 text-[10px] font-bold text-red-700">Tolak</button><button onClick={onApprove} className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-2 text-[10px] font-bold text-white"><Check size={12} />Setujui</button></>}{plan.status === "ACTIVE" && <button onClick={onClose} className="rounded-lg border border-amber-200 px-3 py-2 text-[10px] font-bold text-amber-800">Tutup anggaran</button>}</div></div><div className="mt-3 grid gap-2 border-t border-[#EFEFEF] pt-3 sm:grid-cols-2 lg:grid-cols-3">{(plan.allocations ?? []).map((allocation: AnyRow) => <div key={allocation.id} className="rounded-lg bg-slate-50 p-2"><div className="text-[10px] font-bold text-[#090909]">{allocation.allocation_name || "Alokasi"}</div><div className="mt-1 text-[10px] text-[#6B7280]">{allocation.account_id?.slice(0, 8)} · {allocation.cost_center_id?.slice(0, 8)}{allocation.project_id ? ` · Project ${allocation.project_id.slice(0, 8)}` : ""}</div><div className="mt-1 text-xs font-extrabold">{fmt(allocation.budget_amount)}</div></div>)}</div></article>;
+  return <article className="rounded-2xl border border-[#D9D9D9] bg-white p-4 shadow-2xs"><div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start"><div><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-extrabold text-[#090909]">{plan.budget_name}</h3><span className={cn("rounded-full px-2 py-1 text-[9px] font-extrabold", plan.status === "ACTIVE" ? "bg-emerald-100 text-emerald-800" : plan.status === "PENDING_APPROVAL" ? "bg-amber-100 text-amber-800" : plan.status === "REJECTED" ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-700")}>{plan.status}</span></div><p className="mt-1 text-[10px] text-[#6B7280]">{plan.budget_type} · {plan.period_mode} · {plan.control_policy?.replaceAll("_", " ")} · {plan.allocations?.length ?? 0} alokasi</p><p className="mt-2 text-lg font-black text-[#2649B3]">{fmt(amount)}</p>{plan.approval_note && <p className="mt-1 text-xs text-red-700">Catatan: {plan.approval_note}</p>}</div><div className="flex flex-wrap gap-2">{canOperate && plan.can_edit && <button disabled={busy} onClick={onEdit} className="inline-flex items-center gap-1 rounded-lg border border-[#D9D9D9] px-3 py-2 text-[10px] font-bold text-[#2649B3] disabled:opacity-50"><Pencil size={12} />Edit</button>}{canOperate && plan.can_delete && <button disabled={busy} onClick={onDelete} className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-2 text-[10px] font-bold text-red-700 disabled:opacity-50"><Trash2 size={12} />{busy ? "Memproses…" : "Hapus"}</button>}{canOperate && plan.status === "DRAFT" && <button disabled={busy} onClick={onSubmit} className="inline-flex items-center gap-1 rounded-lg bg-[#2649B3] px-3 py-2 text-[10px] font-bold text-white disabled:opacity-50"><Send size={12} />{busy ? "Memproses…" : "Ajukan"}</button>}{plan.status === "PENDING_APPROVAL" && <><button disabled={busy} onClick={onReject} className="rounded-lg border border-red-200 px-3 py-2 text-[10px] font-bold text-red-700 disabled:opacity-50">Tolak</button><button disabled={busy} onClick={onApprove} className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-2 text-[10px] font-bold text-white disabled:opacity-50"><Check size={12} />{busy ? "Memproses…" : "Setujui"}</button></>}{plan.status === "ACTIVE" && <button disabled={busy} onClick={onClose} className="rounded-lg border border-amber-200 px-3 py-2 text-[10px] font-bold text-amber-800 disabled:opacity-50">Tutup anggaran</button>}</div></div><div className="mt-3 grid gap-2 border-t border-[#EFEFEF] pt-3 sm:grid-cols-2 lg:grid-cols-3">{(plan.allocations ?? []).map((allocation: AnyRow) => <div key={allocation.id} className="rounded-lg bg-slate-50 p-2"><div className="text-[10px] font-bold text-[#090909]">{allocation.allocation_name || "Alokasi"}</div><div className="mt-1 text-[10px] text-[#6B7280]">{allocation.account_id?.slice(0, 8)} · {allocation.cost_center_id?.slice(0, 8)}{allocation.project_id ? ` · Project ${allocation.project_id.slice(0, 8)}` : ""}</div><div className="mt-1 text-xs font-extrabold">{fmt(allocation.budget_amount)}</div></div>)}</div></article>;
 }
 
-function WorkflowQueue({ queue, onApprove, onReject }: { queue: { plans: AnyRow[]; revisions: AnyRow[]; transfers: AnyRow[]; reservations: AnyRow[] }; onApprove: (kind: "plans" | "revisions" | "transfers" | "reservations", id: string, approved: boolean) => void; onReject: (kind: "plans" | "revisions" | "transfers" | "reservations", id: string, approved: boolean) => void }) {
+function WorkflowQueue({ queue, busy, onApprove, onReject }: { queue: { plans: AnyRow[]; revisions: AnyRow[]; transfers: AnyRow[]; reservations: AnyRow[] }; busy: boolean; onApprove: (kind: "plans" | "revisions" | "transfers" | "reservations", id: string, approved: boolean) => void; onReject: (kind: "plans" | "revisions" | "transfers" | "reservations", id: string, approved: boolean) => void }) {
   const sections = [["plans", "Budget Plan", queue.plans], ["revisions", "Budget Revision", queue.revisions], ["transfers", "Budget Transfer", queue.transfers], ["reservations", "Komitmen", queue.reservations]] as const;
   const count = sections.reduce((sum, [, , rows]) => sum + rows.length, 0);
   if (!count) return <Empty text="Tidak ada pengajuan Budgetary yang menunggu persetujuan." />;
-  return <div className="grid gap-4">{sections.map(([kind, title, rows]) => rows.length > 0 && <section key={kind} className="rounded-2xl border border-[#D9D9D9] bg-white p-4"><h3 className="mb-3 text-sm font-extrabold">{title} · {rows.length}</h3><div className="grid gap-2">{rows.map((row) => <div key={row.id} className="flex flex-col justify-between gap-3 rounded-xl border border-[#EFEFEF] p-3 sm:flex-row sm:items-center"><div><div className="text-xs font-bold">{row.budget_name || row.reason || row.description || `${row.source_type ?? title} · ${row.id.slice(0, 8)}`}</div><div className="mt-1 text-[10px] text-[#6B7280]">{row.revision_type || row.status} · {row.amount ? fmt(row.amount) : ""} · {dateLabel(row.created_at || row.submitted_at)}</div>{row.approval_note && <div className="mt-1 text-[10px] text-red-700">{row.approval_note}</div>}</div><div className="flex gap-2"><button onClick={() => onReject(kind, row.id, false)} className="rounded-lg border border-red-200 px-3 py-2 text-[10px] font-bold text-red-700">Tolak</button><button onClick={() => onApprove(kind, row.id, true)} className="rounded-lg bg-emerald-700 px-3 py-2 text-[10px] font-bold text-white">Setujui</button></div></div>)}</div></section>)}</div>;
+  return <div className="grid gap-4">{sections.map(([kind, title, rows]) => rows.length > 0 && <section key={kind} className="rounded-2xl border border-[#D9D9D9] bg-white p-4"><h3 className="mb-3 text-sm font-extrabold">{title} · {rows.length}</h3><div className="grid gap-2">{rows.map((row) => <div key={row.id} className="flex flex-col justify-between gap-3 rounded-xl border border-[#EFEFEF] p-3 sm:flex-row sm:items-center"><div><div className="text-xs font-bold">{row.budget_name || row.reason || row.description || `${row.source_type ?? title} · ${row.id.slice(0, 8)}`}</div><div className="mt-1 text-[10px] text-[#6B7280]">{row.revision_type || row.status} · {row.amount ? fmt(row.amount) : ""} · {dateLabel(row.created_at || row.submitted_at)}</div>{row.approval_note && <div className="mt-1 text-[10px] text-red-700">{row.approval_note}</div>}</div><div className="flex gap-2"><button disabled={busy} onClick={() => onReject(kind, row.id, false)} className="rounded-lg border border-red-200 px-3 py-2 text-[10px] font-bold text-red-700 disabled:opacity-50">Tolak</button><button disabled={busy} onClick={() => onApprove(kind, row.id, true)} className="rounded-lg bg-emerald-700 px-3 py-2 text-[10px] font-bold text-white disabled:opacity-50">{busy ? "Memproses…" : "Setujui"}</button></div></div>)}</div></section>)}</div>;
 }
 
 function AllocationSelect({ rows, value, onChange }: { rows: AnyRow[]; value: string; onChange: (value: string) => void }) { return <select required value={value} onChange={(event) => onChange(event.target.value)} className={inputClass}><option value="">Pilih alokasi</option>{rows.map((row) => <option key={row.id} value={row.id}>{row.allocation_name || row.budget_name} · {fmt(row.available)} tersedia</option>)}</select>; }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Banknote, Check, ClipboardList, Pencil, Plus, RefreshCw, Send, Trash2, Users, X } from "lucide-react";
 import api from "@/lib/api/axios";
 import { formatMoney } from "@/lib/utils";
@@ -24,6 +24,7 @@ export function PayrollWorkspace({ canOperate = false }: { canOperate?: boolean 
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const actionLock = useRef(false);
   const [employeeForm, setEmployeeForm] = useState<any>({ id: "", employee_number: "", employee_name: "", monthly_salary: "", cost_center_id: "" });
   const [periodStart, setPeriodStart] = useState(initialStart);
   const [periodEnd, setPeriodEnd] = useState(initialEnd);
@@ -48,14 +49,14 @@ export function PayrollWorkspace({ canOperate = false }: { canOperate?: boolean 
   useEffect(() => { void load(); }, [load]);
 
   const saveEmployee = async (event: React.FormEvent) => {
-    event.preventDefault(); setBusy(true); setError(""); setNotice("");
+    event.preventDefault(); if (actionLock.current) return; actionLock.current = true; setBusy(true); setError(""); setNotice("");
     try {
       const payload = { employee_number: employeeForm.employee_number, employee_name: employeeForm.employee_name, monthly_salary: Number(employeeForm.monthly_salary), cost_center_id: employeeForm.cost_center_id || null };
       if (employeeForm.id) await api.put(`/api/v1/finance/payroll/employees/${employeeForm.id}`, payload);
       else await api.post("/api/v1/finance/payroll/employees", payload);
       setEmployeeForm({ id: "", employee_number: "", employee_name: "", monthly_salary: "", cost_center_id: "" }); setNotice("Data karyawan payroll tersimpan."); await load();
     } catch (cause) { setError(getApiErrorDetail(cause, "Data karyawan belum dapat disimpan.")); }
-    finally { setBusy(false); }
+    finally { actionLock.current = false; setBusy(false); }
   };
 
   const changeLine = (index: number, key: keyof PayrollLine, value: string) => setLines((current) => current.map((line, i) => i === index ? { ...line, [key]: value } : line));
@@ -65,14 +66,14 @@ export function PayrollWorkspace({ canOperate = false }: { canOperate?: boolean 
   };
 
   const saveRun = async (event: React.FormEvent) => {
-    event.preventDefault(); setBusy(true); setError(""); setNotice("");
+    event.preventDefault(); if (actionLock.current) return; actionLock.current = true; setBusy(true); setError(""); setNotice("");
     try {
       const payload = { period_start: periodStart, period_end: periodEnd, lines: lines.filter((line) => line.employee_id).map((line) => ({ ...line, gross_salary: Number(line.gross_salary), allowances: Number(line.allowances), employee_tax: Number(line.employee_tax), employee_bpjs: Number(line.employee_bpjs), employer_bpjs: Number(line.employer_bpjs) })) };
       if (editingRun) await api.put(`/api/v1/finance/payroll/runs/${editingRun}`, payload);
       else await api.post("/api/v1/finance/payroll/runs", payload);
       setEditingRun(null); setLines([blankLine()]); setNotice("Payroll disimpan sebagai DRAFT. Periksa kembali sebelum diajukan."); await load();
     } catch (cause) { setError(getApiErrorDetail(cause, "Payroll belum dapat disimpan.")); }
-    finally { setBusy(false); }
+    finally { actionLock.current = false; setBusy(false); }
   };
 
   const editRun = (run: Row) => {
@@ -82,6 +83,7 @@ export function PayrollWorkspace({ canOperate = false }: { canOperate?: boolean 
   };
 
   const runAction = async (run: Row, action: string, payload: Row = {}) => {
+    if (actionLock.current) return; actionLock.current = true;
     setBusy(true); setError(""); setNotice("");
     try {
       if (action === "delete") await api.delete(`/api/v1/finance/payroll/runs/${run.id}`);
@@ -89,7 +91,7 @@ export function PayrollWorkspace({ canOperate = false }: { canOperate?: boolean 
       setPayingRun(null); setNotice(`Payroll ${run.run_number} diperbarui.`); await load();
     }
     catch (cause) { setError(getApiErrorDetail(cause, `Aksi ${action} belum dapat diproses.`)); }
-    finally { setBusy(false); }
+    finally { actionLock.current = false; setBusy(false); }
   };
 
   const activeEmployees = employees.filter((employee) => employee.employment_status === "ACTIVE");
@@ -140,6 +142,8 @@ export function PayrollWorkspace({ canOperate = false }: { canOperate?: boolean 
                         type="button"
                         disabled={busy}
                         onClick={async () => {
+                          if (actionLock.current) return;
+                          actionLock.current = true;
                           const nextStatus = isActive ? "INACTIVE" : "ACTIVE";
                           setBusy(true); setError(""); setNotice("");
                           try {
@@ -148,7 +152,7 @@ export function PayrollWorkspace({ canOperate = false }: { canOperate?: boolean 
                             setNotice(`${employee.employee_name} ${nextStatus === "ACTIVE" ? "diaktifkan" : "dinonaktifkan"}.`);
                           } catch (cause) {
                             setError(getApiErrorDetail(cause, "Status karyawan belum dapat diubah."));
-                          } finally { setBusy(false); }
+                          } finally { actionLock.current = false; setBusy(false); }
                         }}
                         className={`rounded border px-2 py-1 text-[10px] font-semibold disabled:opacity-50 ${isActive ? "text-amber-700" : "text-emerald-700"}`}
                       >{isActive ? "Nonaktifkan" : "Aktifkan"}</button>}

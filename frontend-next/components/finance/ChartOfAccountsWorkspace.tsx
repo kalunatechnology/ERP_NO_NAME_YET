@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BookOpen, Check, Pencil, RefreshCw, Search, ShieldCheck, ShieldOff, X } from "lucide-react";
 import api from "@/lib/api/axios";
 import { getApiErrorDetail } from "@/lib/api/project.api";
@@ -15,6 +15,7 @@ export function ChartOfAccountsWorkspace({ canOperate = false }: { canOperate?: 
   const [editing, setEditing] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
+  const actionLock = useRef(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -30,7 +31,7 @@ export function ChartOfAccountsWorkspace({ canOperate = false }: { canOperate?: 
   useEffect(() => { void load(); }, [load]);
 
   const save = async (event: React.FormEvent) => {
-    event.preventDefault(); setBusy(true); setError(""); setNotice("");
+    event.preventDefault(); if (actionLock.current) return; actionLock.current = true; setBusy(true); setError(""); setNotice("");
     try {
       if (accounts.some((row) => row.account_code === String(form.account_code).trim() && row.id !== editing)) throw new Error("Kode akun sudah digunakan pada perusahaan ini.");
       const payload = { ...form, account_code: String(form.account_code).trim(), account_name: String(form.account_name).trim(), normal_balance: form.account_type === "ASSET" || form.account_type === "EXPENSE" ? "DEBIT" : "CREDIT", parent_account_id: form.parent_account_id || null, status: form.status || "ACTIVE" };
@@ -38,18 +39,19 @@ export function ChartOfAccountsWorkspace({ canOperate = false }: { canOperate?: 
       else await api.post("/api/v1/finance/accounts/", payload);
       setForm(empty); setEditing(null); setNotice(editing ? "COA diperbarui." : "COA baru berhasil dibuat."); await load();
     } catch (cause: any) { setError(cause?.message || getApiErrorDetail(cause, "COA belum dapat disimpan.")); }
-    finally { setBusy(false); }
+    finally { actionLock.current = false; setBusy(false); }
   };
 
   const startEdit = (row: Row) => { setEditing(row.id); setForm({ ...row, parent_account_id: row.parent_account_id ?? "" }); setNotice(""); setError(""); };
   const seedStandard = async () => {
-    setBusy(true); setError(""); setNotice("");
+    if (actionLock.current) return; actionLock.current = true; setBusy(true); setError(""); setNotice("");
     try { const response = await api.post("/api/v1/finance/accounts/setup-standard"); setNotice(`COA standar siap: ${response.data?.data?.accounts_created_or_found ?? ""} akun ditemukan atau dibuat.`); await load(); }
     catch (cause) { setError(getApiErrorDetail(cause, "COA standar belum dapat disiapkan.")); }
-    finally { setBusy(false); }
+    finally { actionLock.current = false; setBusy(false); }
   };
 
   const toggleStatus = async (row: Row) => {
+    if (actionLock.current) return; actionLock.current = true;
     const nextStatus = row.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
     setBusy(true); setError(""); setNotice("");
     try {
@@ -58,7 +60,7 @@ export function ChartOfAccountsWorkspace({ canOperate = false }: { canOperate?: 
       setNotice(`Akun ${row.account_code} ${nextStatus === "ACTIVE" ? "diaktifkan" : "dinonaktifkan"}.`);
     }
     catch (cause) { setError(getApiErrorDetail(cause, "Status COA belum dapat diubah.")); }
-    finally { setBusy(false); }
+    finally { actionLock.current = false; setBusy(false); }
   };
 
   const visible = accounts.filter((row) => `${row.account_code} ${row.account_name} ${row.account_type}`.toLowerCase().includes(query.toLowerCase()));
@@ -80,6 +82,7 @@ export function ChartOfAccountsWorkspace({ canOperate = false }: { canOperate?: 
       <div className="flex flex-wrap items-center gap-3 border-b p-4"><div className="relative min-w-[220px] flex-1"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(e) => setQuery(e.target.value)} className="w-full rounded-lg border py-2 pl-9 pr-3 text-xs" placeholder="Cari kode, nama, atau tipe akun" /></div><span className="text-xs text-slate-500">{visible.length} akun</span></div>
       <div className="overflow-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th className="p-3">Kode</th><th className="p-3">Nama akun</th><th className="p-3">Tipe</th><th className="p-3">Saldo normal</th><th className="p-3">Posting</th><th className="p-3">Status</th><th className="p-3 text-right">Aksi</th></tr></thead><tbody>{visible.map((row) => <tr key={row.id} className="border-t"><td className="p-3 font-mono font-bold">{row.account_code}</td><td className="p-3 font-semibold">{row.account_name}</td><td className="p-3">{row.account_type}</td><td className="p-3">{row.normal_balance}</td><td className="p-3">{row.allow_manual_posting ? "Manual diizinkan" : "Otomatis saja"}</td><td className="p-3"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${row.status === "ACTIVE" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{row.status}</span></td><td className="p-3"><div className="flex justify-end gap-2">{canOperate && <><button type="button" title="Edit nama dan pengaturan" onClick={() => startEdit(row)} disabled={busy} className="rounded border p-1.5 text-blue-700 disabled:opacity-50"><Pencil size={13} /></button><button type="button" onClick={() => void toggleStatus(row)} disabled={busy} className={`inline-flex min-w-[120px] items-center justify-center gap-1 rounded border px-2 py-1.5 text-[10px] font-semibold disabled:opacity-50 ${row.status === "ACTIVE" ? "border-amber-200 text-amber-800 hover:bg-amber-50" : "border-emerald-200 text-emerald-800 hover:bg-emerald-50"}`} title={row.status === "ACTIVE" ? "Nonaktifkan akun" : "Aktifkan akun"}>{row.status === "ACTIVE" ? <><ShieldOff size={13} /> Nonaktifkan</> : <><ShieldCheck size={13} /> Aktifkan</>}</button></>}</div></td></tr>)}{!visible.length && <tr><td colSpan={7} className="p-8 text-center text-slate-500">Belum ada akun COA.</td></tr>}</tbody></table></div>
     </section>
+    {busy && <div role="status" aria-live="polite" className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-[1px]"><span className="rounded-xl bg-white px-5 py-4 text-sm font-semibold text-blue-900 shadow-xl">Memproses perubahan COA…</span></div>}
     <p className="text-[10px] text-slate-500">Saldo buku besar dihitung dari jurnal POSTED. COA baru akan muncul pada Trial Balance setelah memiliki jurnal.</p>
   </div>;
 }

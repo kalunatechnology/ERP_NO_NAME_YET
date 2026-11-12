@@ -7,7 +7,7 @@
  */
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '@/lib/api/axios';
 import { getUserFacingApiError } from '@/lib/api/error-message';
 import { useAuth } from '@/contexts/AuthContext';
@@ -99,6 +99,13 @@ const buildCalendarPeriods = (startDate: string, endDate: string): CalendarPerio
 });
 
 export default function PeriodClosingWorkspace() {
+  const actionLocks = useRef(new Set<string>());
+  const runOnce = async <T,>(key: string, action: () => Promise<T>): Promise<T | undefined> => {
+    if (actionLocks.current.has(key)) return undefined;
+    actionLocks.current.add(key);
+    try { return await action(); }
+    finally { actionLocks.current.delete(key); }
+  };
   const { user, userRole } = useAuth();
   const canOperateFinance = canPerform('finance:operate', userRole, {
     enabledModules: user?.enabled_modules,
@@ -243,7 +250,7 @@ export default function PeriodClosingWorkspace() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const closePeriod = async (periodId: string) => {
+  const closePeriod = async (periodId: string) => runOnce(`close-period:${periodId}`, async () => {
     const activeRequest = closingRequests.find((request) =>
       request.closing_type === 'MONTHLY'
       && request.fiscal_period_id === periodId
@@ -266,9 +273,9 @@ export default function PeriodClosingWorkspace() {
       setClosingLoading(false);
       setClosingPeriodId(null);
     }
-  };
+  });
 
-  const approveClosing = async (requestId: string) => {
+  const approveClosing = async (requestId: string) => runOnce(`approve-closing:${requestId}`, async () => {
     try {
       await api.post(`/api/v1/finance/period-closings/${requestId}/approve`);
       showToast('Permintaan penutupan disetujui.', 'success');
@@ -276,9 +283,9 @@ export default function PeriodClosingWorkspace() {
     } catch (err: any) {
       showToast(getUserFacingApiError(err, 'Penutupan belum dapat disetujui. Pastikan Anda bukan pengaju dan memiliki hak akses.'), 'error');
     }
-  };
+  });
 
-  const executeClosing = async (requestId: string) => {
+  const executeClosing = async (requestId: string) => runOnce(`execute-closing:${requestId}`, async () => {
     try {
       const { data: response } = await api.post(`/api/v1/finance/period-closings/${requestId}/execute`);
       const request = closingRequests.find((item) => item.id === requestId);
@@ -289,9 +296,9 @@ export default function PeriodClosingWorkspace() {
     } catch (err: any) {
       showToast(getUserFacingApiError(err, 'Penutupan periode belum dapat dijalankan. Periksa persetujuan, checklist, dan status periode.'), 'error');
     }
-  };
+  });
 
-const reopenPeriod = async (periodId: string) => {
+const reopenPeriod = async (periodId: string) => runOnce(`reopen-period:${periodId}`, async () => {
   try {
     await api.post(`/api/v1/finance/fiscal-periods/${periodId}/reopen`);
     showToast('Periode berhasil dibuka kembali.', 'success');
@@ -300,9 +307,9 @@ const reopenPeriod = async (periodId: string) => {
     const errorMsg = getUserFacingApiError(err, 'Periode belum dapat dibuka kembali. Periksa status periode dan hak akses.');
     showToast(errorMsg, 'error');
   }
-};
+});
 
-const executeYearEnd = async () => {
+const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`, async () => {
   if (!selectedYearId) return;
   if (activeYearEndRequest) {
     setActiveSection('requests');
@@ -324,9 +331,9 @@ const executeYearEnd = async () => {
   } finally {
     setYearEndLoading(false);
   }
-};
+});
 
-  const executeRollback = async () => {
+  const executeRollback = async () => runOnce(`rollback-year:${rollbackYearId ?? "none"}`, async () => {
     if (!rollbackYearId || rollbackReason.trim().length < 10) return;
     setRollbackLoading(true);
     try {
@@ -341,7 +348,7 @@ const executeYearEnd = async () => {
     } finally {
       setRollbackLoading(false);
     }
-  };
+  });
 
   const visiblePeriods = selectedFiscalYearId ? periods.filter((period) => period.fiscal_year_id === selectedFiscalYearId) : periods;
   const openPeriods  = visiblePeriods.filter(p => p.status === 'OPEN');

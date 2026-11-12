@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarClock, Check, Pencil, Plus, RefreshCw, Send } from "lucide-react";
 import api from "@/lib/api/axios";
 import { formatMoney } from "@/lib/utils";
@@ -24,6 +24,7 @@ export function RecurringExpensesWorkspace({ canOperate = false }: { canOperate?
   const [form, setForm] = useState<any>(empty);
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const actionLock = useRef(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -51,20 +52,20 @@ export function RecurringExpensesWorkspace({ canOperate = false }: { canOperate?
   const tax = selectedInputTax ? base * Number(selectedInputTax.tax_rate ?? 0) / 100 : 0;
 
   const saveRule = async (event: React.FormEvent) => {
-    event.preventDefault(); setBusy(true); setError(""); setNotice("");
+    event.preventDefault(); if (actionLock.current) return; actionLock.current = true; setBusy(true); setError(""); setNotice("");
     try {
       const payload = { ...form, amount: Number(form.amount), cost_center_id: form.cost_center_id || null, project_id: form.project_id || null, input_tax_code_id: form.input_tax_code_id || null, end_date: form.end_date || null };
       if (editing) await api.put(`/api/v1/finance/recurring-expenses/rules/${editing}`, payload);
       else await api.post("/api/v1/finance/recurring-expenses/rules", payload);
       setForm(empty); setEditing(null); setNotice("Aturan biaya berulang tersimpan. Tagihan belum dibuat sampai Anda menekan Generate."); await load();
     } catch (cause) { setError(getApiErrorDetail(cause, "Aturan biaya berulang gagal disimpan.")); }
-    finally { setBusy(false); }
+    finally { actionLock.current = false; setBusy(false); }
   };
   const generate = async () => {
-    setBusy(true); setError(""); setNotice("");
+    if (actionLock.current) return; actionLock.current = true; setBusy(true); setError(""); setNotice("");
     try { const response = await api.post("/api/v1/finance/recurring-expenses/generate", { through_date: dateValue(new Date()) }); const generated = rowsOf(response.data); setNotice(generated.length ? `${generated.length} tagihan DRAFT dibuat. Periksa di menu Tagihan Vendor sebelum disetujui.` : "Tidak ada tagihan baru yang jatuh tempo untuk dibuat."); await load(); }
     catch (cause) { setError(getApiErrorDetail(cause, "Tagihan berulang gagal dibuat.")); }
-    finally { setBusy(false); }
+    finally { actionLock.current = false; setBusy(false); }
   };
 
   const activeProjects = projects.filter((project) => project.lifecycle_status !== "CANCELLED");

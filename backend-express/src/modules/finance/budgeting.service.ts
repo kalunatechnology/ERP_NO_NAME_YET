@@ -7,6 +7,7 @@ import { ensureCompanyDepartmentsAndCostCenters } from '../master_data/master_da
 const MONEY_EPSILON = 0.005;
 const CONTROL_POLICIES = new Set(['HARD_STOP', 'SOFT_WARNING', 'APPROVAL_ESCALATION']);
 const PERIOD_MODES = new Set(['ANNUAL', 'MONTHLY', 'QUARTERLY']);
+const BUDGET_TYPES = new Set(['OPERATING', 'CAPITAL', 'PROJECT']);
 const RESERVATION_SOURCE_TYPES = new Set(['REQUEST', 'PURCHASE_ORDER', 'INVOICE', 'OTHER']);
 const isActiveMasterStatus = (status?: string | null) => !['INACTIVE', 'DISABLED', 'DELETED', 'ARCHIVED'].includes(String(status ?? '').trim().toUpperCase());
 
@@ -524,6 +525,7 @@ export class BudgetingService {
     const name = requiredText(input.budget_name, 'Nama anggaran');
     const fiscalYearId = requiredText(input.fiscal_year_id, 'Tahun fiskal');
     const budgetType = requiredText(input.budget_type ?? 'OPERATING', 'Jenis anggaran', 60).toUpperCase();
+    if (!BUDGET_TYPES.has(budgetType)) throw new ValidationError('Jenis anggaran harus OPERATING, CAPITAL, atau PROJECT.');
     const policy = String(input.control_policy ?? 'HARD_STOP').toUpperCase();
     const periodMode = String(input.period_mode ?? 'ANNUAL').toUpperCase();
     if (!CONTROL_POLICIES.has(policy)) throw new ValidationError('Kebijakan kontrol anggaran tidak valid.');
@@ -533,21 +535,23 @@ export class BudgetingService {
     const fiscalYear = await prisma.fin_fiscal_year.findFirst({ where: { id: fiscalYearId, company_id: companyId } });
     if (!fiscalYear) throw new NotFoundError('Tahun fiskal');
     await ensureCompanyDepartmentsAndCostCenters(companyId, tenantId);
-    const normalized = [] as Array<{ id: string; allocation_name: string; description: string | null; account_id: string; cost_center_id: string; project_id: string | null; department_id: string | null; budget_amount: number; periods: Array<{ fiscal_period_id: string; amount: number }> }>;
+    const normalized = [] as Array<{ id: string; allocation_name: string; description: string | null; account_id: string; cost_center_id: string | null; project_id: string | null; department_id: string | null; budget_amount: number; periods: Array<{ fiscal_period_id: string; amount: number }> }>;
     for (const row of input.allocations) {
       const accountId = requiredText(row.account_id, 'Akun beban');
-      const costCenterId = requiredText(row.cost_center_id, 'Cost center');
+      const costCenterId = row.cost_center_id ? requiredText(row.cost_center_id, 'Cost center') : null;
       const projectId = row.project_id ? requiredText(row.project_id, 'Proyek') : null;
       const departmentId = row.department_id ? requiredText(row.department_id, 'Departemen') : null;
-      const overlapping = normalized.some((existing) => existing.account_id === accountId && existing.cost_center_id === costCenterId &&
+      if (!costCenterId && budgetType !== 'PROJECT') throw new ValidationError('Cost center wajib dipilih untuk anggaran operasional.');
+      if (budgetType === 'PROJECT' && !projectId) throw new ValidationError('Project wajib dipilih untuk Project Budget.');
+      const overlapping = normalized.some((existing) => existing.account_id === accountId && (!existing.cost_center_id || !costCenterId || existing.cost_center_id === costCenterId) &&
         (!existing.project_id || !projectId || existing.project_id === projectId) &&
         (!existing.department_id || !departmentId || existing.department_id === departmentId));
       if (overlapping) throw new ValidationError('Dimensi alokasi Budget Plan tidak boleh bertumpang tindih; pilih proyek/departemen yang spesifik atau alokasi yang mencakup semua.');
       const amount = money(row.amount ?? row.budget_amount, 'Pagu alokasi');
       const [account, center, coreCenter, project, department, coreDept] = await Promise.all([
         prisma.fin_account.findFirst({ where: { id: accountId, company_id: companyId, status: 'ACTIVE', account_type: 'EXPENSE' }, select: { id: true, account_code: true, account_name: true } }),
-        prisma.master_cost_center.findFirst({ where: { id: costCenterId, company_id: companyId }, select: { id: true, cost_center_code: true, cost_center_name: true, status: true } }),
-        (prisma as any).core_department.findFirst({ where: { id: costCenterId, company_id: companyId, is_active: true }, select: { id: true, code: true, name: true, is_cost_center: true } }).catch(() => null),
+        costCenterId ? prisma.master_cost_center.findFirst({ where: { id: costCenterId, company_id: companyId }, select: { id: true, cost_center_code: true, cost_center_name: true, status: true } }) : null,
+        costCenterId ? (prisma as any).core_department.findFirst({ where: { id: costCenterId, company_id: companyId, is_active: true }, select: { id: true, code: true, name: true, is_cost_center: true } }).catch(() => null) : null,
         projectId ? prisma.project_project.findFirst({ where: { id: projectId, company_id: companyId }, select: { id: true } }) : null,
         departmentId ? prisma.master_department.findFirst({ where: { id: departmentId, company_id: companyId }, select: { id: true, status: true } }) : null,
         departmentId ? (prisma as any).core_department.findFirst({ where: { id: departmentId, company_id: companyId, is_active: true }, select: { id: true } }).catch(() => null) : null,
@@ -556,10 +560,10 @@ export class BudgetingService {
         ? center
         : coreCenter && coreCenter.is_cost_center !== false
           ? { id: coreCenter.id, cost_center_code: coreCenter.code, cost_center_name: coreCenter.name, status: 'ACTIVE' }
-          : null;
+          : costCenterId ? null : undefined;
       const resolvedDepartmentValid = !departmentId || Boolean((department && isActiveMasterStatus(department.status)) || coreDept);
       if (!account) throw new ValidationError('Akun alokasi harus akun beban aktif pada perusahaan ini.');
-      if (!resolvedCenter) throw new ValidationError('Cost center tidak ditemukan atau tidak aktif pada perusahaan ini.');
+      if (costCenterId && !resolvedCenter) throw new ValidationError('Cost center tidak ditemukan atau tidak aktif pada perusahaan ini.');
       if (projectId && !project) throw new ValidationError('Proyek alokasi tidak ditemukan pada perusahaan ini.');
       if (!resolvedDepartmentValid) throw new ValidationError('Departemen tidak ditemukan atau tidak aktif pada perusahaan ini.');
       const periods = Array.isArray(row.periods) ? row.periods.map((period: any) => ({ fiscal_period_id: requiredText(period.fiscal_period_id, 'Periode fiskal'), amount: money(period.amount, 'Pagu periode', true) })) : [];
@@ -572,7 +576,8 @@ export class BudgetingService {
         if (Math.abs(periodTotal - amount) > MONEY_EPSILON) throw new ValidationError('Jumlah pembagian periode harus sama dengan pagu alokasi.');
         if (periods.length !== new Set(periods.map((period: any) => period.fiscal_period_id)).size) throw new ValidationError('Periode fiskal tidak boleh diduplikasi.');
       }
-      normalized.push({ id: existingPlanId && row.id ? requiredText(row.id, 'Alokasi') : crypto.randomUUID(), allocation_name: String(row.allocation_name ?? '').trim() || `${account!.account_code} ${account!.account_name} · ${resolvedCenter.cost_center_code} ${resolvedCenter.cost_center_name}`, description: row.description ? String(row.description).trim().slice(0, 1000) : null, account_id: accountId, cost_center_id: costCenterId, project_id: projectId, department_id: departmentId, budget_amount: amount, periods });
+      const dimensionName = [resolvedCenter && `${resolvedCenter.cost_center_code} ${resolvedCenter.cost_center_name}`, projectId && `Proyek ${projectId.slice(0, 8)}`].filter(Boolean).join(' · ');
+      normalized.push({ id: existingPlanId && row.id ? requiredText(row.id, 'Alokasi') : crypto.randomUUID(), allocation_name: String(row.allocation_name ?? '').trim() || `${account!.account_code} ${account!.account_name}${dimensionName ? ` · ${dimensionName}` : ''}`, description: row.description ? String(row.description).trim().slice(0, 1000) : null, account_id: accountId, cost_center_id: costCenterId, project_id: projectId, department_id: departmentId, budget_amount: amount, periods });
     }
     const total = normalized.reduce((sum, row) => sum + row.budget_amount, 0);
     return prisma.$transaction(async (tx) => {
@@ -769,6 +774,9 @@ export class BudgetingService {
     const amount = money(input.amount, recognize ? 'Nominal realisasi' : 'Nominal pelepasan');
     const reason = requiredText(input.reason ?? (recognize ? 'Pengakuan aktual' : 'Pelepasan komitmen'), 'Alasan', 500);
     return prisma.$transaction(async (tx) => {
+      // Serialize competing release/recognition requests for this reservation.
+      // The second request observes the updated remaining amount/status before writing its ledger row.
+      await tx.$queryRaw`SELECT id FROM fin_budget_reservation WHERE id = ${reservationId} AND company_id = ${companyId} FOR UPDATE`;
       const reservation = await tx.fin_budget_reservation.findFirst({ where: { id: reservationId, company_id: companyId } });
       if (!reservation) throw new NotFoundError('Reservasi anggaran');
       if (reservation.status !== 'OPEN' && reservation.status !== 'PARTIALLY_RELEASED') throw new ConflictError('Reservasi tidak memiliki komitmen terbuka.');
@@ -908,11 +916,13 @@ export class BudgetingService {
         allocation.account_id === line.account_id && (!allocation.project_id || allocation.project_id === line.project_id) &&
         (!allocation.department_id || allocation.department_id === line.department_id),
       ).map((allocation: any) => ({ budget, allocation })));
-      if (!line.cost_center_id) {
-        if (candidates.length) throw new ValidationError(`Cost center wajib diisi untuk akun beban ${line.account_id} yang dikendalikan Budgetary.`);
-        continue;
+      const costCenterCandidates = candidates.filter(({ allocation }: any) => line.cost_center_id
+        ? allocation.cost_center_id === line.cost_center_id || !allocation.cost_center_id
+        : !allocation.cost_center_id);
+      if (!line.cost_center_id && candidates.length && !costCenterCandidates.length) {
+        throw new ValidationError(`Cost center wajib diisi karena alokasi anggaran akun ${line.account_id} ditentukan berdasarkan Cost Center.`);
       }
-      const costCenterCandidates = candidates.filter(({ allocation }: any) => allocation.cost_center_id === line.cost_center_id);
+      if (!costCenterCandidates.length) continue;
       const exactProject = costCenterCandidates.some(({ allocation }: any) => allocation.project_id === line.project_id);
       const projectCandidates = costCenterCandidates.filter(({ allocation }: any) => exactProject ? allocation.project_id === line.project_id : !allocation.project_id);
       const exactDepartment = projectCandidates.some(({ allocation }: any) => allocation.department_id === line.department_id);

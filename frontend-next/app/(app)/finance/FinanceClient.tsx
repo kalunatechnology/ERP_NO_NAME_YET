@@ -37,6 +37,7 @@ import { FinanceSummarySection } from "@/components/finance/FinanceSummarySectio
 import { BudgetingWorkspace } from "@/components/finance/BudgetingWorkspace";
 import { AccessDeniedState, isForbiddenError } from "@/components/ui/AccessDeniedState";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { canRequestApi } from "@/lib/access/module-contract";
 import { canPerform } from "@/lib/access/capability-contract";
 import { FinanceModuleSidebar } from "@/components/finance/FinanceModuleSidebar";
@@ -118,6 +119,7 @@ interface FinanceBankAccount {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 export default function FinanceClient() {
+  const { run: runFinanceAction, pending: financePending } = useAsyncAction();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, userRole } = useAuth();
@@ -471,7 +473,7 @@ export default function FinanceClient() {
     }
   };
 
-  const importBankStatement = async () => {
+  const importBankStatement = async () => runFinanceAction(`bank-import:${bankImportAccountId}`, async () => {
     if (!bankImportAccountId || !bankImportFile) {
       toast.error("Pilih rekening dan file CSV terlebih dahulu.");
       return;
@@ -489,9 +491,9 @@ export default function FinanceClient() {
     } finally {
       setBankImporting(false);
     }
-  };
+  });
 
-  const matchBankStatementLine = async (line: any) => {
+  const matchBankStatementLine = async (line: any) => runFinanceAction(`bank-match:${line.id}`, async () => {
     const paymentId = bankMatchPaymentIds[String(line.id)];
     if (!paymentId) {
       toast.error("Pilih transaksi pembayaran yang akan dicocokkan.");
@@ -511,7 +513,20 @@ export default function FinanceClient() {
     } finally {
       setBankMatchingLineId(null);
     }
-  };
+  });
+
+  const runBillingDocumentAction = async (id: string, action: "submit" | "approve" | "post") => runFinanceAction(`billing-document:${id}:${action}`, async () => {
+    const labels = { submit: "Mengajukan dokumen…", approve: "Menyetujui dokumen…", post: "Memposting dokumen…" };
+    const toastId = `billing-document-${id}`;
+    toast.loading(labels[action], { id: toastId });
+    try {
+      await api.post(`/api/v1/finance/billing-documents/${id}/${action}`);
+      await loadFinanceData(true);
+      toast.success("Perubahan dokumen berhasil disimpan.", { id: toastId });
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Dokumen belum dapat diproses. Silakan coba lagi."), { id: toastId });
+    }
+  });
 
 /**
  * handleReverseEntry coordinates the UI behavior represented by this function.
@@ -520,7 +535,7 @@ export default function FinanceClient() {
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
  */
-  const handleReverseEntry = async () => {
+  const handleReverseEntry = async () => runFinanceAction(`journal-reversal:${selectedJournalEntry?.id ?? "none"}`, async () => {
     if (!selectedJournalEntry || !reversalReason.trim()) return;
     try {
       await api.post(`/api/v1/finance/journal-entries/${selectedJournalEntry.id}/reverse`, { reason: reversalReason });
@@ -531,7 +546,7 @@ export default function FinanceClient() {
     } catch (error) {
       toast.error(getApiErrorDetail(error, "Jurnal belum dapat dibalik. Periksa status jurnal dan periode keuangan, lalu coba lagi."));
     }
-  };
+  });
 
   useEffect(() => {
     loadFinanceData();
@@ -636,7 +651,7 @@ export default function FinanceClient() {
     .filter((entry) => String(entry.project_id ?? entry.project ?? entry.project?.id ?? "") === String(selectedBudgetProject?.id ?? ""))
     .reduce((sum, entry) => sum + Number(entry.total_cost ?? entry.amount ?? entry.cost_amount ?? entry.total_amount ?? 0), 0);
 
-  const handleCostLifecycle = async (entry: any) => {
+  const handleCostLifecycle = async (entry: any) => runFinanceAction(`project-cost:${entry.id}`, async () => {
     try {
       if (entry.status === "DRAFT") {
         await api.post(`/api/v1/finance/project-cost-entries/${entry.id}/validate`);
@@ -673,11 +688,11 @@ export default function FinanceClient() {
           : "Validasi cost entry gagal diproses.",
       ));
     }
-  };
+  });
 
   const [postingProposalId, setPostingProposalId] = useState<string | null>(null);
 
-  const handlePostBillingProposal = async (proposal: any) => {
+  const handlePostBillingProposal = async (proposal: any) => runFinanceAction(`billing-post:${proposal.id}`, async () => {
     setPostingProposalId(proposal.id);
     try {
       await api.post(`/api/v1/finance/billing-proposals/${proposal.id}/post-billing-document`, {});
@@ -688,9 +703,9 @@ export default function FinanceClient() {
     } finally {
       setPostingProposalId(null);
     }
-  };
+  });
 
-  const handleBillingProposalLifecycle = async (proposal: any) => {
+  const handleBillingProposalLifecycle = async (proposal: any) => runFinanceAction(`billing-lifecycle:${proposal.id}`, async () => {
     try {
       if (proposal.status === "DRAFT") await api.post(`/api/v1/finance/billing-proposals/${proposal.id}/submit`);
       else if (proposal.status === "SUBMITTED") await api.post(`/api/v1/finance/billing-proposals/${proposal.id}/approve`);
@@ -701,9 +716,9 @@ export default function FinanceClient() {
     } catch (error) {
       toast.error(getApiErrorDetail(error, "Status proposal tagihan belum dapat diperbarui. Periksa status dokumen dan hak akses, lalu coba lagi."));
     }
-  };
+  });
 
-  const handlePaymentLifecycle = async (payment: any) => {
+  const handlePaymentLifecycle = async (payment: any) => runFinanceAction(`payment-lifecycle:${payment.id}`, async () => {
     try {
       if (payment.status === "SUBMITTED") {
         await api.post(`/api/v1/finance/payments/${payment.id}/approve`);
@@ -718,9 +733,9 @@ export default function FinanceClient() {
     } catch (error) {
       toast.error(getApiErrorDetail(error, "Pembayaran belum dapat diproses. Periksa status pembayaran, hak akses, dan periode keuangan."));
     }
-  };
+  });
 
-  const handleReceiptLifecycle = async (receipt: any) => {
+  const handleReceiptLifecycle = async (receipt: any) => runFinanceAction(`receipt-lifecycle:${receipt.id}`, async () => {
     if (receiptActionId) return;
     const readiness = receiptReadiness[receipt.id];
     setReceiptActionId(receipt.id);
@@ -755,9 +770,9 @@ export default function FinanceClient() {
     } finally {
       setReceiptActionId(null);
     }
-  };
+  });
 
-  const handleDeleteReceipt = async (receiptId: string) => {
+  const handleDeleteReceipt = async (receiptId: string) => runFinanceAction(`receipt-delete:${receiptId}`, async () => {
     if (!confirm("Apakah Anda yakin ingin membatalkan dan menghapus catatan penerimaan ini? Data mutasi draft akan dihapus.")) return;
     setReceiptDeletingId(receiptId);
     const toastId = `receipt-delete-${receiptId}`;
@@ -771,7 +786,7 @@ export default function FinanceClient() {
     } finally {
       setReceiptDeletingId(null);
     }
-  };
+  });
 
 /**
  * handleVerifyThreeWayMatch coordinates the UI behavior represented by this function.
@@ -792,7 +807,7 @@ export default function FinanceClient() {
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
  */
-  const handleConfirmThreeWayMatch = async () => {
+  const handleConfirmThreeWayMatch = async () => runFinanceAction(`three-way-match:${selectedBillForMatch?.id ?? "none"}`, async () => {
     if (!selectedBillForMatch) return;
     try {
       await api.post(`/api/v1/finance/billing-documents/${selectedBillForMatch.id}/verify`);
@@ -805,7 +820,7 @@ export default function FinanceClient() {
         ? "Dokumen ini tidak dapat diverifikasi oleh pembuatnya. Silakan minta pengguna lain yang berwenang untuk melanjutkan."
         : detail);
     }
-  };
+  });
 
 /**
  * handleOpenPayModal coordinates the UI behavior represented by this function.
@@ -833,7 +848,7 @@ export default function FinanceClient() {
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
  */
-  const handleExecutePayment = async (e: React.FormEvent) => {
+  const handleExecutePayment = async (e: React.FormEvent) => runFinanceAction(`execute-payment:${selectedBillForPay?.id ?? "none"}`, async () => {
     e.preventDefault();
     if (!selectedBillForPay) return;
     if (!paymentForm.bank_account || !paymentForm.reference_number.trim()) {
@@ -856,7 +871,7 @@ export default function FinanceClient() {
     } catch (err: any) {
       toast.error(err.response?.data?.detail || err.response?.data?.message || "Permintaan pembayaran belum berhasil dibuat. Periksa data tagihan dan coba lagi.");
     }
-  };
+  });
 
   const trialBalanceAccounts = (trialBalance?.accounts || []).filter((account: any) => {
     const query = trialBalanceSearch.trim().toLowerCase();
@@ -893,6 +908,8 @@ export default function FinanceClient() {
 
   return (
     <div className="flex flex-col gap-6">
+
+      {Object.keys(financePending).length > 0 && <div role="status" aria-live="polite" className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-[1px]"><div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-white px-5 py-4 text-sm font-semibold text-blue-900 shadow-xl"><RefreshCw size={18} className="animate-spin" />Permintaan sedang diproses. Tombol akan aktif kembali setelah server merespons.</div></div>}
 
       {/* Header & Global Toolbar */}
       <div className="page-header">
@@ -1276,8 +1293,8 @@ export default function FinanceClient() {
                         Menunggu checker
                       </span>
                     ) : canOperateFinance && ["DRAFT", "VALIDATED"].includes(c.status) ? (
-                      <button onClick={() => handleCostLifecycle(c)} className="btn-primary py-1 px-2.5 text-2xs gap-1">
-                        <Zap size={12} /> {c.status === "DRAFT" ? "Validasi" : "Post ke WIP"}
+                      <button disabled={Boolean(financePending[`project-cost:${c.id}`])} onClick={() => void handleCostLifecycle(c)} className="btn-primary py-1 px-2.5 text-2xs gap-1 disabled:opacity-50">
+                        <Zap size={12} /> {financePending[`project-cost:${c.id}`] ? "Memproses…" : c.status === "DRAFT" ? "Validasi" : "Post ke WIP"}
                       </button>
                     ) : isWipPosted(c.status) ? (
                       <span className="text-2xs text-brand-deep-green font-bold">✓ Terposting ke WIP</span>
@@ -1384,8 +1401,8 @@ export default function FinanceClient() {
                         {canOperateFinance ? (
                           <>
                           {b.status === "DRAFT" && (
-                            <button onClick={async () => { await api.post(`/api/v1/finance/billing-documents/${b.id}/submit`); await loadFinanceData(true); }} className="btn-outline py-1.5 px-3 text-xs font-semibold">
-                              Submit
+                            <button disabled={Boolean(financePending[`billing-document:${b.id}:submit`])} onClick={() => void runBillingDocumentAction(b.id, "submit")} className="btn-outline py-1.5 px-3 text-xs font-semibold disabled:opacity-50">
+                              {financePending[`billing-document:${b.id}:submit`] ? "Mengajukan…" : "Submit"}
                             </button>
                           )}
                           {b.status === "SUBMITTED" && (
@@ -1397,13 +1414,13 @@ export default function FinanceClient() {
                             </button>
                           )}
                           {b.status === "VERIFIED" && (
-                            <button onClick={async () => { await api.post(`/api/v1/finance/billing-documents/${b.id}/approve`); await loadFinanceData(true); }} className="btn-outline py-1.5 px-3 text-xs font-semibold">
-                              Setujui
+                            <button disabled={Boolean(financePending[`billing-document:${b.id}:approve`])} onClick={() => void runBillingDocumentAction(b.id, "approve")} className="btn-outline py-1.5 px-3 text-xs font-semibold disabled:opacity-50">
+                              {financePending[`billing-document:${b.id}:approve`] ? "Menyetujui…" : "Setujui"}
                             </button>
                           )}
                           {b.status === "APPROVED" && (
-                            <button onClick={async () => { await api.post(`/api/v1/finance/billing-documents/${b.id}/post`); await loadFinanceData(true); }} className="btn-outline py-1.5 px-3 text-xs font-semibold">
-                              Posting
+                            <button disabled={Boolean(financePending[`billing-document:${b.id}:post`])} onClick={() => void runBillingDocumentAction(b.id, "post")} className="btn-outline py-1.5 px-3 text-xs font-semibold disabled:opacity-50">
+                              {financePending[`billing-document:${b.id}:post`] ? "Memposting…" : "Posting"}
                             </button>
                           )}
                           {b.status === "POSTED" && !isPaid && (
@@ -1448,8 +1465,8 @@ export default function FinanceClient() {
                       <span className="ml-2 text-text-secondary">{formatMoney(payment.amount ?? 0)} · {payment.status}</span>
                     </div>
                     {canOperateFinance && ['SUBMITTED', 'APPROVED'].includes(payment.status) && (
-                      <button onClick={() => handlePaymentLifecycle(payment)} className="btn-outline py-1.5 px-3 text-xs font-semibold">
-                        {payment.status === 'SUBMITTED' ? 'Setujui Payment' : 'Eksekusi Payment'}
+                      <button disabled={Boolean(financePending[`payment-lifecycle:${payment.id}`])} onClick={() => void handlePaymentLifecycle(payment)} className="btn-outline py-1.5 px-3 text-xs font-semibold disabled:opacity-50">
+                        {financePending[`payment-lifecycle:${payment.id}`] ? "Memproses…" : payment.status === 'SUBMITTED' ? 'Setujui Payment' : 'Eksekusi Payment'}
                       </button>
                     )}
                   </div>
@@ -1556,8 +1573,8 @@ export default function FinanceClient() {
                       <td className="py-3 px-3 text-right">
                         {canOperateFinance ? (
                           ["DRAFT", "SUBMITTED", "APPROVED"].includes(p.status) ? (
-                            <button onClick={() => handleBillingProposalLifecycle(p)} className="btn-primary py-1 px-2.5 text-2xs gap-1">
-                              {p.status === "DRAFT" ? "Submit" : p.status === "SUBMITTED" ? "Approve" : "Terbitkan Billing"}
+                            <button disabled={Boolean(financePending[`billing-lifecycle:${p.id}`])} onClick={() => void handleBillingProposalLifecycle(p)} className="btn-primary py-1 px-2.5 text-2xs gap-1 disabled:opacity-50">
+                              {financePending[`billing-lifecycle:${p.id}`] ? "Memproses…" : p.status === "DRAFT" ? "Submit" : p.status === "SUBMITTED" ? "Approve" : "Terbitkan Billing"}
                             </button>
                           ) : p.status === "ISSUED" ? (
                             isPosted ? (
@@ -2583,10 +2600,11 @@ export default function FinanceClient() {
             </button>
             <button
               type="button"
+              disabled={Boolean(financePending[`three-way-match:${selectedBillForMatch?.id ?? "none"}`])}
               onClick={handleConfirmThreeWayMatch}
-              className="btn-primary py-2 px-4 text-xs bg-brand-green hover:bg-brand-deep-green font-bold"
+              className="btn-primary py-2 px-4 text-xs bg-brand-green hover:bg-brand-deep-green font-bold disabled:opacity-50"
             >
-              Konfirmasi Verifikasi Dokumen
+              {financePending[`three-way-match:${selectedBillForMatch?.id ?? "none"}`] ? "Memverifikasi…" : "Konfirmasi Verifikasi Dokumen"}
             </button>
           </div>
         </div>
@@ -2600,7 +2618,7 @@ export default function FinanceClient() {
         subtitle="Entri pengeluaran riil yang akan masuk ke WIP"
       >
         <form
-          onSubmit={async (e) => {
+          onSubmit={(e) => runFinanceAction("create-project-cost", async () => {
             e.preventDefault();
             try {
               const amount = Number(costForm.amount);
@@ -2628,7 +2646,7 @@ export default function FinanceClient() {
             } catch (error) {
               toast.error(getApiErrorDetail(error, "Biaya belum dapat dicatat. Periksa proyek, nominal, dan hak akses, lalu coba lagi."));
             }
-          }}
+          })}
           className="flex flex-col gap-4"
         >
           <div>
@@ -2690,8 +2708,8 @@ export default function FinanceClient() {
               className="input"
             />
           </div>
-          <button type="submit" className="btn-primary w-full justify-center py-2.5 mt-2">
-            Simpan & Catat Biaya
+          <button type="submit" disabled={Boolean(financePending["create-project-cost"])} className="btn-primary w-full justify-center py-2.5 mt-2 disabled:opacity-50">
+            {financePending["create-project-cost"] ? "Menyimpan…" : "Simpan & Catat Biaya"}
           </button>
         </form>
       </Modal>
@@ -2704,7 +2722,7 @@ export default function FinanceClient() {
         subtitle="Permohonan pencairan dana modal proyek"
       >
         <form
-          onSubmit={async (e) => {
+          onSubmit={(e) => runFinanceAction("create-funding-request", async () => {
             e.preventDefault();
             try {
               const amount = Number(fundingForm.amount);
@@ -2734,7 +2752,7 @@ export default function FinanceClient() {
             } catch (error) {
               toast.error(getApiErrorDetail(error, "Permintaan dana belum dapat diajukan. Periksa nominal dan data kebutuhan, lalu coba lagi."));
             }
-          }}
+          })}
           className="flex flex-col gap-4"
         >
           <div>
@@ -2787,8 +2805,8 @@ export default function FinanceClient() {
               onChange={e => setFundingForm({ ...fundingForm, purpose: e.target.value })}
               placeholder="Tuliskan detail kebutuhan yang diajukan" className="input" />
           </div>
-          <button type="submit" className="btn-primary w-full justify-center py-2.5 mt-2">
-            Ajukan Request Dana
+          <button type="submit" disabled={Boolean(financePending["create-funding-request"])} className="btn-primary w-full justify-center py-2.5 mt-2 disabled:opacity-50">
+            {financePending["create-funding-request"] ? "Mengirim…" : "Ajukan Request Dana"}
           </button>
         </form>
       </Modal>
@@ -2802,7 +2820,7 @@ export default function FinanceClient() {
         size="md"
       >
         <form
-          onSubmit={async (e) => {
+          onSubmit={(e) => runFinanceAction("create-billing-proposal", async () => {
             e.preventDefault();
             try {
               const dpp = Number(billingForm.amount);
@@ -2856,7 +2874,7 @@ export default function FinanceClient() {
                 "Gagal membuat proposal tagihan. Periksa project, customer, dan nilai termin.",
               ));
             }
-          }}
+          })}
           className="flex flex-col gap-4 p-1 text-xs"
         >
           <div>
@@ -2974,8 +2992,8 @@ export default function FinanceClient() {
             Pencatatannya dilakukan saat proses pembayaran/penerimaan agar nilai yang tersimpan sesuai bukti transaksi.
           </CollapsibleGuideline>
 
-          <button type="submit" className="btn-primary w-full justify-center py-2.5 mt-1">
-            Simpan Proposal Tagihan
+          <button type="submit" disabled={Boolean(financePending["create-billing-proposal"])} className="btn-primary w-full justify-center py-2.5 mt-1 disabled:opacity-50">
+            {financePending["create-billing-proposal"] ? "Menyimpan…" : "Simpan Proposal Tagihan"}
           </button>
         </form>
       </Modal>
@@ -2988,7 +3006,7 @@ export default function FinanceClient() {
         subtitle="Entri invoice supplier dimulai sebagai DRAFT dan mengikuti lifecycle backend"
       >
         <form
-          onSubmit={async (e) => {
+          onSubmit={(e) => runFinanceAction("create-ap-invoice", async () => {
             e.preventDefault();
             try {
               if (!apForm.expense_account_id) {
@@ -3055,7 +3073,7 @@ export default function FinanceClient() {
             } catch (error) {
               toast.error(getApiErrorDetail(error, "Tagihan vendor belum dapat didaftarkan. Periksa vendor, nomor invoice, nominal, dan kemungkinan invoice duplikat."));
             }
-          }}
+          })}
           className="flex flex-col gap-4"
         >
           <div>
@@ -3118,8 +3136,8 @@ export default function FinanceClient() {
               />
             </div>
           </div>
-          <button type="submit" className="btn-primary w-full justify-center py-2.5 mt-2 font-bold">
-            Daftarkan Invoice AP
+          <button type="submit" disabled={Boolean(financePending["create-ap-invoice"])} className="btn-primary w-full justify-center py-2.5 mt-2 font-bold disabled:opacity-50">
+            {financePending["create-ap-invoice"] ? "Mendaftarkan…" : "Daftarkan Invoice AP"}
           </button>
         </form>
       </Modal>
@@ -3209,8 +3227,8 @@ export default function FinanceClient() {
             <button type="button" onClick={() => setIsPaymentModalOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">
               Batal
             </button>
-            <button type="submit" className="btn-primary py-2 px-4 text-xs bg-brand-green hover:bg-brand-deep-green font-bold">
-              Konfirmasi & Eksekusi Pembayaran (Disburse)
+            <button type="submit" disabled={Boolean(financePending[`execute-payment:${selectedBillForPay?.id ?? "none"}`])} className="btn-primary py-2 px-4 text-xs bg-brand-green hover:bg-brand-deep-green font-bold disabled:opacity-50">
+              {financePending[`execute-payment:${selectedBillForPay?.id ?? "none"}`] ? "Memproses pembayaran…" : "Konfirmasi & Eksekusi Pembayaran (Disburse)"}
             </button>
           </div>
         </form>
@@ -3226,7 +3244,7 @@ export default function FinanceClient() {
       >
         <form
           noValidate
-          onSubmit={async (e) => {
+          onSubmit={(e) => runFinanceAction("create-customer-receipt", async () => {
             e.preventDefault();
             if (receiptSaving) return;
             const errors: Record<string, string> = {};
@@ -3301,7 +3319,7 @@ export default function FinanceClient() {
             } finally {
               setReceiptSaving(false);
             }
-          }}
+          })}
           className="flex flex-col gap-4 p-1"
         >
           <CollapsibleGuideline title="Pencatatan penerimaan" tone="blue">
@@ -3683,10 +3701,10 @@ export default function FinanceClient() {
               <button onClick={() => { setIsReversalModalOpen(false); setReversalReason(""); }} className="btn-ghost text-xs">Batal</button>
               <button
                 onClick={handleReverseEntry}
-                disabled={reversalReason.trim().length < 5}
+                disabled={reversalReason.trim().length < 5 || Boolean(financePending[`journal-reversal:${selectedJournalEntry?.id ?? "none"}`])}
                 className="btn-primary text-xs py-2 px-4 font-bold bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-40"
               >
-                Konfirmasi Storno Jurnal
+                {financePending[`journal-reversal:${selectedJournalEntry?.id ?? "none"}`] ? "Memproses storno…" : "Konfirmasi Storno Jurnal"}
               </button>
             </div>
           </div>
