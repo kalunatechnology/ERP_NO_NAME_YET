@@ -7,7 +7,7 @@
  */
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   DollarSign, TrendingUp, CreditCard, ArrowUpRight, ArrowDownRight,
@@ -21,6 +21,7 @@ import {
 import { cn, formatMoney, formatRupiah, formatDate, getStatusColor, localDateKey } from "@/lib/utils";
 import api from "@/lib/api/axios";
 import { normalizeList } from "@/lib/api/auth.api";
+import { buildMonthlyStackedData } from "@/lib/api/finance.api";
 import { getApiErrorDetail } from "@/lib/api/project.api";
 import { Modal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
@@ -351,7 +352,7 @@ export default function FinanceClient() {
         : "";
       const balanceSheetDateQuery = financePeriodEnd ? `?as_of_date=${encodeURIComponent(financePeriodEnd)}` : "";
       const [costRes, wipReadinessRes, fundRes, fundingOptionsRes, propRes, apRes, receiptRes, paymentRes, bankMatchPaymentRes, tbRes, jeRes, plRes, bsRes, stmtLinesRes, reconciliationRes, bankRes, accountRes, projectOptionRes, vendorOptionRes, divisionRes, fiscalPeriodRes, fiscalYearRes] = await Promise.all([
-        safeGet(`/api/v1/finance/project-cost-entries/?page_size=50${financeDateRangeQuery("transaction_date")}`, "costing"),
+        safeGet(`/api/v1/finance/project-cost-entries/?page_size=200${financeDateRangeQuery("transaction_date")}`, "costing"),
         canOperateFinance
           ? safeGet("/api/v1/finance/project-cost-entries/wip-readiness", "costing")
           : Promise.resolve({ data: [] }),
@@ -361,7 +362,7 @@ export default function FinanceClient() {
         safeGet("/api/v1/finance/budgeting/options", "fundings"),
         safeGet(`/api/v1/finance/billing-proposals/?page_size=50${financeDateRangeQuery("created_at")}`, "billing"),
         safeGet(`/api/v1/finance/billing-documents/?billing_type=SUPPLIER_INVOICE&page_size=50${financeDateRangeQuery("invoice_date")}`, "ap"),
-        safeGet(`/api/v1/finance/customer-receipts/?page_size=50${financeDateRangeQuery("payment_date")}`, "ar"),
+        safeGet(`/api/v1/finance/customer-receipts/?page_size=200${financeDateRangeQuery("payment_date")}`, "ar"),
         safeGet(`/api/v1/finance/payments/?payment_type=OUTGOING&page_size=50${financeDateRangeQuery("payment_date")}`, "ap"),
         safeGet(`/api/v1/finance/payments/?status=POSTED&page_size=200${financeDateRangeQuery("payment_date")}`, "banking_hub"),
         safeGet(`/api/v1/finance/trial-balance${reportRangeQuery}`, "gl"),
@@ -569,6 +570,17 @@ export default function FinanceClient() {
     .reduce((acc, curr) => acc + Number(curr.total_amount ?? curr.amount ?? curr.subtotal ?? 0), 0);
   const postedReceipts = customerReceipts.filter(receipt => receipt.status === "POSTED");
   const totalInflowRevenue = receiptSummary?.posted_amount ?? 0;
+
+  const profitabilityChart = useMemo(
+    () => buildMonthlyStackedData({
+      receipts: customerReceipts,
+      costs: costEntries,
+      includeProposalsInTop: false,
+      startDate: financePeriodStart,
+      endDate: financePeriodEnd,
+    }),
+    [customerReceipts, costEntries, financePeriodStart, financePeriodEnd],
+  );
 
   const totalRevenue = totalBillingRevenue;
   
@@ -1047,7 +1059,8 @@ export default function FinanceClient() {
             subtitle="Perbandingan pendapatan termin yang terealisasi dan alokasi biaya proyek per bulan fiskal."
             primaryLabel="Realisasi Kas"
             secondaryLabel="Alokasi Biaya Proyek"
-            autoFetch={true}
+            data={profitabilityChart.data}
+            autoFetch={false}
           />
 
           <div className="card rounded-2xl p-5 flex flex-col gap-4">

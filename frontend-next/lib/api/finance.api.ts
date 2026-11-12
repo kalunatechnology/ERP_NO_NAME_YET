@@ -221,72 +221,134 @@ export interface RealMonthlyStackedResponse {
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+export interface BuildMonthlyStackedOptions {
+  receipts?: any[];
+  costs?: any[];
+  proposals?: any[];
+  includeProposalsInTop?: boolean;
+  startDate?: string;
+  endDate?: string;
+}
+
+function formatMonthNoteAmount(valueInJt: number): string {
+  if (valueInJt <= 0) return "Rp 0";
+  if (valueInJt >= 1) return `Rp ${valueInJt.toLocaleString("id-ID", { maximumFractionDigits: 2 })} Jt`;
+  const valueInRp = Math.round(valueInJt * 1_000_000);
+  if (valueInRp >= 1_000) return `Rp ${(valueInRp / 1_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} rb`;
+  return `Rp ${valueInRp.toLocaleString("id-ID")}`;
+}
+
+/** Build monthly chart values from finance rows already loaded by the caller. */
+export function buildMonthlyStackedData({
+  receipts = [],
+  costs = [],
+  proposals = [],
+  includeProposalsInTop = false,
+  startDate,
+  endDate,
+}: BuildMonthlyStackedOptions): RealMonthlyStackedResponse {
+  const monthlyBottomRp = new Array(12).fill(0) as number[];
+  const monthlyTopRp = new Array(12).fill(0) as number[];
+  const startBound = startDate?.slice(0, 10) || "";
+  const endBound = endDate?.slice(0, 10) || "";
+
+  const addToMonth = (target: number[], dateValue: unknown, amountValue: unknown) => {
+    if (!dateValue || amountValue == null) return;
+    const dateText = String(dateValue);
+    const dateKey = dateText.slice(0, 10);
+    if ((startBound && dateKey < startBound) || (endBound && dateKey > endBound)) return;
+    const date = new Date(dateText);
+    const amount = Number(amountValue);
+    if (Number.isNaN(date.getTime()) || !Number.isFinite(amount) || amount <= 0) return;
+    const month = date.getMonth();
+    if (month >= 0 && month < 12) target[month] += amount;
+  };
+
+  receipts
+    .filter((receipt) => ["POSTED", "PAID", "COMPLETED", "SETTLED"].includes(String(receipt?.status || "").toUpperCase()))
+    .forEach((receipt) => addToMonth(
+      monthlyBottomRp,
+      receipt.payment_date ?? receipt.receipt_date ?? receipt.transaction_date ?? receipt.created_at,
+      receipt.amount ?? receipt.total_amount ?? receipt.paid_amount,
+    ));
+
+  costs
+    .filter((cost) => !["REJECTED", "CANCELLED", "VOID"].includes(String(cost?.status || "").toUpperCase()))
+    .forEach((cost) => addToMonth(
+      monthlyTopRp,
+      cost.transaction_date ?? cost.date ?? cost.created_at,
+      cost.total_cost ?? cost.amount ?? cost.cost_amount ?? cost.total_amount,
+    ));
+
+  if (includeProposalsInTop) {
+    proposals
+      .filter((proposal) => !["REJECTED", "CANCELLED"].includes(String(proposal?.status || "").toUpperCase()))
+      .forEach((proposal) => addToMonth(
+        monthlyTopRp,
+        proposal.approved_at ?? proposal.submitted_at ?? proposal.created_at,
+        proposal.total_amount ?? proposal.amount ?? proposal.subtotal,
+      ));
+  }
+
+  let highestTotalJt = 0;
+  const data: RealMonthlyStackedDataPoint[] = MONTH_NAMES.map((month, index) => {
+    const rawBottomRp = monthlyBottomRp[index];
+    const rawTopRp = monthlyTopRp[index];
+    const hasData = rawBottomRp > 0 || rawTopRp > 0;
+    const bottomValue = rawBottomRp > 0 ? Number((rawBottomRp / 1_000_000).toFixed(4)) : 0;
+    const topValue = rawTopRp > 0 ? Number((rawTopRp / 1_000_000).toFixed(4)) : 0;
+    highestTotalJt = Math.max(highestTotalJt, bottomValue + topValue);
+    return {
+      month,
+      bottomValue,
+      topValue,
+      hasData,
+      notes: hasData
+        ? `Realisasi: ${formatMonthNoteAmount(bottomValue)} · Biaya Proyek: ${formatMonthNoteAmount(topValue)}`
+        : "Belum ada data transaksi tercatat",
+    };
+  });
+
+  return { data, maxValue: Math.max(500, Math.ceil((highestTotalJt || 500) / 100) * 100) };
+}
+
 /**
  * fetchRealMonthlyStackedData adapts a frontend operation to its HTTP API contract.
  *
  * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
  * @returns The typed payload or Promise produced after response normalization.
- * External dependency: calls `/api/v1/finance/billing-documents/?page_size=200`, `/api/v1/finance/billing-proposals/?page_size=200`, `/api/v1/finance/customer-receipts/?page_size=200`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
- * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ * External dependency: loads billing proposals, customer receipts, fallback customer payments, and project cost entries through the shared Axios client. Authentication, company scope, timeout, and idempotency are inherited from that client.
+ * Failure behavior: tolerates an individual endpoint failure, but rejects when every source needed for the chart fails so the UI can report the load problem.
  */
-export async function fetchRealMonthlyStackedData(): Promise<RealMonthlyStackedResponse> {
-  const [proposalsRes, receiptsRes, costsRes] = await Promise.all([
-    api.get("/api/v1/finance/billing-proposals/?page_size=200"),
-    api.get("/api/v1/finance/customer-receipts/?page_size=200"),
-    api.get("/api/v1/finance/project-cost-entries/?page_size=200"),
+export async function fetchRealMonthlyStackedData(params?: {
+  startDate?: string;
+  endDate?: string;
+  includeProposalsInTop?: boolean;
+}): Promise<RealMonthlyStackedResponse> {
+  const dateFilter = (field: string) => params?.startDate && params?.endDate
+    ? `&${field}__gte=${encodeURIComponent(params.startDate)}&${field}__lte=${encodeURIComponent(params.endDate)}`
+    : "";
+  const [proposalsResult, receiptsResult, paymentsResult, costsResult] = await Promise.allSettled([
+    api.get(`/api/v1/finance/billing-proposals/?page_size=200${dateFilter("created_at")}`),
+    api.get(`/api/v1/finance/customer-receipts/?page_size=200${dateFilter("payment_date")}`),
+    api.get(`/api/v1/finance/payments/?payment_type=CUSTOMER_RECEIPT&page_size=200${dateFilter("payment_date")}`),
+    api.get(`/api/v1/finance/project-cost-entries/?page_size=200${dateFilter("transaction_date")}`),
   ]);
+  const proposals = proposalsResult.status === "fulfilled" ? normalizeList<any>(proposalsResult.value.data).rows : [];
+  const customerReceipts = receiptsResult.status === "fulfilled" ? normalizeList<any>(receiptsResult.value.data).rows : [];
+  const incomingPayments = paymentsResult.status === "fulfilled" ? normalizeList<any>(paymentsResult.value.data).rows : [];
+  const costs = costsResult.status === "fulfilled" ? normalizeList<any>(costsResult.value.data).rows : [];
 
-    const proposals = normalizeList<any>(proposalsRes.data).rows;
-    const receipts = normalizeList<any>(receiptsRes.data).rows;
-    const costs = normalizeList<any>(costsRes.data).rows;
+  if (receiptsResult.status === "rejected" && paymentsResult.status === "rejected" && costsResult.status === "rejected") {
+    throw new Error("Data penerimaan dan biaya proyek gagal dimuat.");
+  }
 
-    // Monthly buckets in Millions (Juta Rupiah - Jt)
-    const monthlyBottom = new Array(12).fill(0);
-    const monthlyTop = new Array(12).fill(0);
-
-    // 1. Process Actual Realized Inflow & Payments
-    const addToMonth = (target: number[], dateValue: unknown, amountValue: unknown) => {
-      if (!dateValue || amountValue == null) return;
-      const dt = new Date(String(dateValue));
-      const amount = Number(amountValue);
-      if (Number.isNaN(dt.getTime()) || !Number.isFinite(amount) || amount <= 0) return;
-      const m = dt.getMonth();
-      const amtJt = amount / 1_000_000;
-      if (m >= 0 && m < 12) target[m] += amtJt;
-    };
-
-    receipts.filter((r: any) => r.status === "POSTED").forEach((r: any) => {
-      addToMonth(monthlyBottom, r.payment_date || r.created_at, r.amount);
-    });
-
-    // 2. Process Projected & WIP Allocations
-    proposals.forEach((p: any) => {
-      addToMonth(monthlyTop, p.created_at, p.total_amount ?? p.amount);
-    });
-
-    costs.forEach((c: any) => {
-      addToMonth(monthlyTop, c.transaction_date, c.total_cost ?? c.amount);
-    });
-
-    let highestTotal = 0;
-    const resultData: RealMonthlyStackedDataPoint[] = MONTH_NAMES.map((month, idx) => {
-      const bVal = monthlyBottom[idx] > 0 ? Math.round(monthlyBottom[idx]) : 0;
-      const tVal = monthlyTop[idx] > 0 ? Math.round(monthlyTop[idx]) : 0;
-      const total = bVal + tVal;
-      const hasData = total > 0;
-      if (total > highestTotal) highestTotal = total;
-
-      return {
-        month,
-        bottomValue: bVal,
-        topValue: tVal,
-        hasData,
-        notes: hasData
-          ? `Realisasi: Rp ${bVal.toLocaleString("id-ID")} Jt · WIP/Proyeksi: Rp ${tVal.toLocaleString("id-ID")} Jt`
-          : "Belum ada data transaksi tercatat",
-      };
-    });
-
-  const maxValue = Math.max(500, Math.ceil((highestTotal || 500) / 100) * 100);
-  return { data: resultData, maxValue };
+  return buildMonthlyStackedData({
+    receipts: customerReceipts.length > 0 ? customerReceipts : incomingPayments,
+    costs,
+    proposals,
+    includeProposalsInTop: params?.includeProposalsInTop ?? false,
+    startDate: params?.startDate,
+    endDate: params?.endDate,
+  });
 }

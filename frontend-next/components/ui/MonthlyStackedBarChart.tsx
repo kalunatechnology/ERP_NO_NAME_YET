@@ -74,7 +74,14 @@ function formatValueDisplay(valInJt: number): string {
     const valM = valInJt / 1000;
     return `Rp ${valM.toFixed(valM % 1 === 0 ? 0 : 2)} Miliar`;
   }
-  return `Rp ${Math.round(valInJt).toLocaleString("id-ID")} Juta`;
+  if (valInJt >= 1) {
+    return `Rp ${valInJt.toLocaleString("id-ID", { maximumFractionDigits: 2 })} Juta`;
+  }
+  const valInRp = Math.round(valInJt * 1_000_000);
+  if (valInRp >= 1_000) {
+    return `Rp ${(valInRp / 1_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} Ribu`;
+  }
+  return `Rp ${valInRp.toLocaleString("id-ID")}`;
 }
 
 /**
@@ -127,6 +134,11 @@ export function MonthlyStackedBarChart({
   useEffect(() => {
     if (data && data.length > 0) {
       setRealData(data);
+      const highestTotal = data.reduce(
+        (highest, item) => Math.max(highest, (Number(item.bottomValue) || 0) + (Number(item.topValue) || 0)),
+        0,
+      );
+      setAutoComputedMax(Math.max(500, Math.ceil((highestTotal || 500) / 100) * 100));
     } else if (autoFetch) {
       loadRealFinancials();
     }
