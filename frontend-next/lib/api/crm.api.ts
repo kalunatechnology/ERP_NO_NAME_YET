@@ -184,6 +184,9 @@ export interface CRMPartyContact {
   email: string;
   phone?: string;
   primary_contact: boolean;
+  department?: string | null;
+  contact_type?: string | null;
+  notes?: string | null;
 }
 
 export async function loadCRMPartyContacts(partyId: string | number): Promise<CRMPartyContact[]> {
@@ -403,7 +406,10 @@ export async function qualifyInquiry(id: string | number) {
   return data;
 }
 
-export async function updateCRMInquiryLeadStatus(id: string | number, payload: { status: "CONTACTED" | "RESPONDED" | "FOLLOW_UP"; next_follow_up_at?: string; note?: string }) {
+export async function updateCRMInquiryLeadStatus(
+  id: string | number,
+  payload: { status: "NEW" | "CONTACTED" | "RESPONDED" | "FOLLOW_UP" | "INTERESTED" | "UNQUALIFIED"; next_follow_up_at?: string; note?: string },
+) {
   const { data } = await api.post(`/api/v1/crm/customer-inquiries/${id}/lead-status`, payload);
   return data;
 }
@@ -430,6 +436,9 @@ export async function createCustomerInquiry(payload: {
   contact_id?: string | null;
   description?: string;
   expected_delivery_date?: string | null;
+  lead_source?: string | null;
+  interested_service?: string | null;
+  notes?: string | null;
 }) {
   const { data } = await api.post("/api/v1/crm/customer-inquiries/", {
     subject: payload.subject,
@@ -440,6 +449,9 @@ export async function createCustomerInquiry(payload: {
     contact_id: payload.contact_id || null,
     description: payload.description || "",
     expected_delivery_date: payload.expected_delivery_date || null,
+    lead_source: payload.lead_source || null,
+    interested_service: payload.interested_service || null,
+    notes: payload.notes || null,
     status: "NEW",
   });
   return data;
@@ -451,6 +463,9 @@ export async function updateCustomerInquiry(id: string | number, payload: {
   customer_email?: string;
   customer_phone?: string;
   description?: string;
+  lead_source?: string | null;
+  interested_service?: string | null;
+  notes?: string | null;
 }) {
   const { data } = await api.patch(`/api/v1/crm/customer-inquiries/${id}/edit`, {
     ...payload,

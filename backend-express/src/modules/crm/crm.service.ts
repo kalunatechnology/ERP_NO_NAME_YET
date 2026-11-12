@@ -21,13 +21,20 @@ export class CRMService {
     userId: string,
     payload: { status?: string; next_follow_up_at?: string; note?: string },
   ) {
-    const target = String(payload.status ?? '').trim().toUpperCase();
-    if (!['CONTACTED', 'RESPONDED', 'FOLLOW_UP'].includes(target)) throw new ValidationError('Status lead tidak valid.');
+    const rawTarget = String(payload.status ?? '').trim().toUpperCase();
+    const aliasMap: Record<string, string> = {
+      WAITING: 'FOLLOW_UP',
+      NOT_INTERESTED: 'UNQUALIFIED',
+      CLOSED_LOST: 'UNQUALIFIED',
+      REJECTED: 'UNQUALIFIED',
+    };
+    const target = aliasMap[rawTarget] ?? rawTarget;
+    const allowedTargets = ['NEW', 'CONTACTED', 'FOLLOW_UP', 'RESPONDED', 'INTERESTED', 'UNQUALIFIED'];
+    if (!allowedTargets.includes(target)) throw new ValidationError('Status lead tidak valid.');
     const note = String(payload.note ?? '').trim();
     if (note.length > 2000) throw new ValidationError('Catatan kontak maksimal 2.000 karakter.');
-    if (target === 'FOLLOW_UP' && !note) throw new ValidationError('Alasan tindak lanjut wajib diisi.');
     const followUpAt = payload.next_follow_up_at ? new Date(payload.next_follow_up_at) : null;
-    if (target === 'FOLLOW_UP' && (!followUpAt || Number.isNaN(followUpAt.getTime()) || followUpAt <= new Date())) {
+    if (followUpAt && (Number.isNaN(followUpAt.getTime()) || followUpAt <= new Date())) {
       throw new ValidationError('Pilih tanggal tindak lanjut yang akan datang.');
     }
 
@@ -36,20 +43,19 @@ export class CRMService {
       const inquiry = await tx.crm_customer_inquiry.findFirst({ where: { id: inquiryId, company_id: companyId } });
       if (!inquiry) throw new NotFoundError('Lead / Inquiry');
       const current = String(inquiry.status || 'NEW').toUpperCase();
-      const validFrom: Record<string, string[]> = {
-        CONTACTED: ['NEW', 'FOLLOW_UP'],
-        RESPONDED: ['CONTACTED'],
-        FOLLOW_UP: ['NEW', 'CONTACTED', 'RESPONDED', 'FOLLOW_UP'],
-      };
-      if (!validFrom[target].includes(current)) throw new ConflictError(`Lead tidak dapat berpindah dari ${current} ke ${target}.`);
+      if (current === 'QUALIFIED' && inquiry.opportunity_id && target !== 'QUALIFIED') {
+        throw new ConflictError('Lead yang sudah dikonversi menjadi Opportunity tidak dapat dipindahkan ke status lain.');
+      }
       const now = new Date();
       const updated = await tx.crm_customer_inquiry.update({
         where: { id: inquiry.id },
         data: {
           status: target,
-          ...(target === 'CONTACTED' ? { last_contacted_at: now, last_contact_note: note, next_follow_up_at: null } : {}),
-          ...(target === 'RESPONDED' ? { responded_at: now, next_follow_up_at: null } : {}),
-          ...(target === 'FOLLOW_UP' ? { next_follow_up_at: followUpAt, last_contact_note: note || inquiry.last_contact_note } : {}),
+          ...(target === 'CONTACTED' ? { last_contacted_at: now, last_contact_note: note || inquiry.last_contact_note, next_follow_up_at: null } : {}),
+          ...(target === 'RESPONDED' || target === 'INTERESTED' ? { responded_at: inquiry.responded_at ?? now, last_contact_note: note || inquiry.last_contact_note, next_follow_up_at: null } : {}),
+          ...(target === 'FOLLOW_UP' ? { next_follow_up_at: followUpAt ?? inquiry.next_follow_up_at, last_contact_note: note || inquiry.last_contact_note } : {}),
+          ...(target === 'UNQUALIFIED' ? { closed_at: now, last_contact_note: note || inquiry.last_contact_note, next_follow_up_at: null } : {}),
+          ...(target === 'NEW' ? { closed_at: null, next_follow_up_at: null } : {}),
           updated_at: now,
         },
       });
@@ -90,17 +96,23 @@ export class CRMService {
       });
       if (!inquiry) throw new NotFoundError('CustomerInquiry');
       const inquiryStatus = String(inquiry.status || '').toUpperCase();
-      if (!['RESPONDED', 'QUALIFIED'].includes(inquiryStatus)) {
-        throw new ConflictError('Lead harus ditandai Merespons sebelum dikualifikasi menjadi Opportunity.');
+      if (!['NEW', 'CONTACTED', 'FOLLOW_UP', 'RESPONDED', 'INTERESTED', 'QUALIFIED'].includes(inquiryStatus)) {
+        throw new ConflictError('Lead yang sudah ditutup sebagai Tidak Tertarik tidak dapat dikualifikasi.');
       }
       if (!inquiry.customer_party_id) {
-        throw new ValidationError('Hubungkan Inquiry ke customer aktif sebelum menjadikannya Opportunity.');
+        throw new ValidationError('Hubungkan Inquiry ke customer/calon customer aktif sebelum menjadikannya Opportunity.');
       }
       const customerParty = await tx.master_party.findFirst({
-        where: { id: inquiry.customer_party_id, company_id: companyId, party_type: 'CUSTOMER', status: 'ACTIVE' },
-        select: { id: true },
+        where: { id: inquiry.customer_party_id, company_id: companyId, party_type: { in: ['CUSTOMER', 'PROSPECT'] }, status: 'ACTIVE' },
+        select: { id: true, party_type: true },
       });
       if (!customerParty) throw new ValidationError('Customer pada Inquiry tidak aktif atau bukan milik company ini. Perbarui relasi customer terlebih dahulu.');
+      if (customerParty.party_type === 'PROSPECT') {
+        await tx.master_party.update({
+          where: { id: customerParty.id },
+          data: { party_type: 'CUSTOMER', updated_at: new Date() },
+        });
+      }
       if (inquiry.contact_id) {
         const linkedContact = await tx.master_contact.findFirst({
           where: { id: inquiry.contact_id, company_id: companyId, party_id: customerParty.id },

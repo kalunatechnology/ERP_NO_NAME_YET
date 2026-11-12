@@ -50,19 +50,17 @@ import { CollapsibleGuideline } from "@/components/ui/CollapsibleGuideline";
 import { CRMPeriodToolbar, useCRMPeriodFilter } from "@/components/crm/CRMPeriodFilter";
 import { canAccessRoute } from "@/lib/access/module-contract";
 import { canPerform } from "@/lib/access/capability-contract";
+import { CrmCompaniesView, CrmContactsView } from "@/components/crm/CrmCompaniesContactsView";
+import { CrmLeadsView } from "@/components/crm/CrmLeadsView";
+import { CrmSalesPipelineShell, type PipelineViewMode } from "@/components/crm/CrmSalesPipelineKanban";
 
-/* ── Tabs Configuration ──────────────────────────── */
+/* ── Tabs Configuration (5 Consolidated Marka CRM Sub-Tabs) ─── */
 const CRM_TABS = [
-  { id: "dashboard",   label: "Dashboard",            icon: BarChart3     },
-  { id: "inbox",       label: "Customer Inbox",       icon: Inbox         },
-  { id: "deals",       label: "Deals & Credit",       icon: TrendingUp    },
-  { id: "estimate",    label: "Estimating & Quoting", icon: Calculator, module: "SALES" },
-  { id: "tickets",     label: "Support & Garansi",    icon: PhoneCall, module: "SERVICE" },
-  { id: "incoming",    label: "Leads & Inquiry",      icon: FileText      },
-  { id: "prospects",   label: "Calon Customer",       icon: Users         },
-  { id: "accounts",    label: "Accounts",             icon: Building2     },
-  { id: "contracts",   label: "Contracts & Orders",   icon: FileCheck, module: "SALES" },
-  { id: "engagement",  label: "Engagement",           icon: MessageSquare },
+  { id: "pipeline",  label: "Sales Pipeline",      icon: TrendingUp },
+  { id: "leads",     label: "Lead Management",     icon: FileText   },
+  { id: "companies", label: "Company Management",  icon: Building2  },
+  { id: "contacts",  label: "Contact Management",  icon: Users      },
+  { id: "contracts", label: "Contract Management", icon: FileCheck  },
 ];
 
 /* ── Shared Helpers ──────────────────────────────── */
@@ -610,6 +608,7 @@ function TabDeals({
   onOpportunityCreated, onOpportunityDeleted, onPartyCreated,
   readOnly = false, canOverride = false,
   canDelegate = false, canEditAll = false, currentUserId, onOpenDelegate, onOpenStageDetail, teamUsers = [],
+  pipelineViewMode = "PIPELINE", onPipelineViewModeChange, estimateSlot,
 }: {
   data: CRMData; approvals: any[]; isNewOppOpen: boolean;
   setIsNewOppOpen: (v: boolean) => void; onRefresh: () => void;
@@ -624,6 +623,9 @@ function TabDeals({
   onOpenDelegate?: (record: any, recordType: "INQUIRY" | "OPPORTUNITY") => void;
   onOpenStageDetail?: (record: any, recordType: "LEAD" | "OPPORTUNITY") => void;
   teamUsers?: any[];
+  pipelineViewMode?: PipelineViewMode;
+  onPipelineViewModeChange?: (mode: PipelineViewMode) => void;
+  estimateSlot?: React.ReactNode;
 }) {
   const router = useRouter();
   const [form, setForm] = useState({ 
@@ -1010,9 +1012,7 @@ function TabDeals({
     }
   };
 
-  return (
-    <div className="grid min-w-0 grid-cols-1 gap-4">
-      {/* Opportunity table */}
+  const opportunityListCard = (
       <div className="card min-w-0 w-full rounded-xl p-4">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div>
@@ -1194,8 +1194,9 @@ function TabDeals({
           </div>
         )}
       </div>
+  );
 
-      {/* Credit Management table */}
+  const creditControlCard = (
       <div className="card min-w-0 w-full rounded-xl p-4">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -1274,6 +1275,34 @@ function TabDeals({
           </div>
         )}
       </div>
+  );
+
+  return (
+    <div className="grid min-w-0 grid-cols-1 gap-4">
+      <CrmSalesPipelineShell
+        data={data}
+        teamUsers={teamUsers}
+        viewMode={pipelineViewMode}
+        onViewModeChange={(mode) => onPipelineViewModeChange?.(mode)}
+        onOpenNewOpp={() => setIsNewOppOpen(true)}
+        onMoveStage={(opp, stage) => void handleOpportunityStageChange(opp, stage)}
+        onDealWon={(opp) => void handleDealWon(opp)}
+        onMarkLost={(opp) => void handleMarkLost(opp.id)}
+        onOpenActivity={(opp) => {
+          setActivityOpp(opp);
+          setActivityForm({ activity_type: "CALL", subject: "", scheduled_at: "", meeting_minutes_id: "" });
+        }}
+        onOpenMeeting={(opp) => openCrmMeetingForm(opp)}
+        onOpenCustomer360={(oppId) => void handleCustomer360(oppId)}
+        onOpenDelegate={onOpenDelegate ? (opp) => onOpenDelegate(opp, "OPPORTUNITY") : undefined}
+        canDelegate={canDelegate}
+        readOnly={readOnly}
+        canEditAll={canEditAll}
+        currentUserId={currentUserId}
+        listSlot={opportunityListCard}
+        estimateSlot={estimateSlot || null}
+        creditSlot={creditControlCard}
+      />
 
       <Modal isOpen={Boolean(creditLimitParty)} onClose={() => !savingCreditLimit && setCreditLimitParty(null)} title={`Atur Limit Kredit — ${creditLimitParty?.name || "Customer"}`} size="sm">
         <div className="space-y-3 p-4">
@@ -3155,13 +3184,28 @@ function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false, curren
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function TabContracts({ data, onNavigate, onRefresh }: { data: CRMData; onNavigate: (tab: "estimate" | "deals") => void; onRefresh?: () => void }) {
+function TabContracts({ data, onNavigate, onRefresh, readOnly = false }: { data: CRMData; onNavigate: (tab: string) => void; onRefresh?: () => void; readOnly?: boolean }) {
   const crmPeriod = useCRMPeriodFilter();
   const [convertingOrderId, setConvertingOrderId] = useState<string | null>(null);
   const [transferredOrderIds, setTransferredOrderIds] = useState<Set<string>>(() => new Set());
   const [serverTransferableOrders, setServerTransferableOrders] = useState<any[]>([]);
   const [transferListLoading, setTransferListLoading] = useState(true);
   const [transferListError, setTransferListError] = useState("");
+  const [isNewContractOpen, setIsNewContractOpen] = useState(false);
+  const [savingContract, setSavingContract] = useState(false);
+  const [contractForm, setContractForm] = useState({
+    contract_number: "",
+    customer_party_id: "",
+    contact_id: "",
+    opportunity_id: "",
+    contract_amount: "",
+    start_date: new Date().toISOString().slice(0, 10),
+    end_date: "",
+    contract_type: "SERVICE_AGREEMENT",
+    billing_frequency: "MILESTONE",
+    order_frequency: "ONE_TIME",
+    notes: "",
+  });
   useEffect(() => {
     let active = true;
     setTransferListLoading(true);
@@ -3201,17 +3245,66 @@ function TabContracts({ data, onNavigate, onRefresh }: { data: CRMData; onNaviga
     }
   };
 
+  const handleCreateContract = async () => {
+    if (!contractForm.customer_party_id) {
+      toast.error("Pilih Customer untuk kontrak.");
+      return;
+    }
+    setSavingContract(true);
+    try {
+      await api.post("/api/v1/sales/contracts/", {
+        contract_number: contractForm.contract_number.trim() || `CTR-${Date.now().toString().slice(-6)}`,
+        customer_party_id: contractForm.customer_party_id,
+        contact_id: contractForm.contact_id || null,
+        opportunity_id: contractForm.opportunity_id || null,
+        contract_amount: contractForm.contract_amount ? Number(contractForm.contract_amount) : null,
+        start_date: contractForm.start_date ? new Date(contractForm.start_date).toISOString() : null,
+        end_date: contractForm.end_date ? new Date(contractForm.end_date).toISOString() : null,
+        contract_type: contractForm.contract_type,
+        billing_frequency: contractForm.billing_frequency,
+        order_frequency: contractForm.order_frequency,
+        notes: contractForm.notes.trim() || null,
+        status: "ACTIVE",
+      });
+      toast.success("Kontrak baru berhasil dibuat.");
+      setIsNewContractOpen(false);
+      setContractForm({
+        contract_number: "",
+        customer_party_id: "",
+        contact_id: "",
+        opportunity_id: "",
+        contract_amount: "",
+        start_date: new Date().toISOString().slice(0, 10),
+        end_date: "",
+        contract_type: "SERVICE_AGREEMENT",
+        billing_frequency: "MILESTONE",
+        order_frequency: "ONE_TIME",
+        notes: "",
+      });
+      if (onRefresh) onRefresh();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || err?.response?.data?.error?.message || "Gagal membuat kontrak.");
+    } finally {
+      setSavingContract(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <div className="card rounded-xl border border-blue-200 bg-blue-50/70 p-4">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
-            <h3 className="text-sm font-bold text-text-primary">Alur Sales Order & Kontrak</h3>
-            <p className="mt-1 text-xs leading-relaxed text-text-secondary">Buat quotation dan minta persetujuan di Estimates & Quoting. Quotation berstatus Accepted dapat dikonversi menjadi Sales Order. Deal Won juga memproses order melalui pemeriksaan kredit. Kontrak dikelola sesuai kesepakatan pelanggan.</p>
+            <h3 className="text-sm font-bold text-text-primary">Alur Sales Order &amp; Kontrak</h3>
+            <p className="mt-1 text-xs leading-relaxed text-text-secondary">Buat quotation dan minta persetujuan di Estimating &amp; Quotations. Quotation berstatus Accepted dapat dikonversi menjadi Sales Order. Deal Won juga memproses order melalui pemeriksaan kredit. Kontrak dikelola sesuai kesepakatan pelanggan.</p>
           </div>
           <div className="flex gap-2 flex-wrap shrink-0">
             <button type="button" onClick={() => onNavigate("estimate")} className="btn-ghost text-xs py-1.5 px-3 gap-1"><FileText size={12} /> Buka Quotation</button>
-            <button type="button" onClick={() => onNavigate("deals")} className="btn-primary text-xs py-1.5 px-3 gap-1"><ArrowRight size={12} /> Buka Deals</button>
+            <button type="button" onClick={() => onNavigate("deals")} className="btn-ghost text-xs py-1.5 px-3 gap-1"><ArrowRight size={12} /> Buka Pipeline</button>
+            {!readOnly && (
+              <button type="button" onClick={() => setIsNewContractOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#1E40AF] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1E3A8A]">
+                <Plus size={13} /> Add Contract
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -3239,21 +3332,99 @@ function TabContracts({ data, onNavigate, onRefresh }: { data: CRMData; onNaviga
           <div className="mb-3 flex items-center justify-between gap-2"><h3 className="text-sm font-bold text-text-primary">Contracts</h3><span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">{periodContracts.length} kontrak</span></div>
           {periodContracts.length === 0 ? <EmptyState msg="Tidak ada kontrak pada periode ini." /> : (
             <div className="max-h-[520px] overflow-auto rounded-xl border border-text-tertiary/60">
-              <table className="w-full min-w-[560px] border-collapse text-left">
-                <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold text-text-secondary"><tr><th className="px-3 py-3">Nomor Kontrak</th><th className="px-3 py-3">Mulai</th><th className="px-3 py-3">Berakhir</th><th className="px-3 py-3">Status</th></tr></thead>
+              <table className="w-full min-w-[640px] border-collapse text-left">
+                <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold text-text-secondary"><tr><th className="px-3 py-3">Nomor Kontrak &amp; Klien</th><th className="px-3 py-3 text-right">Nilai</th><th className="px-3 py-3">Periode</th><th className="px-3 py-3">Status</th></tr></thead>
                 <tbody className="divide-y divide-text-tertiary/40 bg-white">
-                  {periodContracts.map(c => <tr key={c.id} className="transition-colors hover:bg-violet-50/30">
-                    <td className="px-3 py-3"><div className="break-all text-sm font-semibold text-text-primary">{c.contract_number || `Contract ${String(c.id).slice(0,8)}`}</div><div className="mt-0.5 text-2xs text-text-secondary">ID {String(c.id).slice(0, 8).toUpperCase()}</div></td>
-                    <td className="whitespace-nowrap px-3 py-3 text-sm text-text-secondary">{formatDate(c.start_date)}</td>
-                    <td className="whitespace-nowrap px-3 py-3 text-sm text-text-secondary">{formatDate(c.end_date)}</td>
-                    <td className="px-3 py-3"><StatusBadge status={c.status || "ACTIVE"} /></td>
-                  </tr>)}
+                  {periodContracts.map(c => {
+                    const cust = (data.parties || []).find((p: any) => String(p.id) === String(c.customer_party_id));
+                    const contact = (data.contacts || []).find((ct: any) => String(ct.id) === String(c.contact_id));
+                    const opp = (data.opportunities || []).find((o: any) => String(o.id) === String(c.opportunity_id));
+                    return (
+                    <tr key={c.id} className="transition-colors hover:bg-violet-50/30">
+                      <td className="px-3 py-3">
+                        <div className="break-all text-sm font-semibold text-text-primary">{c.contract_number || `Contract ${String(c.id).slice(0,8)}`}</div>
+                        <div className="mt-0.5 text-2xs text-text-secondary">{cust?.display_name || cust?.legal_name || "Customer"}{contact ? ` · PIC: ${contact.contact_name}` : ""}{opp ? ` · ${opp.opportunity_name}` : ""}</div>
+                        {c.notes && <div className="mt-0.5 text-[11px] text-slate-400 truncate max-w-[260px]">{c.notes}</div>}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3 text-right text-sm font-semibold text-text-primary">{c.contract_amount ? formatMoney(c.contract_amount) : "—"}</td>
+                      <td className="whitespace-nowrap px-3 py-3 text-xs text-text-secondary">{formatDate(c.start_date)} — {c.end_date ? formatDate(c.end_date) : "Open"}</td>
+                      <td className="px-3 py-3"><StatusBadge status={c.status || "ACTIVE"} /></td>
+                    </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
         </div>
       </div>
+
+      <Modal isOpen={isNewContractOpen} onClose={() => !savingContract && setIsNewContractOpen(false)} title="Add New Contract" size="md">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 text-xs">
+          <label className="font-medium text-slate-600">
+            Contract Number
+            <input className="input mt-1 w-full" value={contractForm.contract_number} onChange={(e) => setContractForm((f) => ({ ...f, contract_number: e.target.value }))} placeholder="Auto-generate jika kosong" />
+          </label>
+          <label className="font-medium text-slate-600">
+            Customer *
+            <select className="input mt-1 w-full bg-white" value={contractForm.customer_party_id} onChange={(e) => setContractForm((f) => ({ ...f, customer_party_id: e.target.value, contact_id: "" }))}>
+              <option value="">-- Pilih Customer --</option>
+              {(data.parties || []).filter((p: any) => p.status === "ACTIVE").map((p: any) => (
+                <option key={p.id} value={String(p.id)}>{p.display_name || p.legal_name} ({p.party_type})</option>
+              ))}
+            </select>
+          </label>
+          <label className="font-medium text-slate-600">
+            Contact Person
+            <select className="input mt-1 w-full bg-white" value={contractForm.contact_id} onChange={(e) => setContractForm((f) => ({ ...f, contact_id: e.target.value }))}>
+              <option value="">-- Pilih PIC --</option>
+              {(data.contacts || []).filter((c: any) => !contractForm.customer_party_id || String(c.party_id) === contractForm.customer_party_id).map((c: any) => (
+                <option key={c.id} value={String(c.id)}>{c.contact_name}{c.job_title ? ` · ${c.job_title}` : ""}</option>
+              ))}
+            </select>
+          </label>
+          <label className="font-medium text-slate-600">
+            Linked Opportunity
+            <select className="input mt-1 w-full bg-white" value={contractForm.opportunity_id} onChange={(e) => setContractForm((f) => ({ ...f, opportunity_id: e.target.value }))}>
+              <option value="">-- Opsional --</option>
+              {(data.opportunities || []).filter((o: any) => !contractForm.customer_party_id || String(o.customer_party_id) === contractForm.customer_party_id).map((o: any) => (
+                <option key={o.id} value={String(o.id)}>{o.opportunity_name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="font-medium text-slate-600">
+            Contract Amount (Rp)
+            <IDRInput value={contractForm.contract_amount} onChange={(v) => setContractForm((f) => ({ ...f, contract_amount: v }))} />
+          </label>
+          <label className="font-medium text-slate-600">
+            Contract Type
+            <select className="input mt-1 w-full bg-white" value={contractForm.contract_type} onChange={(e) => setContractForm((f) => ({ ...f, contract_type: e.target.value }))}>
+              <option value="SERVICE_AGREEMENT">Service Agreement</option>
+              <option value="EVENT_CONTRACT">Event Contract</option>
+              <option value="PROJECT_CONTRACT">Project Contract</option>
+              <option value="RETAINER">Retainer</option>
+            </select>
+          </label>
+          <label className="font-medium text-slate-600">
+            Start Date
+            <input type="date" className="input mt-1 w-full" value={contractForm.start_date} onChange={(e) => setContractForm((f) => ({ ...f, start_date: e.target.value }))} />
+          </label>
+          <label className="font-medium text-slate-600">
+            End Date
+            <input type="date" className="input mt-1 w-full" value={contractForm.end_date} onChange={(e) => setContractForm((f) => ({ ...f, end_date: e.target.value }))} />
+          </label>
+          <label className="font-medium text-slate-600 sm:col-span-2">
+            Notes
+            <textarea className="input mt-1 w-full min-h-20" value={contractForm.notes} onChange={(e) => setContractForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Ringkasan ruang lingkup atau klausul kontrak..." />
+          </label>
+          <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
+            <button type="button" onClick={() => setIsNewContractOpen(false)} disabled={savingContract} className="btn-ghost">Batal</button>
+            <button type="button" onClick={() => void handleCreateContract()} disabled={savingContract} className="rounded-lg bg-[#1E40AF] px-4 py-2 text-xs font-semibold text-white hover:bg-[#1E3A8A]">
+              {savingContract ? "Menyimpan..." : "Simpan Contract"}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -3623,7 +3794,10 @@ export default function CrmClient() {
   const canDeleteCrmLead = userRole === "super_admin" || ["COMPANY_ADMIN", "CRM_LEAD", "SALES"].includes(activeRoleCode);
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState("dashboard");
+  const [activeTab, setActiveTab] = useState("pipeline");
+  const [pipelineSubView, setPipelineSubView] = useState<PipelineViewMode>("PIPELINE");
+  const [leadsSubView, setLeadsSubView] = useState<"PIPELINE" | "LIST" | "INBOX">("PIPELINE");
+  const [contractsSubView, setContractsSubView] = useState<"CONTRACTS" | "TICKETS" | "ENGAGEMENT">("CONTRACTS");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [crmData, setCrmData] = useState<CRMData | null>(null);
@@ -3653,11 +3827,37 @@ export default function CrmClient() {
     activeRoleCode: user?.active_role_code,
     isSuperAdmin: isSuper,
   });
-  const visibleTabs = CRM_TABS.filter((tab) => !tab.module || isSuper || enabledModules.has(tab.module));
+  const visibleTabs = CRM_TABS;
 
   useEffect(() => {
-    const requestedTab = new URLSearchParams(window.location.search).get("tab");
-    if (requestedTab && CRM_TABS.some((tab) => tab.id === requestedTab)) setActiveTab(requestedTab);
+    const requestedTab = (new URLSearchParams(window.location.search).get("tab") || "").toLowerCase();
+    if (!requestedTab) return;
+    if (requestedTab === "pipeline" || requestedTab === "deals" || requestedTab === "dashboard") {
+      setActiveTab("pipeline");
+      setPipelineSubView("PIPELINE");
+    } else if (requestedTab === "estimate") {
+      setActiveTab("pipeline");
+      setPipelineSubView("ESTIMATE");
+    } else if (requestedTab === "leads" || requestedTab === "incoming") {
+      setActiveTab("leads");
+      setLeadsSubView("PIPELINE");
+    } else if (requestedTab === "inbox") {
+      setActiveTab("leads");
+      setLeadsSubView("INBOX");
+    } else if (requestedTab === "companies" || requestedTab === "accounts" || requestedTab === "prospects") {
+      setActiveTab("companies");
+    } else if (requestedTab === "contacts") {
+      setActiveTab("contacts");
+    } else if (requestedTab === "contracts") {
+      setActiveTab("contracts");
+      setContractsSubView("CONTRACTS");
+    } else if (requestedTab === "tickets") {
+      setActiveTab("contracts");
+      setContractsSubView("TICKETS");
+    } else if (requestedTab === "engagement") {
+      setActiveTab("contracts");
+      setContractsSubView("ENGAGEMENT");
+    }
   }, []);
 
   const loadData = useCallback(async (silent = false) => {
@@ -4060,15 +4260,13 @@ export default function CrmClient() {
         </div>
       ) : (
         <>
-          {activeTab === "dashboard"  && <TabDashboard data={data} dash={crmDash} />}
-          {activeTab === "inbox"      && <TabCustomerInbox userId={user?.id == null ? undefined : String(user.id)} readOnly={!canOperateCrm} canEditAll={canEditAllCrmData} canMatchIdentity={["ROLE-CRM-LEAD", "CRM_LEAD"].includes(String(user?.active_role_code ?? "").toUpperCase())} parties={data.parties} onRefresh={() => loadData(true)} />}
-          {activeTab === "deals"      && (
-            <TabDeals 
-              data={data} 
-              approvals={data.approvals} 
-              isNewOppOpen={isNewOppOpen} 
-              setIsNewOppOpen={setIsNewOppOpen} 
-              onRefresh={() => loadData(true)} 
+          {activeTab === "pipeline" && (
+            <TabDeals
+              data={data}
+              approvals={data.approvals}
+              isNewOppOpen={isNewOppOpen}
+              setIsNewOppOpen={setIsNewOppOpen}
+              onRefresh={() => loadData(true)}
               onOpportunityCreated={handleOpportunityCreated}
               onOpportunityDeleted={handleOpportunityDeleted}
               onPartyCreated={handlePartyCreated}
@@ -4080,30 +4278,123 @@ export default function CrmClient() {
               onOpenDelegate={openDelegateModal}
               onOpenStageDetail={openStageDetailModal}
               teamUsers={teamUsers}
+              pipelineViewMode={pipelineSubView}
+              onPipelineViewModeChange={setPipelineSubView}
+              estimateSlot={
+                <TabEstimate
+                  data={data}
+                  approvals={data.approvals}
+                  onRefresh={() => loadData(true)}
+                  onNavigate={(target) => {
+                    if (target === "deals" || target === "pipeline") {
+                      setActiveTab("pipeline");
+                      setPipelineSubView("PIPELINE");
+                    } else {
+                      setActiveTab(target);
+                    }
+                  }}
+                  readOnly={!canOperateCrm}
+                  canApproveQuotation={canApproveCrmQuotation}
+                  currentUserId={user?.id == null ? undefined : String(user.id)}
+                  canEditAll={canEditAllCrmData}
+                />
+              }
             />
           )}
-          {activeTab === "estimate"   && <TabEstimate data={data} approvals={data.approvals} onRefresh={() => loadData(true)} onNavigate={setActiveTab} readOnly={!canOperateCrm} canApproveQuotation={canApproveCrmQuotation} currentUserId={user?.id == null ? undefined : String(user.id)} canEditAll={canEditAllCrmData} />}
-          {activeTab === "tickets"    && <TabTickets data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} />}
-          {activeTab === "incoming"   && (
-            <TabIncoming
+          {activeTab === "leads" && (
+            <CrmLeadsView
               data={data}
+              teamUsers={teamUsers}
+              onRefresh={() => loadData(true)}
+              onNavigateToPipeline={() => {
+                setActiveTab("pipeline");
+                setPipelineSubView("PIPELINE");
+              }}
+              onOpenDelegate={openDelegateModal}
+              canDelegate={canDelegateCrm}
+              readOnly={!canHandleCrmLeads}
+              canEditAll={canEditAllCrmData}
+              canDelete={canDeleteCrmLead}
+              currentUserId={user?.id == null ? undefined : String(user.id)}
+              initialSubView={leadsSubView}
+              inboxSlot={
+                <TabCustomerInbox
+                  userId={user?.id == null ? undefined : String(user.id)}
+                  readOnly={!canOperateCrm}
+                  canEditAll={canEditAllCrmData}
+                  canMatchIdentity={["ROLE-CRM-LEAD", "CRM_LEAD"].includes(String(user?.active_role_code ?? "").toUpperCase())}
+                  parties={data.parties}
+                  onRefresh={() => loadData(true)}
+                />
+              }
+            />
+          )}
+          {activeTab === "companies" && (
+            <CrmCompaniesView
+              data={data}
+              teamUsers={teamUsers}
               onRefresh={() => loadData(true)}
               onPartyCreated={handlePartyCreated}
-              readOnly={!canHandleCrmLeads}
-              canEdit={canHandleCrmLeads}
-              canEditAll={canEditAllCrmData}
+              readOnly={!canOperateCrm}
               currentUserId={user?.id == null ? undefined : String(user.id)}
-              canDelete={canDeleteCrmLead}
-              canDelegate={canDelegateCrm}
-              onOpenDelegate={openDelegateModal}
-              onOpenStageDetail={openStageDetailModal}
-              teamUsers={teamUsers}
+              canEditAll={canEditAllCrmData}
             />
           )}
-          {activeTab === "prospects"  && <TabProspects data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} currentUserId={user?.id == null ? undefined : String(user.id)} canEditAll={canEditAllCrmData} />}
-          {activeTab === "accounts"   && <TabAccounts data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} currentUserId={user?.id == null ? undefined : String(user.id)} canEditAll={canEditAllCrmData} />}
-          {activeTab === "contracts"  && <TabContracts data={data} onNavigate={setActiveTab} onRefresh={() => loadData(true)} />}
-          {activeTab === "engagement" && <TabEngagement data={data} onRefresh={() => loadData(true)} readOnly={!canOperateCrm} />}
+          {activeTab === "contacts" && (
+            <CrmContactsView
+              data={data}
+              onRefresh={() => loadData(true)}
+              readOnly={!canOperateCrm}
+              currentUserId={user?.id == null ? undefined : String(user.id)}
+              canEditAll={canEditAllCrmData}
+            />
+          )}
+          {activeTab === "contracts" && (
+            <div className="space-y-4">
+              <div className="inline-flex flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-slate-100/80 p-1">
+                {[
+                  { id: "CONTRACTS" as const, label: "Contracts & Orders" },
+                  { id: "TICKETS" as const, label: "Support & Garansi" },
+                  { id: "ENGAGEMENT" as const, label: "Engagement & CSAT" },
+                ].map((pill) => (
+                  <button
+                    key={pill.id}
+                    type="button"
+                    onClick={() => setContractsSubView(pill.id)}
+                    className={cn(
+                      "rounded-lg px-3 py-1.5 text-xs font-semibold transition",
+                      contractsSubView === pill.id
+                        ? "bg-white text-slate-900 shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    )}
+                  >
+                    {pill.label}
+                  </button>
+                ))}
+              </div>
+              {contractsSubView === "CONTRACTS" && (
+                <TabContracts
+                  data={data}
+                  onNavigate={(target) => {
+                    if (target === "estimate") {
+                      setActiveTab("pipeline");
+                      setPipelineSubView("ESTIMATE");
+                    } else {
+                      setActiveTab("pipeline");
+                      setPipelineSubView("PIPELINE");
+                    }
+                  }}
+                  onRefresh={() => loadData(true)}
+                />
+              )}
+              {contractsSubView === "TICKETS" && (
+                <TabTickets data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} />
+              )}
+              {contractsSubView === "ENGAGEMENT" && (
+                <TabEngagement data={data} onRefresh={() => loadData(true)} readOnly={!canOperateCrm} />
+              )}
+            </div>
+          )}
         </>
       )}
 
@@ -4387,7 +4678,8 @@ export default function CrmClient() {
                           await qualifyInquiry(rec.id);
                           toast.success("Lead berhasil dikonversi menjadi Sales Opportunity!");
                           setStageDetailModal(null);
-                          setActiveTab("deals");
+                          setActiveTab("pipeline");
+                          setPipelineSubView("PIPELINE");
                           await loadData(true);
                         } catch (err: any) {
                           toast.error(err?.response?.data?.detail || "Lead belum dapat dikonversi menjadi Opportunity.");
@@ -4404,7 +4696,8 @@ export default function CrmClient() {
                       type="button"
                       onClick={() => {
                         setStageDetailModal(null);
-                        setActiveTab("estimate");
+                        setActiveTab("pipeline");
+                        setPipelineSubView("ESTIMATE");
                       }}
                       className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                     >

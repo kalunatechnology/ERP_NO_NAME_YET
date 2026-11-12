@@ -17,8 +17,12 @@ export function normalizeCrmStage(value: unknown): CrmOpenStage | 'WON' | 'LOST'
   const stage = String(value ?? '').trim().toUpperCase();
   const aliases: Record<string, CrmOpenStage | 'WON' | 'LOST'> = {
     OPEN: 'PROSPECT',
+    MEETING_DISCUSSION: 'PROSPECT',
     QUALIFICATION: 'DISCOVERY',
+    CONCEPT_DEVELOPMENT: 'DISCOVERY',
     PROPOSAL: 'PROPOSAL_SENT',
+    QUOTATION_SUBMISSION: 'PROPOSAL_SENT',
+    CLOSING: 'FOLLOW_UP',
     CLOSED_WON: 'WON',
     CLOSED_LOST: 'LOST',
   };

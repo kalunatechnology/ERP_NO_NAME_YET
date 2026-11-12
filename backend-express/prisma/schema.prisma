@@ -1136,6 +1136,13 @@ model master_party {
   tax_number          String
   default_currency_id String?   @map("default_currency_id")
   status              String
+  industry            String?   @map("industry")
+  email               String?   @map("email")
+  phone               String?   @map("phone")
+  city                String?   @map("city")
+  website             String?   @map("website")
+  notes               String?   @map("notes")
+  owner_user_id       String?   @map("owner_user_id")
   project_links       project_project_party[]
 
   @@index([tenant_id, company_id])
@@ -1172,6 +1179,9 @@ model master_contact {
   email           String
   phone           String
   primary_contact Boolean
+  department      String?   @map("department")
+  contact_type    String?   @map("contact_type")
+  notes           String?   @map("notes")
 
   @@index([tenant_id, company_id])
   @@map("master_contact")
@@ -2161,6 +2171,9 @@ model crm_customer_inquiry {
   opportunity_id         String?   @unique @map("opportunity_id")
   inquiry_number         String
   source_channel         String
+  lead_source            String?   @map("lead_source")
+  interested_service     String?   @map("interested_service")
+  notes                  String?   @map("notes")
   origin_domain          String?   @map("origin_domain")
   subject                String
   description            String
@@ -2421,6 +2434,11 @@ model sales_contract {
   billing_frequency String
   order_frequency   String
   status            String
+  contact_id        String?   @map("contact_id")
+  opportunity_id    String?   @map("opportunity_id")
+  project_id        String?   @map("project_id")
+  contract_amount   Decimal?  @map("contract_amount")
+  notes             String?   @map("notes")
 
   @@index([tenant_id, company_id])
   @@map("sales_contract")

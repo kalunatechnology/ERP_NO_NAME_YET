@@ -124,12 +124,15 @@ async function validateOpportunityCustomer(req: Request, data: Record<string, an
       id: customerPartyId,
       tenant_id: req.tenantId,
       company_id: activeCompanyId(req),
-      party_type: 'CUSTOMER',
+      party_type: { in: ['CUSTOMER', 'PROSPECT'] },
       status: 'ACTIVE',
     },
-    select: { id: true },
+    select: { id: true, party_type: true },
   });
   if (!party) throw new ValidationError('Pelanggan tidak ditemukan, tidak aktif, atau bukan milik company yang dipilih.');
+  if (party.party_type === 'PROSPECT') {
+    await prisma.master_party.update({ where: { id: party.id }, data: { party_type: 'CUSTOMER' } });
+  }
   return { ...data, customer_party_id: party.id };
 }
 
@@ -343,13 +346,20 @@ crmRouter.post('/customer-inquiries', async (req: Request, res: Response, next: 
     if (!customerEmail && !customerPhone) throw new ValidationError('Isi email atau nomor telepon kontak. PIC/kontak bernama boleh dikosongkan.');
 
     const now = new Date();
+    const leadSource = req.body.lead_source ? String(req.body.lead_source).trim() : null;
+    const interestedService = req.body.interested_service ? String(req.body.interested_service).trim() : null;
+    const notes = req.body.notes ? String(req.body.notes).trim() : null;
     const inquiry = await prisma.crm_customer_inquiry.create({
       data: {
         id: crypto.randomUUID(), tenant_id: req.tenantId, company_id: companyId,
         created_by_id: req.user.id, owner_user_id: req.user.id,
         customer_party_id: customerPartyId, contact_id: contact?.id ?? null,
         inquiry_number: `INQ-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
-        source_channel: 'MANUAL', subject, customer_name: customerName,
+        source_channel: String(req.body.source_channel || 'MANUAL').trim() || 'MANUAL',
+        lead_source: leadSource,
+        interested_service: interestedService,
+        notes,
+        subject, customer_name: customerName,
         customer_email: customerEmail, customer_phone: customerPhone, description,
         expected_delivery_date: expectedDeliveryDate,
         status: 'NEW', last_contact_note: '', created_at: now, updated_at: now,
@@ -381,9 +391,13 @@ crmRouter.patch('/customer-inquiries/:id/edit', requireActiveRole(RoleCode.SALES
     if (customerPhone.length > 50) throw new ValidationError('Nomor telepon kontak maksimal 50 karakter.');
     if (!customerEmail && !customerPhone) throw new ValidationError('Lead harus memiliki email atau nomor telepon kontak.');
 
+    const leadSource = req.body.lead_source === undefined ? inquiry.lead_source : (String(req.body.lead_source ?? '').trim() || null);
+    const interestedService = req.body.interested_service === undefined ? inquiry.interested_service : (String(req.body.interested_service ?? '').trim() || null);
+    const notes = req.body.notes === undefined ? inquiry.notes : (String(req.body.notes ?? '').trim() || null);
+
     const updated = await prisma.crm_customer_inquiry.update({
       where: { id: inquiry.id },
-      data: { subject, customer_name: customerName, customer_email: customerEmail, customer_phone: customerPhone, description, updated_at: new Date() },
+      data: { subject, customer_name: customerName, customer_email: customerEmail, customer_phone: customerPhone, description, lead_source: leadSource, interested_service: interestedService, notes, updated_at: new Date() },
     });
     res.json({ success: true, data: updated });
   } catch (error) { next(error); }
@@ -516,7 +530,7 @@ crmRouter.patch('/customer-inquiries/:id/customer', async (req: Request, res: Re
     if (inquiry.opportunity_id) throw new ConflictError('Customer pada Inquiry yang sudah menjadi Opportunity tidak dapat diganti.');
     const partyId = String(req.body.customer_party_id ?? '').trim();
     const party = await prisma.master_party.findFirst({
-      where: { id: partyId, tenant_id: req.tenantId, company_id: companyId, party_type: 'CUSTOMER', status: 'ACTIVE' },
+      where: { id: partyId, tenant_id: req.tenantId, company_id: companyId, party_type: { in: ['CUSTOMER', 'PROSPECT'] }, status: 'ACTIVE' },
       select: { id: true, display_name: true, legal_name: true },
     });
     if (!party) throw new ValidationError('Pilih customer aktif pada company ini.');
