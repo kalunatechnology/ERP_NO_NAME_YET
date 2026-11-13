@@ -3385,9 +3385,27 @@ function TabContracts({ data, onNavigate, onRefresh, readOnly = false }: { data:
           </label>
           <label className="font-medium text-slate-600">
             Customer *
-            <select className="input mt-1 w-full bg-white" value={contractForm.customer_party_id} onChange={(e) => setContractForm((f) => ({ ...f, customer_party_id: e.target.value, contact_id: "" }))}>
+            <select
+              className="input mt-1 w-full bg-white"
+              value={contractForm.customer_party_id}
+              onChange={(e) => {
+                const pid = e.target.value;
+                const primaryContact = (data.contacts || []).find((c: any) => String(c.party_id) === pid && c.primary_contact);
+                const firstContact = primaryContact || (data.contacts || []).find((c: any) => String(c.party_id) === pid);
+                setContractForm((f) => {
+                  const currentOpp = (data.opportunities || []).find((o: any) => String(o.id) === f.opportunity_id);
+                  const keepOpp = currentOpp && (!pid || String(currentOpp.customer_party_id) === pid);
+                  return {
+                    ...f,
+                    customer_party_id: pid,
+                    contact_id: pid && firstContact ? String(firstContact.id) : "",
+                    opportunity_id: keepOpp ? f.opportunity_id : "",
+                  };
+                });
+              }}
+            >
               <option value="">-- Pilih Customer --</option>
-              {(data.parties || []).filter((p: any) => p.status === "ACTIVE").map((p: any) => (
+              {(data.parties || []).filter((p: any) => ["CUSTOMER", "PROSPECT"].includes(String(p.party_type || "").toUpperCase()) && p.status === "ACTIVE").map((p: any) => (
                 <option key={p.id} value={String(p.id)}>{p.display_name || p.legal_name} ({p.party_type})</option>
               ))}
             </select>
@@ -3403,7 +3421,31 @@ function TabContracts({ data, onNavigate, onRefresh, readOnly = false }: { data:
           </label>
           <label className="font-medium text-slate-600">
             Linked Opportunity
-            <select className="input mt-1 w-full bg-white" value={contractForm.opportunity_id} onChange={(e) => setContractForm((f) => ({ ...f, opportunity_id: e.target.value }))}>
+            <select
+              className="input mt-1 w-full bg-white"
+              value={contractForm.opportunity_id}
+              onChange={(e) => {
+                const oid = e.target.value;
+                const opp = (data.opportunities || []).find((o: any) => String(o.id) === oid);
+                setContractForm((f) => {
+                  const nextPartyId = opp?.customer_party_id ? String(opp.customer_party_id) : f.customer_party_id;
+                  const partyChanged = nextPartyId !== f.customer_party_id;
+                  const primaryContact = nextPartyId
+                    ? ((data.contacts || []).find((c: any) => String(c.party_id) === nextPartyId && c.primary_contact) ||
+                       (data.contacts || []).find((c: any) => String(c.party_id) === nextPartyId))
+                    : null;
+                  return {
+                    ...f,
+                    opportunity_id: oid,
+                    customer_party_id: nextPartyId,
+                    contact_id: partyChanged ? (primaryContact ? String(primaryContact.id) : "") : f.contact_id,
+                    contract_amount: (!f.contract_amount || Number(f.contract_amount) === 0) && opp?.expected_amount
+                      ? String(opp.expected_amount)
+                      : f.contract_amount,
+                  };
+                });
+              }}
+            >
               <option value="">-- Opsional --</option>
               {(data.opportunities || []).filter((o: any) => !contractForm.customer_party_id || String(o.customer_party_id) === contractForm.customer_party_id).map((o: any) => (
                 <option key={o.id} value={String(o.id)}>{o.opportunity_name}</option>

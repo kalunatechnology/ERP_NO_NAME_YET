@@ -109,6 +109,7 @@ export function CrmLeadsView({
   const [drawerLead, setDrawerLead] = useState<any | null>(null);
   const [drawerTab, setDrawerTab] = useState<"overview" | "activities" | "notes">("overview");
   const [linkingPartyId, setLinkingPartyId] = useState("");
+  const [linkingContactId, setLinkingContactId] = useState("");
   const [isQualifying, setIsQualifying] = useState(false);
 
   // Add / Edit Lead Modal
@@ -121,6 +122,9 @@ export function CrmLeadsView({
     customer_email: "",
     customer_phone: "",
     customer_party: "",
+    contact_id: "",
+    contact_name: "",
+    auto_create_company: true,
     lead_source: "MANUAL",
     interested_service: "",
     description: "",
@@ -139,6 +143,10 @@ export function CrmLeadsView({
     () => new Map((data.parties || []).map((p: any) => [String(p.id), p])),
     [data.parties]
   );
+  const contactById = useMemo(
+    () => new Map((data.contacts || []).map((c: any) => [String(c.id), c])),
+    [data.contacts]
+  );
 
   const enrichedLeads = useMemo(() => {
     return (data.inquiries || []).map((inq: any) => {
@@ -146,6 +154,7 @@ export function CrmLeadsView({
       const bucket = optimisticBuckets[String(inq.id)] || serverBucket;
       const linkedOpp = inq.opportunity_id ? oppById.get(String(inq.opportunity_id)) : null;
       const party = inq.customer_party_id ? partyById.get(String(inq.customer_party_id)) : null;
+      const contact = inq.contact_id ? contactById.get(String(inq.contact_id)) : null;
       const ownerId = String(inq.owner_user_id || inq.created_by_id || "");
       const ownerUser = userById.get(ownerId);
       const source = inq.lead_source || inq.source_channel || "MANUAL";
@@ -164,6 +173,7 @@ export function CrmLeadsView({
         _ownerId: ownerId,
         _ownerName: ownerUser?.full_name || ownerUser?.email || "Unassigned",
         _party: party,
+        _contact: contact,
         _linkedOpp: linkedOpp,
         _isConverted: isConverted,
         _isWon: isWon,
@@ -316,6 +326,9 @@ export function CrmLeadsView({
       customer_email: "",
       customer_phone: "",
       customer_party: "",
+      contact_id: "",
+      contact_name: "",
+      auto_create_company: true,
       lead_source: "MANUAL",
       interested_service: "",
       description: "",
@@ -332,6 +345,9 @@ export function CrmLeadsView({
       customer_email: lead.customer_email || "",
       customer_phone: lead.customer_phone || "",
       customer_party: lead.customer_party_id ? String(lead.customer_party_id) : "",
+      contact_id: lead.contact_id ? String(lead.contact_id) : "",
+      contact_name: lead._contact?.contact_name || "",
+      auto_create_company: false,
       lead_source: lead.lead_source || lead.source_channel || "MANUAL",
       interested_service: lead.interested_service || "",
       description: lead.description || "",
@@ -357,6 +373,8 @@ export function CrmLeadsView({
           customer_name: leadForm.customer_name.trim(),
           customer_email: leadForm.customer_email.trim(),
           customer_phone: leadForm.customer_phone.trim(),
+          customer_party_id: editingLead._isConverted ? undefined : (leadForm.customer_party || null),
+          contact_id: leadForm.contact_id || null,
           description: leadForm.description.trim(),
           lead_source: leadForm.lead_source,
           interested_service: leadForm.interested_service.trim() || null,
@@ -370,6 +388,9 @@ export function CrmLeadsView({
           customer_email: leadForm.customer_email.trim(),
           customer_phone: leadForm.customer_phone.trim(),
           customer_party: leadForm.customer_party || null,
+          contact_id: leadForm.contact_id || null,
+          contact_name: leadForm.contact_name.trim(),
+          auto_create_company: !leadForm.customer_party && leadForm.auto_create_company,
           description: leadForm.description.trim(),
           lead_source: leadForm.lead_source,
           interested_service: leadForm.interested_service.trim() || null,
@@ -389,10 +410,11 @@ export function CrmLeadsView({
   const handleLinkCustomerInDrawer = async () => {
     if (!drawerLead || !linkingPartyId) return;
     try {
-      const updated = await linkInquiryCustomer(drawerLead.id, linkingPartyId);
+      const updated = await linkInquiryCustomer(drawerLead.id, linkingPartyId, linkingContactId || null);
       toast.success("Perusahaan berhasil ditautkan ke Lead.");
-      setDrawerLead({ ...drawerLead, ...updated, customer_party_id: linkingPartyId });
+      setDrawerLead({ ...drawerLead, ...updated, customer_party_id: linkingPartyId, contact_id: linkingContactId || updated.contact_id || null });
       setLinkingPartyId("");
+      setLinkingContactId("");
       onRefresh();
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || "Gagal menautkan perusahaan.");
@@ -720,29 +742,52 @@ export function CrmLeadsView({
                   <div className="text-[11px] font-medium text-amber-900">
                     Hubungkan ke Customer / Prospect sebelum Convert to Opportunity:
                   </div>
-                  <div className="flex gap-1.5">
-                    <select
-                      className="input flex-1 text-xs bg-white"
-                      value={linkingPartyId}
-                      onChange={(e) => setLinkingPartyId(e.target.value)}
-                    >
-                      <option value="">-- Pilih Customer / Prospect --</option>
-                      {(data.parties || [])
-                        .filter((p: any) => ["CUSTOMER", "PROSPECT"].includes(String(p.party_type || "").toUpperCase()) && p.status === "ACTIVE")
-                        .map((p: any) => (
-                          <option key={p.id} value={String(p.id)}>
-                            {p.display_name || p.legal_name} ({p.party_type})
-                          </option>
-                        ))}
-                    </select>
-                    <button
-                      type="button"
-                      disabled={!linkingPartyId}
-                      onClick={() => void handleLinkCustomerInDrawer()}
-                      className="rounded-lg bg-[#163D64] px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-50"
-                    >
-                      Tautkan
-                    </button>
+                  <div className="space-y-1.5">
+                    <div className="flex gap-1.5">
+                      <select
+                        className="input flex-1 text-xs bg-white"
+                        value={linkingPartyId}
+                        onChange={(e) => {
+                          const pid = e.target.value;
+                          setLinkingPartyId(pid);
+                          const primary = (data.contacts || []).find((c: any) => String(c.party_id) === pid && c.primary_contact);
+                          setLinkingContactId(primary ? String(primary.id) : "");
+                        }}
+                      >
+                        <option value="">-- Pilih Customer / Prospect --</option>
+                        {(data.parties || [])
+                          .filter((p: any) => ["CUSTOMER", "PROSPECT"].includes(String(p.party_type || "").toUpperCase()) && p.status === "ACTIVE")
+                          .map((p: any) => (
+                            <option key={p.id} value={String(p.id)}>
+                              {p.display_name || p.legal_name} ({p.party_type})
+                            </option>
+                          ))}
+                      </select>
+                      <button
+                        type="button"
+                        disabled={!linkingPartyId}
+                        onClick={() => void handleLinkCustomerInDrawer()}
+                        className="rounded-lg bg-[#163D64] px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                      >
+                        Tautkan
+                      </button>
+                    </div>
+                    {linkingPartyId && (
+                      <select
+                        className="input w-full text-xs bg-white"
+                        value={linkingContactId}
+                        onChange={(e) => setLinkingContactId(e.target.value)}
+                      >
+                        <option value="">-- Pilih Contact PIC (Opsional) --</option>
+                        {(data.contacts || [])
+                          .filter((c: any) => String(c.party_id) === linkingPartyId)
+                          .map((c: any) => (
+                            <option key={c.id} value={String(c.id)}>
+                              {c.contact_name}{c.job_title ? ` · ${c.job_title}` : ""}
+                            </option>
+                          ))}
+                      </select>
+                    )}
                   </div>
                 </div>
               )}
@@ -751,8 +796,14 @@ export function CrmLeadsView({
             {/* Contact Person (Primary) */}
             <div className="rounded-xl border border-slate-200 p-3.5 space-y-1.5">
               <div className="font-bold text-slate-800">Contact Person (Primary)</div>
-              <div className="flex items-center gap-2 text-slate-600"><Mail size={12} /> {drawerLead.customer_email || "—"}</div>
-              <div className="flex items-center gap-2 text-slate-600"><Phone size={12} /> {drawerLead.customer_phone || "—"}</div>
+              {drawerLead._contact?.contact_name && (
+                <div className="font-semibold text-slate-700">
+                  {drawerLead._contact.contact_name}
+                  {drawerLead._contact.job_title ? <span className="font-normal text-slate-400"> · {drawerLead._contact.job_title}</span> : null}
+                </div>
+              )}
+              <div className="flex items-center gap-2 text-slate-600"><Mail size={12} /> {drawerLead.customer_email || drawerLead._contact?.email || "—"}</div>
+              <div className="flex items-center gap-2 text-slate-600"><Phone size={12} /> {drawerLead.customer_phone || drawerLead._contact?.phone || "—"}</div>
             </div>
 
             {/* Lead Information */}
@@ -833,32 +884,91 @@ export function CrmLeadsView({
             Nama Perusahaan / Customer *
             <input className="input mt-1 w-full" value={leadForm.customer_name} onChange={(e) => setLeadForm((f) => ({ ...f, customer_name: e.target.value }))} placeholder="PT / Instansi / Nama Klien" />
           </label>
-          {!editingLead && (
+          <label className="font-medium text-slate-600 sm:col-span-2">
+            Tautkan Perusahaan (Company)
+            <select
+              className="input mt-1 w-full bg-white disabled:bg-slate-100"
+              disabled={Boolean(editingLead?._isConverted)}
+              value={leadForm.customer_party}
+              onChange={(e) => {
+                const pid = e.target.value;
+                const p = partyById.get(pid);
+                const primaryContact = pid
+                  ? ((data.contacts || []).find((c: any) => String(c.party_id) === pid && c.primary_contact) ||
+                     (data.contacts || []).find((c: any) => String(c.party_id) === pid))
+                  : null;
+                setLeadForm((f) => ({
+                  ...f,
+                  customer_party: pid,
+                  contact_id: primaryContact ? String(primaryContact.id) : "",
+                  customer_name: p ? p.display_name || p.legal_name : f.customer_name,
+                  customer_email: primaryContact?.email || f.customer_email,
+                  customer_phone: primaryContact?.phone || f.customer_phone,
+                }));
+              }}
+            >
+              <option value="">-- Input Manual / Belum Terdaftar --</option>
+              {(data.parties || [])
+                .filter((p: any) => ["CUSTOMER", "PROSPECT"].includes(String(p.party_type || "").toUpperCase()) && p.status === "ACTIVE")
+                .map((p: any) => (
+                  <option key={p.id} value={String(p.id)}>
+                    {p.display_name || p.legal_name} ({p.party_type})
+                  </option>
+                ))}
+            </select>
+          </label>
+          {leadForm.customer_party ? (
             <label className="font-medium text-slate-600 sm:col-span-2">
-              Tautkan Perusahaan (Opsional)
+              Contact Person (PIC)
               <select
                 className="input mt-1 w-full bg-white"
-                value={leadForm.customer_party}
+                value={leadForm.contact_id}
                 onChange={(e) => {
-                  const pid = e.target.value;
-                  const p = partyById.get(pid);
+                  const cid = e.target.value;
+                  const ct = contactById.get(cid);
                   setLeadForm((f) => ({
                     ...f,
-                    customer_party: pid,
-                    customer_name: p ? p.display_name || p.legal_name : f.customer_name,
+                    contact_id: cid,
+                    customer_email: ct?.email || f.customer_email,
+                    customer_phone: ct?.phone || f.customer_phone,
                   }));
                 }}
               >
-                <option value="">-- Input Manual / Belum Terdaftar --</option>
-                {(data.parties || [])
-                  .filter((p: any) => ["CUSTOMER", "PROSPECT"].includes(String(p.party_type || "").toUpperCase()) && p.status === "ACTIVE")
-                  .map((p: any) => (
-                    <option key={p.id} value={String(p.id)}>
-                      {p.display_name || p.legal_name} ({p.party_type})
+                <option value="">-- Pilih Contact PIC (Opsional) --</option>
+                {(data.contacts || [])
+                  .filter((c: any) => String(c.party_id) === leadForm.customer_party)
+                  .map((c: any) => (
+                    <option key={c.id} value={String(c.id)}>
+                      {c.contact_name}{c.job_title ? ` · ${c.job_title}` : ""}{c.primary_contact ? " (Utama)" : ""}
                     </option>
                   ))}
               </select>
             </label>
+          ) : (
+            <>
+              {!editingLead && (
+                <label className="sm:col-span-2 flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2 text-[11px] font-medium text-[#163D64] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={leadForm.auto_create_company}
+                    onChange={(e) => setLeadForm((f) => ({ ...f, auto_create_company: e.target.checked }))}
+                    className="rounded border-slate-300 text-[#0868B5]"
+                  />
+                  Otomatis daftarkan sebagai Prospect Company &amp; Contact baru di CRM
+                </label>
+              )}
+              {!editingLead && leadForm.auto_create_company && (
+                <label className="font-medium text-slate-600 sm:col-span-2">
+                  Nama PIC / Contact Person
+                  <input
+                    className="input mt-1 w-full"
+                    value={leadForm.contact_name}
+                    onChange={(e) => setLeadForm((f) => ({ ...f, contact_name: e.target.value }))}
+                    placeholder="Contoh: Budi Santoso (kosongkan jika sama dengan nama perusahaan)"
+                  />
+                </label>
+              )}
+            </>
           )}
           <label className="font-medium text-slate-600">
             Lead Source

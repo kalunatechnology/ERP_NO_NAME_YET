@@ -444,6 +444,8 @@ export async function createCustomerInquiry(payload: {
   customer_phone?: string;
   customer_party?: string | number | null;
   contact_id?: string | null;
+  contact_name?: string;
+  auto_create_company?: boolean;
   description?: string;
   expected_delivery_date?: string | null;
   lead_source?: string | null;
@@ -457,6 +459,8 @@ export async function createCustomerInquiry(payload: {
     customer_phone: payload.customer_phone || "",
     customer_party_id: payload.customer_party || null,
     contact_id: payload.contact_id || null,
+    contact_name: payload.contact_name || "",
+    auto_create_company: Boolean(payload.auto_create_company),
     description: payload.description || "",
     expected_delivery_date: payload.expected_delivery_date || null,
     lead_source: payload.lead_source || null,
@@ -472,6 +476,8 @@ export async function updateCustomerInquiry(id: string | number, payload: {
   customer_name: string;
   customer_email?: string;
   customer_phone?: string;
+  customer_party_id?: string | null;
+  contact_id?: string | null;
   description?: string;
   lead_source?: string | null;
   interested_service?: string | null;

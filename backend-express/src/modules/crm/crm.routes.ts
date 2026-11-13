@@ -313,6 +313,8 @@ crmRouter.post('/customer-inquiries', async (req: Request, res: Response, next: 
     let customerEmail = normalizeOptionalCustomerEmail(req.body.customer_email);
     let customerPhone = String(req.body.customer_phone ?? '').trim();
     const contactId = String(req.body.contact_id ?? '').trim() || null;
+    const contactName = String(req.body.contact_name ?? '').trim();
+    const autoCreateCompany = Boolean(req.body.auto_create_company);
     const description = String(req.body.description ?? '').trim();
     if (!subject || subject.length > 240) throw new ValidationError('Subject inquiry wajib diisi dan maksimal 240 karakter.');
     if (!requestedCustomerName || requestedCustomerName.length > 200) throw new ValidationError('Nama customer wajib diisi dan maksimal 200 karakter.');
@@ -349,21 +351,65 @@ crmRouter.post('/customer-inquiries', async (req: Request, res: Response, next: 
     const leadSource = req.body.lead_source ? String(req.body.lead_source).trim() : null;
     const interestedService = req.body.interested_service ? String(req.body.interested_service).trim() : null;
     const notes = req.body.notes ? String(req.body.notes).trim() : null;
-    const inquiry = await prisma.crm_customer_inquiry.create({
-      data: {
-        id: crypto.randomUUID(), tenant_id: req.tenantId, company_id: companyId,
-        created_by_id: req.user.id, owner_user_id: req.user.id,
-        customer_party_id: customerPartyId, contact_id: contact?.id ?? null,
-        inquiry_number: `INQ-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
-        source_channel: String(req.body.source_channel || 'MANUAL').trim() || 'MANUAL',
-        lead_source: leadSource,
-        interested_service: interestedService,
-        notes,
-        subject, customer_name: customerName,
-        customer_email: customerEmail, customer_phone: customerPhone, description,
-        expected_delivery_date: expectedDeliveryDate,
-        status: 'NEW', last_contact_note: '', created_at: now, updated_at: now,
-      },
+    const tenantId = req.tenantId;
+    const userId = req.user.id;
+
+    const inquiry = await prisma.$transaction(async (tx) => {
+      let resolvedPartyId = customerPartyId;
+      let resolvedContactId = contact?.id ?? null;
+
+      if (!resolvedPartyId && autoCreateCompany) {
+        const partyCode = `PROS-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
+        const createdParty = await tx.master_party.create({
+          data: {
+            id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId,
+            created_by_id: userId, created_at: now, updated_at: now,
+            party_code: partyCode, party_type: 'PROSPECT', legal_name: customerName,
+            display_name: customerName, tax_number: '', default_currency_id: null, status: 'ACTIVE',
+          },
+        });
+        resolvedPartyId = createdParty.id;
+        const createdContact = await tx.master_contact.create({
+          data: {
+            id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId,
+            created_by_id: userId, created_at: now, updated_at: now,
+            party_id: createdParty.id, contact_name: contactName || customerName,
+            job_title: '', email: customerEmail, phone: customerPhone, primary_contact: true,
+          },
+        });
+        resolvedContactId = createdContact.id;
+      } else if (resolvedPartyId && !resolvedContactId && contactName) {
+        const existingPrimary = await tx.master_contact.findFirst({
+          where: { party_id: resolvedPartyId, company_id: companyId, primary_contact: true },
+          select: { id: true },
+        });
+        const createdContact = await tx.master_contact.create({
+          data: {
+            id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId,
+            created_by_id: userId, created_at: now, updated_at: now,
+            party_id: resolvedPartyId, contact_name: contactName,
+            job_title: '', email: customerEmail, phone: customerPhone, primary_contact: !existingPrimary,
+          },
+        });
+        resolvedContactId = createdContact.id;
+      }
+
+      return tx.crm_customer_inquiry.create({
+        data: {
+          id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId,
+          created_by_id: userId, owner_user_id: userId,
+          customer_party_id: resolvedPartyId, contact_id: resolvedContactId,
+          inquiry_number: `INQ-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
+          source_channel: String(req.body.source_channel || 'MANUAL').trim() || 'MANUAL',
+          lead_source: leadSource,
+          interested_service: interestedService,
+          notes,
+          subject, customer_name: customerName,
+          customer_email: customerEmail, customer_phone: customerPhone, description,
+          expected_delivery_date: expectedDeliveryDate,
+          status: 'NEW', last_contact_note: '', created_at: now, updated_at: now,
+        },
+      });
     });
     res.status(201).json(inquiry);
   } catch (error) { next(error); }
@@ -395,9 +441,61 @@ crmRouter.patch('/customer-inquiries/:id/edit', requireActiveRole(RoleCode.SALES
     const interestedService = req.body.interested_service === undefined ? inquiry.interested_service : (String(req.body.interested_service ?? '').trim() || null);
     const notes = req.body.notes === undefined ? inquiry.notes : (String(req.body.notes ?? '').trim() || null);
 
+    let nextPartyId = inquiry.customer_party_id;
+    let nextCustomerName = customerName;
+    if (req.body.customer_party_id !== undefined) {
+      const requestedPartyId = String(req.body.customer_party_id ?? '').trim() || null;
+      if (requestedPartyId !== inquiry.customer_party_id) {
+        if (inquiry.opportunity_id) {
+          throw new ConflictError('Customer pada Lead yang sudah menjadi Opportunity tidak dapat diganti.');
+        }
+        if (requestedPartyId) {
+          const party = await prisma.master_party.findFirst({
+            where: { id: requestedPartyId, tenant_id: req.tenantId, company_id: companyId, party_type: { in: ['CUSTOMER', 'PROSPECT'] }, status: 'ACTIVE' },
+            select: { id: true, display_name: true, legal_name: true },
+          });
+          if (!party) throw new ValidationError('Pilih Customer atau Calon Customer aktif pada company yang dipilih.');
+          nextPartyId = party.id;
+          nextCustomerName = party.display_name || party.legal_name || customerName;
+        } else {
+          nextPartyId = null;
+        }
+      }
+    }
+
+    let nextContactId = inquiry.contact_id;
+    if (req.body.contact_id !== undefined) {
+      const requestedContactId = String(req.body.contact_id ?? '').trim() || null;
+      if (requestedContactId) {
+        if (!nextPartyId) throw new ValidationError('Pilih perusahaan sebelum memilih Contact Person.');
+        const contact = await prisma.master_contact.findFirst({
+          where: { id: requestedContactId, tenant_id: req.tenantId, company_id: companyId, party_id: nextPartyId },
+          select: { id: true },
+        });
+        if (!contact) throw new ValidationError('Contact Person tidak terdaftar pada perusahaan yang dipilih.');
+        nextContactId = contact.id;
+      } else {
+        nextContactId = null;
+      }
+    } else if (nextPartyId !== inquiry.customer_party_id) {
+      nextContactId = null;
+    }
+
     const updated = await prisma.crm_customer_inquiry.update({
       where: { id: inquiry.id },
-      data: { subject, customer_name: customerName, customer_email: customerEmail, customer_phone: customerPhone, description, lead_source: leadSource, interested_service: interestedService, notes, updated_at: new Date() },
+      data: {
+        subject,
+        customer_name: nextCustomerName,
+        customer_email: customerEmail,
+        customer_phone: customerPhone,
+        customer_party_id: nextPartyId,
+        contact_id: nextContactId,
+        description,
+        lead_source: leadSource,
+        interested_service: interestedService,
+        notes,
+        updated_at: new Date(),
+      },
     });
     res.json({ success: true, data: updated });
   } catch (error) { next(error); }

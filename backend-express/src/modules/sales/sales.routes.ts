@@ -423,7 +423,76 @@ salesRouter.post('/deliveries/:id/dispatch', async (req: Request, res: Response,
 salesRouter.use('/quotations', createSalesCrudRouter({ modelName: 'sales_quotation', searchFields: ['status'] }));
 salesRouter.use('/quotation-lines', createSalesCrudRouter({ modelName: 'sales_quotation_line', searchFields: ['description'] }));
 salesRouter.use('/quotation-costs', createSalesCrudRouter({ modelName: 'sales_quotation_cost', searchFields: ['cost_element'] }));
-salesRouter.use('/contracts', createSalesCrudRouter({ modelName: 'sales_contract', searchFields: ['contract_number'] }));
+const validateContractPayload = async (req: Request, data: Record<string, any>, existing?: Record<string, any>) => {
+  const companyId = activeCompanyId(req);
+  const customerPartyId = String(
+    data.customer_party_id !== undefined ? (data.customer_party_id ?? '') : (existing?.customer_party_id ?? '')
+  ).trim() || null;
+  if (!customerPartyId) {
+    throw new ValidationError('Customer / Company wajib dipilih pada Contract.');
+  }
+  const party = await prisma.master_party.findFirst({
+    where: {
+      id: customerPartyId,
+      company_id: companyId,
+      party_type: { in: ['CUSTOMER', 'PROSPECT'] },
+      status: 'ACTIVE',
+    },
+    select: { id: true },
+  });
+  if (!party) {
+    throw new ValidationError('Customer / Company aktif tidak ditemukan pada company ini.');
+  }
+
+  const contactId = String(
+    data.contact_id !== undefined ? (data.contact_id ?? '') : (existing?.contact_id ?? '')
+  ).trim() || null;
+  if (contactId) {
+    const contact = await prisma.master_contact.findFirst({
+      where: { id: contactId, company_id: companyId, party_id: customerPartyId },
+      select: { id: true },
+    });
+    if (!contact) {
+      throw new ValidationError('Contact Person yang dipilih tidak terdaftar pada Company tersebut.');
+    }
+  }
+
+  const opportunityId = String(
+    data.opportunity_id !== undefined ? (data.opportunity_id ?? '') : (existing?.opportunity_id ?? '')
+  ).trim() || null;
+  if (opportunityId) {
+    const opp = await prisma.crm_opportunity.findFirst({
+      where: { id: opportunityId, company_id: companyId, customer_party_id: customerPartyId },
+      select: { id: true },
+    });
+    if (!opp) {
+      throw new ValidationError('Opportunity yang dipilih tidak sesuai dengan Company pada Contract.');
+    }
+  }
+
+  if (data.contract_amount !== undefined && data.contract_amount !== null && Number(data.contract_amount) < 0) {
+    throw new ValidationError('Nilai kontrak tidak boleh bernilai negatif.');
+  }
+
+  const nextData: Record<string, any> = {
+    ...data,
+    customer_party_id: customerPartyId,
+    contact_id: contactId,
+    opportunity_id: opportunityId,
+  };
+  if (!existing && !String(nextData.contract_number ?? '').trim()) {
+    const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    nextData.contract_number = `CTR-${stamp}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  }
+  return nextData;
+};
+
+salesRouter.use('/contracts', createSalesCrudRouter({
+  modelName: 'sales_contract',
+  searchFields: ['contract_number'],
+  beforeCreate: async (req, data) => validateContractPayload(req, data),
+  beforeUpdate: async (req, data, existing) => validateContractPayload(req, data, existing),
+}));
 salesRouter.use('/contract-lines', createSalesCrudRouter({ modelName: 'sales_contract_line', searchFields: ['description'] }));
 salesRouter.use('/orders', createSalesCrudRouter({
   modelName: 'sales_order',
