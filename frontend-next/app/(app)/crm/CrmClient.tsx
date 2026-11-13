@@ -605,7 +605,7 @@ function TabDashboard({ data, dash }: { data: CRMData; dash: CRMDashboard }) {
  */
 function TabDeals({
   data, approvals, isNewOppOpen, setIsNewOppOpen, onRefresh,
-  onOpportunityCreated, onOpportunityDeleted, onPartyCreated,
+  onOpportunityCreated, onOpportunityUpdated, onOpportunityDeleted, onPartyCreated,
   readOnly = false, canOverride = false,
   canDelegate = false, canEditAll = false, currentUserId, onOpenDelegate, onOpenStageDetail, teamUsers = [],
   pipelineViewMode = "PIPELINE", onPipelineViewModeChange, estimateSlot,
@@ -613,6 +613,7 @@ function TabDeals({
   data: CRMData; approvals: any[]; isNewOppOpen: boolean;
   setIsNewOppOpen: (v: boolean) => void; onRefresh: () => void;
   onOpportunityCreated?: (newOpp: any) => void;
+  onOpportunityUpdated?: (updatedOpp: any) => void;
   onOpportunityDeleted?: (id: string | number) => void;
   onPartyCreated?: (newParty: any) => void;
   readOnly?: boolean;
@@ -847,18 +848,11 @@ function TabDeals({
         expected_updated_at: opportunity.updated_at ?? null,
         reason: "Tahap diperbarui dari CRM",
       });
-      setData((prev) => ({
-        ...prev,
-        opportunities: (prev.opportunities || []).map((item: any) =>
-          String(item.id) === String(opportunity.id)
-            ? {
-                ...item,
-                ...(updatedOpp && typeof updatedOpp === "object" ? updatedOpp : {}),
-                pipeline_stage: updatedOpp?.pipeline_stage ?? stage,
-              }
-            : item
-        ),
-      }));
+      onOpportunityUpdated?.({
+        ...opportunity,
+        ...(updatedOpp && typeof updatedOpp === "object" ? updatedOpp : {}),
+        pipeline_stage: updatedOpp?.pipeline_stage ?? stage,
+      });
       if ((meta?.sourceStage ?? opportunity.pipeline_stage) !== stage) {
         toast.success(`Tahap deal diperbarui ke ${CRM_PIPELINE_STAGE_LABELS[stage] || stage}.`);
       }
@@ -3975,6 +3969,18 @@ export default function CrmClient() {
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
+  const handleOpportunityUpdated = (updatedOpp: any) => {
+    setCrmData(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        opportunities: (prev.opportunities || []).map(item =>
+          String(item.id) === String(updatedOpp.id) ? { ...item, ...updatedOpp } : item
+        )
+      };
+    });
+  };
+
   const handleOpportunityDeleted = (id: string | number) => {
     setCrmData(prev => {
       if (!prev) return prev;
@@ -4292,6 +4298,7 @@ export default function CrmClient() {
               setIsNewOppOpen={setIsNewOppOpen}
               onRefresh={() => loadData(true)}
               onOpportunityCreated={handleOpportunityCreated}
+              onOpportunityUpdated={handleOpportunityUpdated}
               onOpportunityDeleted={handleOpportunityDeleted}
               onPartyCreated={handlePartyCreated}
               readOnly={!canOperateCrm}
