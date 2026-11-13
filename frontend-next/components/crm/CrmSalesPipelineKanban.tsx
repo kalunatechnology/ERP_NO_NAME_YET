@@ -296,7 +296,7 @@ export function CrmSalesPipelineShell({
             <button
               type="button"
               onClick={onOpenNewOpp}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#1E40AF] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#1E3A8A]"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[#2649B3] px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#1E3A8A] transition-all active:scale-98"
             >
               <Plus size={14} /> Add Opportunity
             </button>
@@ -319,17 +319,17 @@ export function CrmSalesPipelineShell({
               className="cursor-pointer space-y-2.5"
             >
               <div className="pr-4">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
-                  <Building2 size={13} className="shrink-0 text-[#1E40AF]" />
+                <div className="flex items-center gap-1.5 text-xs font-bold text-[#090909]">
+                  <Building2 size={13} className="shrink-0 text-[#006BBC]" />
                   <span className="truncate">{opp._customerName}</span>
                 </div>
-                <div className="mt-0.5 text-[11px] font-medium text-slate-600 line-clamp-2">
+                <div className="mt-0.5 text-[11px] font-medium text-[#353535] line-clamp-2">
                   {opp.opportunity_name}
                 </div>
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-extrabold text-[#1E40AF]">
+                <span className="text-xs font-extrabold text-[#006BBC]">
                   {formatMoney(opp._amount)}
                 </span>
                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700">
@@ -365,7 +365,15 @@ export function CrmSalesPipelineShell({
         subtitle={drawerOpp?._customerName}
         badge={
           drawerOpp && (
-            <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-[#1E40AF]">
+            <span className={cn(
+              "rounded-full border px-2.5 py-0.5 text-[11px] font-bold",
+              drawerOpp._bucket === "CONCEPT_DEVELOPMENT" ? "border-[#DDD6FE] bg-[#F4E7FE] text-[#A600FF]" :
+              drawerOpp._bucket === "QUOTATION_SUBMISSION" ? "border-[#FFD2A4] bg-[#FFEBD4] text-[#E28000]" :
+              drawerOpp._bucket === "NEGOTIATION" ? "border-[#FFCCFD] bg-[#FFE5FE] text-[#FF00F2]" :
+              drawerOpp._bucket === "CLOSING" || drawerOpp._bucket === "WON" ? "border-[#B0E2AC] bg-[#DAF8D7] text-[#0B8E00]" :
+              drawerOpp._bucket === "LOST" ? "border-[#FFB6B6] bg-[#FFE5E5] text-[#FF0000]" :
+              "border-[#A9D9FF] bg-[#EDF6FF] text-[#006BBC]"
+            )}>
               {PIPELINE_COLUMNS.find((c) => c.id === drawerOpp._bucket)?.title || drawerOpp.pipeline_stage}
             </span>
           )
@@ -389,9 +397,9 @@ export function CrmSalesPipelineShell({
                     setDrawerOpp(null);
                     onMarkLost(target);
                   }}
-                  className="mr-auto inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100"
+                  className="mr-auto inline-flex items-center gap-1.5 rounded-xl border border-[#FFB6B6] bg-[#FFE5E5] px-3.5 py-2 text-xs font-bold text-[#FF0000] hover:bg-[#FED7D7] transition-colors"
                 >
-                  <XCircle size={13} /> Mark Lost
+                  <XCircle size={14} /> Mark Lost
                 </button>
               )}
               {drawerOpp._party && (
@@ -402,7 +410,7 @@ export function CrmSalesPipelineShell({
                     setDrawerOpp(null);
                     onOpenCustomer360(id);
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#D9D9D9] bg-white px-3.5 py-2 text-xs font-semibold text-[#353535] hover:bg-[#F8FAFC] transition-colors"
                 >
                   Customer 360
                 </button>
@@ -415,9 +423,9 @@ export function CrmSalesPipelineShell({
                     setDrawerOpp(null);
                     onDealWon(target);
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#0B8E00] px-4 py-2 text-xs font-bold text-white hover:bg-[#075500] shadow-xs transition-colors"
                 >
-                  <CheckCircle2 size={13} /> Process Deal Won
+                  <CheckCircle2 size={14} /> Process Deal Won
                 </button>
               )}
             </>
@@ -426,28 +434,28 @@ export function CrmSalesPipelineShell({
       >
         {drawerOpp && drawerTab === "overview" && (
           <div className="space-y-4 text-xs">
-            <div className="grid grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5">
+            <div className="grid grid-cols-2 gap-3.5 rounded-2xl border border-[#D9D9D9] bg-[#F8FAFC] p-4 shadow-2xs">
               <div>
-                <div className="text-slate-400">Expected Amount</div>
-                <div className="mt-0.5 text-sm font-extrabold text-[#1E40AF]">{formatMoney(drawerOpp._amount)}</div>
+                <div className="text-[11px] font-medium text-[#7D7D7D]">Expected Amount</div>
+                <div className="mt-1 text-base font-black text-[#006BBC]">{formatMoney(drawerOpp._amount)}</div>
               </div>
               <div>
-                <div className="text-slate-400">Probability</div>
-                <div className="mt-0.5 text-sm font-bold text-emerald-700">{drawerOpp._prob}%</div>
+                <div className="text-[11px] font-medium text-[#7D7D7D]">Probability</div>
+                <div className="mt-1 text-base font-bold text-[#0B8E00]">{drawerOpp._prob}%</div>
               </div>
               <div>
-                <div className="text-slate-400">Customer</div>
-                <div className="mt-0.5 font-semibold text-slate-900">{drawerOpp._customerName}</div>
+                <div className="text-[11px] font-medium text-[#7D7D7D]">Customer</div>
+                <div className="mt-1 font-bold text-[#090909]">{drawerOpp._customerName}</div>
               </div>
               <div>
-                <div className="text-slate-400">Sales Owner</div>
-                <div className="mt-1"><CRMAvatarBadge name={drawerOpp._ownerName} size="xs" /></div>
+                <div className="text-[11px] font-medium text-[#7D7D7D]">Sales Owner</div>
+                <div className="mt-1.5"><CRMAvatarBadge name={drawerOpp._ownerName} size="xs" /></div>
               </div>
             </div>
 
             {canManageDrawer && !isDrawerClosed && (
-              <div className="rounded-xl border border-slate-200 p-3.5">
-                <div className="mb-2 font-semibold text-slate-700">Pindahkan Tahap Pipeline</div>
+              <div className="rounded-2xl border border-[#D9D9D9] p-4 bg-white shadow-2xs">
+                <div className="mb-2.5 font-bold text-[#090909]">Pindahkan Tahap Pipeline</div>
                 <div className="flex flex-wrap gap-1.5">
                   {PIPELINE_COLUMNS.filter((c) => !["WON", "LOST"].includes(c.id)).map((col) => (
                     <button
@@ -458,10 +466,10 @@ export function CrmSalesPipelineShell({
                         setDrawerOpp(null);
                       }}
                       className={cn(
-                        "rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition",
+                        "rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all",
                         drawerOpp._bucket === col.id
-                          ? "border-[#1E40AF] bg-[#1E40AF] text-white"
-                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
+                          ? "border-[#2649B3] bg-[#2649B3] text-white shadow-2xs font-bold"
+                          : "border-[#D9D9D9] bg-white text-[#353535] hover:bg-[#F6FBFF] hover:border-[#A9D9FF]"
                       )}
                     >
                       {col.title}
@@ -479,9 +487,9 @@ export function CrmSalesPipelineShell({
                   setDrawerOpp(null);
                   onOpenDelegate(target);
                 }}
-                className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50/70 py-2 text-xs font-semibold text-[#1E40AF] hover:bg-blue-100"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#A9D9FF] bg-[#EDF6FF] py-2.5 text-xs font-bold text-[#2649B3] hover:bg-[#D8EEFF] transition-colors shadow-2xs"
               >
-                <UserPlus size={13} /> Delegasikan PIC Sales / Departemen
+                <UserPlus size={14} /> Delegasikan PIC Sales / Departemen
               </button>
             )}
           </div>
@@ -498,7 +506,7 @@ export function CrmSalesPipelineShell({
                     setDrawerOpp(null);
                     onOpenActivity(target);
                   }}
-                  className="flex-1 rounded-lg bg-[#1E40AF] px-3 py-2 font-semibold text-white hover:bg-[#1E3A8A]"
+                  className="flex-1 rounded-xl bg-[#2649B3] px-3.5 py-2 font-bold text-white hover:bg-[#1E3A8A] transition-colors shadow-xs"
                 >
                   + Catat Aktivitas
                 </button>
@@ -509,7 +517,7 @@ export function CrmSalesPipelineShell({
                     setDrawerOpp(null);
                     onOpenMeeting(target);
                   }}
-                  className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 hover:bg-slate-50"
+                  className="flex-1 rounded-xl border border-[#D9D9D9] bg-white px-3.5 py-2 font-semibold text-[#353535] hover:bg-[#F8FAFC] transition-colors"
                 >
                   Jadwalkan Meeting
                 </button>
@@ -553,17 +561,17 @@ export function CrmSalesPipelineShell({
                 setDrawerOpp(null);
                 onViewModeChange("ESTIMATE");
               }}
-              className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#1E40AF] px-3 py-2 font-semibold text-white hover:bg-[#1E3A8A]"
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#2649B3] px-3.5 py-2.5 font-bold text-white hover:bg-[#1E3A8A] transition-colors shadow-xs"
             >
-              <Calculator size={13} /> Kelola di Estimating &amp; Quotations
+              <Calculator size={14} /> Kelola di Estimating &amp; Quotations
             </button>
             {drawerEstimates.map((e: any) => (
-              <div key={e.id} className="flex items-center justify-between rounded-xl border border-slate-200 p-3">
+              <div key={e.id} className="flex items-center justify-between rounded-xl border border-[#D9D9D9] p-3 bg-white">
                 <div>
-                  <div className="font-bold text-slate-900">{e.estimate_number || `EST-${String(e.id).slice(0, 8)}`}</div>
-                  <div className="text-[11px] text-slate-500">Status: {e.status}</div>
+                  <div className="font-bold text-[#090909]">{e.estimate_number || `EST-${String(e.id).slice(0, 8)}`}</div>
+                  <div className="text-[11px] text-[#626262]">Status: {e.status}</div>
                 </div>
-                <div className="font-bold text-[#1E40AF]">{formatMoney(e.offered_amount || e.total_cost)}</div>
+                <div className="font-bold text-[#006BBC]">{formatMoney(e.offered_amount || e.total_cost)}</div>
               </div>
             ))}
             {drawerQuotations.map((q: any) => (

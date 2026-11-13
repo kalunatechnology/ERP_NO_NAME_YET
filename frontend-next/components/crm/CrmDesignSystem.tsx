@@ -21,81 +21,81 @@ export const CRM_TONE_STYLES: Record<
   }
 > = {
   blue: {
-    cardBg: "bg-[#EBF5FF]/80",
-    cardBorder: "border-[#BFDBFE]",
-    iconBg: "bg-[#DBEAFE]",
-    text: "text-[#1E40AF]",
-    colBg: "bg-[#EBF5FF]/60",
-    colHeaderBg: "bg-[#DBEAFE]/80",
-    colBorder: "border-[#BFDBFE]",
-    badgeBg: "bg-[#DBEAFE] text-[#1E40AF]",
-    dot: "bg-[#2563EB]",
+    cardBg: "bg-[#EAF6FF]",
+    cardBorder: "border-[#D9D9D9]",
+    iconBg: "bg-[#D8EEFF]",
+    text: "text-[#006BBC]",
+    colBg: "bg-[#F6FBFF]",
+    colHeaderBg: "bg-[#DDF0FF]",
+    colBorder: "border-[#A9D9FF]",
+    badgeBg: "bg-[#A9D9FF] text-[#006BBC]",
+    dot: "bg-[#0092FF]",
   },
   purple: {
-    cardBg: "bg-[#F5F3FF]/80",
-    cardBorder: "border-[#DDD6FE]",
-    iconBg: "bg-[#EDE9FE]",
-    text: "text-[#5B21B6]",
-    colBg: "bg-[#F5F3FF]/60",
-    colHeaderBg: "bg-[#EDE9FE]/80",
+    cardBg: "bg-[#FAF3FF]",
+    cardBorder: "border-[#D9D9D9]",
+    iconBg: "bg-[#F4E7FE]",
+    text: "text-[#A600FF]",
+    colBg: "bg-[#FAF3FF]",
+    colHeaderBg: "bg-[#F4E7FE]",
     colBorder: "border-[#DDD6FE]",
-    badgeBg: "bg-[#EDE9FE] text-[#5B21B6]",
-    dot: "bg-[#7C3AED]",
+    badgeBg: "bg-[#F0DDFF] text-[#A600FF]",
+    dot: "bg-[#A600FF]",
   },
   amber: {
-    cardBg: "bg-[#FFFBEB]/90",
-    cardBorder: "border-[#FDE68A]",
-    iconBg: "bg-[#FEF3C7]",
-    text: "text-[#B45309]",
-    colBg: "bg-[#FFFBEB]/65",
-    colHeaderBg: "bg-[#FEF3C7]/85",
-    colBorder: "border-[#FDE68A]",
-    badgeBg: "bg-[#FEF3C7] text-[#B45309]",
-    dot: "bg-[#D97706]",
+    cardBg: "bg-[#FEF5E6]",
+    cardBorder: "border-[#D9D9D9]",
+    iconBg: "bg-[#FEF5E6]",
+    text: "text-[#E28000]",
+    colBg: "bg-[#FFFBF5]",
+    colHeaderBg: "bg-[#FFEBD4]",
+    colBorder: "border-[#FFD2A4]",
+    badgeBg: "bg-[#FFD2A4] text-[#E28000]",
+    dot: "bg-[#E28000]",
   },
   pink: {
-    cardBg: "bg-[#FDF2F8]/80",
-    cardBorder: "border-[#FBCFE8]",
-    iconBg: "bg-[#FCE7F3]",
-    text: "text-[#BE185D]",
-    colBg: "bg-[#FDF2F8]/60",
-    colHeaderBg: "bg-[#FCE7F3]/80",
-    colBorder: "border-[#FBCFE8]",
-    badgeBg: "bg-[#FCE7F3] text-[#BE185D]",
-    dot: "bg-[#DB2777]",
+    cardBg: "bg-[#FFF9FF]",
+    cardBorder: "border-[#D9D9D9]",
+    iconBg: "bg-[#FFE4FE]",
+    text: "text-[#FF00F2]",
+    colBg: "bg-[#FFF9FF]",
+    colHeaderBg: "bg-[#FFE5FE]",
+    colBorder: "border-[#FFCCFD]",
+    badgeBg: "bg-[#FFCCFD] text-[#FF00F2]",
+    dot: "bg-[#FF00F2]",
   },
   green: {
-    cardBg: "bg-[#ECFDF5]/85",
-    cardBorder: "border-[#A7F3D0]",
-    iconBg: "bg-[#D1FAE5]",
-    text: "text-[#047857]",
-    colBg: "bg-[#ECFDF5]/60",
-    colHeaderBg: "bg-[#D1FAE5]/80",
-    colBorder: "border-[#A7F3D0]",
-    badgeBg: "bg-[#D1FAE5] text-[#047857]",
-    dot: "bg-[#059669]",
+    cardBg: "bg-[#DAF8D7]",
+    cardBorder: "border-[#D9D9D9]",
+    iconBg: "bg-[#DAF8D7]",
+    text: "text-[#0B8E00]",
+    colBg: "bg-[#FAFFF9]",
+    colHeaderBg: "bg-[#DAF8D7]",
+    colBorder: "border-[#B0E2AC]",
+    badgeBg: "bg-[#B0E2AC] text-[#0B8E00]",
+    dot: "bg-[#0B8E00]",
   },
   red: {
-    cardBg: "bg-[#FEF2F2]/85",
-    cardBorder: "border-[#FECACA]",
-    iconBg: "bg-[#FEE2E2]",
-    text: "text-[#B91C1C]",
-    colBg: "bg-[#FEF2F2]/60",
-    colHeaderBg: "bg-[#FEE2E2]/80",
-    colBorder: "border-[#FECACA]",
-    badgeBg: "bg-[#FEE2E2] text-[#B91C1C]",
-    dot: "bg-[#DC2626]",
+    cardBg: "bg-[#FFE5E5]",
+    cardBorder: "border-[#D9D9D9]",
+    iconBg: "bg-[#FFE5E5]",
+    text: "text-[#FF0000]",
+    colBg: "bg-[#FFF7F7]",
+    colHeaderBg: "bg-[#FFE5E5]",
+    colBorder: "border-[#FFB6B6]",
+    badgeBg: "bg-[#FFB6B6] text-[#FF0000]",
+    dot: "bg-[#FF0000]",
   },
   slate: {
-    cardBg: "bg-slate-50",
-    cardBorder: "border-slate-200",
-    iconBg: "bg-slate-100",
-    text: "text-slate-700",
-    colBg: "bg-slate-50/80",
-    colHeaderBg: "bg-slate-100",
-    colBorder: "border-slate-200",
-    badgeBg: "bg-slate-200/80 text-slate-700",
-    dot: "bg-slate-500",
+    cardBg: "bg-white",
+    cardBorder: "border-[#D9D9D9]",
+    iconBg: "bg-[#EDEDED]",
+    text: "text-[#353535]",
+    colBg: "bg-[#F8FAFC]",
+    colHeaderBg: "bg-[#EDEDED]",
+    colBorder: "border-[#D9D9D9]",
+    badgeBg: "bg-[#D9D9D9] text-[#353535]",
+    dot: "bg-[#626262]",
   },
 };
 
@@ -136,11 +136,11 @@ export function CRMKpiRow({
             type={item.onClick ? "button" : undefined}
             onClick={item.onClick}
             className={cn(
-              "rounded-xl border p-3.5 text-left transition-all shadow-2xs min-w-0",
+              "rounded-2xl border p-4 text-left transition-all shadow-2xs min-w-0",
               tone.cardBg,
               tone.cardBorder,
               item.onClick && "cursor-pointer hover:shadow-sm hover:-translate-y-0.5",
-              item.active && "ring-2 ring-[#1E40AF] ring-offset-1"
+              item.active && "border-[#2649B3] shadow-xs"
             )}
           >
             <div className="flex items-start justify-between gap-2">
@@ -149,13 +149,13 @@ export function CRMKpiRow({
                   {item.label}
                 </div>
                 <div
-                  className="mt-1 text-lg sm:text-xl font-extrabold text-slate-900 truncate"
+                  className="mt-1 text-lg sm:text-xl font-extrabold text-[#090909] truncate"
                   title={String(item.value)}
                 >
                   {item.value}
                 </div>
                 {item.subtitle && (
-                  <div className="mt-0.5 text-[11px] text-slate-500 truncate">
+                  <div className="mt-0.5 text-[11px] text-[#626262] truncate">
                     {item.subtitle}
                   </div>
                 )}
@@ -163,12 +163,12 @@ export function CRMKpiRow({
               {Icon && (
                 <div
                   className={cn(
-                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+                    "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-2xs",
                     tone.iconBg,
                     tone.text
                   )}
                 >
-                  <Icon size={17} />
+                  <Icon size={18} />
                 </div>
               )}
             </div>
@@ -261,20 +261,20 @@ export function CRMFilterBar({
   rightActions?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-slate-200 bg-white p-3 shadow-2xs">
+    <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border border-[#D9D9D9] bg-white p-3 shadow-2xs">
       <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[240px]">
         <label className="relative min-w-[200px] flex-1 max-w-xs">
           <span className="sr-only">{searchPlaceholder}</span>
           <Search
             size={14}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#7D7D7D]"
           />
           <input
             type="search"
             value={searchValue}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={searchPlaceholder}
-            className="w-full rounded-lg border border-slate-200 bg-slate-50/60 py-1.5 pl-8 pr-3 text-xs text-slate-800 placeholder:text-slate-400 focus:border-[#1E40AF] focus:bg-white focus:outline-none"
+            className="w-full rounded-xl border border-[#D9D9D9] bg-[#F8FAFC] py-2 pl-8.5 pr-3 text-xs text-[#090909] placeholder:text-[#7D7D7D] focus:border-[#2649B3] focus:bg-white focus:outline-none transition-colors"
           />
         </label>
 
@@ -284,7 +284,7 @@ export function CRMFilterBar({
             aria-label={filter.ariaLabel || filter.id}
             value={filter.value}
             onChange={(e) => filter.onChange(e.target.value)}
-            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:border-[#1E40AF] focus:outline-none"
+            className="rounded-xl border border-[#D9D9D9] bg-white px-3 py-2 text-xs font-medium text-[#353535] focus:border-[#2649B3] focus:outline-none transition-colors"
           >
             {filter.options.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -295,7 +295,7 @@ export function CRMFilterBar({
         ))}
 
         {viewOptions && viewOptions.length > 0 && onViewChange && (
-          <div className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-100/80 p-0.5">
+          <div className="inline-flex items-center rounded-xl border border-[#D9D9D9] bg-[#F1F5F9]/80 p-0.5">
             {viewOptions.map((opt) => {
               const Icon = opt.icon;
               const active = activeView === opt.id;
@@ -305,10 +305,10 @@ export function CRMFilterBar({
                   type="button"
                   onClick={() => onViewChange(opt.id)}
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all",
+                    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all",
                     active
-                      ? "bg-white text-[#1E40AF] shadow-2xs"
-                      : "text-slate-600 hover:text-slate-900"
+                      ? "bg-white text-[#2649B3] shadow-2xs font-bold"
+                      : "text-[#626262] hover:text-[#090909]"
                   )}
                 >
                   {Icon && <Icon size={13} />}
@@ -317,7 +317,25 @@ export function CRMFilterBar({
                     <span
                       className={cn(
                         "rounded-full px-1.5 py-0.2 text-[10px] font-bold",
-                        active ? "bg-blue-100 text-[#1E40AF]" : "bg-slate-200 text-slate-700"
+                        active ? "bg-[#EAF6FF] text-[#2649B3]" : "bg-[#EDEDED] text-[#626262]"
+                      )}
+                    >
+                      {opt.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {rightActions && (
+        <div className="flex items-center gap-2">{rightActions}</div>
+      )}
+    </div>
+  );
+}
                       )}
                     >
                       {opt.badge}
@@ -387,7 +405,7 @@ export function CRMKanbanBoard<T extends { id: string | number }>({
               "flex min-w-[268px] max-w-[320px] flex-1 flex-col rounded-xl border transition-all",
               tone.colBg,
               tone.colBorder,
-              isOver && "ring-2 ring-[#1E40AF] ring-offset-1"
+              isOver && "ring-2 ring-[#2649B3] ring-offset-1"
             )}
           >
             <div
@@ -502,25 +520,25 @@ export function CRMRightDrawer({
       aria-label={title}
     >
       <div
-        className="flex h-full w-full max-w-[490px] flex-col border-l border-slate-200 bg-white shadow-2xl"
+        className="flex h-full w-full max-w-[500px] flex-col border-l border-[#D9D9D9] bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
+        <div className="flex items-start justify-between gap-3 border-b border-[#D9D9D9] px-6 py-4.5 bg-white">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="truncate text-base font-bold text-slate-900">{title}</h2>
+              <h2 className="truncate text-base font-extrabold text-[#090909]">{title}</h2>
               {badge}
             </div>
             {subtitle && (
-              <p className="mt-0.5 truncate text-xs text-slate-500">{subtitle}</p>
+              <p className="mt-0.5 truncate text-xs text-[#626262] font-medium">{subtitle}</p>
             )}
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Tutup panel"
-            className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            className="rounded-lg p-1.5 text-[#7D7D7D] transition-colors hover:bg-[#F1F5F9] hover:text-[#090909]"
           >
             <X size={18} />
           </button>
@@ -528,7 +546,7 @@ export function CRMRightDrawer({
 
         {/* Tabs */}
         {tabs && tabs.length > 0 && onTabChange && (
-          <div className="flex gap-1 border-b border-slate-200 px-5 pt-2">
+          <div className="flex gap-1 border-b border-[#D9D9D9] px-6 pt-2 bg-white">
             {tabs.map((tab) => {
               const active = activeTab === tab.id;
               return (
@@ -539,13 +557,16 @@ export function CRMRightDrawer({
                   className={cn(
                     "-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-semibold transition-colors",
                     active
-                      ? "border-[#1E40AF] text-[#1E40AF]"
-                      : "border-transparent text-slate-500 hover:text-slate-800"
+                      ? "border-[#2649B3] text-[#2649B3] font-bold"
+                      : "border-transparent text-[#7D7D7D] hover:text-[#090909]"
                   )}
                 >
                   <span>{tab.label}</span>
                   {tab.badge !== undefined && (
-                    <span className="rounded-full bg-slate-100 px-1.5 py-0.2 text-[10px] font-bold text-slate-700">
+                    <span className={cn(
+                      "rounded-full px-1.5 py-0.2 text-[10px] font-bold",
+                      active ? "bg-[#EAF6FF] text-[#2649B3]" : "bg-[#EDEDED] text-[#626262]"
+                    )}>
                       {tab.badge}
                     </span>
                   )}
@@ -556,11 +577,11 @@ export function CRMRightDrawer({
         )}
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-5">{children}</div>
+        <div className="flex-1 overflow-y-auto p-6">{children}</div>
 
         {/* Footer */}
         {footer && (
-          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/80 px-5 py-3.5">
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[#D9D9D9] bg-[#F8FAFC] px-6 py-4">
             {footer}
           </div>
         )}

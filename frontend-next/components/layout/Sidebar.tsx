@@ -96,37 +96,35 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
   return (
     <aside
       className={cn(
-        "flex flex-col bg-[#172B46] border-r border-[#263D5B] flex-shrink-0 z-40 select-none text-white",
-        isMobile ? "w-68 h-full shadow-2xl" : "w-68 h-screen"
+        "flex flex-col bg-gradient-to-b from-[#4674FF] to-[#0092FF] border-r border-[#D9D9D9]/30 flex-shrink-0 z-40 select-none text-white",
+        isMobile ? "w-[280px] h-full shadow-2xl" : "w-[280px] h-screen"
       )}
     >
       {/* ── Fixed User Profile Header (Compact 68px) ── */}
-      <div className="h-[68px] px-3.5 pt-2.5 pb-2 flex flex-col justify-center border-b border-[#263D5B] flex-shrink-0 bg-[#172B46] relative">
+      <div className="h-[68px] px-4 pt-2.5 pb-2 flex flex-col justify-center border-b border-white/20 flex-shrink-0 bg-transparent relative">
         {/* Mobile close button */}
         {isMobile && onClose && (
           <button
             onClick={onClose}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-white/80 hover:text-white hover:bg-white/20 transition-colors"
             aria-label="Tutup menu"
           >
             <X size={16} />
           </button>
         )}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-3">
           <div
-            className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 shadow-2xs"
-            style={{ background: "linear-gradient(135deg, #42ACFB 0%, #2649B3 100%)" }}
+            className="w-9 h-9 rounded-full bg-white flex items-center justify-center flex-shrink-0 shadow-sm"
           >
-            <span className="text-[11px] font-extrabold text-white leading-none">{initial}</span>
+            <span className="text-xs font-black text-[#2649B3] leading-none">{initial}</span>
           </div>
           <div className="flex flex-col min-w-0 flex-1">
             <span className="text-xs font-extrabold text-white truncate leading-tight">{displayName}</span>
             <div className="mt-0.5 flex">
               <span
-                className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-bold leading-none"
-                style={{ backgroundColor: badgeStyle.bg, color: badgeStyle.text }}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold leading-none bg-white/20 text-white backdrop-blur-xs"
               >
-                <span className="w-1 h-1 rounded-full flex-shrink-0" style={{ background: badgeStyle.text }} />
+                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-white" />
                 <span className="truncate">{roleLabel}</span>
               </span>
             </div>
@@ -135,13 +133,13 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
       </div>
 
       {/* ── Scrollable Menu Section ── */}
-      <div className="flex-1 px-2.5 py-2.5 flex flex-col gap-2.5 overflow-y-auto no-scrollbar">
+      <div className="flex-1 px-3 py-3 flex flex-col gap-3 overflow-y-auto no-scrollbar">
         {/* Navigation Section */}
-        <div className="flex flex-col gap-0.5">
-          <p className="text-[10px] font-extrabold text-white/60 uppercase tracking-wider px-2 mb-1">
+        <div className="flex flex-col gap-1">
+          <p className="text-[10px] font-extrabold text-white/70 uppercase tracking-wider px-2 mb-1">
             {t("Menu")}
           </p>
-          <nav className="flex flex-col gap-0.5" role="navigation">
+          <nav className="flex flex-col gap-1" role="navigation">
             {navItems.map(({ href, label, icon: Icon }) => {
               const isActive = pathname === href || pathname.startsWith(href + "/");
               return (
@@ -149,27 +147,24 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
                   key={href}
                   href={href}
                   className={cn(
-                    "flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 relative h-8",
+                    "flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs transition-all duration-150 h-10",
                     isActive
-                      ? "bg-[#294B72] text-white font-bold shadow-2xs border border-[#5C85B4]"
-                      : "text-white/80 hover:bg-white/10 hover:text-white"
+                      ? "bg-white text-[#2649B3] font-bold shadow-sm"
+                      : "text-white/90 hover:bg-white/15 hover:text-white font-semibold"
                   )}
                   aria-current={isActive ? "page" : undefined}
                 >
-                  {isActive && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-3.5 bg-[#2649B3] rounded-r-full" />
-                  )}
                   <Icon
-                    size={14}
+                    size={16}
                     className={cn(
                       "flex-shrink-0 transition-colors",
-                      isActive ? "text-white" : "text-white/70"
+                      isActive ? "text-[#2649B3]" : "text-white/90"
                     )}
                     aria-hidden="true"
                   />
                   <span className="flex-1 truncate text-xs">{t(label)}</span>
                   {isActive && (
-                    <ChevronRight size={11} className="text-[#2649B3] opacity-60 flex-shrink-0 ml-auto" />
+                    <ChevronRight size={13} className="text-[#2649B3] opacity-70 flex-shrink-0 ml-auto" />
                   )}
                 </Link>
               );
@@ -179,19 +174,19 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
 
         {/* Recently Opened Items */}
         {visibleRecentItems.length > 0 && (
-          <div className="flex flex-col gap-1 pt-2 border-t border-white/15">
-            <p className="text-[10px] font-extrabold text-white/60 uppercase tracking-wider px-2 flex items-center gap-1.5 mb-0.5">
-              <Clock size={10} className="text-[#9FD6FF]" />
+          <div className="flex flex-col gap-1 pt-2 border-t border-white/20">
+            <p className="text-[10px] font-extrabold text-white/70 uppercase tracking-wider px-2 flex items-center gap-1.5 mb-0.5">
+              <Clock size={10} className="text-white" />
               <span>{t("Recently Opened")}</span>
             </p>
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col gap-1">
               {visibleRecentItems.map((item) => (
                 <Link
                   key={item.id}
                   href={item.target_url || "/dashboard"}
-                  className="flex items-center gap-2 px-2.5 py-1 rounded-md text-[11px] font-medium text-white/75 hover:bg-white/10 hover:text-white transition-colors h-6"
+                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-white/85 hover:bg-white/15 hover:text-white transition-colors"
                 >
-                  <FileText size={11} className="text-white/60 flex-shrink-0" />
+                  <FileText size={12} className="text-white/70 flex-shrink-0" />
                   <span className="truncate flex-1">{item.title}</span>
                 </Link>
               ))}
@@ -201,16 +196,16 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
       </div>
 
       {/* ── Fixed Footer Section matching Screenshot Design ── */}
-      <div className="px-3 pb-3 pt-2 border-t border-white/15 flex flex-col gap-2.5 flex-shrink-0 bg-[#172B46]">
+      <div className="px-3.5 pb-3.5 pt-2.5 border-t border-white/20 flex flex-col gap-2 flex-shrink-0 bg-transparent">
         {/* Marka+ assistant button */}
         {user?.enabled_modules?.includes('MARBOT') && userRole !== 'super_admin' && <button
           type="button"
           onClick={onChatbotOpen}
-          className="flex items-center justify-center gap-2.5 px-3 py-2.5 rounded-xl bg-[#294B72] hover:bg-[#345A83] border border-[#5C85B4] text-white font-semibold text-xs transition-all shadow-2xs cursor-pointer active:scale-98"
+          className="flex items-center justify-center gap-2.5 px-3 py-2.5 rounded-xl bg-[#2649B3] hover:bg-[#1E3A8A] text-white font-bold text-xs transition-all shadow-xs cursor-pointer active:scale-98 border border-white/20"
           id="sidebar-marbot-btn"
           title="Chat with Marka Plus"
         >
-          <div className="w-5 h-5 rounded-full bg-[#5C85B4] flex items-center justify-center text-white flex-shrink-0 shadow-2xs">
+          <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-white flex-shrink-0 shadow-2xs">
             <svg
               width="12"
               height="12"
@@ -234,18 +229,18 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
         <button
           type="button"
           onClick={() => logout()}
-          className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-[#345A83] hover:bg-[#426B98] text-white font-semibold text-xs transition-all shadow-2xs w-full cursor-pointer active:scale-98"
+          className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white font-semibold text-xs transition-all shadow-2xs w-full cursor-pointer active:scale-98"
           id="sidebar-logout-btn"
           aria-label="Log Out"
         >
-          <span className="font-bold">Log Out</span>
+          <span className="font-semibold">Log Out</span>
           <LogOut size={13} aria-hidden="true" className="flex-shrink-0 rotate-180" />
         </button>
 
         {/* Brand ownership */}
-        <div className="flex flex-col items-center justify-center pt-1">
-          <MarkaWordmark className="h-auto w-[86px] text-white" />
-          <span className="text-[10px] text-white/60 mt-0.5 font-medium">By Arsalynk® 2026</span>
+        <div className="flex flex-col items-center justify-center pt-0.5">
+          <MarkaWordmark className="h-auto w-[82px] text-white" />
+          <span className="text-[10px] text-white/80 mt-0.5 font-medium">By Arsalynk® 2026</span>
         </div>
       </div>
     </aside>
