@@ -469,7 +469,7 @@ export function CRMKanbanBoard<T extends { id: string | number }>({
                           <div className="h-16 rounded-xl border-2 border-dashed border-[#2649B3]/45 bg-[#EAF6FF]/75 transition-all duration-150" />
                         )}
                         <div
-                          draggable={Boolean(canDrag && onMoveCard)}
+                          draggable={Boolean(canDrag && onMoveCard && !pendingIds?.has(itemKey))}
                           onDragStart={(e) => {
                             if (!canDrag || !onMoveCard) return;
                             setDraggedId(itemKey);

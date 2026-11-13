@@ -1538,6 +1538,7 @@ model crm_opportunity {
   owner_user_id       String?   @map("owner_user_id")
   department_id       String?   @map("department_id")
   pipeline_stage      String
+  pipeline_position   Int       @default(0) @map("pipeline_position")
   stage_id            String?   @map("stage_id")
   opportunity_name    String
   lost_reason         String

@@ -359,7 +359,17 @@ export async function updateOpportunityCustomer(id: string | number, customerPar
   return data;
 }
 
-export async function moveCRMOpportunityStage(id: string | number, stage: string, options: { next_follow_up_at?: string; reason?: string } = {}) {
+export async function moveCRMOpportunityStage(
+  id: string | number,
+  stage: string,
+  options: {
+    source_stage?: string;
+    position?: number;
+    expected_updated_at?: string | null;
+    next_follow_up_at?: string;
+    reason?: string;
+  } = {},
+) {
   const { data } = await api.post(`/api/v1/crm/opportunities/${id}/stage`, { stage, ...options });
   return data;
 }

@@ -830,26 +830,41 @@ function TabDeals({
     }
   };
 
-  const handleOpportunityStageChange = async (opportunity: any, stage: string): Promise<boolean> => {
+  const handleOpportunityStageChange = async (
+    opportunity: any,
+    stage: string,
+    meta?: { sourceStage?: string; position?: number },
+  ): Promise<boolean> => {
     if (stage === "FOLLOW_UP") {
       setFollowUpOpp(opportunity);
       setFollowUpDraft({ date: "", reason: "" });
       return false;
     }
     try {
-      await moveCRMOpportunityStage(opportunity.id, stage, { reason: "Tahap diperbarui dari CRM" });
+      const updatedOpp = await moveCRMOpportunityStage(opportunity.id, stage, {
+        source_stage: meta?.sourceStage ?? opportunity.pipeline_stage,
+        position: meta?.position,
+        expected_updated_at: opportunity.updated_at ?? null,
+        reason: "Tahap diperbarui dari CRM",
+      });
       setData((prev) => ({
         ...prev,
         opportunities: (prev.opportunities || []).map((item: any) =>
           String(item.id) === String(opportunity.id)
-            ? { ...item, pipeline_stage: stage }
+            ? {
+                ...item,
+                ...(updatedOpp && typeof updatedOpp === "object" ? updatedOpp : {}),
+                pipeline_stage: updatedOpp?.pipeline_stage ?? stage,
+              }
             : item
         ),
       }));
-      toast.success(`Tahap deal diperbarui ke ${CRM_PIPELINE_STAGE_LABELS[stage] || stage}.`);
+      if ((meta?.sourceStage ?? opportunity.pipeline_stage) !== stage) {
+        toast.success(`Tahap deal diperbarui ke ${CRM_PIPELINE_STAGE_LABELS[stage] || stage}.`);
+      }
       return true;
     } catch (error: any) {
-      toast.error(error?.response?.data?.detail || "Tahap Opportunity gagal diperbarui. Posisi dikembalikan.");
+      toast.error(error?.response?.data?.detail || error?.response?.data?.error?.message || "Tahap Opportunity gagal diperbarui. Posisi dikembalikan.");
       return false;
     }
   };
@@ -1294,7 +1309,7 @@ function TabDeals({
         viewMode={pipelineViewMode}
         onViewModeChange={(mode) => onPipelineViewModeChange?.(mode)}
         onOpenNewOpp={() => setIsNewOppOpen(true)}
-        onMoveStage={(opp, stage) => handleOpportunityStageChange(opp, stage)}
+        onMoveStage={(opp, stage, meta) => handleOpportunityStageChange(opp, stage, meta)}
         onDealWon={(opp) => void handleDealWon(opp)}
         onMarkLost={(opp) => void handleMarkLost(opp.id)}
         onOpenActivity={(opp) => {

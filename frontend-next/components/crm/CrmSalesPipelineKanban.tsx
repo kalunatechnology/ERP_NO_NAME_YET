@@ -70,7 +70,7 @@ export function CrmSalesPipelineShell({
   viewMode: PipelineViewMode;
   onViewModeChange: (mode: PipelineViewMode) => void;
   onOpenNewOpp: () => void;
-  onMoveStage: (opp: any, targetStage: string) => void | Promise<boolean | void>;
+  onMoveStage: (opp: any, targetStage: string, meta?: { sourceStage?: string; position?: number }) => void | Promise<boolean | void>;
   onDealWon: (opp: any) => void;
   onMarkLost: (opp: any) => void;
   onOpenActivity: (opp: any) => void;
@@ -89,6 +89,7 @@ export function CrmSalesPipelineShell({
   const [ownerFilter, setOwnerFilter] = useState("ALL");
   const [stageFilter, setStageFilter] = useState("ALL");
   const [optimisticBuckets, setOptimisticBuckets] = useState<Record<string, string>>({});
+  const [optimisticProbs, setOptimisticProbs] = useState<Record<string, number>>({});
   const [pendingOppIds, setPendingOppIds] = useState<Set<string>>(() => new Set());
   const latestMoveSeqRef = useRef<Record<string, number>>({});
 
@@ -108,12 +109,14 @@ export function CrmSalesPipelineShell({
 
   const enrichedOpps = useMemo(() => {
     return (data.opportunities || []).map((o: any) => {
+      const idStr = String(o.id);
       const serverBucket = normalizePipelineBucket(o);
-      const bucket = optimisticBuckets[String(o.id)] || serverBucket;
+      const bucket = optimisticBuckets[idStr] || serverBucket;
       const pid = o.customer_party_id ?? o.customer_party ?? o.customer;
       const party = pid ? partyById.get(String(pid)) : null;
       const ownerId = String(o.owner_user_id || o.created_by_id || "");
       const ownerUser = userById.get(ownerId);
+      const rawProb = optimisticProbs[idStr] !== undefined ? optimisticProbs[idStr] : Number(o.probability_percent || 0);
       return {
         ...o,
         _bucket: bucket,
@@ -122,10 +125,10 @@ export function CrmSalesPipelineShell({
         _ownerId: ownerId,
         _ownerName: ownerUser?.full_name || ownerUser?.email || "Unassigned",
         _amount: Number(o.expected_amount || 0),
-        _prob: Math.max(0, Math.min(100, Number(o.probability_percent || 0))),
+        _prob: Math.max(0, Math.min(100, rawProb)),
       };
     });
-  }, [data.opportunities, partyById, userById, optimisticBuckets]);
+  }, [data.opportunities, partyById, userById, optimisticBuckets, optimisticProbs]);
 
   const kpiItems: CRMKpiItem[] = useMemo(() => {
     const total = enrichedOpps.length;
@@ -204,20 +207,30 @@ export function CrmSalesPipelineShell({
     });
   }, [enrichedOpps, ownerFilter, stageFilter, search]);
 
+  const STAGE_PROB_MAP: Record<string, number> = {
+    PROSPECT: 10,
+    DISCOVERY: 25,
+    PROPOSAL_SENT: 50,
+    NEGOTIATION: 75,
+    FOLLOW_UP: 20,
+  };
+
   const kanbanColumns: CRMKanbanColumn<any>[] = useMemo(() => {
     return PIPELINE_COLUMNS.map((col) => {
       const rawItems = filteredOpps.filter((o) => o._bucket === col.id);
       const order = columnOrder[col.id];
-      const items = order && order.length > 0
-        ? [...rawItems].sort((a, b) => {
-            const ia = order.indexOf(String(a.id));
-            const ib = order.indexOf(String(b.id));
-            if (ia === -1 && ib === -1) return 0;
+      const items = [...rawItems].sort((a, b) => {
+        if (order && order.length > 0) {
+          const ia = order.indexOf(String(a.id));
+          const ib = order.indexOf(String(b.id));
+          if (ia !== -1 || ib !== -1) {
             if (ia === -1) return 1;
             if (ib === -1) return -1;
             return ia - ib;
-          })
-        : rawItems;
+          }
+        }
+        return Number(a.pipeline_position ?? 0) - Number(b.pipeline_position ?? 0);
+      });
       const colSum = items.reduce((s, o) => s + o._amount, 0);
       return {
         id: col.id,
@@ -233,7 +246,11 @@ export function CrmSalesPipelineShell({
     setColumnOrder((prev) => {
       const next = { ...prev };
       const getIds = (colId: string) =>
-        next[colId] ?? filteredOpps.filter((o) => o._bucket === colId).map((o) => String(o.id));
+        next[colId] ??
+        filteredOpps
+          .filter((o) => o._bucket === colId)
+          .sort((a, b) => Number(a.pipeline_position ?? 0) - Number(b.pipeline_position ?? 0))
+          .map((o) => String(o.id));
 
       const sourceIds = getIds(sourceCol).filter((id) => id !== idKey);
       next[sourceCol] = sourceIds;
@@ -251,15 +268,11 @@ export function CrmSalesPipelineShell({
 
   const handleCardDrop = (oppId: string, targetCol: string, targetIndex?: number) => {
     const idKey = String(oppId);
+    if (pendingOppIds.has(idKey)) return;
+
     const opp = enrichedOpps.find((o) => String(o.id) === idKey);
     if (!opp) return;
     if (["WON", "LOST"].includes(opp._bucket)) return;
-
-    // Same-column reorder (instant, no API call needed)
-    if (opp._bucket === targetCol) {
-      applyCardOrder(idKey, opp._bucket, targetCol, targetIndex);
-      return;
-    }
 
     if (targetCol === "WON") {
       onDealWon(opp);
@@ -271,30 +284,50 @@ export function CrmSalesPipelineShell({
     }
 
     const prevBucket = opp._bucket;
+    const prevProb = opp._prob;
+    const isSameCol = prevBucket === targetCol;
+    const targetIdsBefore = (columnOrder[targetCol] ??
+      filteredOpps
+        .filter((o) => o._bucket === targetCol)
+        .sort((a, b) => Number(a.pipeline_position ?? 0) - Number(b.pipeline_position ?? 0))
+        .map((o) => String(o.id))
+    ).filter((id) => id !== idKey);
+    const resolvedPos =
+      typeof targetIndex === "number"
+        ? Math.max(0, Math.min(targetIndex, targetIdsBefore.length))
+        : targetIdsBefore.length;
+
     const seq = (latestMoveSeqRef.current[idKey] || 0) + 1;
     latestMoveSeqRef.current[idKey] = seq;
 
-    // 1. Immediate Optimistic UI update + exact target position
-    applyCardOrder(idKey, prevBucket, targetCol, targetIndex);
-    setOptimisticBuckets((prev) => ({ ...prev, [idKey]: targetCol }));
+    // 1. Immediate Optimistic UI update (position + stage + probability)
+    applyCardOrder(idKey, prevBucket, targetCol, resolvedPos);
+    if (!isSameCol) {
+      setOptimisticBuckets((prev) => ({ ...prev, [idKey]: targetCol }));
+      if (STAGE_PROB_MAP[targetCol] !== undefined) {
+        setOptimisticProbs((prev) => ({ ...prev, [idKey]: STAGE_PROB_MAP[targetCol] }));
+      }
+    }
     setPendingOppIds((prev) => {
       const next = new Set(prev);
       next.add(idKey);
       return next;
     });
 
-    // 2. Background API sync without blocking other cards
-    Promise.resolve(onMoveStage(opp, targetCol))
+    // 2. Background API sync with sourceStage + destinationStage + position
+    Promise.resolve(onMoveStage(opp, targetCol, { sourceStage: prevBucket, position: resolvedPos }))
       .then((ok) => {
         if (latestMoveSeqRef.current[idKey] !== seq) return;
         if (ok === false) {
           setOptimisticBuckets((prev) => ({ ...prev, [idKey]: prevBucket }));
+          setOptimisticProbs((prev) => ({ ...prev, [idKey]: prevProb }));
           applyCardOrder(idKey, targetCol, prevBucket);
         }
       })
       .catch(() => {
         if (latestMoveSeqRef.current[idKey] !== seq) return;
         setOptimisticBuckets((prev) => ({ ...prev, [idKey]: prevBucket }));
+        setOptimisticProbs((prev) => ({ ...prev, [idKey]: prevProb }));
         applyCardOrder(idKey, targetCol, prevBucket);
       })
       .finally(() => {

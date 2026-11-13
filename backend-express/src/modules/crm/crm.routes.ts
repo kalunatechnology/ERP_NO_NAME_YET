@@ -1430,9 +1430,13 @@ crmRouter.post('/opportunities/:id/stage', async (req: Request, res: Response, n
     }
     const reason = String(req.body.reason ?? '').trim();
     if (reason.length > 2000 || (stage === 'FOLLOW_UP' && !reason)) throw new ValidationError('Isi alasan tindak lanjut maksimal 2.000 karakter.');
+    const sourceStage = req.body.source_stage != null ? String(req.body.source_stage) : null;
+    const rawPosition = req.body.position !== undefined && req.body.position !== null ? Number(req.body.position) : null;
+    const position = rawPosition !== null && Number.isFinite(rawPosition) && rawPosition >= 0 ? Math.floor(rawPosition) : null;
+    const expectedUpdatedAt = req.body.expected_updated_at != null ? String(req.body.expected_updated_at) : null;
     const result = await prisma.$transaction((tx) => moveOpportunityStage(tx, {
       opportunityId: req.params.id, companyId: activeCompanyId(req), stage: stage as any,
-      actorId: req.user?.id, reason, nextFollowUpAt,
+      actorId: req.user?.id, reason, nextFollowUpAt, sourceStage, position, expectedUpdatedAt,
     }));
     res.json(result);
   } catch (error) { next(error); }

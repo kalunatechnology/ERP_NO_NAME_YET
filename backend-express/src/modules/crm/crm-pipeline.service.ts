@@ -40,6 +40,9 @@ export async function moveOpportunityStage(
     actorId?: string | null;
     reason?: string;
     nextFollowUpAt?: Date | null;
+    sourceStage?: string | null;
+    position?: number | null;
+    expectedUpdatedAt?: string | null;
   },
 ) {
   if (params.stage === 'FOLLOW_UP' && !params.nextFollowUpAt) {
@@ -51,7 +54,21 @@ export async function moveOpportunityStage(
   if (['WON', 'CLOSED_WON', 'LOST', 'CLOSED_LOST', 'CANCELLED', 'CANCEL', 'BATAL'].includes(String(opportunity.status || '').toUpperCase())) {
     throw new ConflictError('Opportunity yang sudah ditutup tidak dapat dipindahkan tahapnya.');
   }
-  if (params.stage === 'PROPOSAL_SENT' || params.stage === 'NEGOTIATION') {
+
+  const previousStageCode = String(opportunity.pipeline_stage || '').trim().toUpperCase();
+  let previousStage: CrmOpenStage | 'WON' | 'LOST';
+  try { previousStage = normalizeCrmStage(previousStageCode); }
+  catch { previousStage = 'PROSPECT'; }
+
+  if (params.sourceStage) {
+    let expectedSource: CrmOpenStage | 'WON' | 'LOST' | null = null;
+    try { expectedSource = normalizeCrmStage(params.sourceStage); } catch { expectedSource = null; }
+    if (expectedSource && previousStage !== expectedSource && previousStage !== params.stage) {
+      throw new ConflictError('Tahap Opportunity telah diperbarui oleh pengguna lain. Muat ulang untuk melihat posisi terbaru.');
+    }
+  }
+
+  if ((params.stage === 'PROPOSAL_SENT' || params.stage === 'NEGOTIATION') && previousStage !== params.stage) {
     const sentQuotation = await tx.sales_quotation.findFirst({
       where: { opportunity_id: opportunity.id, company_id: params.companyId, status: { in: ['SENT', 'ACCEPTED', 'REJECTED'] } },
       select: { id: true },
@@ -59,21 +76,48 @@ export async function moveOpportunityStage(
     if (!sentQuotation) throw new ConflictError('Kirim quotation terlebih dahulu sebelum memindahkan Opportunity ke Proposal Dikirim atau Negosiasi.');
   }
 
-  const previousStageCode = String(opportunity.pipeline_stage || '').trim().toUpperCase();
-  let previousStage: CrmOpenStage | 'WON' | 'LOST';
-  try { previousStage = normalizeCrmStage(previousStageCode); }
-  catch { previousStage = 'PROSPECT'; }
   const [fromStage, toStage] = await Promise.all([
     opportunity.stage_id
       ? tx.crm_pipeline_stage.findFirst({ where: { id: opportunity.stage_id, company_id: params.companyId }, select: { id: true } })
       : tx.crm_pipeline_stage.findFirst({ where: { stage_code: previousStageCode, company_id: params.companyId }, select: { id: true } }),
     tx.crm_pipeline_stage.findFirst({ where: { stage_code: params.stage, company_id: params.companyId }, select: { id: true } }),
   ]);
+
+  let targetPosition = typeof opportunity.pipeline_position === 'number' ? opportunity.pipeline_position : 0;
+  if (typeof params.position === 'number' && Number.isFinite(params.position) && params.position >= 0) {
+    const siblings = await tx.crm_opportunity.findMany({
+      where: {
+        company_id: params.companyId,
+        pipeline_stage: params.stage,
+        status: 'OPEN',
+        id: { not: opportunity.id },
+      },
+      orderBy: [{ pipeline_position: 'asc' }, { updated_at: 'desc' }],
+      select: { id: true, pipeline_position: true },
+    });
+    const clampedPos = Math.max(0, Math.min(Math.floor(params.position), siblings.length));
+    const reorderedIds = siblings.map((s) => s.id);
+    reorderedIds.splice(clampedPos, 0, opportunity.id);
+    await Promise.all(
+      reorderedIds.map((id, idx) => {
+        if (id === opportunity.id) return Promise.resolve();
+        const existing = siblings.find((s) => s.id === id);
+        if (existing && existing.pipeline_position === idx) return Promise.resolve();
+        return tx.crm_opportunity.update({
+          where: { id },
+          data: { pipeline_position: idx },
+        });
+      }),
+    );
+    targetPosition = clampedPos;
+  }
+
   const updated = await tx.crm_opportunity.update({
     where: { id: opportunity.id },
     data: {
       status: 'OPEN',
       pipeline_stage: params.stage,
+      pipeline_position: targetPosition,
       stage_id: toStage?.id ?? null,
       probability_percent: STAGE_PROBABILITY[params.stage],
       closed_at: null,
