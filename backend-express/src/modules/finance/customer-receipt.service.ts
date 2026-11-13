@@ -52,181 +52,240 @@ export class CustomerReceiptService {
   }
 
   private static async postInTransaction(tx: Prisma.TransactionClient, paymentId: string, userId: string, companyId: string) {
-      const payment = await tx.fin_payment.findFirst({ where: { id: paymentId, company_id: companyId } });
-      if (!payment || payment.payment_type !== 'CUSTOMER_RECEIPT') throw new NotFoundError('Penerimaan pelanggan');
-      this.assertReviewer(payment, userId);
-      if (payment.status === 'POSTED' && payment.journal_entry_id) return payment;
-      if (payment.status !== 'APPROVED') throw new ConflictError('Hanya penerimaan APPROVED yang dapat diposting.');
-      const amount = new Decimal(payment.amount ?? 0);
-      if (!amount.isFinite() || amount.lt(1000)) throw new ValidationError('Nominal penerimaan minimal Rp 1.000.');
-      if (!payment.reference_number.trim() || !payment.payment_date) throw new ValidationError('Tanggal penerimaan dan nomor bukti wajib diisi sebelum posting.');
-      const postingDate = payment.payment_date;
-      const scope = { company_id: companyId, tenant_id: payment.tenant_id };
-      const bank = await tx.fin_bank_account.findFirst({ where: { ...scope, id: payment.bank_account_id ?? '', status: 'ACTIVE' } });
-      const bankLedger = bank?.ledger_account_id
-        ? await tx.fin_account.findFirst({ where: { company_id: companyId, id: bank.ledger_account_id, status: 'ACTIVE' } }) : null;
-      if (!bankLedger || bankLedger.account_type !== 'ASSET' || bankLedger.normal_balance !== 'DEBIT') {
-        throw new AccountingError('Rekening penerima harus terhubung ke ledger kas / bank aktif bertipe aset dan saldo normal debit.');
-      }
-      const company = await tx.core_company.findFirst({ where: { id: companyId } });
-      const baseCurrency = company?.base_currency_id;
-      for (const currency of [payment.currency_id, bank?.currency_id]) {
-        if (currency && currency !== baseCurrency) throw new ValidationError('Posting valuta asing memerlukan konversi kurs; gunakan rekening dan transaksi dalam mata uang dasar perusahaan.');
-      }
-      const plan = (payment.allocation_plan ?? {}) as Record<string, any>;
-      const withholdingAmount = new Decimal(Number(plan.withholding_tax_amount || 0));
-      if (!withholdingAmount.isFinite() || withholdingAmount.lt(0)) {
-        throw new ValidationError('Nominal potongan PPh / pajak tidak valid.');
-      }
-      const totalSettlement = amount.plus(withholdingAmount);
+    const payment = await tx.fin_payment.findFirst({ where: { id: paymentId, company_id: companyId } });
+    if (!payment || payment.payment_type !== 'CUSTOMER_RECEIPT') throw new NotFoundError('Penerimaan pelanggan');
+    this.assertReviewer(payment, userId);
+    if (payment.status === 'POSTED' && payment.journal_entry_id) return payment;
+    if (payment.status !== 'APPROVED') throw new ConflictError('Hanya penerimaan APPROVED yang dapat diposting.');
+    const amount = new Decimal(payment.amount ?? 0);
+    if (!amount.isFinite() || amount.lt(1000)) throw new ValidationError('Nominal penerimaan minimal Rp 1.000.');
+    if (!payment.reference_number.trim() || !payment.payment_date) throw new ValidationError('Tanggal penerimaan dan nomor bukti wajib diisi sebelum posting.');
+    const postingDate = payment.payment_date;
+    const scope = { company_id: companyId, tenant_id: payment.tenant_id };
+    const bank = await tx.fin_bank_account.findFirst({ where: { ...scope, id: payment.bank_account_id ?? '', status: 'ACTIVE' } });
+    const bankLedger = bank?.ledger_account_id
+      ? await tx.fin_account.findFirst({ where: { company_id: companyId, id: bank.ledger_account_id, status: 'ACTIVE' } }) : null;
+    if (!bankLedger || bankLedger.account_type !== 'ASSET' || bankLedger.normal_balance !== 'DEBIT') {
+      throw new AccountingError('Rekening penerima harus terhubung ke ledger kas / bank aktif bertipe aset dan saldo normal debit.');
+    }
+    const company = await tx.core_company.findFirst({ where: { id: companyId } });
+    const baseCurrency = company?.base_currency_id;
+    for (const currency of [payment.currency_id, bank?.currency_id]) {
+      if (currency && currency !== baseCurrency) throw new ValidationError('Posting valuta asing memerlukan konversi kurs; gunakan rekening dan transaksi dalam mata uang dasar perusahaan.');
+    }
+    const plan = (payment.allocation_plan ?? {}) as Record<string, any>;
+    const withholdingAmount = new Decimal(Number(plan.withholding_tax_amount || 0));
+    if (!withholdingAmount.isFinite() || withholdingAmount.lt(0)) {
+      throw new ValidationError('Nominal potongan PPh / pajak tidak valid.');
+    }
+    const totalSettlement = amount.plus(withholdingAmount);
 
-      const allocations = await tx.fin_payment_allocation.findMany({ where: { ...scope, payment_id: payment.id } });
-      const targets = new Map<string, Decimal>();
-      for (const allocation of allocations) {
-        if (!allocation.billing_document_id || allocation.schedule_id || Number(allocation.discount_amount ?? 0) || Number(allocation.write_off_amount ?? 0) || Number(allocation.exchange_difference ?? 0)) {
-          throw new ValidationError('Alokasi penerimaan harus berupa pembayaran invoice tanpa diskon, penghapusan, selisih kurs, atau jadwal cicilan.');
-        }
-        const allocated = new Decimal(allocation.allocated_amount ?? 0);
-        if (!allocated.isFinite() || allocated.lte(0)) throw new ValidationError('Nominal alokasi invoice harus lebih dari nol.');
-        targets.set(allocation.billing_document_id, (targets.get(allocation.billing_document_id) ?? new Decimal(0)).plus(allocated));
+    const allocations = await tx.fin_payment_allocation.findMany({ where: { ...scope, payment_id: payment.id } });
+    const targets = new Map<string, Decimal>();
+    for (const allocation of allocations) {
+      if (!allocation.billing_document_id || allocation.schedule_id || Number(allocation.discount_amount ?? 0) || Number(allocation.write_off_amount ?? 0) || Number(allocation.exchange_difference ?? 0)) {
+        throw new ValidationError('Alokasi penerimaan harus berupa pembayaran invoice tanpa diskon, penghapusan, selisih kurs, atau jadwal cicilan.');
       }
-      let createAllocation = false;
-      if (!allocations.length && (plan.invoice_id || String(plan.invoice_ref ?? '').trim() || plan.proforma_id)) {
-        if (plan.proforma_id && (plan.invoice_id || String(plan.invoice_ref ?? '').trim())) throw new ValidationError('Satu penerimaan hanya boleh dialokasikan ke invoice atau proforma, bukan keduanya.');
-        const matches = await tx.fin_billing_document.findMany({ where: {
+      const allocated = new Decimal(allocation.allocated_amount ?? 0);
+      if (!allocated.isFinite() || allocated.lte(0)) throw new ValidationError('Nominal alokasi invoice harus lebih dari nol.');
+      targets.set(allocation.billing_document_id, (targets.get(allocation.billing_document_id) ?? new Decimal(0)).plus(allocated));
+    }
+    let createAllocation = false;
+    if (!allocations.length && (plan.invoice_id || String(plan.invoice_ref ?? '').trim() || plan.proforma_id)) {
+      if (plan.proforma_id && (plan.invoice_id || String(plan.invoice_ref ?? '').trim())) throw new ValidationError('Satu penerimaan hanya boleh dialokasikan ke invoice atau proforma, bukan keduanya.');
+      const matches = await tx.fin_billing_document.findMany({
+        where: {
           ...scope,
           ...(plan.proforma_id ? { id: String(plan.proforma_id), billing_type: 'PROFORMA_INVOICE' } : { billing_type: 'CUSTOMER_INVOICE', ...(plan.invoice_id ? { id: String(plan.invoice_id) } : { invoice_number: String(plan.invoice_ref).trim() }) }),
-        }, take: 2 });
-        if (matches.length !== 1) throw new ValidationError('Dokumen penerimaan tidak ditemukan atau ambigu pada company ini.');
-        if (plan.proforma_id) {
-          const linkedHandoff = await tx.crm_deal_handoff.findFirst({ where: { proforma_invoice_id: matches[0].id, company_id: companyId }, select: { id: true } });
-          if (!linkedHandoff) throw new ValidationError('Proforma belum terhubung ke Deal Won yang menunggu pembayaran DP.');
-          if (matches[0].status !== 'DRAFT' || matches[0].payment_status === 'PAID') throw new ConflictError('Proforma tidak lagi menerima pembayaran DP.');
-        }
-        targets.set(matches[0].id, totalSettlement);
-        createAllocation = true;
-      }
-      const totalAllocated = Array.from(targets.values()).reduce((sum, value) => sum.plus(value), new Decimal(0));
-      if (targets.size && !totalAllocated.equals(totalSettlement)) {
-        throw new ValidationError('Total alokasi invoice harus sama dengan nominal penerimaan ditambah potongan pajak.');
-      }
-      let partyId = payment.party_id;
-      const bills: Array<{ bill: any; allocated: Decimal; paid: Decimal; outstanding: Decimal }> = [];
-      for (const [id, allocated] of targets) {
-        const bill = await tx.fin_billing_document.findFirst({ where: { ...scope, id } });
-        if (!bill || (bill.billing_type === 'CUSTOMER_INVOICE' ? bill.status !== 'POSTED' : bill.billing_type !== 'PROFORMA_INVOICE' || bill.status !== 'DRAFT')) {
-          throw new ValidationError('Penerimaan hanya dapat melunasi invoice POSTED atau proforma DP Deal Won yang masih aktif.');
-        }
-        if (bill.currency_id && bill.currency_id !== baseCurrency) throw new ValidationError('Invoice harus menggunakan mata uang dasar perusahaan.');
-        if (partyId && bill.party_id !== partyId) throw new ValidationError('Klien pada invoice berbeda dari penerimaan.');
-        partyId = bill.party_id;
-        const paid = new Decimal(bill.paid_amount ?? 0).plus(allocated);
-        const outstanding = new Decimal(bill.total_amount ?? 0).minus(paid);
-        if (outstanding.lt(0)) throw new ConflictError('Nominal penerimaan melebihi sisa piutang invoice.');
-        bills.push({ bill, allocated, paid, outstanding });
-      }
-      const proformaCount = bills.filter(({ bill }) => bill.billing_type === 'PROFORMA_INVOICE').length;
-      if (proformaCount && proformaCount !== bills.length) throw new ValidationError('Jangan mencampur alokasi invoice piutang dengan proforma DP dalam satu penerimaan.');
-      const coa = await FinanceService.ensureStandardCOA(companyId, tx);
-      const useReceivable = targets.size > 0 && proformaCount === 0;
-      const creditAccount = coa.get(useReceivable ? '1130' : '2140');
-      if (!creditAccount || creditAccount.status !== 'ACTIVE' || creditAccount.account_type !== (useReceivable ? 'ASSET' : 'LIABILITY') || creditAccount.normal_balance !== (useReceivable ? 'DEBIT' : 'CREDIT')) {
-        throw new AccountingError('Akun Piutang Usaha / Uang Muka Pelanggan tidak aktif atau tipe akunnya tidak sesuai.');
-      }
-      if (creditAccount.id === bankLedger.id) throw new AccountingError('Ledger rekening penerima harus berbeda dari akun piutang / uang muka pelanggan.');
-      const period = await PeriodClosingService.ensureOpenPostingPeriod(tx, postingDate, companyId, payment.tenant_id, userId);
-      const journal = await tx.fin_journal.findFirst({ where: { company_id: companyId, journal_code: 'GJ', status: 'ACTIVE' } })
-        ?? await tx.fin_journal.create({ data: { ...scope, id: crypto.randomUUID(), created_by_id: userId, journal_code: 'GJ', journal_name: 'General Journal', journal_type: 'GENERAL', status: 'ACTIVE' } });
-      const document = await FinanceDocumentService.ensure(tx, {
-        tenantId: payment.tenant_id, companyId, userId, existingDocumentId: payment.document_id,
-        documentType: 'CUSTOMER_RECEIPT', documentNumber: `RCPT-${payment.id}`, documentDate: postingDate, status: 'APPROVED',
+        }, take: 2
       });
-      const journalEntryId = crypto.randomUUID();
-      await tx.fin_journal_entry.create({ data: {
+      if (matches.length !== 1) throw new ValidationError('Dokumen penerimaan tidak ditemukan atau ambigu pada company ini.');
+      if (plan.proforma_id) {
+        const linkedHandoff = await tx.crm_deal_handoff.findFirst({ where: { proforma_invoice_id: matches[0].id, company_id: companyId }, select: { id: true } });
+        if (!linkedHandoff) throw new ValidationError('Proforma belum terhubung ke Deal Won yang menunggu pembayaran DP.');
+        if (matches[0].status !== 'DRAFT' || matches[0].payment_status === 'PAID') throw new ConflictError('Proforma tidak lagi menerima pembayaran DP.');
+      }
+      targets.set(matches[0].id, totalSettlement);
+      createAllocation = true;
+    }
+    const totalAllocated = Array.from(targets.values()).reduce((sum, value) => sum.plus(value), new Decimal(0));
+    if (targets.size && !totalAllocated.equals(totalSettlement)) {
+      throw new ValidationError('Total alokasi invoice harus sama dengan nominal penerimaan ditambah potongan pajak.');
+    }
+    let partyId = payment.party_id;
+    const bills: Array<{ bill: any; allocated: Decimal; paid: Decimal; outstanding: Decimal }> = [];
+    for (const [id, allocated] of targets) {
+      const bill = await tx.fin_billing_document.findFirst({ where: { ...scope, id } });
+      if (!bill || (bill.billing_type === 'CUSTOMER_INVOICE' ? bill.status !== 'POSTED' : bill.billing_type !== 'PROFORMA_INVOICE' || bill.status !== 'DRAFT')) {
+        throw new ValidationError('Penerimaan hanya dapat melunasi invoice POSTED atau proforma DP Deal Won yang masih aktif.');
+      }
+      if (bill.currency_id && bill.currency_id !== baseCurrency) throw new ValidationError('Invoice harus menggunakan mata uang dasar perusahaan.');
+      if (partyId && bill.party_id !== partyId) throw new ValidationError('Klien pada invoice berbeda dari penerimaan.');
+      partyId = bill.party_id;
+      const paid = new Decimal(bill.paid_amount ?? 0).plus(allocated);
+      const outstanding = new Decimal(bill.total_amount ?? 0).minus(paid);
+      if (outstanding.lt(0)) throw new ConflictError('Nominal penerimaan melebihi sisa piutang invoice.');
+      bills.push({ bill, allocated, paid, outstanding });
+    }
+    const proformaCount = bills.filter(({ bill }) => bill.billing_type === 'PROFORMA_INVOICE').length;
+    if (proformaCount && proformaCount !== bills.length) throw new ValidationError('Jangan mencampur alokasi invoice piutang dengan proforma DP dalam satu penerimaan.');
+
+    const useReceivable = targets.size > 0 && proformaCount === 0;
+
+    // GUARD AKUNTANSI (PSAK 72): Potongan PPh 23/Final hanya boleh diakui jika melunasi Invoice Resmi (Piutang Usaha 1130),
+    // TIDAK BOLEH diakui pada penerimaan Uang Muka / DP tanpa invoice (2140).
+    if (!useReceivable && withholdingAmount.gt(0)) {
+      throw new ValidationError(
+        'Potongan PPh 23 / Final tidak diperbolehkan pada penerimaan Uang Muka (DP tanpa invoice). Pilih invoice resmi berstatus POSTED untuk mencatat potongan pajak.',
+      );
+    }
+
+    const coa = await FinanceService.ensureStandardCOA(companyId, tx);
+    const creditAccount = coa.get(useReceivable ? '1130' : '2140');
+    if (!creditAccount || creditAccount.status !== 'ACTIVE' || creditAccount.account_type !== (useReceivable ? 'ASSET' : 'LIABILITY') || creditAccount.normal_balance !== (useReceivable ? 'DEBIT' : 'CREDIT')) {
+      throw new AccountingError('Akun Piutang Usaha / Uang Muka Pelanggan tidak aktif atau tipe akunnya tidak sesuai.');
+    }
+    if (creditAccount.id === bankLedger.id) throw new AccountingError('Ledger rekening penerima harus berbeda dari akun piutang / uang muka pelanggan.');
+    const period = await PeriodClosingService.ensureOpenPostingPeriod(tx, postingDate, companyId, payment.tenant_id, userId);
+    const journal = await tx.fin_journal.findFirst({ where: { company_id: companyId, journal_code: 'GJ', status: 'ACTIVE' } })
+      ?? await tx.fin_journal.create({ data: { ...scope, id: crypto.randomUUID(), created_by_id: userId, journal_code: 'GJ', journal_name: 'General Journal', journal_type: 'GENERAL', status: 'ACTIVE' } });
+    const document = await FinanceDocumentService.ensure(tx, {
+      tenantId: payment.tenant_id, companyId, userId, existingDocumentId: payment.document_id,
+      documentType: 'CUSTOMER_RECEIPT', documentNumber: `RCPT-${payment.id}`, documentDate: postingDate, status: 'APPROVED',
+    });
+    const journalEntryId = crypto.randomUUID();
+    await tx.fin_journal_entry.create({
+      data: {
         ...scope, id: journalEntryId, created_by_id: userId, journal_id: journal.id, fiscal_period_id: period.id,
         entry_number: `RCPT-${payment.id}`, posting_date: postingDate, description: `Penerimaan pelanggan ${payment.reference_number}${withholdingAmount.gt(0) ? ` (Potongan Pajak Rp ${withholdingAmount.toString()})` : ''}`,
         source_document_id: document.id, status: 'POSTED',
-      } });
+      }
+    });
 
-      const journalLines: Array<{
-        company_id: string;
-        tenant_id?: string | null;
-        id: string;
-        created_by_id: string;
-        journal_entry_id: string;
-        account_id: string;
-        party_id: string | null;
-        debit_base: Decimal;
-        credit_base: Decimal;
-        transaction_amount: Decimal;
-      }> = [
+    const journalLines: Array<{
+      company_id: string;
+      tenant_id?: string | null;
+      id: string;
+      created_by_id: string;
+      journal_entry_id: string;
+      account_id: string;
+      party_id: string | null;
+      debit_base: Decimal;
+      credit_base: Decimal;
+      transaction_amount: Decimal;
+    }> = [
         { ...scope, id: crypto.randomUUID(), created_by_id: userId, journal_entry_id: journalEntryId, account_id: bankLedger.id, party_id: partyId, debit_base: amount, credit_base: new Decimal(0), transaction_amount: amount },
       ];
 
-      if (withholdingAmount.gt(0)) {
-        const prepaidTaxAccount = coa.get('1160');
-        if (!prepaidTaxAccount) throw new AccountingError('Akun 1160 (Pajak Dibayar Dimuka PPh 23 / Final) tidak ditemukan dalam bagan akun.');
-        journalLines.push({
-          ...scope, id: crypto.randomUUID(), created_by_id: userId, journal_entry_id: journalEntryId, account_id: prepaidTaxAccount.id, party_id: partyId, debit_base: withholdingAmount, credit_base: new Decimal(0), transaction_amount: withholdingAmount,
-        });
-      }
-
+    if (withholdingAmount.gt(0)) {
+      const prepaidTaxAccount = coa.get('1160');
+      if (!prepaidTaxAccount) throw new AccountingError('Akun 1160 (Pajak Dibayar Dimuka PPh 23 / Final) tidak ditemukan dalam bagan akun.');
       journalLines.push({
-        ...scope, id: crypto.randomUUID(), created_by_id: userId, journal_entry_id: journalEntryId, account_id: creditAccount.id, party_id: partyId, debit_base: new Decimal(0), credit_base: totalSettlement, transaction_amount: totalSettlement,
+        ...scope, id: crypto.randomUUID(), created_by_id: userId, journal_entry_id: journalEntryId, account_id: prepaidTaxAccount.id, party_id: partyId, debit_base: withholdingAmount, credit_base: new Decimal(0), transaction_amount: withholdingAmount,
+      });
+    }
+
+    journalLines.push({
+      ...scope, id: crypto.randomUUID(), created_by_id: userId, journal_entry_id: journalEntryId, account_id: creditAccount.id, party_id: partyId, debit_base: new Decimal(0), credit_base: totalSettlement, transaction_amount: totalSettlement,
+    });
+
+    await tx.fin_journal_line.createMany({ data: journalLines });
+
+    for (const { bill, allocated, paid, outstanding } of bills) {
+      if (createAllocation) await tx.fin_payment_allocation.create({
+        data: {
+          ...scope, id: crypto.randomUUID(), created_by_id: userId, payment_id: payment.id, billing_document_id: bill.id, allocated_amount: allocated,
+        }
+      });
+      await tx.fin_billing_document.update({
+        where: { id: bill.id }, data: {
+          paid_amount: paid, outstanding_amount: outstanding, payment_status: outstanding.isZero() ? 'PAID' : 'PARTIALLY_PAID',
+        }
       });
 
-      await tx.fin_journal_line.createMany({ data: journalLines });
-
-      for (const { bill, allocated, paid, outstanding } of bills) {
-        if (createAllocation) await tx.fin_payment_allocation.create({ data: {
-          ...scope, id: crypto.randomUUID(), created_by_id: userId, payment_id: payment.id, billing_document_id: bill.id, allocated_amount: allocated,
-        } });
-        await tx.fin_billing_document.update({ where: { id: bill.id }, data: {
-          paid_amount: paid, outstanding_amount: outstanding, payment_status: outstanding.isZero() ? 'PAID' : 'PARTIALLY_PAID',
-        } });
-
-        const schedule = await tx.fin_ar_ap_schedule.findFirst({
-          where: { billing_document_id: bill.id, company_id: companyId }
-        });
-        if (schedule) {
-          const newSchedPaid = new Decimal(schedule.paid_amount ?? 0).plus(allocated);
-          const newSchedOut = new Decimal(schedule.original_amount ?? 0).minus(newSchedPaid);
-          await tx.fin_ar_ap_schedule.update({
-            where: { id: schedule.id },
-            data: {
-              paid_amount: newSchedPaid,
-              outstanding_amount: newSchedOut.lt(0) ? new Decimal(0) : newSchedOut,
-              status: newSchedOut.lte(0) ? 'PAID' : 'PARTIALLY_PAID',
-            }
-          });
-        }
-
-        if (plan.bupot_number && String(plan.bupot_number).trim()) {
-          const bupotNum = String(plan.bupot_number).trim();
-          const taxType = String(plan.withholding_tax_type || 'PPh 23').trim();
-          const taxTx = await tx.fin_tax_transaction.findFirst({
-            where: { company_id: companyId, billing_document_id: bill.id }
-          });
-          if (taxTx) {
-            await tx.fin_tax_transaction.update({
-              where: { id: taxTx.id },
-              data: {
-                validation_note: `BUPOT:${taxType}:${bupotNum}${withholdingAmount.gt(0) ? ` (Dipotong Rp ${withholdingAmount.toString()})` : ''}`,
-              }
-            });
+      const schedule = await tx.fin_ar_ap_schedule.findFirst({
+        where: { billing_document_id: bill.id, company_id: companyId }
+      });
+      if (schedule) {
+        const newSchedPaid = new Decimal(schedule.paid_amount ?? 0).plus(allocated);
+        const newSchedOut = new Decimal(schedule.original_amount ?? 0).minus(newSchedPaid);
+        await tx.fin_ar_ap_schedule.update({
+          where: { id: schedule.id },
+          data: {
+            paid_amount: newSchedPaid,
+            outstanding_amount: newSchedOut.lt(0) ? new Decimal(0) : newSchedOut,
+            status: newSchedOut.lte(0) ? 'PAID' : 'PARTIALLY_PAID',
           }
-        }
+        });
       }
 
-      for (const { bill, outstanding } of bills) {
-        if (bill.billing_type !== 'PROFORMA_INVOICE' || !outstanding.isZero()) continue;
-        const handoff = await tx.crm_deal_handoff.findFirst({ where: { proforma_invoice_id: bill.id, company_id: companyId }, select: { opportunity_id: true } });
-        if (handoff) await CRMService.processDealWon(handoff.opportunity_id, { id: userId }, companyId, tx);
+      // Catat bukti potong PPh 23 sebagai record fin_tax_transaction terpisah (WITHHOLDING),
+      // JANGAN menimpa baris PPN Keluaran 11% (OUTPUT) milik invoice tersebut!
+      if ((plan.bupot_number && String(plan.bupot_number).trim()) || withholdingAmount.gt(0)) {
+        const bupotNum = String(plan.bupot_number || `BUPOT-${payment.reference_number}`).trim();
+        const taxType = String(plan.withholding_tax_type || 'PPh 23').trim();
+        const dppAmount = new Decimal(bill.subtotal ?? bill.total_amount ?? 0);
+        const whtRate = dppAmount.gt(0) && withholdingAmount.gt(0)
+          ? Number(withholdingAmount.div(dppAmount).mul(100).toFixed(2))
+          : 2.0;
+
+        const existingWht = await tx.fin_tax_transaction.findFirst({
+          where: {
+            company_id: companyId,
+            billing_document_id: bill.id,
+            tax_direction: 'WITHHOLDING',
+          },
+        });
+
+        if (existingWht) {
+          await tx.fin_tax_transaction.update({
+            where: { id: existingWht.id },
+            data: {
+              tax_amount: withholdingAmount,
+              tax_rate: whtRate,
+              status: 'VERIFIED',
+              validated_at: postingDate,
+              validated_by_id: userId,
+              validation_note: `BUPOT:${taxType}:${bupotNum} Bukti potong atas tagihan ${bill.invoice_number}`,
+            },
+          });
+        } else {
+          await tx.fin_tax_transaction.create({
+            data: {
+              ...scope,
+              id: crypto.randomUUID(),
+              created_by_id: userId,
+              billing_document_id: bill.id,
+              taxable_amount: dppAmount,
+              tax_rate: whtRate,
+              tax_amount: withholdingAmount,
+              tax_direction: 'WITHHOLDING',
+              tax_date: postingDate,
+              status: 'VERIFIED',
+              validated_by_id: userId,
+              validated_at: postingDate,
+              validation_note: `BUPOT:${taxType}:${bupotNum} Bukti potong atas tagihan ${bill.invoice_number}`,
+              billing_code: bupotNum,
+              payment_reference: payment.reference_number,
+              paid_at: postingDate,
+              ntpn: bupotNum,
+            },
+          });
+        }
       }
-      await FinanceDocumentService.markPosted(tx, document.id, userId, postingDate);
-      return tx.fin_payment.update({ where: { id: payment.id }, data: {
+    }
+
+    for (const { bill, outstanding } of bills) {
+      if (bill.billing_type !== 'PROFORMA_INVOICE' || !outstanding.isZero()) continue;
+      const handoff = await tx.crm_deal_handoff.findFirst({ where: { proforma_invoice_id: bill.id, company_id: companyId }, select: { opportunity_id: true } });
+      if (handoff) await CRMService.processDealWon(handoff.opportunity_id, { id: userId }, companyId, tx);
+    }
+    await FinanceDocumentService.markPosted(tx, document.id, userId, postingDate);
+    return tx.fin_payment.update({
+      where: { id: payment.id }, data: {
         status: 'POSTED', document_id: document.id, journal_entry_id: journalEntryId, party_id: partyId,
         executed_by_id: userId, executed_at: new Date(), execution_reference: payment.reference_number,
-      } });
+      }
+    });
   }
 }

@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { cn, formatMoney, formatRupiah, formatDate, getStatusColor, localDateKey } from "@/lib/utils";
 import api from "@/lib/api/axios";
+
 import { normalizeList } from "@/lib/api/auth.api";
 import { buildMonthlyStackedData } from "@/lib/api/finance.api";
 import { getApiErrorDetail } from "@/lib/api/project.api";
@@ -699,10 +700,8 @@ export default function FinanceClient() {
 
   const totalRevenue = totalBillingRevenue;
 
-  const totalFunding = fundings.reduce(
-    (acc, curr) => acc + Number(curr.amount ?? curr.funding_amount ?? curr.requested_amount ?? curr.approved_limit ?? curr.total_amount ?? 0),
-    0
-  );
+  const totalFunding = totalDisbursedFunding;
+
   const totalProcurementBudget = financeProjectOptions.reduce(
     (sum, project) => sum + Number(project.budget_amount ?? project.budget ?? 0),
     0,
@@ -969,13 +968,25 @@ export default function FinanceClient() {
    * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
    */
   const handleOpenPayModal = (bill: any) => {
-    setSelectedBillForPay(bill);
+    const vendorName =
+      bill.supplier_name ||
+      bill.party_name ||
+      vendorOptions.find((v) => String(v.id) === String(bill.party_id))?.display_name ||
+      vendorOptions.find((v) => String(v.id) === String(bill.party_id))?.legal_name ||
+      "Vendor";
+    const billAmount = Number(bill.outstanding_amount ?? bill.total_amount ?? bill.amount ?? 0);
+
+    setSelectedBillForPay({
+      ...bill,
+      supplier_name: vendorName,
+      amount: billAmount,
+    });
     setPaymentForm({
       bank_account: bankAccounts[0]?.id || "",
       payment_method: "BANK_TRANSFER",
       payment_date: localDateKey(),
       reference_number: "",
-      notes: `Pelunasan tagihan ${bill.supplier_name || 'Vendor'} (${bill.invoice_number})`,
+      notes: `Pelunasan tagihan ${vendorName} (${bill.invoice_number})`,
     });
     setIsPaymentModalOpen(true);
   };
@@ -2012,14 +2023,14 @@ export default function FinanceClient() {
                       onClick={() => setCashBankFilter("ALL")}
                       className={cn("px-3 py-1 rounded-lg text-2xs font-bold transition-all", cashBankFilter === "ALL" ? "bg-white text-brand-deep-green shadow-xs" : "text-text-secondary hover:text-text-primary")}
                     >
-                      Semua ({postedReceipts.length + vendorBills.filter(b => b.status === "PAID").length + customerReceipts.filter(r => r.status !== "POSTED").length})
+                      Semua ({postedReceipts.length + paidVendorBills.length + pendingCashReceipts.length})
                     </button>
                     <button
                       type="button"
                       onClick={() => setCashBankFilter("POSTED")}
                       className={cn("px-3 py-1 rounded-lg text-2xs font-bold transition-all", cashBankFilter === "POSTED" ? "bg-white text-brand-deep-green shadow-xs" : "text-text-secondary hover:text-text-primary")}
                     >
-                      Dibukukan ({postedReceipts.length + vendorBills.filter(b => b.status === "PAID").length})
+                      Dibukukan ({postedReceipts.length + paidVendorBills.length})
                     </button>
                     <button
                       type="button"

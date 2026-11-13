@@ -171,11 +171,13 @@ financeRouter.post('/period-closings/request', async (req: Request, res: Respons
       const openPeriods = await prisma.fin_fiscal_period.count({ where: { fiscal_year_id: documentId, company_id: req.companyId, status: { not: 'CLOSED' } } });
       if (openPeriods > 0) throw new ValidationError(`Masih ada ${openPeriods} periode bulanan yang belum ditutup.`);
     }
-    const record = await prisma.fin_period_closing.create({ data: {
-      tenant_id: req.user?.tenant_id, company_id: req.companyId, created_by_id: req.user?.id,
-      requested_by: req.user?.id, fiscal_period_id: fiscalPeriodId, document_id: documentId,
-      closing_type: closingType, status: 'PENDING_APPROVAL', started_at: new Date(),
-    } });
+    const record = await prisma.fin_period_closing.create({
+      data: {
+        tenant_id: req.user?.tenant_id, company_id: req.companyId, created_by_id: req.user?.id,
+        requested_by: req.user?.id, fiscal_period_id: fiscalPeriodId, document_id: documentId,
+        closing_type: closingType, status: 'PENDING_APPROVAL', started_at: new Date(),
+      }
+    });
     sendSuccess(res.status(201), record);
   } catch (err) { next(err); }
 });
@@ -206,9 +208,11 @@ financeRouter.post('/period-closings/:id/approve', requireFinanceRole([RoleCode.
     if (!record) throw new NotFoundError('Period closing');
     if (record.status !== 'PENDING_APPROVAL') throw new ValidationError(`Closing berstatus ${record.status}.`);
     if (record.requested_by === req.user?.id) throw new ForbiddenError('Requester tidak boleh menyetujui closing yang sama.');
-    const updated = await prisma.fin_period_closing.update({ where: { id: record.id }, data: {
-      status: 'APPROVED', approved_by: req.user?.id, approved_at: new Date(),
-    } });
+    const updated = await prisma.fin_period_closing.update({
+      where: { id: record.id }, data: {
+        status: 'APPROVED', approved_by: req.user?.id, approved_at: new Date(),
+      }
+    });
     sendSuccess(res, updated);
   } catch (err) { next(err); }
 });
@@ -234,9 +238,11 @@ financeRouter.post('/period-closings/:id/execute', requireFinanceRole([RoleCode.
     const result = record.closing_type === 'YEAR_END'
       ? await PeriodClosingService.executeYearEndClosing(record.document_id!, req.companyId, authenticatedFinanceUserId(req))
       : await PeriodClosingService.closeFiscalPeriod(record.fiscal_period_id!, authenticatedFinanceUserId(req), req.companyId);
-    await prisma.fin_period_closing.update({ where: { id: record.id }, data: {
-      status: 'COMPLETED', executed_by: req.user?.id, completed_at: new Date(),
-    } });
+    await prisma.fin_period_closing.update({
+      where: { id: record.id }, data: {
+        status: 'COMPLETED', executed_by: req.user?.id, completed_at: new Date(),
+      }
+    });
     sendSuccess(res, { closing_request_id: record.id, ...result });
   } catch (err) { next(err); }
 });
@@ -663,6 +669,14 @@ financeRouter.post('/project-fundings/:id/draw', async (req: Request, res: Respo
       });
       if (!funding) throw new NotFoundError('ProjectFunding');
 
+      // Idempotency guard jika sudah DRAWN dan sudah punya jurnal
+      const existingTx = await tx.fin_project_funding_transaction.findFirst({
+        where: { project_funding_id: funding.id, company_id: companyId },
+      });
+      if (funding.status === 'DRAWN' && existingTx?.journal_entry_id) {
+        return funding;
+      }
+
       const fsm = new DocumentFSM('FUND_REQUEST');
       const { nextState } = fsm.apply(funding.status as any, 'draw');
 
@@ -748,15 +762,16 @@ financeRouter.post('/project-fundings/:id/draw', async (req: Request, res: Respo
         ],
       });
 
+      const paymentId = crypto.randomUUID();
       await tx.fin_payment.create({
         data: {
-          id: crypto.randomUUID(),
+          id: paymentId,
           tenant_id: funding.tenant_id ?? req.tenantId ?? null,
           company_id: companyId,
           created_by_id: userId,
           document_id: sourceDoc.id,
           bank_account_id: bank.id,
-          payment_type: 'PROJECT_FUNDING',
+          payment_type: 'OUTGOING',
           payment_date: now,
           amount: new Prisma.Decimal(amount),
           payment_method: 'BANK_TRANSFER',
@@ -767,14 +782,35 @@ financeRouter.post('/project-fundings/:id/draw', async (req: Request, res: Respo
           executed_by_id: userId,
           executed_at: now,
           execution_reference: referenceNumber,
-          execution_note: remarks || 'Pencairan Funding Proyek',
+          execution_note: remarks || `Pencairan Funding Proyek: ${funding.purpose}`,
           failure_reason: '',
+        },
+      });
+
+      await tx.fin_project_funding_transaction.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenant_id: funding.tenant_id ?? req.tenantId ?? null,
+          company_id: companyId,
+          created_by_id: userId,
+          project_funding_id: funding.id,
+          payment_id: paymentId,
+          journal_entry_id: entryId,
+          transaction_type: 'DISBURSEMENT',
+          transaction_date: now,
+          amount: new Prisma.Decimal(amount),
+          outstanding_balance: new Prisma.Decimal(amount),
         },
       });
 
       return tx.fin_project_funding.update({
         where: { id: req.params.id },
-        data: { status: nextState },
+        data: {
+          status: nextState,
+          document_id: sourceDoc.id,
+          review_note: remarks || funding.review_note,
+          updated_at: now,
+        },
       });
     });
 
@@ -950,9 +986,9 @@ financeRouter.get('/party-options', requireFinanceRole([RoleCode.FINANCE, RoleCo
       : requestedRole ? [requestedRole] : [];
     const roles = requestedRole
       ? await prisma.master_party_role.findMany({
-          where: { company_id: companyId, active: true, role_type: { in: acceptedPartyTypes } },
-          select: { party_id: true },
-        })
+        where: { company_id: companyId, active: true, role_type: { in: acceptedPartyTypes } },
+        select: { party_id: true },
+      })
       : [];
     const rolePartyIds = roles.map((role) => role.party_id).filter((id): id is string => Boolean(id));
     const parties = await prisma.master_party.findMany({
@@ -1563,14 +1599,14 @@ financeRouter.post(
  */
 financeRouter.post(
   '/fiscal-years/:id/reopen-year-end',
-/**
- * requireSuperadmin implements a named method within this file's Express API routing boundary.
- *
- * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
- * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
- * Data/side effects: No database operation is implied unless explicitly present in the implementation.
- * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
- */
+  /**
+   * requireSuperadmin implements a named method within this file's Express API routing boundary.
+   *
+   * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+   * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+   * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+   * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+   */
   requireSuperadmin(),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -1672,15 +1708,15 @@ financeRouter.post('/tax-transactions/:id/record-bupot', async (req: Request, re
 financeRouter.get('/audit-trail', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await AuditService.getAuditTrail({
-      entity:    req.query.entity    as string | undefined,
-      entityId:  req.query.entity_id as string | undefined,
-      userId:    req.query.user_id   as string | undefined,
-      action:    req.query.action    as string | undefined,
-      fromDate:  parseFinanceDateQuery(req.query.from_date, 'Tanggal mulai audit'),
-      toDate:    parseFinanceDateQuery(req.query.to_date, 'Tanggal akhir audit', true),
+      entity: req.query.entity as string | undefined,
+      entityId: req.query.entity_id as string | undefined,
+      userId: req.query.user_id as string | undefined,
+      action: req.query.action as string | undefined,
+      fromDate: parseFinanceDateQuery(req.query.from_date, 'Tanggal mulai audit'),
+      toDate: parseFinanceDateQuery(req.query.to_date, 'Tanggal akhir audit', true),
       companyId: activeCompanyId(req),
-      page:      req.query.page      ? Number(req.query.page)      : 1,
-      pageSize:  Math.min(100, Math.max(1, req.query.page_size ? Number(req.query.page_size) || 50 : 50)),
+      page: req.query.page ? Number(req.query.page) : 1,
+      pageSize: Math.min(100, Math.max(1, req.query.page_size ? Number(req.query.page_size) || 50 : 50)),
     });
     sendSuccess(res, result);
   } catch (err) { next(err); }
@@ -1725,9 +1761,9 @@ financeRouter.post('/bank-accounts/:id/import-csv', async (req: Request, res: Re
     }
     const result = await FinanceService.importBankStatementCSV({
       bankAccountId: req.params.id,
-      csvContent:    csv_content,
-      companyId:     activeCompanyId(req),
-      userId:        req.user?.id,
+      csvContent: csv_content,
+      companyId: activeCompanyId(req),
+      userId: req.user?.id,
     });
     sendSuccess(res, result);
   } catch (err) { next(err); }
