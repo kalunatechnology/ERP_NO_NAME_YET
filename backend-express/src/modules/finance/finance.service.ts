@@ -285,20 +285,28 @@ export class FinanceService {
     }
 
     // Isolate sub-ledger balance when multiple bank accounts share the same COA (e.g. 1101)
-    const [openingLines, postedPayments] = await Promise.all([
-      prisma.fin_journal_line.findMany({
-        where: {
-          company_id: companyId,
-          account_id: bankAccount.ledger_account_id,
-          journal_entry: { status: 'POSTED', source_document_id: bankAccountId },
-        },
-        select: { debit_base: true, credit_base: true },
+    const [openingEntries, postedPayments] = await Promise.all([
+      prisma.fin_journal_entry.findMany({
+        where: { company_id: companyId, status: 'POSTED', source_document_id: bankAccountId },
+        select: { id: true },
       }),
       prisma.fin_payment.findMany({
         where: { company_id: companyId, bank_account_id: bankAccountId, status: 'POSTED' },
         select: { payment_type: true, amount: true },
       }),
     ]);
+
+    const openingEntryIds = openingEntries.map((entry) => entry.id);
+    const openingLines = openingEntryIds.length > 0
+      ? await prisma.fin_journal_line.findMany({
+          where: {
+            company_id: companyId,
+            account_id: bankAccount.ledger_account_id,
+            journal_entry_id: { in: openingEntryIds },
+          },
+          select: { debit_base: true, credit_base: true },
+        })
+      : [];
 
     let totalDebit = 0;
     let totalCredit = 0;

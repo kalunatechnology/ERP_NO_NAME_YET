@@ -666,7 +666,7 @@ financeRouter.post('/project-fundings/:id/draw', async (req: Request, res: Respo
       const fsm = new DocumentFSM('FUND_REQUEST');
       const { nextState } = fsm.apply(funding.status as any, 'draw');
 
-      const amount = Number(funding.amount ?? 0);
+      const amount = Number(funding.approved_limit ?? funding.requested_amount ?? 0);
       if (!Number.isFinite(amount) || amount <= 0) {
         throw new ValidationError('Nominal funding harus lebih besar dari 0 untuk dicairkan.');
       }
@@ -713,7 +713,7 @@ financeRouter.post('/project-fundings/:id/draw', async (req: Request, res: Respo
           journal_id: journal?.id ?? null,
           entry_number: referenceNumber,
           posting_date: now,
-          description: `Pencairan Funding Proyek (${funding.description || funding.id})${remarks ? ` — ${remarks}` : ''}`,
+          description: `Pencairan Funding Proyek (${funding.purpose || funding.id})${remarks ? ` — ${remarks}` : ''}`,
           status: 'POSTED',
           source_document_id: sourceDoc.id,
         },
