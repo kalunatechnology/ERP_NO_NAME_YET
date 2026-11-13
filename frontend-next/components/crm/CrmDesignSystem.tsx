@@ -336,22 +336,6 @@ export function CRMFilterBar({
     </div>
   );
 }
-                      )}
-                    >
-                      {opt.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {rightActions && <div className="flex flex-wrap items-center gap-2">{rightActions}</div>}
-    </div>
-  );
-}
 
 export interface CRMKanbanColumn<T> {
   id: string;
