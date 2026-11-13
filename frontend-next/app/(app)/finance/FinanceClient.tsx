@@ -43,15 +43,15 @@ import { canPerform } from "@/lib/access/capability-contract";
 import { FinanceModuleSidebar } from "@/components/finance/FinanceModuleSidebar";
 import dynamic from "next/dynamic";
 
-const FixedAssetsWorkspace          = dynamic(() => import("@/components/finance/FixedAssetsWorkspace"),          { ssr: false });
-const ChartOfAccountsWorkspace      = dynamic(() => import("@/components/finance/ChartOfAccountsWorkspace").then(m => m.ChartOfAccountsWorkspace), { ssr: false });
-const PayrollWorkspace              = dynamic(() => import("@/components/finance/PayrollWorkspace").then(m => m.PayrollWorkspace), { ssr: false });
-const RecurringExpensesWorkspace    = dynamic(() => import("@/components/finance/RecurringExpensesWorkspace").then(m => m.RecurringExpensesWorkspace), { ssr: false });
-const TaxCoaMappingWorkspace         = dynamic(() => import("@/components/finance/TaxCoaMappingWorkspace").then(m => m.TaxCoaMappingWorkspace), { ssr: false });
-const PeriodClosingWorkspace        = dynamic(() => import("@/components/finance/PeriodClosingWorkspace"),        { ssr: false });
-const AuditTrailWorkspace           = dynamic(() => import("@/components/finance/AuditTrailWorkspace"),           { ssr: false });
+const FixedAssetsWorkspace = dynamic(() => import("@/components/finance/FixedAssetsWorkspace"), { ssr: false });
+const ChartOfAccountsWorkspace = dynamic(() => import("@/components/finance/ChartOfAccountsWorkspace").then(m => m.ChartOfAccountsWorkspace), { ssr: false });
+const PayrollWorkspace = dynamic(() => import("@/components/finance/PayrollWorkspace").then(m => m.PayrollWorkspace), { ssr: false });
+const RecurringExpensesWorkspace = dynamic(() => import("@/components/finance/RecurringExpensesWorkspace").then(m => m.RecurringExpensesWorkspace), { ssr: false });
+const TaxCoaMappingWorkspace = dynamic(() => import("@/components/finance/TaxCoaMappingWorkspace").then(m => m.TaxCoaMappingWorkspace), { ssr: false });
+const PeriodClosingWorkspace = dynamic(() => import("@/components/finance/PeriodClosingWorkspace"), { ssr: false });
+const AuditTrailWorkspace = dynamic(() => import("@/components/finance/AuditTrailWorkspace"), { ssr: false });
 const ExecutiveAuditReportWorkspace = dynamic(() => import("@/components/finance/ExecutiveAuditReportWorkspace").then(m => m.ExecutiveAuditReportWorkspace), { ssr: false });
-const DocumentPrintModal            = dynamic(() => import("@/components/finance/DocumentPrintModal").then(m => m.DocumentPrintModal), { ssr: false });
+const DocumentPrintModal = dynamic(() => import("@/components/finance/DocumentPrintModal").then(m => m.DocumentPrintModal), { ssr: false });
 
 const FINANCE_TABS = [
   { id: "overview", label: "Dashboard", icon: LayoutDashboard },
@@ -146,23 +146,23 @@ export default function FinanceClient() {
   // Tracks which tabs received a 403 response — shows inline AccessDeniedState instead of redirecting
   const [tabErrors, setTabErrors] = useState<Record<string, 403 | null>>({});
 
-/**
- * markTabForbidden coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
- */
+  /**
+   * markTabForbidden coordinates the UI behavior represented by this function.
+   *
+   * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+   * @returns The rendered React node, callback result, or Promise declared by the implementation.
+   * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+   */
   const markTabForbidden = (tab: string) =>
     setTabErrors(prev => ({ ...prev, [tab]: 403 }));
 
-/**
- * clearTabError coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
- */
+  /**
+   * clearTabError coordinates the UI behavior represented by this function.
+   *
+   * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+   * @returns The rendered React node, callback result, or Promise declared by the implementation.
+   * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+   */
   const clearTabError = (tab: string) =>
     setTabErrors(prev => ({ ...prev, [tab]: null }));
 
@@ -189,7 +189,7 @@ export default function FinanceClient() {
       object_id: `fin-${activeTab}`,
       title: `Finance — ${FINANCE_TABS.find(t => t.id === activeTab)?.label || "Overview"}`,
       target_url: `/finance`,
-    }).catch(() => {});
+    }).catch(() => { });
   }, [activeTab]);
 
   /* Data states */
@@ -322,25 +322,25 @@ export default function FinanceClient() {
     ? <p id={`receipt-${field}-error`} role="alert" className="mt-1 text-xs text-red-600">{receiptErrors[field]}</p>
     : null;
 
-/**
- * loadFinanceData coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
- */
+  /**
+   * loadFinanceData coordinates the UI behavior represented by this function.
+   *
+   * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+   * @returns The rendered React node, callback result, or Promise declared by the implementation.
+   * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+   */
   const loadFinanceData = async (silent = false) => {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
       // A forbidden tab remains isolated, but transport/server failures must be visible.
-/**
- * safeGet coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
- */
+      /**
+       * safeGet coordinates the UI behavior represented by this function.
+       *
+       * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+       * @returns The rendered React node, callback result, or Promise declared by the implementation.
+       * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+       */
       const safeGet = async (url: string, tabHint?: string) => {
         try {
           const response = await api.get(url);
@@ -534,13 +534,13 @@ export default function FinanceClient() {
     }
   });
 
-/**
- * handleReverseEntry coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
- */
+  /**
+   * handleReverseEntry coordinates the UI behavior represented by this function.
+   *
+   * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+   * @returns The rendered React node, callback result, or Promise declared by the implementation.
+   * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+   */
   const handleReverseEntry = async () => runFinanceAction(`journal-reversal:${selectedJournalEntry?.id ?? "none"}`, async () => {
     if (!selectedJournalEntry || !reversalReason.trim()) return;
     try {
@@ -580,7 +580,7 @@ export default function FinanceClient() {
     0
   );
   const totalDisbursedFunding = fundings
-    .filter(f => ["DISBURSED", "ACTIVE", "APPROVED"].includes((f.status || "").toUpperCase()))
+    .filter(f => ["DRAWN", "DISBURSED", "ACTIVE"].includes(String(f.status || "").toUpperCase()))
     .reduce((acc, curr) => acc + Number(curr.amount ?? curr.funding_amount ?? curr.requested_amount ?? curr.approved_limit ?? 0), 0);
 
   // Total Project Costs (WIP) = Actual Cost Entries + Disbursed Working Capital Fundings
@@ -591,27 +591,44 @@ export default function FinanceClient() {
     .reduce((acc, curr) => acc + Number(curr.total_amount ?? curr.amount ?? curr.subtotal ?? 0), 0);
   const postedReceipts = customerReceipts.filter(receipt => receipt.status === "POSTED");
   const pendingCashReceipts = customerReceipts.filter((receipt) => receipt.status !== "POSTED");
+
   const paidVendorBills = vendorBills
     .filter((bill) => bill.status === "PAID" || bill.payment_status === "PAID" || bill.status === "LUNAS")
     .map((bill) => {
+      const billAmount = Number(bill.paid_amount && Number(bill.paid_amount) > 0 ? bill.paid_amount : (bill.total_amount ?? bill.amount ?? 0));
+      const billPartyId = bill.party_id ?? bill.vendor_party_id;
+
       const matchedPayment = payments.find((p: any) => {
         if (String(p.status || "").toUpperCase() !== "POSTED") return false;
         const pType = String(p.payment_type || "").toUpperCase();
-        if (!["AP_PAYMENT", "VENDOR_PAYMENT"].includes(pType)) return false;
+        if (!["OUTGOING", "AP_PAYMENT", "VENDOR_PAYMENT"].includes(pType)) return false;
         const plan = typeof p.allocation_plan === "object" && p.allocation_plan ? p.allocation_plan : {};
+        const refStr = `${p.reference_number || ""} ${p.execution_reference || ""} ${p.execution_note || ""}`;
         return (
-          String(plan.vendor_bill_id || plan.bill_id || "") === String(bill.id) ||
-          (bill.vendor_party_id && String(p.party_id || "") === String(bill.vendor_party_id) && Number(p.amount || 0) === Number(bill.total_amount ?? bill.amount ?? 0))
+          String(plan.billing_document_id || plan.vendor_bill_id || plan.bill_id || "") === String(bill.id) ||
+          (bill.invoice_number && refStr.includes(String(bill.invoice_number))) ||
+          (billPartyId && String(p.party_id || "") === String(billPartyId) && Math.abs(Number(p.amount || 0) - billAmount) < 1) ||
+          Math.abs(Number(p.amount || 0) - billAmount) < 1
         );
       });
+
       const bankAcc = matchedPayment?.bank_account_id
         ? bankAccounts.find((a) => String(a.id) === String(matchedPayment.bank_account_id))
-        : null;
+        : bankAccounts[0] ?? null;
+
+      const vendorName =
+        bill.supplier_name ||
+        bill.party_name ||
+        vendorOptions.find((v) => String(v.id) === String(billPartyId))?.display_name ||
+        vendorOptions.find((v) => String(v.id) === String(billPartyId))?.legal_name ||
+        "Vendor";
+
       return {
         ...bill,
-        amount: Number(matchedPayment?.amount ?? bill.total_amount ?? bill.amount ?? 0),
-        bank_account_name: bill.bank_account_name || (bankAcc ? `${bankAcc.bank} · ${bankAcc.name}` : "-"),
-        due_date: matchedPayment?.payment_date || bill.payment_date || bill.due_date,
+        supplier_name: vendorName,
+        amount: Number(matchedPayment?.amount ?? billAmount),
+        bank_account_name: bill.bank_account_name || (bankAcc ? `${bankAcc.bank ? `${bankAcc.bank} · ` : ""}${bankAcc.name}` : "-"),
+        due_date: matchedPayment?.payment_date || bill.posting_date || bill.invoice_date || bill.due_date,
       };
     });
   const cashQuery = cashBankSearch.trim().toLocaleLowerCase("id-ID");
@@ -681,7 +698,7 @@ export default function FinanceClient() {
   }, [customerReceipts, costEntries, financePeriodStart, financePeriodEnd, financeProjectOptions]);
 
   const totalRevenue = totalBillingRevenue;
-  
+
   const totalFunding = fundings.reduce(
     (acc, curr) => acc + Number(curr.amount ?? curr.funding_amount ?? curr.requested_amount ?? curr.approved_limit ?? curr.total_amount ?? 0),
     0
@@ -846,6 +863,9 @@ export default function FinanceClient() {
     if (!receiptForm.customer_name.trim()) errors.customer_name = "Pilih proyek atau faktur yang memiliki data klien tersimpan.";
     if (!receiptForm.amount || !Number.isFinite(amount) || amount < 1000) errors.amount = "Nominal uang masuk wajib diisi, minimal Rp 1.000.";
     if (!Number.isFinite(withholdingAmount) || withholdingAmount < 0) errors.withholding_tax_amount = "Nominal potongan pajak harus valid (>= 0).";
+    if (!receiptForm.invoice_ref && withholdingAmount > 0) {
+      errors.withholding_tax_amount = "Potongan PPh 23 / Final hanya dapat diisi jika Anda memilih referensi Faktur / Invoice resmi.";
+    }
     if (!bank) errors.bank_account = bankAccounts.length ? "Pilih rekening kas / bank penerima dana." : "Belum ada rekening kas / bank. Tambahkan rekening penerima di menu Kas & Bank terlebih dahulu.";
     if (!receiptForm.payment_date) errors.payment_date = "Tanggal terima dana wajib diisi.";
     if (!receiptForm.reference_number.trim()) errors.reference_number = "No. bukti transfer / resi bank klien wajib diisi.";
@@ -907,25 +927,25 @@ export default function FinanceClient() {
     }
   });
 
-/**
- * handleVerifyThreeWayMatch coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
- */
+  /**
+   * handleVerifyThreeWayMatch coordinates the UI behavior represented by this function.
+   *
+   * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+   * @returns The rendered React node, callback result, or Promise declared by the implementation.
+   * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+   */
   const handleVerifyThreeWayMatch = (bill: any) => {
     setSelectedBillForMatch(bill);
     setIsMatchModalOpen(true);
   };
 
-/**
- * handleConfirmThreeWayMatch coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
- */
+  /**
+   * handleConfirmThreeWayMatch coordinates the UI behavior represented by this function.
+   *
+   * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+   * @returns The rendered React node, callback result, or Promise declared by the implementation.
+   * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+   */
   const handleConfirmThreeWayMatch = async () => runFinanceAction(`three-way-match:${selectedBillForMatch?.id ?? "none"}`, async () => {
     if (!selectedBillForMatch) return;
     try {
@@ -941,13 +961,13 @@ export default function FinanceClient() {
     }
   });
 
-/**
- * handleOpenPayModal coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
- */
+  /**
+   * handleOpenPayModal coordinates the UI behavior represented by this function.
+   *
+   * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+   * @returns The rendered React node, callback result, or Promise declared by the implementation.
+   * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+   */
   const handleOpenPayModal = (bill: any) => {
     setSelectedBillForPay(bill);
     setPaymentForm({
@@ -960,13 +980,13 @@ export default function FinanceClient() {
     setIsPaymentModalOpen(true);
   };
 
-/**
- * handleExecutePayment coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
- */
+  /**
+   * handleExecutePayment coordinates the UI behavior represented by this function.
+   *
+   * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+   * @returns The rendered React node, callback result, or Promise declared by the implementation.
+   * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+   */
   const handleExecutePayment = async (e: React.FormEvent) => runFinanceAction(`execute-payment:${selectedBillForPay?.id ?? "none"}`, async () => {
     e.preventDefault();
     if (!selectedBillForPay) return;
@@ -1124,1626 +1144,1627 @@ export default function FinanceClient() {
         <FinanceModuleSidebar items={visibleTabs} activeId={activeTab} onSelect={selectFinanceTab} />
         <div className="workspace-container min-w-0 w-full flex-1">
 
-      {/* ── TAB 1: OVERVIEW ────────────────────── */}
-      {activeTab === "budgeting" && <BudgetingWorkspace canOperate={canOperateFinance} />}
+          {/* ── TAB 1: OVERVIEW ────────────────────── */}
+          {activeTab === "budgeting" && <BudgetingWorkspace canOperate={canOperateFinance} />}
 
-      {activeTab === "overview" && (
-        <div className="flex flex-col gap-6">
-          <FinanceSummarySection
-            title="Ringkasan Keuangan"
-            subtitle="Indikator utama; rincian dan tindakan tersedia pada bagian di bawah."
-          >
-          <div className="workspace-kpis grid gap-3">
-            <div className="kpi-card">
-              <span className="text-xs text-text-secondary">Total Revenue (Billing)</span>
-              <span className="text-2xl font-bold text-brand-deep-green">{formatMoney(totalRevenue)}</span>
-            </div>
-            <div className="kpi-card">
-              <span className="text-xs text-text-secondary">Total Project Costs (WIP)</span>
-              <span className={cn("text-2xl font-bold", totalCost > totalRevenue && totalRevenue > 0 ? "text-red-600" : totalCost > 0 ? "text-amber-600" : "text-slate-700")}>{formatMoney(totalCost)}</span>
-            </div>
-            <div className="kpi-card">
-              <span className="text-xs text-text-secondary">Gross Margin Proyek</span>
-              <span className={cn("text-2xl font-bold", grossMargin < 0 ? "text-red-600" : grossMargin === 0 ? "text-slate-700" : "text-brand-deep-green")}>{formatMoney(grossMargin)}</span>
-            </div>
-            <div className="kpi-card">
-              <span className="text-xs text-text-secondary">Dana Terdistribusi (Funding)</span>
-              <span className="text-2xl font-bold text-brand-green">{formatMoney(totalFunding)}</span>
-            </div>
-          </div>
-          </FinanceSummarySection>
+          {activeTab === "overview" && (
+            <div className="flex flex-col gap-6">
+              <FinanceSummarySection
+                title="Ringkasan Keuangan"
+                subtitle="Indikator utama; rincian dan tindakan tersedia pada bagian di bawah."
+              >
+                <div className="workspace-kpis grid gap-3">
+                  <div className="kpi-card">
+                    <span className="text-xs text-text-secondary">Total Revenue (Billing)</span>
+                    <span className="text-2xl font-bold text-brand-deep-green">{formatMoney(totalRevenue)}</span>
+                  </div>
+                  <div className="kpi-card">
+                    <span className="text-xs text-text-secondary">Total Project Costs (WIP)</span>
+                    <span className={cn("text-2xl font-bold", totalCost > totalRevenue && totalRevenue > 0 ? "text-red-600" : totalCost > 0 ? "text-amber-600" : "text-slate-700")}>{formatMoney(totalCost)}</span>
+                  </div>
+                  <div className="kpi-card">
+                    <span className="text-xs text-text-secondary">Gross Margin Proyek</span>
+                    <span className={cn("text-2xl font-bold", grossMargin < 0 ? "text-red-600" : grossMargin === 0 ? "text-slate-700" : "text-brand-deep-green")}>{formatMoney(grossMargin)}</span>
+                  </div>
+                  <div className="kpi-card">
+                    <span className="text-xs text-text-secondary">Dana Terdistribusi (Funding)</span>
+                    <span className="text-2xl font-bold text-brand-green">{formatMoney(totalFunding)}</span>
+                  </div>
+                </div>
+              </FinanceSummarySection>
 
-          {/* ── Live Control & Financial Monitoring (Inventory & Budget) ── */}
-          <div className="flex flex-col gap-5">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch">
-              <BudgetCheckStatusCard
-                title="Status Pengadaan Anggaran Proyek"
-                statusLabel="PROJECT FUNDING"
-                budgetLabel="Anggaran Pengadaan Disetujui"
-                allocationLabel="Realisasi Pengadaan & Jasa:"
-                allocationFormula="Biaya vendor, layanan, dan kebutuhan operasional proyek"
-                remainingLabel="Sisa Anggaran Pengadaan"
-                validLabel="Pengadaan masih dalam anggaran"
-                invalidLabel="Pengadaan melebihi anggaran"
-                projects={financeProjectOptions}
-                selectedProjectId={String(selectedBudgetProject?.id ?? "")}
-                onProjectChange={setSelectedBudgetProjectId}
-                materialBudget={selectedProjectBudget}
-                allocationCost={selectedProjectCost}
-                remainingBudget={selectedProjectBudget - selectedProjectCost}
-                isValid={selectedProjectBudget >= selectedProjectCost}
+              {/* ── Live Control & Financial Monitoring (Inventory & Budget) ── */}
+              <div className="flex flex-col gap-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch">
+                  <BudgetCheckStatusCard
+                    title="Status Pengadaan Anggaran Proyek"
+                    statusLabel="PROJECT FUNDING"
+                    budgetLabel="Anggaran Pengadaan Disetujui"
+                    allocationLabel="Realisasi Pengadaan & Jasa:"
+                    allocationFormula="Biaya vendor, layanan, dan kebutuhan operasional proyek"
+                    remainingLabel="Sisa Anggaran Pengadaan"
+                    validLabel="Pengadaan masih dalam anggaran"
+                    invalidLabel="Pengadaan melebihi anggaran"
+                    projects={financeProjectOptions}
+                    selectedProjectId={String(selectedBudgetProject?.id ?? "")}
+                    onProjectChange={setSelectedBudgetProjectId}
+                    materialBudget={selectedProjectBudget}
+                    allocationCost={selectedProjectCost}
+                    remainingBudget={selectedProjectBudget - selectedProjectCost}
+                    isValid={selectedProjectBudget >= selectedProjectCost}
+                  />
+                  <InventoryCheckingCard autoFetch={true} />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="card rounded-2xl p-5 flex flex-col gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center">
+                        <ClipboardList size={16} aria-hidden="true" />
+                      </span>
+                      <h3 className="text-sm font-semibold text-text-primary">Biaya Proyek Terkini (Cost Entries)</h3>
+                    </div>
+                    <div className="divide-y divide-text-tertiary">
+                      {costEntries.slice(0, 4).map(c => (
+                        <div key={c.id} className="py-2.5 flex items-center justify-between text-xs">
+                          <div>
+                            <strong className="block text-text-primary">{c.description || "Pengeluaran Material"}</strong>
+                            <small className="text-text-secondary">Proyek #{c.project}</small>
+                          </div>
+                          <span className="font-semibold text-red-600">{formatMoney(c.amount)}</span>
+                        </div>
+                      ))}
+                      {!costEntries.length && <p className="text-xs text-text-secondary text-center py-4">Belum ada pengeluaran.</p>}
+                    </div>
+                  </div>
+
+                  <div className="card rounded-2xl p-5 flex flex-col gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="w-8 h-8 rounded-lg bg-brand-light-green text-brand-deep-green flex items-center justify-center">
+                        <Receipt size={16} aria-hidden="true" />
+                      </span>
+                      <h3 className="text-sm font-semibold text-text-primary">Billing Termin Klien (Proposals)</h3>
+                    </div>
+                    <div className="divide-y divide-text-tertiary">
+                      {proposals.slice(0, 4).map(p => (
+                        <div key={p.id} className="py-2.5 flex items-center justify-between text-xs">
+                          <div>
+                            <strong className="block text-text-primary">{p.description || "Termin Progres"}</strong>
+                            <small className="text-text-secondary">Proyek #{p.project}</small>
+                          </div>
+                          <span className="font-semibold text-brand-deep-green">{formatMoney(p.amount)}</span>
+                        </div>
+                      ))}
+                      {!proposals.length && <p className="text-xs text-text-secondary text-center py-4">Belum ada proposal billing.</p>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── TAB 2: LABA & PROFITABILITY (EVM) ──── */}
+          {activeTab === "profit" && (
+            <div className="flex flex-col gap-6">
+              <MonthlyStackedBarChart
+                title="Tren Pendapatan dan Biaya Bulanan"
+                subtitle="Penerimaan dan biaya dikelompokkan per bulan. Buka rincian transaksi di bawah untuk melihat tanggal dan nominal aslinya."
+                primaryLabel="Realisasi Kas"
+                secondaryLabel="Alokasi Biaya Proyek"
+                data={profitabilityChart.data}
+                autoFetch={false}
               />
-              <InventoryCheckingCard autoFetch={true} />
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div className="card rounded-2xl p-5 flex flex-col gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center">
-                    <ClipboardList size={16} aria-hidden="true" />
-                  </span>
-                  <h3 className="text-sm font-semibold text-text-primary">Biaya Proyek Terkini (Cost Entries)</h3>
-                </div>
-                <div className="divide-y divide-text-tertiary">
-                  {costEntries.slice(0, 4).map(c => (
-                    <div key={c.id} className="py-2.5 flex items-center justify-between text-xs">
-                      <div>
-                        <strong className="block text-text-primary">{c.description || "Pengeluaran Material"}</strong>
-                        <small className="text-text-secondary">Proyek #{c.project}</small>
-                      </div>
-                      <span className="font-semibold text-red-600">{formatMoney(c.amount)}</span>
-                    </div>
-                  ))}
-                  {!costEntries.length && <p className="text-xs text-text-secondary text-center py-4">Belum ada pengeluaran.</p>}
-                </div>
-              </div>
-
-              <div className="card rounded-2xl p-5 flex flex-col gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="w-8 h-8 rounded-lg bg-brand-light-green text-brand-deep-green flex items-center justify-center">
-                    <Receipt size={16} aria-hidden="true" />
-                  </span>
-                  <h3 className="text-sm font-semibold text-text-primary">Billing Termin Klien (Proposals)</h3>
-                </div>
-                <div className="divide-y divide-text-tertiary">
-                  {proposals.slice(0, 4).map(p => (
-                    <div key={p.id} className="py-2.5 flex items-center justify-between text-xs">
-                      <div>
-                        <strong className="block text-text-primary">{p.description || "Termin Progres"}</strong>
-                        <small className="text-text-secondary">Proyek #{p.project}</small>
-                      </div>
-                      <span className="font-semibold text-brand-deep-green">{formatMoney(p.amount)}</span>
-                    </div>
-                  ))}
-                  {!proposals.length && <p className="text-xs text-text-secondary text-center py-4">Belum ada proposal billing.</p>}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── TAB 2: LABA & PROFITABILITY (EVM) ──── */}
-      {activeTab === "profit" && (
-        <div className="flex flex-col gap-6">
-          <MonthlyStackedBarChart
-            title="Tren Pendapatan dan Biaya Bulanan"
-            subtitle="Penerimaan dan biaya dikelompokkan per bulan. Buka rincian transaksi di bawah untuk melihat tanggal dan nominal aslinya."
-            primaryLabel="Realisasi Kas"
-            secondaryLabel="Alokasi Biaya Proyek"
-            data={profitabilityChart.data}
-            autoFetch={false}
-          />
-
-          <div className="card rounded-2xl p-5 flex flex-col gap-4">
-            <div>
-              <h3 className="text-sm font-semibold text-text-primary">Ringkasan Transaksi per Bulan</h3>
-              <p className="mt-1 text-xs text-text-secondary">Selisih kas = penerimaan yang sudah dibukukan dikurangi biaya proyek. Margin laba per proyek tersedia pada analisis EVM di bawah.</p>
-            </div>
-            <div className="table-scroll-wrapper">
-              <table className="w-full data-table min-w-[620px]">
-                <thead><tr><th>Bulan</th><th>Jumlah transaksi</th><th>Penerimaan</th><th>Biaya proyek</th><th>Selisih kas</th></tr></thead>
-                <tbody>
-                  {profitabilityChart.data.map((month, index) => {
-                    const rows = profitabilityTransactions.filter((row) => row.month === index);
-                    const received = rows.filter((row) => row.kind === "Penerimaan").reduce((sum, row) => sum + row.amount, 0);
-                    const costs = rows.filter((row) => row.kind === "Biaya proyek").reduce((sum, row) => sum + row.amount, 0);
-                    if (rows.length === 0) return null;
-                    const netCash = received - costs;
-                    return (
-                      <tr key={month.month}>
-                        <td className="font-semibold">{month.month}</td>
-                        <td>{rows.length}</td>
-                        <td>{formatMoney(received)}</td>
-                        <td>{formatMoney(costs)}</td>
-                        <td className={cn("font-bold", netCash < 0 ? "text-red-600" : "text-brand-deep-green")}>{formatMoney(netCash)}</td>
-                      </tr>
-                    );
-                  })}
-                  {profitabilityTransactions.length === 0 && <tr><td colSpan={5} className="py-6 text-center text-text-secondary">Tidak ada penerimaan yang sudah dibukukan atau biaya proyek pada rentang fiskal ini.</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="card rounded-2xl p-5 flex flex-col gap-4">
-            <div>
-              <h3 className="text-sm font-semibold text-text-primary">Rincian Transaksi Pendapatan dan Biaya</h3>
-              <p className="mt-1 text-xs text-text-secondary">Menampilkan penerimaan berstatus POSTED dan biaya proyek selain REJECTED, CANCELLED, atau VOID dalam periode aktif.</p>
-            </div>
-            <div className="table-scroll-wrapper">
-              <table className="w-full data-table min-w-[760px]">
-                <thead><tr><th>Tanggal</th><th>Jenis</th><th>Keterangan / Referensi</th><th>Proyek</th><th>Nominal</th><th>Status</th></tr></thead>
-                <tbody>
-                  {profitabilityTransactions.map((row) => (
-                    <tr key={`${row.kind}-${row.id}`}>
-                      <td>{formatDate(row.date)}</td>
-                      <td><span className={cn("rounded-full px-2 py-1 text-2xs font-bold", row.kind === "Penerimaan" ? "bg-blue-50 text-blue-700" : "bg-sky-50 text-sky-700")}>{row.kind}</span></td>
-                      <td>{row.description}</td>
-                      <td>{row.projectName}</td>
-                      <td className="font-semibold">{formatMoney(row.amount)}</td>
-                      <td>{row.status}</td>
-                    </tr>
-                  ))}
-                  {profitabilityTransactions.length === 0 && <tr><td colSpan={6} className="py-6 text-center text-text-secondary">Belum ada transaksi yang memenuhi status dan rentang periode untuk ditampilkan.</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="card rounded-2xl p-5 flex flex-col gap-4">
-            <h3 className="text-sm font-semibold text-text-primary">Analisis Profitabilitas Proyek berbasis EVM</h3>
-            <div className="table-scroll-wrapper">
-              <table className="w-full data-table min-w-[560px]">
-                <thead>
-                  <tr>
-                    <th>Nama Proyek</th>
-                    <th>Nilai Kontrak</th>
-                    <th>Biaya Aktual</th>
-                    <th>Laba Kotor</th>
-                    <th>Margin (%)</th>
-                    <th>Status EVM</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {financeProjectOptions.length === 0 ? (
-                    <tr><td colSpan={6} className="text-center text-text-secondary py-8">Belum ada proyek untuk dianalisis.</td></tr>
-                  ) : financeProjectOptions.map((project) => {
-                    const revenue = Number(project.contract_amount ?? project.revenue ?? project.budget_amount ?? 0);
-                    const actualCost = costEntries
-                      .filter((entry) => String(entry.project_id ?? entry.project ?? entry.project?.id ?? "") === String(project.id))
-                      .reduce((sum, entry) => sum + Number(entry.total_cost ?? entry.amount ?? entry.cost_amount ?? entry.total_amount ?? 0), 0);
-                    const margin = revenue - actualCost;
-                    const marginPercent = revenue > 0 ? (margin / revenue) * 100 : 0;
-                    return (
-                      <tr key={project.id}>
-                        <td>
-                          <a href={`/projects?project=${project.id}&tab=FINANCE`} className="font-bold text-brand-blue hover:underline">
-                            {project.project_name || project.name || `Proyek #${project.id}`} <ArrowUpRight size={12} className="inline" />
-                          </a>
-                        </td>
-                        <td>{formatMoney(revenue)}</td>
-                        <td>{formatMoney(actualCost)}</td>
-                        <td className={margin < 0 ? "font-bold text-red-600" : "font-bold text-brand-deep-green"}>{formatMoney(margin)}</td>
-                        <td>{marginPercent.toFixed(1)}%</td>
-                        <td><span className={cn("rounded-full px-2 py-1 text-2xs font-bold", margin < 0 ? "bg-red-50 text-red-700" : marginPercent < 15 ? "bg-amber-50 text-amber-700" : "bg-brand-light-green text-brand-deep-green")}>{margin < 0 ? "Perlu tindakan" : marginPercent < 15 ? "Waspada" : "Sehat"}</span></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── TAB 3: COSTING & WIP ───────────────── */}
-      {activeTab === "costing" && (
-        tabErrors["costing"] ? (
-          <div className="card rounded-2xl overflow-hidden">
-            <AccessDeniedState compact section="Costing & WIP" />
-          </div>
-        ) : (
-        <div className="card rounded-2xl p-5 flex flex-col gap-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <h3 className="text-sm font-semibold text-text-primary">Costing & Work In Progress (WIP)</h3>
-              <p className="text-2xs text-text-secondary">Post pengeluaran riil proyek ke dalam akun persediaan WIP dan buku besar akuntansi</p>
-            </div>
-            {canOperateFinance && (
-              <button onClick={() => setIsCostModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
-                <Plus size={14} /> Catat Biaya
-              </button>
-            )}
-          </div>
-          <CollapsibleGuideline title="Panduan posting biaya WIP">
-            Posting ke WIP membuat jurnal akuntansi. Untuk menjaga kontrol Maker–Checker, cost entry yang Anda buat sendiri harus diposting oleh user Finance lain.
-          </CollapsibleGuideline>
-          {canOperateFinance && (
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-semibold text-text-secondary">Akun sumber kredit posting WIP</label>
-              <select className="input text-xs max-w-sm" value={costCreditAccountId} onChange={(event) => setCostCreditAccountId(event.target.value)}>
-                <option value="">Pilih akun sumber</option>
-                {ledgerAccounts.filter((account) => account.status === "ACTIVE" && account.account_code !== "1150").map((account) => (
-                  <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-          <div className="table-scroll-wrapper">
-            <table className="w-full data-table min-w-[560px]">
-              <thead>
-                <tr>
-                  <th>Deskripsi Pengeluaran</th>
-                  <th>Kategori</th>
-                  <th>Divisi</th>
-                  <th>Jumlah Biaya</th>
-                  <th>Status Akuntansi</th>
-                  <th>{canOperateFinance ? "Action" : "Status Posting"}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {costEntries.map(c => {
-                  const readiness = wipPostingReadiness[String(c.id)];
-                  const waitingForChecker = c.status === "VALIDATED" && (
-                    readiness?.reason === "MAKER_CHECKER_REQUIRED" || isCostEntryCreator(c, user?.id)
-                  );
-                  return (
-                <tr key={c.id}>
-                  <td><strong>{c.description || "Pengeluaran"}</strong><br/><span className="text-2xs text-text-secondary">{(() => { const projectId = String(c.project_id ?? c.project ?? ""); const project = financeProjectOptions.find((item) => String(item.id) === projectId); return project ? `Proyek ${project.project_code ? `${project.project_code} — ` : ""}${project.project_name || project.name}` : projectId ? `Proyek #${projectId.slice(0, 8)}` : "Tanpa proyek"; })()}{c.source_type === "SUPPLIER_INVOICE" && c.source_reference ? ` · Invoice ${vendorBills.find((bill) => String(bill.id) === String(c.source_reference))?.invoice_number || `#${String(c.source_reference).slice(0, 8)}`}` : ""}</span></td>
-                  <td><span className="badge badge-neutral">{c.cost_element || c.category || "OPERATIONAL"}</span></td>
-                  <td>
-                    {c.division_id ? (
-                      <span className="badge bg-indigo-50 text-indigo-700 border border-indigo-200 text-2xs">
-                        {divisionOptions.find(d => String(d.id) === String(c.division_id))?.name || `Divisi #${c.division_id}`}
-                      </span>
-                    ) : (
-                      <span className="text-2xs text-text-secondary italic">—</span>
-                    )}
-                  </td>
-                  <td className="font-semibold text-red-600">{formatMoney(c.total_cost ?? c.amount ?? c.cost_amount ?? 0)}</td>
-                  <td><span className={cn("badge", getStatusColor(c.status || "DRAFT"))}>{c.status || "DRAFT"}</span></td>
-                  <td>
-                    {waitingForChecker ? (
-                      <span
-                        className="text-2xs font-semibold text-amber-700"
-                        title={readiness?.message || "Anda adalah pembuat cost entry ini. Posting WIP harus dilakukan user Finance lain."}
-                      >
-                        Menunggu checker
-                      </span>
-                    ) : canOperateFinance && ["DRAFT", "VALIDATED"].includes(c.status) ? (
-                      <button disabled={Boolean(financePending[`project-cost:${c.id}`])} onClick={() => void handleCostLifecycle(c)} className="btn-primary py-1 px-2.5 text-2xs gap-1 disabled:opacity-50">
-                        <Zap size={12} /> {financePending[`project-cost:${c.id}`] ? "Memproses…" : c.status === "DRAFT" ? "Validasi" : "Post ke WIP"}
-                      </button>
-                    ) : isWipPosted(c.status) ? (
-                      <span className="text-2xs text-brand-deep-green font-bold">✓ Terposting ke WIP</span>
-                    ) : (
-                      <span className="text-2xs text-text-secondary italic">{c.status || "—"}</span>
-                    )}
-                  </td>
-                </tr>
-              );
-              })}
-              {!costEntries.length && <tr><td colSpan={6} className="text-center py-6 text-xs text-text-secondary">Belum ada cost entry.</td></tr>}
-            </tbody>
-          </table>
-          </div>
-        </div>
-        )
-      )}
-
-      {/* ── TAB 4: FUNDING PROYEK ──────────────── */}
-      {activeTab === "fundings" && (
-        tabErrors["fundings"] ? (
-          <div className="card rounded-2xl overflow-hidden">
-            <AccessDeniedState compact section="Funding Proyek" />
-          </div>
-        ) : (
-          <TabFundingProyek
-            fundings={fundings}
-            fundRequests={fundRequests}
-            projects={financeProjectOptions}
-            bankAccounts={bankAccounts}
-            onRefresh={() => loadFinanceData(true)}
-            onRequestModalOpen={() => setIsFundingModalOpen(true)}
-            readOnly={!canOperateFinance}
-          />
-        )
-      )}
-
-      {/* ── TAB 5: AP & 3-WAY MATCH ────────────── */}
-      {activeTab === "ap" && (
-        tabErrors["ap"] ? (
-          <div className="card rounded-2xl overflow-hidden">
-            <AccessDeniedState compact section="Tagihan Vendor (AP)" />
-          </div>
-        ) : (
-        <div className="card rounded-2xl p-5 flex flex-col gap-4">
-          <div className="flex justify-between items-center flex-wrap gap-2">
-            <div>
-              <h3 className="text-sm font-semibold text-text-primary">Accounts Payable & Verifikasi Dokumen</h3>
-              <p className="text-xs text-text-secondary">Lifecycle invoice supplier dan pembayaran AP. Pencocokan PO/GRN hanya ditampilkan jika backend menyediakan referensinya.</p>
-            </div>
-            {canOperateFinance && (
-              <button onClick={() => setIsAPModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
-                <Plus size={14} /> + Tagihan Vendor Baru
-              </button>
-            )}
-          </div>
-
-          <div className="table-scroll-wrapper">
-            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-2">
-              <input value={apSearch} onChange={(event) => setApSearch(event.target.value)} placeholder="Cari vendor, nomor invoice, nominal…" aria-label="Cari tagihan vendor" className="input min-w-[220px] flex-1 py-2 text-xs" />
-              <div className="flex flex-wrap gap-1 rounded-lg bg-white p-1">
-                {([["ACTION", `Perlu tindakan (${apActionCount})`], ["READY", `Siap bayar (${apReadyCount})`], ["ALL", `Semua (${vendorBills.length})`], ["PAID", `Lunas (${apPaidCount})`]] as const).map(([filter, label]) => <button key={filter} type="button" onClick={() => setApQueueFilter(filter)} className={cn("rounded-md px-2.5 py-1.5 text-[10px] font-bold transition-colors", apQueueFilter === filter ? "bg-blue-700 text-white" : "text-slate-600 hover:bg-slate-100")}>{label}</button>)}
-              </div>
-            </div>
-            <table className="w-full data-table text-xs min-w-[580px]">
-              <thead>
-              <tr className="bg-gray-50 text-xs uppercase tracking-wide text-text-secondary">
-                <th className="py-2.5 px-3">Nama Vendor / Supplier</th>
-                <th className="py-2.5 px-3">Nomor Faktur</th>
-                <th className="py-2.5 px-3">Jumlah Tagihan</th>
-                <th className="py-2.5 px-3">Status Verifikasi</th>
-                <th className="py-2.5 px-3 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredVendorBills.map(b => {
-                const isPaid = b.status === "PAID" || b.payment_status === "PAID" || b.status === "LUNAS";
-                const isMatched = b.status === "VERIFIED" || b.status === "APPROVED" || b.status === "POSTED";
-
-                return (
-                  <tr key={b.id} className={cn("hover:bg-brand-light-green/20 border-b border-gray-100", isPaid && "bg-brand-light-green/30")}>
-                    <td className="py-3 px-3">
-                      <strong className="text-text-primary block font-bold">{b.supplier_name || b.party_name || vendorOptions.find((vendor) => vendor.id === b.party_id)?.display_name || vendorOptions.find((vendor) => vendor.id === b.party_id)?.legal_name || "Vendor tidak tersedia"}</strong>
-                      <span className="text-xs text-text-secondary">Jatuh Tempo: {b.due_date || "Belum ditentukan"}</span>
-                    </td>
-                    <td className="py-3 px-3 font-mono font-semibold text-text-secondary">
-                      {b.invoice_number || `INV-${b.id}`}
-                    </td>
-                    <td className="py-3 px-3">
-                      <strong className={cn("font-bold", isPaid ? "text-brand-deep-green" : "text-red-600")}>
-                        {formatMoney(b.total_amount ?? b.amount ?? 0)}
-                      </strong>
-                    </td>
-                    <td className="py-3 px-3">
-                      {isPaid ? (
-                        <span className="badge badge-success text-xs font-bold py-1 px-2">
-                          ✓ Lunas Dibayar
-                        </span>
-                      ) : isMatched ? (
-                        <span className="badge text-xs font-bold py-1 px-2 bg-brand-light-green text-brand-deep-green border border-brand-primary-soft">
-                          ✓ Match (Siap Bayar)
-                        </span>
-                      ) : (
-                        <span className="badge badge-warning text-xs font-bold py-1 px-2">
-                          {b.status || "DRAFT"}
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3 px-3">
-                      <div className="flex justify-end">
-                        {canOperateFinance ? (
-                          <>
-                          {b.status === "DRAFT" && (
-                            <button disabled={Boolean(financePending[`billing-document:${b.id}:submit`])} onClick={() => void runBillingDocumentAction(b.id, "submit")} className="btn-outline py-1.5 px-3 text-xs font-semibold disabled:opacity-50">
-                              {financePending[`billing-document:${b.id}:submit`] ? "Mengajukan…" : "Submit"}
-                            </button>
-                          )}
-                          {b.status === "SUBMITTED" && (
-                            <button
-                              onClick={() => handleVerifyThreeWayMatch(b)}
-                              className="btn-outline py-1.5 px-3 text-xs gap-1 font-semibold"
-                            >
-                              <ShieldCheck size={14} /> Verifikasi Dokumen
-                            </button>
-                          )}
-                          {b.status === "VERIFIED" && (
-                            <button disabled={Boolean(financePending[`billing-document:${b.id}:approve`])} onClick={() => void runBillingDocumentAction(b.id, "approve")} className="btn-outline py-1.5 px-3 text-xs font-semibold disabled:opacity-50">
-                              {financePending[`billing-document:${b.id}:approve`] ? "Menyetujui…" : "Setujui"}
-                            </button>
-                          )}
-                          {b.status === "APPROVED" && (
-                            <button disabled={Boolean(financePending[`billing-document:${b.id}:post`])} onClick={() => void runBillingDocumentAction(b.id, "post")} className="btn-outline py-1.5 px-3 text-xs font-semibold disabled:opacity-50">
-                              {financePending[`billing-document:${b.id}:post`] ? "Memposting…" : "Posting"}
-                            </button>
-                          )}
-                          {b.status === "POSTED" && !isPaid && (
-                            <button
-                              onClick={() => handleOpenPayModal(b)}
-                              className="btn-outline py-1.5 px-3 text-xs gap-1 font-semibold"
-                            >
-                              <CreditCard size={14} /> Bayar tagihan
-                            </button>
-                          )}
-
-                          {isPaid && (
-                        <span className="text-xs text-brand-deep-green font-semibold inline-flex items-center gap-1">
-                              <CheckCircle2 size={14} className="text-brand-green" /> Selesai Dibayar
-                            </span>
-                          )}
-                          </>
-                        ) : (
-                        <span className={cn("text-xs font-semibold", isPaid ? "text-brand-deep-green" : "text-text-secondary")}>
-                          {isPaid ? "Selesai Dibayar" : isMatched ? "Siap Bayar" : b.status || "DRAFT"}
-                        </span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {!filteredVendorBills.length && <tr><td colSpan={5} className="py-8 text-center text-xs text-text-secondary">Tidak ada tagihan pada filter ini.</td></tr>}
-            </tbody>
-          </table>
-          </div>
-
-          <div className="border-t border-gray-100 pt-4">
-            <h4 className="text-xs font-bold text-text-primary mb-2">Permintaan Pembayaran AP</h4>
-            {payments.length === 0 ? (
-              <p className="text-xs text-text-secondary">Belum ada permintaan pembayaran.</p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {payments.map((payment) => (
-                  <div key={payment.id} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 p-3 text-xs">
-                    <div>
-                      <strong>{payment.reference_number}</strong>
-                      <span className="ml-2 text-text-secondary">{formatMoney(payment.amount ?? 0)} · {payment.status}</span>
-                    </div>
-                    {canOperateFinance && ['SUBMITTED', 'APPROVED'].includes(payment.status) && (
-                      <button disabled={Boolean(financePending[`payment-lifecycle:${payment.id}`])} onClick={() => void handlePaymentLifecycle(payment)} className="btn-outline py-1.5 px-3 text-xs font-semibold disabled:opacity-50">
-                        {financePending[`payment-lifecycle:${payment.id}`] ? "Memproses…" : payment.status === 'SUBMITTED' ? 'Setujui Payment' : 'Eksekusi Payment'}
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-        )
-      )}
-
-      {/* ── TAB 6: BILLING TERMIN ──────────────── */}
-      {activeTab === "billing" && (
-        tabErrors["billing"] ? (
-          <div className="card rounded-2xl overflow-hidden">
-            <AccessDeniedState compact section="Billing Termin" />
-          </div>
-        ) : (
-        <div className="flex flex-col gap-4 font-sans">
-          {/* Read-only billing summary */}
-          <FinanceSummarySection
-            title="Ringkasan Billing"
-            subtitle="Ringkasan nilai termin, pajak, dan tagihan klien."
-          >
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="card rounded-xl border border-blue-100 border-l-4 border-l-[#163D64] bg-white p-4 shadow-xs">
-                <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Total DPP Termin</span>
-                <div className="mt-1 font-sans text-lg font-bold tabular-nums text-text-primary">
-                  {formatMoney(proposals.reduce((sum, p) => sum + Number(p.subtotal || 0), 0))}
-                </div>
-                <span className="mt-1 block text-xs text-text-secondary">{proposals.length} termin diajukan</span>
-              </div>
-              <div className="card rounded-xl border border-blue-100 border-l-4 border-l-sky-500 bg-white p-4 shadow-xs">
-                <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Total PPN Terbit</span>
-                <div className="mt-1 font-sans text-lg font-bold tabular-nums text-blue-700">
-                  {formatMoney(proposals.reduce((sum, p) => sum + Number(p.tax_amount || 0), 0))}
-                </div>
-                <span className="mt-1 block text-xs text-text-secondary">PPN Keluaran 11%</span>
-              </div>
-              <div className="card rounded-xl border border-blue-100 border-l-4 border-l-brand-green bg-white p-4 shadow-xs">
-                <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Total Tagihan Bruto</span>
-                <div className="mt-1 font-sans text-lg font-bold tabular-nums text-brand-deep-green">
-                  {formatMoney(proposals.reduce((sum, p) => sum + Number(p.total_amount || 0), 0))}
-                </div>
-                <span className="mt-1 block text-xs text-text-secondary">Nilai piutang klien</span>
-              </div>
-            </div>
-          </FinanceSummarySection>
-
-          <div className="card rounded-2xl p-5 flex flex-col gap-4 border border-gray-200 bg-white shadow-xs">
-            <div className="flex justify-between items-center flex-wrap gap-2">
-              <div>
-                <h3 className="text-sm font-bold text-text-primary">Proposal Billing Termin Klien</h3>
-                <p className="text-2xs text-text-secondary">Alur approval termin, penerbitan faktur tagihan resmi, dan posting ke Jurnal GL serta buku Perpajakan.</p>
-              </div>
-              {canOperateFinance && (
-                <button onClick={() => setIsBillingModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
-                  <Plus size={14} /> Buat Proposal
-                </button>
-              )}
-            </div>
-            <div className="table-scroll-wrapper">
-              <table className="w-full data-table text-xs min-w-[620px]">
-                <thead>
-                <tr className="bg-gray-50 text-2xs uppercase tracking-wider text-text-secondary">
-                  <th className="py-2.5 px-3">Keterangan Termin</th>
-                  <th className="py-2.5 px-3 text-right">Nilai Sebelum PPN</th>
-                  <th className="py-2.5 px-3 text-right">PPN</th>
-                  <th className="py-2.5 px-3 text-right">Total Tagihan</th>
-                  <th className="py-2.5 px-3 text-center">Status Termin</th>
-                  <th className="py-2.5 px-3 text-right">{canOperateFinance ? "Action" : "Status Penagihan"}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {proposals.map(p => {
-                  const matchingDoc = customerInvoices.find(inv => inv.id === p.billing_document_id);
-                  const isPosted = matchingDoc?.status === "POSTED";
-                  const invoiceNum = matchingDoc?.invoice_number;
-
-                  return (
-                    <tr key={p.id} className="hover:bg-gray-50/80 transition-colors">
-                      <td className="py-3 px-3">
-                        <strong className="text-text-primary block font-semibold">{p.description || "Termin Invoice"}</strong>
-                        {invoiceNum && (
-                          <span className="text-3xs font-sans text-text-secondary block mt-0.5">
-                            Faktur: <span className="text-blue-700 font-bold">{invoiceNum}</span>
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-3 text-right font-sans tabular-nums text-text-secondary">
-                        {formatMoney(p.subtotal ?? 0)}
-                      </td>
-                      <td className="py-3 px-3 text-right font-sans tabular-nums text-blue-700 font-medium">
-                        {formatMoney(p.tax_amount ?? 0)}
-                      </td>
-                      <td className="py-3 px-3 text-right font-sans tabular-nums font-bold text-text-primary">
-                        {formatMoney(p.total_amount ?? p.subtotal ?? 0)}
-                      </td>
-                      <td className="py-3 px-3 text-center">
-                        <span className={cn("badge text-2xs font-semibold py-0.5 px-2", getStatusColor(p.status))}>
-                          {p.status}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-right">
-                        {canOperateFinance ? (
-                          ["DRAFT", "SUBMITTED", "APPROVED"].includes(p.status) ? (
-                            <button disabled={Boolean(financePending[`billing-lifecycle:${p.id}`])} onClick={() => void handleBillingProposalLifecycle(p)} className="btn-primary py-1 px-2.5 text-2xs gap-1 disabled:opacity-50">
-                              {financePending[`billing-lifecycle:${p.id}`] ? "Memproses…" : p.status === "DRAFT" ? "Submit" : p.status === "SUBMITTED" ? "Approve" : "Terbitkan Billing"}
-                            </button>
-                          ) : p.status === "ISSUED" ? (
-                            isPosted ? (
-                              <span className="inline-flex items-center gap-1 text-2xs font-bold text-brand-deep-green bg-brand-light-green px-2.5 py-1 rounded-md border border-brand-green/30">
-                                <CheckCircle2 size={12} className="text-brand-green" /> Masuk Pajak
-                              </span>
-                            ) : (
-                              <button
-                                onClick={() => handlePostBillingProposal(p)}
-                                disabled={postingProposalId === p.id}
-                                className="btn-primary py-1 px-3 text-2xs gap-1 bg-blue-600 hover:bg-blue-700 font-bold shadow-xs text-white"
-                              >
-                                <Send size={11} />
-                                {postingProposalId === p.id ? "Memposting..." : "Posting Faktur"}
-                              </button>
-                            )
-                          ) : (
-                            <span className="text-2xs text-text-secondary font-medium">
-                              {p.status}
-                            </span>
-                          )
-                        ) : (
-                          <span className="text-2xs text-text-secondary font-medium">
-                            {isPosted ? "Masuk Pajak" : p.status}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {!proposals.length && (
-                  <tr>
-                    <td colSpan={6} className="text-center py-8 text-xs text-text-secondary">
-                      Belum ada proposal billing termin.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-            </div>
-          </div>
-        </div>
-        )
-      )}
-
-      {/* ── TAB 7: PIUTANG & UANG MASUK (AR) ───── */}
-      {activeTab === "ar" && (
-        <div className="flex flex-col gap-5">
-          {/* Header & Action */}
-          <div className="flex justify-between items-center flex-wrap gap-2">
-            <div>
-              <h3 className="text-sm font-bold text-text-primary">Piutang & Alur Uang Masuk Perusahaan (Accounts Receivable)</h3>
-              <p className="text-xs text-text-secondary">Penerimaan pembayaran dari klien / termin proyek ke rekening bank perusahaan.</p>
-            </div>
-            <button
-              onClick={() => { setReceiptErrors({}); setIsReceiptModalOpen(true); }}
-              className="btn-primary py-2 px-3.5 text-xs gap-1.5 bg-brand-green hover:bg-brand-deep-green shadow-sm"
-            >
-              <Plus size={14} /> Catat Uang Masuk (Customer Payment)
-            </button>
-          </div>
-
-          {/* KPI Summary Uang Masuk */}
-          <FinanceSummarySection
-            title="Ringkasan Penerimaan dan Piutang"
-            subtitle="Ringkasan penerimaan yang dibukukan, piutang tersisa, dan transaksi yang menunggu proses."
-          >
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="card p-4 rounded-xl border border-brand-primary-soft bg-white shadow-xs">
-              <span className="text-xs font-bold text-brand-deep-green uppercase tracking-wide block">Total Penerimaan Dibukukan</span>
-              <span className="text-2xl font-black text-brand-deep-green mt-1 block">
-                {formatMoney(totalInflowRevenue)}
-              </span>
-              <span className="text-xs text-text-secondary mt-0.5 block">{receiptSummary?.posted_count ?? 0} transaksi POSTED; {receiptSummary?.pending_count ?? 0} belum dibukukan</span>
-            </div>
-
-            <div className="card p-4 rounded-xl border border-amber-200 bg-white shadow-xs">
-              <span className="text-xs font-bold text-amber-800 uppercase tracking-wide block">Sisa Piutang Berjalan</span>
-              <span className="text-2xl font-black text-amber-700 mt-1 block">
-                {formatMoney(receiptSummary?.outstanding_amount ?? 0)}
-              </span>
-              <span className="text-xs text-text-secondary mt-0.5 block">Invoice termin proyek belum lunas</span>
-            </div>
-
-            <div className="card p-4 rounded-xl border border-gray-200 bg-white shadow-xs">
-              <span className="text-xs font-bold text-text-secondary uppercase tracking-wide block">Menunggu Diproses</span>
-              <span className="text-2xl font-black text-text-primary mt-1 block">{receiptSummary?.pending_count ?? 0} transaksi</span>
-              <span className="text-xs text-text-secondary mt-0.5 block">Finance 1 mengajukan → Finance 2 menyetujui &amp; memposting</span>
-            </div>
-          </div>
-          </FinanceSummarySection>
-
-          {/* Tabel Riwayat Uang Masuk */}
-          <div className="card p-5 rounded-2xl border border-text-tertiary bg-white flex flex-col gap-3">
-            <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider">Riwayat Penerimaan Pembayaran Klien</h4>
-            <p className="text-xs text-text-secondary">Finance pertama mencatat dan mengajukan penerimaan. Finance kedua klik Setujui &amp; Posting untuk membukukan uang masuk. Penerimaan tanpa invoice dicatat sebagai uang muka pelanggan.</p>
-            <div className="table-scroll-wrapper border border-text-tertiary/50 rounded-xl">
-              <table className="w-full data-table font-sans text-xs text-left min-w-[580px]">
-                <thead>
-                  <tr className="bg-gray-50 text-text-secondary text-xs uppercase tracking-wide border-b">
-                    <th className="py-3 px-4 font-bold">No. Bukti / Tanggal</th>
-                    <th className="py-3 px-4 font-bold">Klien & Proyek</th>
-                    <th className="py-3 px-4 font-bold">Rekening Penerima</th>
-                    <th className="py-3 px-4 font-bold">Jumlah Uang Masuk</th>
-                    <th className="py-3 px-4 font-bold">Status</th>
-                    <th className="py-3 px-4 font-bold">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {customerReceipts.map((rec) => (
-                    <tr key={rec.id} className="hover:bg-brand-light-green/30">
-                      <td className="py-3 px-4">
-                        <strong className="text-text-primary block font-sans text-xs">{rec.receipt_number || rec.reference_number}</strong>
-                        <span className="text-xs text-text-secondary tabular-nums block">{rec.payment_date}</span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <strong className="text-text-primary block">{rec.customer_name}</strong>
-                        <span className="text-xs text-text-secondary block mt-0.5">Proyek: {rec.project_name}</span>
-                        <span className="text-xs text-brand-deep-green block mt-0.5">{rec.invoice_ref}</span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="font-semibold text-text-primary block">{String(rec.bank_account || "Rekening belum ditentukan").split("—")[0]}</span>
-                        <span className="text-xs text-text-secondary block">Ref: {rec.reference_number}</span>
-                      </td>
-                      <td className="py-3 px-4 font-bold text-brand-deep-green text-sm">
-                        +{formatMoney(rec.amount)}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="px-2 py-1 rounded-full text-xs font-extrabold uppercase bg-brand-light-green text-brand-deep-green">
-                          {String(rec.status || "DRAFT")}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 max-w-[280px]">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {receiptReadiness[rec.id]?.action && (
-                            <button
-                              type="button"
-                              disabled={!receiptReadiness[rec.id]?.allowed || receiptActionId !== null || receiptDeletingId !== null}
-                              onClick={() => handleReceiptLifecycle(rec)}
-                              className="btn-primary text-xs px-3 py-1.5 disabled:opacity-50 flex items-center gap-1"
-                            >
-                              <CheckCircle2 size={12} />
-                              {receiptActionId === rec.id ? "Memproses…" : ({ submit: "Ajukan", "approve-and-post": "Setujui & Posting", approve: "Setujui", post: "Posting Penerimaan" } as Record<string, string>)[receiptReadiness[rec.id].action!]}
-                            </button>
-                          )}
-                          {rec.status !== "POSTED" && (
-                            <button
-                              type="button"
-                              disabled={receiptActionId !== null || receiptDeletingId !== null}
-                              onClick={() => handleDeleteReceipt(rec.id)}
-                              className="py-1.5 px-3 text-xs font-bold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:border-red-300 transition-all flex items-center gap-1 whitespace-nowrap shadow-2xs"
-                              title="Hapus Catatan Uang Masuk"
-                            >
-                              <Trash2 size={12} className="text-red-600" />
-                              {receiptDeletingId === rec.id ? "Menghapus…" : "Hapus Catatan"}
-                            </button>
-                          )}
-                        </div>
-                        <p className="text-xs text-text-secondary mt-1">{receiptReadiness[rec.id]?.message || (rec.status === "POSTED" ? "Sudah dibukukan." : "Memuat kewenangan…")}</p>
-                        {receiptActionError[rec.id] && <p role="alert" className="text-xs text-red-600 mt-1">{receiptActionError[rec.id]}</p>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── TAB 8: KAS & BANK MUTASI (CASH & BANK) ── */}
-      {activeTab === "cashbank" && (
-        <div className="flex flex-col gap-5">
-          {/* Header */}
-          <div className="flex items-start justify-between flex-wrap gap-2">
-            <div>
-              <h3 className="text-sm font-bold text-text-primary">Buku Kas & Bank Perusahaan (Cash & Bank Ledger)</h3>
-              <p className="text-xs text-text-secondary">Pantau saldo real-time akun bank dan alur mutasi uang masuk vs uang keluar.</p>
-            </div>
-            <div className="ml-auto flex items-center justify-end gap-2">
-              {canOperateFinance && <button onClick={() => { const offset = ledgerAccounts.find((account) => String(account.account_code) === "3200" && account.status === "ACTIVE"); setBankOpeningForm((current) => ({ ...current, offset_account_id: current.offset_account_id || String(offset?.id ?? "") })); setIsBankOpeningFormOpen((open) => !open); }} className="btn-secondary py-1.5 px-3 text-xs gap-1.5 border border-blue-200 text-blue-800 hover:bg-blue-50">
-                <Plus size={13} /> {isBankOpeningFormOpen ? "Tutup rekening baru" : "Rekening baru + saldo awal"}
-              </button>}
-              <button onClick={() => { setReceiptErrors({}); setReceiptForm((current) => ({ ...current, bank_account: current.bank_account || bankAccounts[0]?.id || "" })); setIsCashReceiptQuickOpen((open) => !open); }} className="btn-secondary py-1.5 px-3 text-xs gap-1.5 border border-brand-green text-brand-deep-green hover:bg-brand-light-green">
-                <Plus size={13} /> {isCashReceiptQuickOpen ? "Tutup input" : "Catat Uang Masuk"}
-              </button>
-              <button onClick={() => selectFinanceTab("ap")} className="btn-primary py-1.5 px-3 text-xs gap-1.5 bg-brand-deep-green">
-                <CreditCard size={13} /> Bayar dari Tagihan AP
-              </button>
-            </div>
-          </div>
-
-          {canOperateFinance && isBankOpeningFormOpen && <form onSubmit={handleCreateBankAccountOpening} className="rounded-2xl border border-blue-200 bg-blue-50/50 p-4 shadow-xs">
-            <div className="mb-3"><h4 className="text-sm font-extrabold text-blue-950">Tambah rekening Kas & Bank</h4><p className="mt-0.5 text-[10px] text-blue-900">Saldo awal akan masuk ke Buku Besar sebagai jurnal berimbang, sehingga saldo rekening langsung terlihat.</p></div>
-            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-6">
-              <label className="text-[10px] font-bold text-slate-700">Nama bank<input required value={bankOpeningForm.bank_name} onChange={(event) => setBankOpeningForm({ ...bankOpeningForm, bank_name: event.target.value })} placeholder="BCA / Mandiri / Kas Tunai" className="input mt-1 w-full py-2 text-xs" /></label>
-              <label className="text-[10px] font-bold text-slate-700">Nomor rekening<input required value={bankOpeningForm.account_number} onChange={(event) => setBankOpeningForm({ ...bankOpeningForm, account_number: event.target.value })} placeholder="Nomor rekening" className="input mt-1 w-full py-2 text-xs font-mono" /></label>
-              <label className="text-[10px] font-bold text-slate-700">Atas nama<input required value={bankOpeningForm.account_name} onChange={(event) => setBankOpeningForm({ ...bankOpeningForm, account_name: event.target.value })} placeholder="Nama pemilik" className="input mt-1 w-full py-2 text-xs" /></label>
-              <label className="text-[10px] font-bold text-slate-700">Saldo awal (Rp)<IDRInput value={bankOpeningForm.opening_amount} onChange={(opening_amount) => setBankOpeningForm({ ...bankOpeningForm, opening_amount })} placeholder="0" className="input mt-1 w-full py-2 text-xs font-bold" showPrefix={false} /></label>
-              <label className="text-[10px] font-bold text-slate-700">Tanggal saldo awal<input required={Number(bankOpeningForm.opening_amount || 0) > 0} type="date" value={bankOpeningForm.opening_date} onChange={(event) => setBankOpeningForm({ ...bankOpeningForm, opening_date: event.target.value })} className="input mt-1 w-full py-2 text-xs" /></label>
-              <label className="text-[10px] font-bold text-slate-700">Sumber saldo awal<select required={Number(bankOpeningForm.opening_amount || 0) > 0} value={bankOpeningForm.offset_account_id} onChange={(event) => setBankOpeningForm({ ...bankOpeningForm, offset_account_id: event.target.value })} className="input mt-1 w-full py-2 text-xs"><option value="">Pilih akun lawan</option>{ledgerAccounts.filter((account) => account.status === "ACTIVE" && ["EQUITY", "LIABILITY"].includes(String(account.account_type).toUpperCase()) && String(account.normal_balance).toUpperCase() === "CREDIT").map((account) => <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select></label>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-blue-100 pt-3"><p className="text-[10px] text-slate-600">Jika saldo awal Rp 0, rekening dibuat tanpa jurnal saldo awal.</p><button type="submit" disabled={Boolean(financePending["create-bank-account-opening"])} className="btn-primary inline-flex items-center gap-1.5 py-2 px-4 text-xs font-bold disabled:cursor-wait disabled:opacity-60"><CheckCircle2 size={13} />{financePending["create-bank-account-opening"] ? "Menyimpan…" : "Simpan rekening & saldo"}</button></div>
-          </form>}
-
-          {isCashReceiptQuickOpen && <form noValidate onSubmit={handleCreateCustomerReceipt} className="rounded-2xl border border-blue-200 bg-blue-50/50 p-4 shadow-xs">
-            <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-              <div><h4 className="text-sm font-extrabold text-blue-950">Input cepat uang masuk</h4><p className="mt-0.5 text-[10px] text-blue-900">Pilih proyek atau invoice, isi nominal dan rekening. Transaksi tersimpan sebagai draft untuk persetujuan.</p></div>
-              <button type="button" onClick={() => { setIsCashReceiptQuickOpen(false); setIsReceiptModalOpen(true); }} className="text-[10px] font-bold text-blue-800 underline underline-offset-2">Input lengkap (termasuk potongan pajak)</button>
-            </div>
-            {(receiptErrors.project_name || receiptErrors.customer_name) && <p role="alert" className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-[10px] text-red-700">{receiptErrors.project_name || receiptErrors.customer_name}</p>}
-            <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
-              <label className="text-[10px] font-bold text-slate-700">Proyek<select required value={receiptForm.project_id} onChange={(event) => { const projectId = event.target.value; const project = financeProjectOptions.find((row) => String(row.id) === projectId); setReceiptForm((current) => ({ ...current, project_id: projectId, project_name: project?.project_name || project?.name || "", customer_name: project?.customer_name || project?.client_name || "" })); setReceiptErrors((current) => ({ ...current, project_name: "", customer_name: "" })); }} className="input mt-1 w-full py-2 text-xs"><option value="">Pilih proyek</option>{financeProjectOptions.map((project) => <option key={project.id} value={project.id}>{project.project_code ? `${project.project_code} — ` : ""}{project.project_name || project.name}</option>)}</select></label>
-              <label className="text-[10px] font-bold text-slate-700">Invoice / termin<select value={receiptForm.invoice_ref} onChange={(event) => { const invoiceId = event.target.value; const invoice = customerInvoices.find((row) => row.id === invoiceId); const remaining = invoice ? Number(invoice.outstanding_amount ?? (Number(invoice.total_amount ?? 0) - Number(invoice.paid_amount ?? 0))) : 0; setReceiptForm((current) => ({ ...current, invoice_ref: invoiceId, customer_name: invoice?.party?.display_name || invoice?.party?.legal_name || current.customer_name, project_name: invoice?.project?.name || current.project_name, project_id: invoice?.project_id || current.project_id, amount: remaining > 0 ? String(remaining) : current.amount })); setReceiptErrors((current) => ({ ...current, invoice_ref: "", amount: "" })); }} className="input mt-1 w-full py-2 text-xs"><option value="">Tanpa invoice</option>{customerInvoices.filter((invoice) => invoice.status === "POSTED" && Number(invoice.outstanding_amount ?? (Number(invoice.total_amount ?? 0) - Number(invoice.paid_amount ?? 0))) > 0).map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.invoice_number} · sisa {formatMoney(invoice.outstanding_amount ?? Number(invoice.total_amount ?? 0) - Number(invoice.paid_amount ?? 0))}</option>)}</select></label>
-              <label className="text-[10px] font-bold text-slate-700">Nominal masuk (Rp)<IDRInput required placeholder="0" value={receiptForm.amount} onChange={(amount) => updateReceiptField("amount", amount)} className="input mt-1 w-full py-2 text-xs font-bold" showPrefix={false} />{receiptError("amount")}</label>
-              <label className="text-[10px] font-bold text-slate-700">Rekening penerima<select required value={receiptForm.bank_account} onChange={(event) => updateReceiptField("bank_account", event.target.value)} className="input mt-1 w-full py-2 text-xs"><option value="">Pilih rekening</option>{bankAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select>{receiptError("bank_account")}</label>
-              <label className="text-[10px] font-bold text-slate-700">Tanggal<input required type="date" value={receiptForm.payment_date} onChange={(event) => updateReceiptField("payment_date", event.target.value)} className="input mt-1 w-full py-2 text-xs" /></label>
-              <label className="text-[10px] font-bold text-slate-700">No. bukti / referensi<input required value={receiptForm.reference_number} onChange={(event) => updateReceiptField("reference_number", event.target.value)} placeholder="Nomor transfer" className="input mt-1 w-full py-2 text-xs" />{receiptError("reference_number")}</label>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-blue-100 pt-3">
-              <span className="text-[10px] text-slate-600">Klien: <b>{receiptForm.customer_name || "otomatis dari proyek / invoice"}</b> · Metode: transfer bank</span>
-              <button type="submit" disabled={receiptSaving || Boolean(financePending["create-customer-receipt"])} className="btn-primary inline-flex items-center gap-1.5 py-2 px-4 text-xs font-bold disabled:cursor-wait disabled:opacity-60"><CheckCircle2 size={13} />{receiptSaving || financePending["create-customer-receipt"] ? "Menyimpan…" : "Simpan draft"}</button>
-            </div>
-          </form>}
-
-          {/* 4 Kartu Rekening Bank */}
-          <FinanceSummarySection
-            title="Ringkasan Rekening Kas & Bank"
-            subtitle="Saldo rekening yang tersedia untuk alur penerimaan dan pembayaran."
-          >
-          <div className="workspace-kpis grid gap-3">
-            {bankAccounts.map((b) => (
-              <div key={b.id} className="card p-4 rounded-xl border border-blue-200 border-l-4 border-l-[#163D64] bg-white flex flex-col justify-between min-h-[120px] shadow-sm">
+              <div className="card rounded-2xl p-5 flex flex-col gap-4">
                 <div>
-                  <div className="flex items-center justify-between text-xs font-bold text-text-secondary uppercase tracking-wide">
-                    <span>{b.type.replace("_", " ")}</span>
-                    <Landmark size={14} className="text-brand-green" />
-                  </div>
-                  <strong className="text-sm font-bold text-text-primary block mt-1">{b.name.split("—")[0]}</strong>
-                  <span className="text-xs text-text-secondary tabular-nums block mt-0.5">{b.number}</span>
+                  <h3 className="text-sm font-semibold text-text-primary">Ringkasan Transaksi per Bulan</h3>
+                  <p className="mt-1 text-xs text-text-secondary">Selisih kas = penerimaan yang sudah dibukukan dikurangi biaya proyek. Margin laba per proyek tersedia pada analisis EVM di bawah.</p>
                 </div>
-                <div className="mt-3 pt-2 border-t border-text-tertiary/40 flex items-center justify-between gap-2">
-                  <span className="text-xs text-text-secondary whitespace-nowrap">{b.balance == null ? "Status Saldo:" : "Saldo Tersedia:"}</span>
-                  {b.balance == null ? (
-                    <span className="status-chip whitespace-nowrap">Belum Tersedia</span>
-                  ) : (
-                    <strong className="text-base font-black tabular-nums text-brand-deep-green whitespace-nowrap">{formatMoney(b.balance)}</strong>
-                  )}
+                <div className="table-scroll-wrapper">
+                  <table className="w-full data-table min-w-[620px]">
+                    <thead><tr><th>Bulan</th><th>Jumlah transaksi</th><th>Penerimaan</th><th>Biaya proyek</th><th>Selisih kas</th></tr></thead>
+                    <tbody>
+                      {profitabilityChart.data.map((month, index) => {
+                        const rows = profitabilityTransactions.filter((row) => row.month === index);
+                        const received = rows.filter((row) => row.kind === "Penerimaan").reduce((sum, row) => sum + row.amount, 0);
+                        const costs = rows.filter((row) => row.kind === "Biaya proyek").reduce((sum, row) => sum + row.amount, 0);
+                        if (rows.length === 0) return null;
+                        const netCash = received - costs;
+                        return (
+                          <tr key={month.month}>
+                            <td className="font-semibold">{month.month}</td>
+                            <td>{rows.length}</td>
+                            <td>{formatMoney(received)}</td>
+                            <td>{formatMoney(costs)}</td>
+                            <td className={cn("font-bold", netCash < 0 ? "text-red-600" : "text-brand-deep-green")}>{formatMoney(netCash)}</td>
+                          </tr>
+                        );
+                      })}
+                      {profitabilityTransactions.length === 0 && <tr><td colSpan={5} className="py-6 text-center text-text-secondary">Tidak ada penerimaan yang sudah dibukukan atau biaya proyek pada rentang fiskal ini.</td></tr>}
+                    </tbody>
+                  </table>
                 </div>
               </div>
-            ))}
-          </div>
-          </FinanceSummarySection>
 
-          {/* Notice jika ada penerimaan uang masuk yang masih Draft / Butuh Approval */}
-          {customerReceipts.filter(r => r.status !== "POSTED").length > 0 && (
-            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200/90 text-xs text-amber-950 flex items-center justify-between flex-wrap gap-2 shadow-2xs">
-              <div className="flex items-center gap-2.5">
-                <Clock size={16} className="text-amber-600 shrink-0" />
-                <span>
-                  Terdapat <strong>{customerReceipts.filter(r => r.status !== "POSTED").length} penerimaan uang masuk</strong> yang masih berstatus <strong>Draft / Menunggu Posting</strong>.
-                </span>
+              <div className="card rounded-2xl p-5 flex flex-col gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-text-primary">Rincian Transaksi Pendapatan dan Biaya</h3>
+                  <p className="mt-1 text-xs text-text-secondary">Menampilkan penerimaan berstatus POSTED dan biaya proyek selain REJECTED, CANCELLED, atau VOID dalam periode aktif.</p>
+                </div>
+                <div className="table-scroll-wrapper">
+                  <table className="w-full data-table min-w-[760px]">
+                    <thead><tr><th>Tanggal</th><th>Jenis</th><th>Keterangan / Referensi</th><th>Proyek</th><th>Nominal</th><th>Status</th></tr></thead>
+                    <tbody>
+                      {profitabilityTransactions.map((row) => (
+                        <tr key={`${row.kind}-${row.id}`}>
+                          <td>{formatDate(row.date)}</td>
+                          <td><span className={cn("rounded-full px-2 py-1 text-2xs font-bold", row.kind === "Penerimaan" ? "bg-blue-50 text-blue-700" : "bg-sky-50 text-sky-700")}>{row.kind}</span></td>
+                          <td>{row.description}</td>
+                          <td>{row.projectName}</td>
+                          <td className="font-semibold">{formatMoney(row.amount)}</td>
+                          <td>{row.status}</td>
+                        </tr>
+                      ))}
+                      {profitabilityTransactions.length === 0 && <tr><td colSpan={6} className="py-6 text-center text-text-secondary">Belum ada transaksi yang memenuhi status dan rentang periode untuk ditampilkan.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setCashBankFilter("PENDING")}
-                  className="btn-secondary py-1 px-3 text-xs font-bold border-amber-300 text-amber-900 bg-white hover:bg-amber-100"
-                >
-                  Tampilkan di Tabel Kas ➔
-                </button>
+
+              <div className="card rounded-2xl p-5 flex flex-col gap-4">
+                <h3 className="text-sm font-semibold text-text-primary">Analisis Profitabilitas Proyek berbasis EVM</h3>
+                <div className="table-scroll-wrapper">
+                  <table className="w-full data-table min-w-[560px]">
+                    <thead>
+                      <tr>
+                        <th>Nama Proyek</th>
+                        <th>Nilai Kontrak</th>
+                        <th>Biaya Aktual</th>
+                        <th>Laba Kotor</th>
+                        <th>Margin (%)</th>
+                        <th>Status EVM</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {financeProjectOptions.length === 0 ? (
+                        <tr><td colSpan={6} className="text-center text-text-secondary py-8">Belum ada proyek untuk dianalisis.</td></tr>
+                      ) : financeProjectOptions.map((project) => {
+                        const revenue = Number(project.contract_amount ?? project.revenue ?? project.budget_amount ?? 0);
+                        const actualCost = costEntries
+                          .filter((entry) => String(entry.project_id ?? entry.project ?? entry.project?.id ?? "") === String(project.id))
+                          .reduce((sum, entry) => sum + Number(entry.total_cost ?? entry.amount ?? entry.cost_amount ?? entry.total_amount ?? 0), 0);
+                        const margin = revenue - actualCost;
+                        const marginPercent = revenue > 0 ? (margin / revenue) * 100 : 0;
+                        return (
+                          <tr key={project.id}>
+                            <td>
+                              <a href={`/projects?project=${project.id}&tab=FINANCE`} className="font-bold text-brand-blue hover:underline">
+                                {project.project_name || project.name || `Proyek #${project.id}`} <ArrowUpRight size={12} className="inline" />
+                              </a>
+                            </td>
+                            <td>{formatMoney(revenue)}</td>
+                            <td>{formatMoney(actualCost)}</td>
+                            <td className={margin < 0 ? "font-bold text-red-600" : "font-bold text-brand-deep-green"}>{formatMoney(margin)}</td>
+                            <td>{marginPercent.toFixed(1)}%</td>
+                            <td><span className={cn("rounded-full px-2 py-1 text-2xs font-bold", margin < 0 ? "bg-red-50 text-red-700" : marginPercent < 15 ? "bg-amber-50 text-amber-700" : "bg-brand-light-green text-brand-deep-green")}>{margin < 0 ? "Perlu tindakan" : marginPercent < 15 ? "Waspada" : "Sehat"}</span></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
 
-          {/* Mutasi Kas & Bank (Inflow vs Outflow) */}
-          <div className="card p-5 rounded-2xl border border-text-tertiary bg-white flex flex-col gap-3">
-            <div className="flex items-center justify-between flex-wrap gap-2 border-b border-text-tertiary/40 pb-3">
-              <div>
-                <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider">Buku Mutasi Arus Kas Riil (Inflows & Disbursements)</h4>
-                <p className="text-2xs text-text-secondary mt-0.5">Daftar mutasi arus kas masuk, pengeluaran AP, dan penerimaan dalam proses.</p>
+          {/* ── TAB 3: COSTING & WIP ───────────────── */}
+          {activeTab === "costing" && (
+            tabErrors["costing"] ? (
+              <div className="card rounded-2xl overflow-hidden">
+                <AccessDeniedState compact section="Costing & WIP" />
               </div>
-
-              {/* Filter Tabs */}
-              <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
-                <button
-                  type="button"
-                  onClick={() => setCashBankFilter("ALL")}
-                  className={cn("px-3 py-1 rounded-lg text-2xs font-bold transition-all", cashBankFilter === "ALL" ? "bg-white text-brand-deep-green shadow-xs" : "text-text-secondary hover:text-text-primary")}
-                >
-                  Semua ({postedReceipts.length + vendorBills.filter(b => b.status === "PAID").length + customerReceipts.filter(r => r.status !== "POSTED").length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCashBankFilter("POSTED")}
-                  className={cn("px-3 py-1 rounded-lg text-2xs font-bold transition-all", cashBankFilter === "POSTED" ? "bg-white text-brand-deep-green shadow-xs" : "text-text-secondary hover:text-text-primary")}
-                >
-                  Dibukukan ({postedReceipts.length + vendorBills.filter(b => b.status === "PAID").length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCashBankFilter("PENDING")}
-                  className={cn("px-3 py-1 rounded-lg text-2xs font-bold transition-all", cashBankFilter === "PENDING" ? "bg-white text-amber-700 shadow-xs" : "text-text-secondary hover:text-text-primary")}
-                >
-                  Draft / Review ({customerReceipts.filter(r => r.status !== "POSTED").length})
-                </button>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 p-2">
-              <input value={cashBankSearch} onChange={(event) => setCashBankSearch(event.target.value)} placeholder="Cari nomor bukti, lawan transaksi, rekening…" aria-label="Cari mutasi kas dan bank" className="input min-w-[240px] flex-1 py-2 text-xs" />
-              <span className="text-[10px] font-semibold text-slate-500">{cashBankFilter === "PENDING" ? searchedPendingCashReceipts.length : cashBankFilter === "POSTED" ? searchedPostedReceipts.length + searchedPaidVendorBills.length : searchedPendingCashReceipts.length + searchedPostedReceipts.length + searchedPaidVendorBills.length} transaksi ditampilkan</span>
-            </div>
-
-            <div className="table-scroll-wrapper border border-text-tertiary/50 rounded-xl">
-              <table className="w-full data-table text-xs text-left min-w-[650px]">
-                <thead>
-                  <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider border-b">
-                    <th className="w-[112px] py-3 px-3 font-bold">Tanggal</th>
-                    <th className="py-3 px-4 font-bold">Status & Tipe</th>
-                    <th className="py-3 px-4 font-bold">Rekening Kas/Bank</th>
-                    <th className="py-3 px-4 font-bold">Keterangan / Lawan Transaksi</th>
-                    <th className="py-3 px-4 font-bold text-right">Nominal Mutasi</th>
-                    <th className="py-3 px-4 font-bold text-center">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {/* Empty state bila belum ada transaksi sesuai filter */}
-                  {((cashBankFilter === "POSTED" && searchedPostedReceipts.length === 0 && searchedPaidVendorBills.length === 0) ||
-                    (cashBankFilter === "PENDING" && searchedPendingCashReceipts.length === 0) ||
-                    (cashBankFilter === "ALL" && searchedPendingCashReceipts.length === 0 && searchedPostedReceipts.length === 0 && searchedPaidVendorBills.length === 0)) && (
-                    <tr>
-                      <td colSpan={6} className="py-10 text-center text-text-secondary">
-                        <div className="flex flex-col items-center justify-center gap-2">
-                          <WalletCards size={32} className="text-slate-300" />
-                          <p className="text-xs font-semibold text-slate-700">Tidak ada transaksi mutasi pada filter ini.</p>
-                          <p className="text-2xs text-text-secondary max-w-md">
-                            Gunakan tombol <strong>[+ Catat Uang Masuk]</strong> di atas untuk menambahkan transaksi penerimaan baru.
-                          </p>
-                        </div>
-                      </td>
-                    </tr>
+            ) : (
+              <div className="card rounded-2xl p-5 flex flex-col gap-4">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="text-sm font-semibold text-text-primary">Costing & Work In Progress (WIP)</h3>
+                    <p className="text-2xs text-text-secondary">Post pengeluaran riil proyek ke dalam akun persediaan WIP dan buku besar akuntansi</p>
+                  </div>
+                  {canOperateFinance && (
+                    <button onClick={() => setIsCostModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
+                      <Plus size={14} /> Catat Biaya
+                    </button>
                   )}
-
-                  {/* Penerimaan yang masih DRAFT / PENDING (tampil pada filter ALL dan PENDING) */}
-                  {cashBankFilter !== "POSTED" && searchedPendingCashReceipts.map((rec) => (
-                    <tr key={`pending-${rec.id}`} className="hover:bg-amber-50/30 bg-amber-50/10">
-                      <td className="whitespace-nowrap py-3 px-3 text-xs tabular-nums">{formatDate(rec.payment_date)}</td>
-                      <td className="py-3 px-4">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-2xs font-extrabold uppercase bg-amber-100 text-amber-800 border border-amber-200">
-                          🟡 {rec.status === "APPROVED" ? "Disetujui" : "Draft (Pending)"}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 font-semibold text-text-primary">{String(rec.bank_account || "Rekening belum ditentukan").split("—")[0]}</td>
-                      <td className="py-3 px-4">
-                        <span className="text-text-primary block font-medium">{rec.customer_name} — {rec.project_name || rec.invoice_ref}</span>
-                        <span className="text-2xs text-text-secondary block font-mono">Ref: {rec.reference_number}</span>
-                      </td>
-                      <td className="py-3 px-4 font-black text-right text-amber-700 text-sm">
-                        +{formatMoney(rec.amount)}
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            type="button"
-                            disabled={receiptActionId !== null || receiptDeletingId !== null}
-                            onClick={() => handleReceiptLifecycle(rec)}
-                            className="btn-primary py-1.5 px-3 text-2xs font-bold shadow-xs whitespace-nowrap flex items-center gap-1.5"
-                          >
-                            <CheckCircle2 size={12} />
-                            {receiptActionId === rec.id ? "Memproses…" : "Posting Sekarang"}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={receiptActionId !== null || receiptDeletingId !== null}
-                            onClick={() => handleDeleteReceipt(rec.id)}
-                            className="py-1.5 px-3 text-2xs font-bold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:border-red-300 transition-all shadow-xs flex items-center gap-1.5 whitespace-nowrap"
-                            title="Hapus Catatan Uang Masuk"
-                          >
-                            <Trash2 size={12} className="text-red-600" />
-                            {receiptDeletingId === rec.id ? "Menghapus…" : "Hapus Catatan"}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-
-                  {/* Mutasi Uang Masuk yang sudah POSTED (tampil pada filter ALL dan POSTED) */}
-                  {cashBankFilter !== "PENDING" && searchedPostedReceipts.map((rec) => (
-                    <tr key={`in-${rec.id}`} className="hover:bg-brand-light-green/20">
-                      <td className="whitespace-nowrap py-3 px-3 text-xs tabular-nums">{formatDate(rec.payment_date)}</td>
-                      <td className="py-3 px-4">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-extrabold uppercase bg-brand-light-green text-brand-deep-green">
-                          🟢 Masuk (POSTED)
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 font-semibold text-text-primary">{String(rec.bank_account || "Rekening belum ditentukan").split("—")[0]}</td>
-                      <td className="py-3 px-4">
-                        <span className="text-text-primary block font-medium">{rec.customer_name} — {rec.invoice_ref}</span>
-                        <span className="text-2xs text-text-secondary block font-mono">Ref: {rec.reference_number}</span>
-                      </td>
-                      <td className="py-3 px-4 font-black text-right text-brand-green text-sm">
-                        +{formatMoney(rec.amount)}
-                      </td>
-                      <td className="py-3 px-4 text-center text-2xs text-brand-deep-green font-semibold">
-                        ✓ Dibukukan
-                      </td>
-                    </tr>
-                  ))}
-
-                  {/* Mutasi Uang Keluar Tagihan Vendor (tampil pada filter ALL dan POSTED) */}
-                  {cashBankFilter !== "PENDING" && searchedPaidVendorBills.map((b) => (
-                    <tr key={`out-${b.id}`} className="hover:bg-red-50/20">
-                      <td className="whitespace-nowrap py-3 px-3 text-xs tabular-nums">{formatDate(b.due_date)}</td>
-                      <td className="py-3 px-4">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-extrabold uppercase bg-red-100 text-red-800">
-                          🔴 Keluar (PAID)
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 font-semibold text-text-primary">{b.bank_account_name || "-"}</td>
-                      <td className="py-3 px-4">
-                        <span className="text-text-primary block font-medium">Pembayaran Tagihan Vendor: {b.supplier_name}</span>
-                        <span className="text-2xs text-text-secondary block font-mono">Inv: {b.invoice_number}</span>
-                      </td>
-                      <td className="py-3 px-4 font-black text-right text-red-600 text-sm">
-                        -{formatMoney(b.amount)}
-                      </td>
-                      <td className="py-3 px-4 text-center text-2xs text-slate-500 font-semibold">
-                        ✓ Dibayar
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── TAB: MASTER PERUSAHAAN & BANK ─────────── */}
-      {activeTab === "company_master" && (
-        tabErrors["company_master"] ? (
-          <div className="card rounded-2xl overflow-hidden">
-            <AccessDeniedState compact section="Master Perusahaan & Bank" />
-          </div>
-        ) : (
-          <CompanyMasterWorkspace />
-        )
-      )}
-
-      {/* ── TAB 10: PERPAJAKAN PROYEK (TAX COMPLIANCE) ── */}
-      {activeTab === "tax" && (
-        tabErrors["tax"] ? (
-          <div className="card rounded-2xl overflow-hidden">
-            <AccessDeniedState compact section="Perpajakan" />
-          </div>
-        ) : (
-          <ProjectTaxWorkspace startDate={financePeriodStart || undefined} endDate={financePeriodEnd || undefined} />
-        )
-      )}
-
-      {/* ── TAB: BUKU BESAR & TRIAL BALANCE ─────── */}
-      {activeTab === "gl" && (
-        tabErrors["gl"] ? (
-          <div className="card rounded-2xl overflow-hidden">
-            <AccessDeniedState compact section="Buku Besar (GL)" />
-          </div>
-        ) : (
-          <div className="flex flex-col gap-5">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div>
-                <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
-                  <BookOpen size={16} className="text-brand-green" /> Buku Besar & Trial Balance (General Ledger)
-                </h3>
-                <p className="text-xs text-text-secondary">Saldo dihitung secara real-time dari akumulasi jurnal yang telah diposting (POSTED).</p>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => setGlActiveTab("trial")} className={cn("tab-btn text-xs", glActiveTab === "trial" && "active")}>Trial Balance</button>
-                <button onClick={() => setGlActiveTab("entries")} className={cn("tab-btn text-xs", glActiveTab === "entries" && "active")}>Jurnal Umum</button>
-              </div>
-            </div>
-
-            <p className="text-xs text-text-secondary">Rentang aktif: {financePeriodStart && financePeriodEnd ? `${formatDate(financePeriodStart)} – ${formatDate(financePeriodEnd)}` : "kalender periode belum disiapkan"}</p>
-
-            {glActiveTab === "trial" && (
-              <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
-                {/* Summary Banner */}
-                {trialBalance && (
-                  <div className={cn(
-                    "flex items-center gap-3 px-5 py-3 text-xs font-semibold border-b",
-                    trialBalance.is_balanced
-                      ? "bg-brand-light-green border-brand-primary-soft text-brand-deep-green"
-                      : "bg-red-50 border-red-200 text-red-800"
-                  )}>
-                    {trialBalance.is_balanced
-                      ? <><CheckCircle2 size={15} /> Trial Balance SEIMBANG — Total Debit = Total Kredit ({formatRupiah(trialBalance.total_debit)})</>
-                      : <><AlertTriangle size={15} /> TIDAK SEIMBANG! Debit: {formatRupiah(trialBalance.total_debit)} ≠ Kredit: {formatRupiah(trialBalance.total_credit)}</>}
+                </div>
+                <CollapsibleGuideline title="Panduan posting biaya WIP">
+                  Posting ke WIP membuat jurnal akuntansi. Untuk menjaga kontrol Maker–Checker, cost entry yang Anda buat sendiri harus diposting oleh user Finance lain.
+                </CollapsibleGuideline>
+                {canOperateFinance && (
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs font-semibold text-text-secondary">Akun sumber kredit posting WIP</label>
+                    <select className="input text-xs max-w-sm" value={costCreditAccountId} onChange={(event) => setCostCreditAccountId(event.target.value)}>
+                      <option value="">Pilih akun sumber</option>
+                      {ledgerAccounts.filter((account) => account.status === "ACTIVE" && account.account_code !== "1150").map((account) => (
+                        <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>
+                      ))}
+                    </select>
                   </div>
                 )}
-                <div className="flex flex-col gap-2 border-b border-gray-100 bg-white p-4 sm:flex-row sm:items-center">
-                  <label className="relative min-w-0 flex-1">
-                    <span className="sr-only">Cari akun</span>
-                    <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" aria-hidden="true" />
-                    <input
-                      type="search"
-                      value={trialBalanceSearch}
-                      onChange={event => { setTrialBalanceSearch(event.target.value); setTrialBalancePage(1); }}
-                      placeholder="Cari kode atau nama akun..."
-                      className="input w-full pl-9 text-xs"
-                    />
-                  </label>
-                  <label className="sr-only" htmlFor="trial-balance-type-filter">Filter tipe akun</label>
-                  <select
-                    id="trial-balance-type-filter"
-                    value={trialBalanceTypeFilter}
-                    onChange={event => { setTrialBalanceTypeFilter(event.target.value); setTrialBalancePage(1); }}
-                    className="input w-full text-xs sm:w-52"
-                  >
-                    <option value="ALL">Semua tipe akun</option>
-                    {Array.from(new Set((trialBalance?.accounts || []).map((account: any) => account.account_type).filter(Boolean))).sort().map((type: any) => (
-                      <option key={type} value={type}>{type}</option>
-                    ))}
-                  </select>
-                  <span className="whitespace-nowrap text-xs text-text-secondary">{trialBalanceAccounts.length} akun</span>
-                </div>
                 <div className="table-scroll-wrapper">
-                  <table className="w-full data-table text-xs min-w-[700px]">
+                  <table className="w-full data-table min-w-[560px]">
                     <thead>
-                      <tr className="bg-gray-50 text-2xs uppercase tracking-wider text-text-secondary">
-                        <th className="py-3 px-4 text-left">Kode Akun</th>
-                        <th className="py-3 px-4 text-left">Nama Akun</th>
-                        <th className="py-3 px-4 text-left">Tipe</th>
-                        <th className="py-3 px-4 text-right">Total Debit</th>
-                        <th className="py-3 px-4 text-right">Total Kredit</th>
-                        <th className="py-3 px-4 text-right">Saldo Bersih</th>
+                      <tr>
+                        <th>Deskripsi Pengeluaran</th>
+                        <th>Kategori</th>
+                        <th>Divisi</th>
+                        <th>Jumlah Biaya</th>
+                        <th>Status Akuntansi</th>
+                        <th>{canOperateFinance ? "Action" : "Status Posting"}</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {visibleTrialBalanceAccounts.map((acc: any) => (
-                        <tr key={acc.account_id} className="hover:bg-gray-50/50">
-                          <td className="py-2.5 px-4 font-mono font-bold text-brand-deep-green">{acc.account_code}</td>
-                          <td className="py-2.5 px-4 font-medium text-text-primary">{acc.account_name}</td>
-                          <td className="py-2.5 px-4">
-                            <span className={cn("badge text-2xs",
-                              acc.account_type === "ASSET" ? "badge-neutral" :
-                              acc.account_type === "REVENUE" ? "badge-success" :
-                              acc.account_type === "EXPENSE" ? "bg-red-100 text-red-700" :
-                              acc.account_type === "LIABILITY" ? "bg-orange-100 text-orange-700" :
-                              "bg-purple-100 text-purple-700"
-                            )}>{acc.account_type}</span>
-                          </td>
-                          <td className="py-2.5 px-4 text-right font-mono">{acc.total_debit > 0 ? formatRupiah(acc.total_debit) : "-"}</td>
-                          <td className="py-2.5 px-4 text-right font-mono">{acc.total_credit > 0 ? formatRupiah(acc.total_credit) : "-"}</td>
-                          <td className={cn("py-2.5 px-4 text-right font-bold font-mono",
-                            acc.net_balance >= 0 ? "text-brand-deep-green" : "text-red-600"
-                          )}>{formatRupiah(acc.net_balance)}</td>
-                        </tr>
-                      ))}
-                      {!trialBalanceAccounts.length && (
-                        <tr><td colSpan={6} className="text-center py-10 text-xs text-text-secondary">
-                          <BookOpen size={32} className="mx-auto mb-2 opacity-30" />
-                          {trialBalance?.accounts?.length ? "Tidak ada akun yang cocok dengan pencarian atau filter." : "Belum ada data jurnal yang diposting."}
-                        </td></tr>
-                      )}
-                    </tbody>
-                    {trialBalance?.accounts?.length > 0 && (
-                      <tfoot className="bg-gray-100 border-t-2 border-text-tertiary">
-                        <tr>
-                          <td colSpan={3} className="py-3 px-4 text-xs font-black text-text-primary uppercase">GRAND TOTAL</td>
-                          <td className="py-3 px-4 text-right font-black font-mono text-brand-deep-green">{formatRupiah(trialBalance.total_debit)}</td>
-                          <td className="py-3 px-4 text-right font-black font-mono text-red-700">{formatRupiah(trialBalance.total_credit)}</td>
-                          <td className="py-3 px-4 text-right font-black font-mono">{formatRupiah(trialBalance.total_debit - trialBalance.total_credit)}</td>
-                        </tr>
-                      </tfoot>
-                    )}
-                  </table>
-                </div>
-                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 px-4 py-3">
-                  <span className="text-xs text-text-secondary">
-                    {trialBalanceAccounts.length ? `Menampilkan ${(visibleTrialBalancePage - 1) * GL_PAGE_SIZE + 1}–${Math.min(visibleTrialBalancePage * GL_PAGE_SIZE, trialBalanceAccounts.length)} dari ${trialBalanceAccounts.length} akun` : "Tidak ada akun untuk ditampilkan"}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button type="button" disabled={visibleTrialBalancePage <= 1} onClick={() => setTrialBalancePage(visibleTrialBalancePage - 1)} className="btn-secondary inline-flex items-center gap-1 px-3 py-1.5 text-xs disabled:opacity-50">
-                      <ChevronLeft size={14} /> Sebelumnya
-                    </button>
-                    <span className="text-xs font-semibold text-text-secondary">{visibleTrialBalancePage} / {trialBalancePageCount}</span>
-                    <button type="button" disabled={visibleTrialBalancePage >= trialBalancePageCount} onClick={() => setTrialBalancePage(visibleTrialBalancePage + 1)} className="btn-secondary inline-flex items-center gap-1 px-3 py-1.5 text-xs disabled:opacity-50">
-                      Berikutnya <ChevronRight size={14} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {glActiveTab === "entries" && (
-              <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
-                <div className="px-5 py-3 border-b bg-gray-50 flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-text-primary">Daftar Jurnal Umum (Journal Entries)</h4>
-                  <span className="text-xs text-text-secondary">{filteredJournalEntries.length} dari {journalEntries.length} jurnal</span>
-                </div>
-                <div className="flex flex-col gap-2 border-b border-gray-100 bg-white p-4 sm:flex-row sm:items-center">
-                  <label className="relative min-w-0 flex-1">
-                    <span className="sr-only">Cari jurnal umum</span>
-                    <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" aria-hidden="true" />
-                    <input
-                      type="search"
-                      value={journalSearch}
-                      onChange={event => { setJournalSearch(event.target.value); setJournalPage(1); }}
-                      placeholder="Cari nomor jurnal, tanggal, atau keterangan..."
-                      className="input w-full pl-9 text-xs"
-                    />
-                  </label>
-                  <label className="sr-only" htmlFor="journal-status-filter">Filter status jurnal</label>
-                  <select
-                    id="journal-status-filter"
-                    value={journalStatusFilter}
-                    onChange={event => { setJournalStatusFilter(event.target.value); setJournalPage(1); }}
-                    className="input w-full text-xs sm:w-52"
-                  >
-                    <option value="ALL">Semua status</option>
-                    {Array.from(new Set(journalEntries.map((entry: any) => entry.status).filter(Boolean))).sort().map((status: any) => (
-                      <option key={status} value={status}>{status}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="table-scroll-wrapper">
-                  <table className="w-full data-table text-xs min-w-[720px]">
-                    <thead>
-                      <tr className="bg-gray-50 text-2xs uppercase tracking-wider text-text-secondary">
-                        <th className="w-[145px] max-w-[145px] py-3 px-3 text-left">No. Jurnal</th>
-                        <th className="py-3 px-4 text-left">Tanggal Posting</th>
-                        <th className="py-3 px-4 text-left">Keterangan</th>
-                        <th className="py-3 px-4 text-center">Status</th>
-                        <th className="py-3 px-4 text-center">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {visibleJournalEntries.map((je: any) => (
-                        <tr key={je.id} className="hover:bg-gray-50/50">
-                          <td className="max-w-[145px] truncate whitespace-nowrap py-2.5 px-3 font-mono text-xs font-bold text-brand-deep-green" title={je.entry_number || je.id}>
-                            {formatJournalCode(je.entry_number || je.id?.slice(0, 8))}
-                          </td>
-                          <td className="py-2.5 px-4 font-mono text-2xs text-text-secondary">{je.posting_date ? new Date(je.posting_date).toLocaleDateString("id-ID") : "-"}</td>
-                          <td className="py-2.5 px-4 text-text-primary max-w-xs truncate">{je.description || "Jurnal Umum"}</td>
-                          <td className="py-2.5 px-4 text-center">
-                            <span className={cn("badge text-2xs",
-                              je.status === "POSTED" ? "badge-success" :
-                              je.status === "REVERSED" ? "bg-orange-100 text-orange-700" :
-                              je.status === "DRAFT" ? "badge-neutral" : "badge-neutral"
-                            )}>{je.status}</span>
-                          </td>
-                          <td className="py-2.5 px-4 text-center">
-                            {je.status === "POSTED" && !je.is_reversed && (
-                              <button
-                                onClick={() => { setSelectedJournalEntry(je); setIsReversalModalOpen(true); }}
-                                className="btn-ghost text-2xs text-orange-600 hover:text-orange-800 py-1 px-2 gap-1"
-                              >
-                                <ArrowLeftRight size={11} /> Storno
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                      {!filteredJournalEntries.length && (
-                        <tr><td colSpan={5} className="text-center py-10 text-xs text-text-secondary">
-                          <Activity size={32} className="mx-auto mb-2 opacity-30" />
-                          {journalEntries.length ? "Tidak ada jurnal yang cocok dengan pencarian atau filter." : "Belum ada jurnal entry."}
-                        </td></tr>
-                      )}
+                    <tbody>
+                      {costEntries.map(c => {
+                        const readiness = wipPostingReadiness[String(c.id)];
+                        const waitingForChecker = c.status === "VALIDATED" && (
+                          readiness?.reason === "MAKER_CHECKER_REQUIRED" || isCostEntryCreator(c, user?.id)
+                        );
+                        return (
+                          <tr key={c.id}>
+                            <td><strong>{c.description || "Pengeluaran"}</strong><br /><span className="text-2xs text-text-secondary">{(() => { const projectId = String(c.project_id ?? c.project ?? ""); const project = financeProjectOptions.find((item) => String(item.id) === projectId); return project ? `Proyek ${project.project_code ? `${project.project_code} — ` : ""}${project.project_name || project.name}` : projectId ? `Proyek #${projectId.slice(0, 8)}` : "Tanpa proyek"; })()}{c.source_type === "SUPPLIER_INVOICE" && c.source_reference ? ` · Invoice ${vendorBills.find((bill) => String(bill.id) === String(c.source_reference))?.invoice_number || `#${String(c.source_reference).slice(0, 8)}`}` : ""}</span></td>
+                            <td><span className="badge badge-neutral">{c.cost_element || c.category || "OPERATIONAL"}</span></td>
+                            <td>
+                              {c.division_id ? (
+                                <span className="badge bg-indigo-50 text-indigo-700 border border-indigo-200 text-2xs">
+                                  {divisionOptions.find(d => String(d.id) === String(c.division_id))?.name || `Divisi #${c.division_id}`}
+                                </span>
+                              ) : (
+                                <span className="text-2xs text-text-secondary italic">—</span>
+                              )}
+                            </td>
+                            <td className="font-semibold text-red-600">{formatMoney(c.total_cost ?? c.amount ?? c.cost_amount ?? 0)}</td>
+                            <td><span className={cn("badge", getStatusColor(c.status || "DRAFT"))}>{c.status || "DRAFT"}</span></td>
+                            <td>
+                              {waitingForChecker ? (
+                                <span
+                                  className="text-2xs font-semibold text-amber-700"
+                                  title={readiness?.message || "Anda adalah pembuat cost entry ini. Posting WIP harus dilakukan user Finance lain."}
+                                >
+                                  Menunggu checker
+                                </span>
+                              ) : canOperateFinance && ["DRAFT", "VALIDATED"].includes(c.status) ? (
+                                <button disabled={Boolean(financePending[`project-cost:${c.id}`])} onClick={() => void handleCostLifecycle(c)} className="btn-primary py-1 px-2.5 text-2xs gap-1 disabled:opacity-50">
+                                  <Zap size={12} /> {financePending[`project-cost:${c.id}`] ? "Memproses…" : c.status === "DRAFT" ? "Validasi" : "Post ke WIP"}
+                                </button>
+                              ) : isWipPosted(c.status) ? (
+                                <span className="text-2xs text-brand-deep-green font-bold">✓ Terposting ke WIP</span>
+                              ) : (
+                                <span className="text-2xs text-text-secondary italic">{c.status || "—"}</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {!costEntries.length && <tr><td colSpan={6} className="text-center py-6 text-xs text-text-secondary">Belum ada cost entry.</td></tr>}
                     </tbody>
                   </table>
                 </div>
-                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 px-4 py-3">
-                  <span className="text-xs text-text-secondary">
-                    {filteredJournalEntries.length ? `Menampilkan ${(visibleJournalPage - 1) * GL_PAGE_SIZE + 1}–${Math.min(visibleJournalPage * GL_PAGE_SIZE, filteredJournalEntries.length)} dari ${filteredJournalEntries.length} jurnal` : "Tidak ada jurnal untuk ditampilkan"}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button type="button" disabled={visibleJournalPage <= 1} onClick={() => setJournalPage(visibleJournalPage - 1)} className="btn-secondary inline-flex items-center gap-1 px-3 py-1.5 text-xs disabled:opacity-50">
-                      <ChevronLeft size={14} /> Sebelumnya
-                    </button>
-                    <span className="text-xs font-semibold text-text-secondary">{visibleJournalPage} / {journalPageCount}</span>
-                    <button type="button" disabled={visibleJournalPage >= journalPageCount} onClick={() => setJournalPage(visibleJournalPage + 1)} className="btn-secondary inline-flex items-center gap-1 px-3 py-1.5 text-xs disabled:opacity-50">
-                      Berikutnya <ChevronRight size={14} />
-                    </button>
+              </div>
+            )
+          )}
+
+          {/* ── TAB 4: FUNDING PROYEK ──────────────── */}
+          {activeTab === "fundings" && (
+            tabErrors["fundings"] ? (
+              <div className="card rounded-2xl overflow-hidden">
+                <AccessDeniedState compact section="Funding Proyek" />
+              </div>
+            ) : (
+              <TabFundingProyek
+                fundings={fundings}
+                fundRequests={fundRequests}
+                projects={financeProjectOptions}
+                bankAccounts={bankAccounts}
+                onRefresh={() => loadFinanceData(true)}
+                onRequestModalOpen={() => setIsFundingModalOpen(true)}
+                readOnly={!canOperateFinance}
+              />
+            )
+          )}
+
+          {/* ── TAB 5: AP & 3-WAY MATCH ────────────── */}
+          {activeTab === "ap" && (
+            tabErrors["ap"] ? (
+              <div className="card rounded-2xl overflow-hidden">
+                <AccessDeniedState compact section="Tagihan Vendor (AP)" />
+              </div>
+            ) : (
+              <div className="card rounded-2xl p-5 flex flex-col gap-4">
+                <div className="flex justify-between items-center flex-wrap gap-2">
+                  <div>
+                    <h3 className="text-sm font-semibold text-text-primary">Accounts Payable & Verifikasi Dokumen</h3>
+                    <p className="text-xs text-text-secondary">Lifecycle invoice supplier dan pembayaran AP. Pencocokan PO/GRN hanya ditampilkan jika backend menyediakan referensinya.</p>
                   </div>
+                  {canOperateFinance && (
+                    <button onClick={() => setIsAPModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
+                      <Plus size={14} /> + Tagihan Vendor Baru
+                    </button>
+                  )}
+                </div>
+
+                <div className="table-scroll-wrapper">
+                  <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-2">
+                    <input value={apSearch} onChange={(event) => setApSearch(event.target.value)} placeholder="Cari vendor, nomor invoice, nominal…" aria-label="Cari tagihan vendor" className="input min-w-[220px] flex-1 py-2 text-xs" />
+                    <div className="flex flex-wrap gap-1 rounded-lg bg-white p-1">
+                      {([["ACTION", `Perlu tindakan (${apActionCount})`], ["READY", `Siap bayar (${apReadyCount})`], ["ALL", `Semua (${vendorBills.length})`], ["PAID", `Lunas (${apPaidCount})`]] as const).map(([filter, label]) => <button key={filter} type="button" onClick={() => setApQueueFilter(filter)} className={cn("rounded-md px-2.5 py-1.5 text-[10px] font-bold transition-colors", apQueueFilter === filter ? "bg-blue-700 text-white" : "text-slate-600 hover:bg-slate-100")}>{label}</button>)}
+                    </div>
+                  </div>
+                  <table className="w-full data-table text-xs min-w-[580px]">
+                    <thead>
+                      <tr className="bg-gray-50 text-xs uppercase tracking-wide text-text-secondary">
+                        <th className="py-2.5 px-3">Nama Vendor / Supplier</th>
+                        <th className="py-2.5 px-3">Nomor Faktur</th>
+                        <th className="py-2.5 px-3">Jumlah Tagihan</th>
+                        <th className="py-2.5 px-3">Status Verifikasi</th>
+                        <th className="py-2.5 px-3 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredVendorBills.map(b => {
+                        const isPaid = b.status === "PAID" || b.payment_status === "PAID" || b.status === "LUNAS";
+                        const isMatched = b.status === "VERIFIED" || b.status === "APPROVED" || b.status === "POSTED";
+
+                        return (
+                          <tr key={b.id} className={cn("hover:bg-brand-light-green/20 border-b border-gray-100", isPaid && "bg-brand-light-green/30")}>
+                            <td className="py-3 px-3">
+                              <strong className="text-text-primary block font-bold">{b.supplier_name || b.party_name || vendorOptions.find((vendor) => vendor.id === b.party_id)?.display_name || vendorOptions.find((vendor) => vendor.id === b.party_id)?.legal_name || "Vendor tidak tersedia"}</strong>
+                              <span className="text-xs text-text-secondary">Jatuh Tempo: {b.due_date || "Belum ditentukan"}</span>
+                            </td>
+                            <td className="py-3 px-3 font-mono font-semibold text-text-secondary">
+                              {b.invoice_number || `INV-${b.id}`}
+                            </td>
+                            <td className="py-3 px-3">
+                              <strong className={cn("font-bold", isPaid ? "text-brand-deep-green" : "text-red-600")}>
+                                {formatMoney(b.total_amount ?? b.amount ?? 0)}
+                              </strong>
+                            </td>
+                            <td className="py-3 px-3">
+                              {isPaid ? (
+                                <span className="badge badge-success text-xs font-bold py-1 px-2">
+                                  ✓ Lunas Dibayar
+                                </span>
+                              ) : isMatched ? (
+                                <span className="badge text-xs font-bold py-1 px-2 bg-brand-light-green text-brand-deep-green border border-brand-primary-soft">
+                                  ✓ Match (Siap Bayar)
+                                </span>
+                              ) : (
+                                <span className="badge badge-warning text-xs font-bold py-1 px-2">
+                                  {b.status || "DRAFT"}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3">
+                              <div className="flex justify-end">
+                                {canOperateFinance ? (
+                                  <>
+                                    {b.status === "DRAFT" && (
+                                      <button disabled={Boolean(financePending[`billing-document:${b.id}:submit`])} onClick={() => void runBillingDocumentAction(b.id, "submit")} className="btn-outline py-1.5 px-3 text-xs font-semibold disabled:opacity-50">
+                                        {financePending[`billing-document:${b.id}:submit`] ? "Mengajukan…" : "Submit"}
+                                      </button>
+                                    )}
+                                    {b.status === "SUBMITTED" && (
+                                      <button
+                                        onClick={() => handleVerifyThreeWayMatch(b)}
+                                        className="btn-outline py-1.5 px-3 text-xs gap-1 font-semibold"
+                                      >
+                                        <ShieldCheck size={14} /> Verifikasi Dokumen
+                                      </button>
+                                    )}
+                                    {b.status === "VERIFIED" && (
+                                      <button disabled={Boolean(financePending[`billing-document:${b.id}:approve`])} onClick={() => void runBillingDocumentAction(b.id, "approve")} className="btn-outline py-1.5 px-3 text-xs font-semibold disabled:opacity-50">
+                                        {financePending[`billing-document:${b.id}:approve`] ? "Menyetujui…" : "Setujui"}
+                                      </button>
+                                    )}
+                                    {b.status === "APPROVED" && (
+                                      <button disabled={Boolean(financePending[`billing-document:${b.id}:post`])} onClick={() => void runBillingDocumentAction(b.id, "post")} className="btn-outline py-1.5 px-3 text-xs font-semibold disabled:opacity-50">
+                                        {financePending[`billing-document:${b.id}:post`] ? "Memposting…" : "Posting"}
+                                      </button>
+                                    )}
+                                    {b.status === "POSTED" && !isPaid && (
+                                      <button
+                                        onClick={() => handleOpenPayModal(b)}
+                                        className="btn-outline py-1.5 px-3 text-xs gap-1 font-semibold"
+                                      >
+                                        <CreditCard size={14} /> Bayar tagihan
+                                      </button>
+                                    )}
+
+                                    {isPaid && (
+                                      <span className="text-xs text-brand-deep-green font-semibold inline-flex items-center gap-1">
+                                        <CheckCircle2 size={14} className="text-brand-green" /> Selesai Dibayar
+                                      </span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span className={cn("text-xs font-semibold", isPaid ? "text-brand-deep-green" : "text-text-secondary")}>
+                                    {isPaid ? "Selesai Dibayar" : isMatched ? "Siap Bayar" : b.status || "DRAFT"}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {!filteredVendorBills.length && <tr><td colSpan={5} className="py-8 text-center text-xs text-text-secondary">Tidak ada tagihan pada filter ini.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="border-t border-gray-100 pt-4">
+                  <h4 className="text-xs font-bold text-text-primary mb-2">Permintaan Pembayaran AP</h4>
+                  {payments.length === 0 ? (
+                    <p className="text-xs text-text-secondary">Belum ada permintaan pembayaran.</p>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {payments.map((payment) => (
+                        <div key={payment.id} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 p-3 text-xs">
+                          <div>
+                            <strong>{payment.reference_number}</strong>
+                            <span className="ml-2 text-text-secondary">{formatMoney(payment.amount ?? 0)} · {payment.status}</span>
+                          </div>
+                          {canOperateFinance && ['SUBMITTED', 'APPROVED'].includes(payment.status) && (
+                            <button disabled={Boolean(financePending[`payment-lifecycle:${payment.id}`])} onClick={() => void handlePaymentLifecycle(payment)} className="btn-outline py-1.5 px-3 text-xs font-semibold disabled:opacity-50">
+                              {financePending[`payment-lifecycle:${payment.id}`] ? "Memproses…" : payment.status === 'SUBMITTED' ? 'Setujui Payment' : 'Eksekusi Payment'}
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
-            )}
-          </div>
-        )
-      )}
+            )
+          )}
 
-      {activeTab === "coa" && <ChartOfAccountsWorkspace canOperate={canOperateFinance} />}
-      {activeTab === "payroll" && <PayrollWorkspace canOperate={canOperateFinance} />}
-      {activeTab === "recurring_expenses" && <RecurringExpensesWorkspace canOperate={canOperateFinance} />}
-      {activeTab === "tax_setup" && <TaxCoaMappingWorkspace canOperate={canOperateFinance} />}
-
-      {/* ── TAB: LAPORAN KEUANGAN ────────────────── */}
-      {activeTab === "lapkeu" && (
-        tabErrors["lapkeu"] ? (
-          <div className="card rounded-2xl overflow-hidden">
-            <AccessDeniedState compact section="Laporan Keuangan" />
-          </div>
-        ) : (
-          <div className="flex flex-col gap-5">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div>
-                <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
-                  <BarChart3 size={16} className="text-brand-green" /> Laporan Keuangan Real-Time
-                </h3>
-                <p className="text-xs text-text-secondary">Digenerate secara otomatis dari General Ledger. Selalu sinkron dengan data transaksi terkini.</p>
+          {/* ── TAB 6: BILLING TERMIN ──────────────── */}
+          {activeTab === "billing" && (
+            tabErrors["billing"] ? (
+              <div className="card rounded-2xl overflow-hidden">
+                <AccessDeniedState compact section="Billing Termin" />
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => setLapkeuActiveTab("pl")} className={cn("tab-btn text-xs", lapkeuActiveTab === "pl" && "active")}>Laba Rugi (P&L)</button>
-                <button onClick={() => setLapkeuActiveTab("bs")} className={cn("tab-btn text-xs", lapkeuActiveTab === "bs" && "active")}>Neraca (Balance Sheet)</button>
-              </div>
-            </div>
-
-            {lapkeuActiveTab === "pl" && (
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-start">
-                {/* Summary left, account detail right. */}
-                <div className="lg:col-span-4">
+            ) : (
+              <div className="flex flex-col gap-4 font-sans">
+                {/* Read-only billing summary */}
                 <FinanceSummarySection
-                  title="Ringkasan Laba Rugi"
-                  subtitle="Ikhtisar pendapatan, beban, dan hasil bersih sebelum rincian akun."
+                  title="Ringkasan Billing"
+                  subtitle="Ringkasan nilai termin, pajak, dan tagihan klien."
                 >
-                <div className="grid grid-cols-1 gap-3">
-                  <div className={cn("card rounded-2xl p-4 border-l-4", profitLoss?.is_profit ? "border-brand-green" : "border-red-500")}>
-                    <span className="text-xs text-text-secondary">Total Pendapatan</span>
-                    <p className="break-words text-xl font-black tabular-nums text-brand-deep-green">{formatRupiah(profitLoss?.total_revenue ?? 0)}</p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div className="card rounded-xl border border-blue-100 border-l-4 border-l-[#163D64] bg-white p-4 shadow-xs">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Total DPP Termin</span>
+                      <div className="mt-1 font-sans text-lg font-bold tabular-nums text-text-primary">
+                        {formatMoney(proposals.reduce((sum, p) => sum + Number(p.subtotal || 0), 0))}
+                      </div>
+                      <span className="mt-1 block text-xs text-text-secondary">{proposals.length} termin diajukan</span>
+                    </div>
+                    <div className="card rounded-xl border border-blue-100 border-l-4 border-l-sky-500 bg-white p-4 shadow-xs">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Total PPN Terbit</span>
+                      <div className="mt-1 font-sans text-lg font-bold tabular-nums text-blue-700">
+                        {formatMoney(proposals.reduce((sum, p) => sum + Number(p.tax_amount || 0), 0))}
+                      </div>
+                      <span className="mt-1 block text-xs text-text-secondary">PPN Keluaran 11%</span>
+                    </div>
+                    <div className="card rounded-xl border border-blue-100 border-l-4 border-l-brand-green bg-white p-4 shadow-xs">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Total Tagihan Bruto</span>
+                      <div className="mt-1 font-sans text-lg font-bold tabular-nums text-brand-deep-green">
+                        {formatMoney(proposals.reduce((sum, p) => sum + Number(p.total_amount || 0), 0))}
+                      </div>
+                      <span className="mt-1 block text-xs text-text-secondary">Nilai piutang klien</span>
+                    </div>
                   </div>
-                  <div className="card rounded-2xl p-4 border-l-4 border-red-400">
-                    <span className="text-xs text-text-secondary">Total Beban</span>
-                    <p className="break-words text-xl font-black tabular-nums text-red-600">{formatRupiah(profitLoss?.total_expense ?? 0)}</p>
-                  </div>
-                  <div className={cn("card rounded-2xl p-4 border-l-4", (profitLoss?.net_profit_loss ?? 0) >= 0 ? "border-brand-green" : "border-red-600")}>
-                    <span className="text-xs text-text-secondary">Laba / Rugi Bersih</span>
-                    <p className={cn("text-xl font-black", (profitLoss?.net_profit_loss ?? 0) >= 0 ? "text-brand-deep-green" : "text-red-700")}>
-                      {formatRupiah(profitLoss?.net_profit_loss ?? 0)}
-                    </p>
-                  </div>
-                </div>
                 </FinanceSummarySection>
-                </div>
 
-                <div className="grid min-w-0 grid-cols-1 gap-4 lg:col-span-8 xl:grid-cols-2">
-                {/* Revenue Table */}
-                <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
-                  <div className="px-4 py-3 bg-brand-light-green border-b border-brand-primary-soft">
-                    <h4 className="text-xs font-bold text-brand-deep-green flex items-center gap-1.5"><TrendingUp size={13} /> Pendapatan (Revenue)</h4>
-                  </div>
-                  <div className="divide-y divide-gray-100">
-                    {profitLoss?.revenues?.map((r: any, i: number) => (
-                      <div key={i} className="flex items-center justify-between gap-3 px-4 py-3 text-xs">
-                        <div className="min-w-0">
-                          <span className="font-mono text-brand-deep-green text-2xs">{r.account_code}</span>
-                          <p className="font-medium text-text-primary">{r.account_name}</p>
-                        </div>
-                        <span className="shrink-0 whitespace-nowrap text-right font-bold tabular-nums text-brand-deep-green">{formatRupiah(r.amount)}</span>
-                      </div>
-                    ))}
-                    {!profitLoss?.revenues?.length && <p className="text-xs text-center py-6 text-text-secondary">Belum ada data pendapatan.</p>}
-                  </div>
-                  {profitLoss?.total_revenue > 0 && (
-                    <div className="px-4 py-2.5 bg-brand-light-green border-t flex justify-between text-xs font-black text-brand-deep-green">
-                      <span>TOTAL PENDAPATAN</span>
-                      <span>{formatRupiah(profitLoss.total_revenue)}</span>
+                <div className="card rounded-2xl p-5 flex flex-col gap-4 border border-gray-200 bg-white shadow-xs">
+                  <div className="flex justify-between items-center flex-wrap gap-2">
+                    <div>
+                      <h3 className="text-sm font-bold text-text-primary">Proposal Billing Termin Klien</h3>
+                      <p className="text-2xs text-text-secondary">Alur approval termin, penerbitan faktur tagihan resmi, dan posting ke Jurnal GL serta buku Perpajakan.</p>
                     </div>
-                  )}
-                </div>
+                    {canOperateFinance && (
+                      <button onClick={() => setIsBillingModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
+                        <Plus size={14} /> Buat Proposal
+                      </button>
+                    )}
+                  </div>
+                  <div className="table-scroll-wrapper">
+                    <table className="w-full data-table text-xs min-w-[620px]">
+                      <thead>
+                        <tr className="bg-gray-50 text-2xs uppercase tracking-wider text-text-secondary">
+                          <th className="py-2.5 px-3">Keterangan Termin</th>
+                          <th className="py-2.5 px-3 text-right">Nilai Sebelum PPN</th>
+                          <th className="py-2.5 px-3 text-right">PPN</th>
+                          <th className="py-2.5 px-3 text-right">Total Tagihan</th>
+                          <th className="py-2.5 px-3 text-center">Status Termin</th>
+                          <th className="py-2.5 px-3 text-right">{canOperateFinance ? "Action" : "Status Penagihan"}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {proposals.map(p => {
+                          const matchingDoc = customerInvoices.find(inv => inv.id === p.billing_document_id);
+                          const isPosted = matchingDoc?.status === "POSTED";
+                          const invoiceNum = matchingDoc?.invoice_number;
 
-                {/* Expense Table */}
-                <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
-                  <div className="px-4 py-3 bg-red-50 border-b border-red-200">
-                    <h4 className="text-xs font-bold text-red-800 flex items-center gap-1.5"><TrendingDown size={13} /> Beban (Expenses)</h4>
-                  </div>
-                  <div className="divide-y divide-gray-100">
-                    {profitLoss?.expenses?.map((e: any, i: number) => (
-                      <div key={i} className="flex items-center justify-between gap-3 px-4 py-3 text-xs">
-                        <div className="min-w-0">
-                          <span className="font-mono text-red-600 text-2xs">{e.account_code}</span>
-                          <p className="font-medium text-text-primary">{e.account_name}</p>
-                        </div>
-                        <span className="shrink-0 whitespace-nowrap text-right font-bold tabular-nums text-red-700">{formatRupiah(e.amount)}</span>
-                      </div>
-                    ))}
-                    {!profitLoss?.expenses?.length && <p className="text-xs text-center py-6 text-text-secondary">Belum ada data beban.</p>}
-                  </div>
-                  {profitLoss?.total_expense > 0 && (
-                    <div className="px-4 py-2.5 bg-red-50 border-t flex justify-between text-xs font-black text-red-800">
-                      <span>TOTAL BEBAN</span>
-                      <span>{formatRupiah(profitLoss.total_expense)}</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Net P&L Summary */}
-                <div className="card rounded-2xl p-5 border border-text-tertiary flex flex-col gap-4 xl:col-span-2">
-                  <h4 className="text-xs font-bold text-text-primary">Ringkasan Laba Rugi</h4>
-                  <div className="space-y-3">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-text-secondary">Pendapatan Kotor</span>
-                      <span className="font-bold text-brand-deep-green">{formatRupiah(profitLoss?.total_revenue ?? 0)}</span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-text-secondary">HPP / COGS</span>
-                      <span className="font-bold text-red-700">{formatRupiah(profitLoss?.expenses?.filter((e: any) => e.account_code?.startsWith('5')).reduce((s: number, e: any) => s + e.amount, 0) ?? 0)}</span>
-                    </div>
-                    <hr className="border-text-tertiary" />
-                    <div className="flex justify-between text-xs">
-                      <span className="font-semibold text-text-primary">Laba Kotor</span>
-                      <span className="font-bold text-brand-deep-green">{formatRupiah(Number(profitLoss?.total_revenue ?? 0) - Number(profitLoss?.expenses?.filter((e: any) => e.account_code?.startsWith('5')).reduce((s: number, e: any) => s + e.amount, 0) ?? 0))}</span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-text-secondary">Beban Operasional</span>
-                      <span className="font-bold text-orange-700">{formatRupiah(profitLoss?.expenses?.filter((e: any) => e.account_code?.startsWith('6')).reduce((s: number, e: any) => s + e.amount, 0) ?? 0)}</span>
-                    </div>
-                    <hr className="border-text-tertiary" />
-                    <div className="flex justify-between text-sm">
-                      <span className="font-black text-text-primary">Laba / Rugi Bersih</span>
-                      <span className={cn("font-black", (profitLoss?.net_profit_loss ?? 0) >= 0 ? "text-brand-deep-green" : "text-red-700")}>
-                        {formatRupiah(profitLoss?.net_profit_loss ?? 0)}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-2xs text-text-secondary border-t pt-2">
-                    Generated: {profitLoss?.generated_at ? new Date(profitLoss.generated_at).toLocaleString("id-ID") : "-"}
-                  </p>
-                </div>
-                </div>
-              </div>
-            )}
-
-            {lapkeuActiveTab === "bs" && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* Assets */}
-                <details className="card group rounded-2xl border border-text-tertiary bg-white">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl bg-blue-50 px-4 py-3 marker:hidden [&::-webkit-details-marker]:hidden">
-                    <span className="min-w-0">
-                      <span className="flex items-center gap-1.5 text-xs font-bold text-blue-800"><Building size={13} /> ASET (Assets)<span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-blue-700">{balanceSheet?.assets?.length || 0} akun</span></span>
-                      <span className="mt-1 block text-xs font-black tabular-nums text-blue-800">Total {formatRupiah(balanceSheet?.total_assets ?? 0)}</span>
-                    </span>
-                    <ChevronDown size={15} className="shrink-0 text-blue-700 transition-transform group-open:rotate-180" aria-hidden="true" />
-                  </summary>
-                  <div className="max-h-[480px] overflow-auto border-t border-blue-200">
-                    <table className="w-full min-w-[420px] border-collapse text-left text-xs">
-                      <thead className="sticky top-0 z-10 bg-blue-50 text-[10px] font-semibold uppercase tracking-wide text-blue-800"><tr><th className="px-4 py-2">Kode</th><th className="px-4 py-2">Nama Akun</th><th className="px-4 py-2 text-right">Saldo</th></tr></thead>
-                      <tbody className="divide-y divide-gray-100 bg-white">
-                        {balanceSheet?.assets?.map((a: any, i: number) => <tr key={i} className="hover:bg-blue-50/40"><td className="whitespace-nowrap px-4 py-2.5 font-mono text-[10px] text-text-secondary">{a.account_code}</td><td className="px-4 py-2.5 text-text-primary">{a.account_name}</td><td className="whitespace-nowrap px-4 py-2.5 text-right font-bold tabular-nums text-blue-700">{formatRupiah(a.amount)}</td></tr>)}
-                        {!balanceSheet?.assets?.length && <tr><td colSpan={3} className="px-4 py-6 text-center text-text-secondary">Belum ada data aset.</td></tr>}
+                          return (
+                            <tr key={p.id} className="hover:bg-gray-50/80 transition-colors">
+                              <td className="py-3 px-3">
+                                <strong className="text-text-primary block font-semibold">{p.description || "Termin Invoice"}</strong>
+                                {invoiceNum && (
+                                  <span className="text-3xs font-sans text-text-secondary block mt-0.5">
+                                    Faktur: <span className="text-blue-700 font-bold">{invoiceNum}</span>
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-3 text-right font-sans tabular-nums text-text-secondary">
+                                {formatMoney(p.subtotal ?? 0)}
+                              </td>
+                              <td className="py-3 px-3 text-right font-sans tabular-nums text-blue-700 font-medium">
+                                {formatMoney(p.tax_amount ?? 0)}
+                              </td>
+                              <td className="py-3 px-3 text-right font-sans tabular-nums font-bold text-text-primary">
+                                {formatMoney(p.total_amount ?? p.subtotal ?? 0)}
+                              </td>
+                              <td className="py-3 px-3 text-center">
+                                <span className={cn("badge text-2xs font-semibold py-0.5 px-2", getStatusColor(p.status))}>
+                                  {p.status}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-right">
+                                {canOperateFinance ? (
+                                  ["DRAFT", "SUBMITTED", "APPROVED"].includes(p.status) ? (
+                                    <button disabled={Boolean(financePending[`billing-lifecycle:${p.id}`])} onClick={() => void handleBillingProposalLifecycle(p)} className="btn-primary py-1 px-2.5 text-2xs gap-1 disabled:opacity-50">
+                                      {financePending[`billing-lifecycle:${p.id}`] ? "Memproses…" : p.status === "DRAFT" ? "Submit" : p.status === "SUBMITTED" ? "Approve" : "Terbitkan Billing"}
+                                    </button>
+                                  ) : p.status === "ISSUED" ? (
+                                    isPosted ? (
+                                      <span className="inline-flex items-center gap-1 text-2xs font-bold text-brand-deep-green bg-brand-light-green px-2.5 py-1 rounded-md border border-brand-green/30">
+                                        <CheckCircle2 size={12} className="text-brand-green" /> Masuk Pajak
+                                      </span>
+                                    ) : (
+                                      <button
+                                        onClick={() => handlePostBillingProposal(p)}
+                                        disabled={postingProposalId === p.id}
+                                        className="btn-primary py-1 px-3 text-2xs gap-1 bg-blue-600 hover:bg-blue-700 font-bold shadow-xs text-white"
+                                      >
+                                        <Send size={11} />
+                                        {postingProposalId === p.id ? "Memposting..." : "Posting Faktur"}
+                                      </button>
+                                    )
+                                  ) : (
+                                    <span className="text-2xs text-text-secondary font-medium">
+                                      {p.status}
+                                    </span>
+                                  )
+                                ) : (
+                                  <span className="text-2xs text-text-secondary font-medium">
+                                    {isPosted ? "Masuk Pajak" : p.status}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {!proposals.length && (
+                          <tr>
+                            <td colSpan={6} className="text-center py-8 text-xs text-text-secondary">
+                              Belum ada proposal billing termin.
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
-                </details>
-
-                {/* Liabilities + Equity */}
-                <div className="flex flex-col gap-4">
-                  <details className="card group rounded-2xl border border-text-tertiary bg-white">
-                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl bg-orange-50 px-4 py-3 marker:hidden [&::-webkit-details-marker]:hidden">
-                      <span className="min-w-0"><span className="flex items-center gap-1.5 text-xs font-bold text-orange-800"><Layers size={13} /> KEWAJIBAN (Liabilities)<span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-orange-700">{balanceSheet?.liabilities?.length || 0} akun</span></span><span className="mt-1 block text-xs font-black tabular-nums text-orange-800">Total {formatRupiah(balanceSheet?.total_liabilities ?? 0)}</span></span>
-                      <ChevronDown size={15} className="shrink-0 text-orange-700 transition-transform group-open:rotate-180" aria-hidden="true" />
-                    </summary>
-                    <div className="max-h-[360px] overflow-auto border-t border-orange-200"><table className="w-full min-w-[420px] border-collapse text-left text-xs"><thead className="sticky top-0 z-10 bg-orange-50 text-[10px] font-semibold uppercase tracking-wide text-orange-800"><tr><th className="px-4 py-2">Kode</th><th className="px-4 py-2">Nama Akun</th><th className="px-4 py-2 text-right">Saldo</th></tr></thead><tbody className="divide-y divide-gray-100 bg-white">{balanceSheet?.liabilities?.map((l: any, i: number) => <tr key={i} className="hover:bg-orange-50/40"><td className="whitespace-nowrap px-4 py-2.5 font-mono text-[10px] text-text-secondary">{l.account_code}</td><td className="px-4 py-2.5 text-text-primary">{l.account_name}</td><td className="whitespace-nowrap px-4 py-2.5 text-right font-bold tabular-nums text-orange-700">{formatRupiah(l.amount)}</td></tr>)}{!balanceSheet?.liabilities?.length && <tr><td colSpan={3} className="px-4 py-5 text-center text-text-secondary">Belum ada kewajiban.</td></tr>}</tbody></table></div>
-                  </details>
-                  <details className="card group rounded-2xl border border-text-tertiary bg-white">
-                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl bg-purple-50 px-4 py-3 marker:hidden [&::-webkit-details-marker]:hidden">
-                      <span className="min-w-0"><span className="flex items-center gap-1.5 text-xs font-bold text-purple-800"><ShieldCheck size={13} /> EKUITAS (Equity)<span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-purple-700">{balanceSheet?.equity?.length || 0} akun</span></span><span className="mt-1 block text-xs font-black tabular-nums text-purple-800">Total {formatRupiah(balanceSheet?.total_equity ?? 0)}</span></span>
-                      <ChevronDown size={15} className="shrink-0 text-purple-700 transition-transform group-open:rotate-180" aria-hidden="true" />
-                    </summary>
-                    <div className="max-h-[360px] overflow-auto border-t border-purple-200"><table className="w-full min-w-[420px] border-collapse text-left text-xs"><thead className="sticky top-0 z-10 bg-purple-50 text-[10px] font-semibold uppercase tracking-wide text-purple-800"><tr><th className="px-4 py-2">Kode</th><th className="px-4 py-2">Nama Akun</th><th className="px-4 py-2 text-right">Saldo</th></tr></thead><tbody className="divide-y divide-gray-100 bg-white">{balanceSheet?.equity?.map((e: any, i: number) => <tr key={i} className="hover:bg-purple-50/40"><td className="whitespace-nowrap px-4 py-2.5 font-mono text-[10px] text-text-secondary">{e.account_code}</td><td className="px-4 py-2.5 text-text-primary">{e.account_name}</td><td className="whitespace-nowrap px-4 py-2.5 text-right font-bold tabular-nums text-purple-700">{formatRupiah(e.amount)}</td></tr>)}{!balanceSheet?.equity?.length && <tr><td colSpan={3} className="px-4 py-5 text-center text-text-secondary">Belum ada data ekuitas.</td></tr>}</tbody></table></div>
-                  </details>
-                  {/* Balance Check */}
-                  <div className={cn(
-                    "card rounded-xl p-4 flex items-center gap-3 text-xs font-semibold border",
-                    balanceSheet?.is_balanced ? "bg-brand-light-green border-brand-primary-soft text-brand-deep-green" : "bg-red-50 border-red-300 text-red-800"
-                  )}>
-                    {balanceSheet?.is_balanced
-                      ? <><CheckCircle2 size={15} /> Neraca SEIMBANG: Total Aset = Total Kewajiban + Ekuitas</>
-                      : <><AlertTriangle size={15} /> Neraca TIDAK SEIMBANG! Periksa jurnal.</>}
-                  </div>
                 </div>
               </div>
-            )}
-          </div>
-        )
-      )}
+            )
+          )}
 
-      {/* ── TAB: BANKING HUB & REKONSILIASI ─────── */}
-      {activeTab === "banking_hub" && (
-        tabErrors["banking_hub"] ? (
-          <div className="card rounded-2xl overflow-hidden">
-            <AccessDeniedState compact section="Banking Hub" />
-          </div>
-        ) : (
-          <div className="flex flex-col gap-5">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div>
-                <h3 className="text-base font-bold text-text-primary flex items-center gap-2">
-                  <Banknote size={16} className="text-brand-green" /> Banking Hub & Rekonsiliasi Bank
-                </h3>
-                <p className="text-sm text-text-secondary">Impor mutasi rekening bank dan cocokkan dengan transaksi di buku besar secara otomatis.</p>
-              </div>
-            </div>
-
-            <div className="card rounded-2xl p-4 border border-text-tertiary bg-white flex flex-wrap items-end gap-3">
-              <div className="min-w-[220px] flex-1">
-                <label className="block text-xs font-semibold text-text-secondary mb-1">Rekening Bank</label>
-                <select value={bankImportAccountId} onChange={(event) => setBankImportAccountId(event.target.value)} className="input w-full">
-                  <option value="">Pilih rekening</option>
-                  {bankAccounts.map((account) => <option key={account.id} value={account.id}>{account.bank} · {account.number}</option>)}
-                </select>
-              </div>
-              <div className="min-w-[220px] flex-1">
-                <label className="block text-xs font-semibold text-text-secondary mb-1">File mutasi (CSV)</label>
-                <input type="file" accept=".csv,text/csv" onChange={(event) => setBankImportFile(event.target.files?.[0] ?? null)} className="block w-full text-sm text-text-secondary file:mr-3 file:rounded-lg file:border-0 file:bg-brand-light-green file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand-deep-green" />
-              </div>
-              <button type="button" onClick={importBankStatement} disabled={bankImporting || !bankImportAccountId || !bankImportFile} className="btn-primary px-4 py-2 text-sm disabled:opacity-50">
-                {bankImporting ? "Mengimpor…" : "Impor Mutasi CSV"}
-              </button>
-              <p className="w-full text-xs text-text-secondary">CSV: kolom tanggal, keterangan, nominal, dan tipe (DB/CR). Maksimal 5 MB.</p>
-            </div>
-
-            {/* Ringkasan Saldo Real-Time */}
-            <div className="workspace-kpis grid gap-3">
-              {bankAccounts.map((b) => (
-                <div key={b.id} className={cn("card p-4 rounded-[14px] border bg-white flex flex-col justify-between shadow-xs", bankImportAccountId === b.id ? "border-brand-primary ring-2 ring-brand-primary/15" : "border-text-tertiary")}>
-                  <div className="flex items-center justify-between text-xs font-bold text-text-secondary uppercase">
-                    <span>{b.type.replace(/_/g, " ")}</span>
-                    <Landmark size={14} className="text-brand-green" />
-                  </div>
-                  <strong className="text-sm font-bold text-text-primary block mt-1">{b.bank}</strong>
-                  <span className="text-xs text-text-secondary font-mono mt-0.5">{b.number}</span>
-                  <div className="mt-3 pt-2 border-t border-text-tertiary/40 flex items-center justify-between gap-2">
-                    <span className="text-xs text-text-secondary whitespace-nowrap">{b.balance == null ? "Status Saldo:" : "Saldo Buku:"}</span>
-                    {b.balance == null ? (
-                      <span className="status-chip whitespace-nowrap">Belum Tersedia</span>
-                    ) : (
-                      <strong className="text-sm font-black text-brand-deep-green whitespace-nowrap">{formatMoney(b.balance)}</strong>
-                    )}
-                  </div>
-                  <button type="button" onClick={() => setBankImportAccountId(b.id)} aria-pressed={bankImportAccountId === b.id} className={cn("mt-3 w-full rounded-lg border px-3 py-2 text-sm font-semibold transition-colors", bankImportAccountId === b.id ? "border-brand-primary bg-brand-primary text-white" : "border-brand-primary/30 bg-brand-light-green text-brand-deep-green hover:border-brand-primary")}>
-                    {bankImportAccountId === b.id ? "Rekening Dipilih" : "Pilih untuk Rekonsiliasi"}
-                  </button>
+          {/* ── TAB 7: PIUTANG & UANG MASUK (AR) ───── */}
+          {activeTab === "ar" && (
+            <div className="flex flex-col gap-5">
+              {/* Header & Action */}
+              <div className="flex justify-between items-center flex-wrap gap-2">
+                <div>
+                  <h3 className="text-sm font-bold text-text-primary">Piutang & Alur Uang Masuk Perusahaan (Accounts Receivable)</h3>
+                  <p className="text-xs text-text-secondary">Penerimaan pembayaran dari klien / termin proyek ke rekening bank perusahaan.</p>
                 </div>
-              ))}
-            </div>
-
-            {/* Rekonsiliasi Status */}
-            <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
-              <div className="px-5 py-3 border-b bg-gray-50 flex items-center justify-between">
-                <h4 className="text-sm font-bold text-text-primary">Status Rekonsiliasi Bank</h4>
-                <span className="text-xs text-text-secondary">
-                  {new Set(bankStatements.map((line: any) => line.bank_statement_id).filter(Boolean)).size} statement | {bankReconciliations.filter((r: any) => r.status === "MATCHED").length} matched
-                </span>
+                <button
+                  onClick={() => { setReceiptErrors({}); setIsReceiptModalOpen(true); }}
+                  className="btn-primary py-2 px-3.5 text-xs gap-1.5 bg-brand-green hover:bg-brand-deep-green shadow-sm"
+                >
+                  <Plus size={14} /> Catat Uang Masuk (Customer Payment)
+                </button>
               </div>
-              {bankStatements.length === 0 ? (
-                <div className="py-12 flex flex-col items-center gap-3 text-center">
-                  <ArrowLeftRight size={36} className="text-brand-green opacity-30" />
-                  <p className="text-sm text-text-secondary">Belum ada mutasi rekening yang diimpor.</p>
-                  <p className="text-xs text-text-secondary">Pilih rekening dan unggah file CSV pada form di atas untuk memulai rekonsiliasi.</p>
+
+              {/* KPI Summary Uang Masuk */}
+              <FinanceSummarySection
+                title="Ringkasan Penerimaan dan Piutang"
+                subtitle="Ringkasan penerimaan yang dibukukan, piutang tersisa, dan transaksi yang menunggu proses."
+              >
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="card p-4 rounded-xl border border-brand-primary-soft bg-white shadow-xs">
+                    <span className="text-xs font-bold text-brand-deep-green uppercase tracking-wide block">Total Penerimaan Dibukukan</span>
+                    <span className="text-2xl font-black text-brand-deep-green mt-1 block">
+                      {formatMoney(totalInflowRevenue)}
+                    </span>
+                    <span className="text-xs text-text-secondary mt-0.5 block">{receiptSummary?.posted_count ?? 0} transaksi POSTED; {receiptSummary?.pending_count ?? 0} belum dibukukan</span>
+                  </div>
+
+                  <div className="card p-4 rounded-xl border border-amber-200 bg-white shadow-xs">
+                    <span className="text-xs font-bold text-amber-800 uppercase tracking-wide block">Sisa Piutang Berjalan</span>
+                    <span className="text-2xl font-black text-amber-700 mt-1 block">
+                      {formatMoney(receiptSummary?.outstanding_amount ?? 0)}
+                    </span>
+                    <span className="text-xs text-text-secondary mt-0.5 block">Invoice termin proyek belum lunas</span>
+                  </div>
+
+                  <div className="card p-4 rounded-xl border border-gray-200 bg-white shadow-xs">
+                    <span className="text-xs font-bold text-text-secondary uppercase tracking-wide block">Menunggu Diproses</span>
+                    <span className="text-2xl font-black text-text-primary mt-1 block">{receiptSummary?.pending_count ?? 0} transaksi</span>
+                    <span className="text-xs text-text-secondary mt-0.5 block">Finance 1 mengajukan → Finance 2 menyetujui &amp; memposting</span>
+                  </div>
                 </div>
-              ) : (
-                <div className="table-scroll-wrapper">
-                  <table className="w-full data-table text-sm min-w-[640px]">
+              </FinanceSummarySection>
+
+              {/* Tabel Riwayat Uang Masuk */}
+              <div className="card p-5 rounded-2xl border border-text-tertiary bg-white flex flex-col gap-3">
+                <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider">Riwayat Penerimaan Pembayaran Klien</h4>
+                <p className="text-xs text-text-secondary">Finance pertama mencatat dan mengajukan penerimaan. Finance kedua klik Setujui &amp; Posting untuk membukukan uang masuk. Penerimaan tanpa invoice dicatat sebagai uang muka pelanggan.</p>
+                <div className="table-scroll-wrapper border border-text-tertiary/50 rounded-xl">
+                  <table className="w-full data-table font-sans text-xs text-left min-w-[580px]">
                     <thead>
-                      <tr className="bg-gray-50 text-xs uppercase tracking-wider text-text-secondary">
-                        <th className="py-3 px-4 text-left">Tanggal</th>
-                        <th className="py-3 px-4 text-left">Referensi</th>
-                        <th className="py-3 px-4 text-left">Keterangan</th>
-                        <th className="py-3 px-4 text-right">Debit</th>
-                        <th className="py-3 px-4 text-right">Kredit</th>
-                        <th className="py-3 px-4 text-center">Status</th>
-                        <th className="py-3 px-4 text-left">Cocokkan Pembayaran</th>
+                      <tr className="bg-gray-50 text-text-secondary text-xs uppercase tracking-wide border-b">
+                        <th className="py-3 px-4 font-bold">No. Bukti / Tanggal</th>
+                        <th className="py-3 px-4 font-bold">Klien & Proyek</th>
+                        <th className="py-3 px-4 font-bold">Rekening Penerima</th>
+                        <th className="py-3 px-4 font-bold">Jumlah Uang Masuk</th>
+                        <th className="py-3 px-4 font-bold">Status</th>
+                        <th className="py-3 px-4 font-bold">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {bankStatements.map((stmt: any) => {
-                        const reconciliation = bankReconciliations.find((item: any) => item.bank_statement_line_id === stmt.id);
-                        const isMatched = reconciliation?.status === "MATCHED";
-                        return (
-                        <tr key={stmt.id} className="hover:bg-gray-50/50">
-                          <td className="!text-sm py-2.5 px-4 font-mono">{stmt.transaction_date ? new Date(stmt.transaction_date).toLocaleDateString("id-ID") : "-"}</td>
-                          <td className="!text-sm py-2.5 px-4 font-mono text-brand-deep-green">{stmt.reference_number || "-"}</td>
-                          <td className="!text-sm py-2.5 px-4 text-text-primary">{stmt.description}</td>
-                          <td className="!text-sm py-2.5 px-4 text-right text-brand-deep-green font-bold">{stmt.debit_amount > 0 ? formatMoney(stmt.debit_amount) : "-"}</td>
-                          <td className="!text-sm py-2.5 px-4 text-right text-red-600 font-bold">{stmt.credit_amount > 0 ? formatMoney(stmt.credit_amount) : "-"}</td>
-                          <td className="!text-sm py-2.5 px-4 text-center">
-                            <span className={cn("badge text-xs",
-                              isMatched ? "badge-success" : "badge-neutral"
-                            )}>{isMatched ? "MATCHED" : "UNRECONCILED"}</span>
+                      {customerReceipts.map((rec) => (
+                        <tr key={rec.id} className="hover:bg-brand-light-green/30">
+                          <td className="py-3 px-4">
+                            <strong className="text-text-primary block font-sans text-xs">{rec.receipt_number || rec.reference_number}</strong>
+                            <span className="text-xs text-text-secondary tabular-nums block">{rec.payment_date}</span>
                           </td>
-                          <td className="!text-sm py-2.5 px-4">
-                            {isMatched ? <span className="text-2xs text-text-secondary">Sudah dicocokkan</span> : (
-                              <div className="flex min-w-[250px] gap-2">
-                                <select value={bankMatchPaymentIds[String(stmt.id)] || ""} onChange={(event) => setBankMatchPaymentIds((current) => ({ ...current, [String(stmt.id)]: event.target.value }))} className="input min-w-0 flex-1 text-xs" disabled={!bankMatchPayments.length || bankMatchingLineId === String(stmt.id)}>
-                                  <option value="">{bankMatchPayments.length ? "Pilih pembayaran atau penerimaan" : "Belum ada transaksi yang sudah dibukukan"}</option>
-                                  {bankMatchPayments.map((payment: any) => <option key={payment.id} value={payment.id}>{payment.payment_type === "CUSTOMER_RECEIPT" ? "Penerimaan pelanggan" : "Pembayaran vendor"} · {payment.reference_number || payment.id.slice(0, 8)} · {formatMoney(Number(payment.amount || 0))}</option>)}
-                                </select>
-                                <button type="button" onClick={() => matchBankStatementLine(stmt)} disabled={!bankMatchPaymentIds[String(stmt.id)] || bankMatchingLineId === String(stmt.id)} className="btn-outline px-2 py-1 text-xs disabled:opacity-50">
-                                  {bankMatchingLineId === String(stmt.id) ? "…" : "Cocokkan"}
+                          <td className="py-3 px-4">
+                            <strong className="text-text-primary block">{rec.customer_name}</strong>
+                            <span className="text-xs text-text-secondary block mt-0.5">Proyek: {rec.project_name}</span>
+                            <span className="text-xs text-brand-deep-green block mt-0.5">{rec.invoice_ref}</span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="font-semibold text-text-primary block">{String(rec.bank_account || "Rekening belum ditentukan").split("—")[0]}</span>
+                            <span className="text-xs text-text-secondary block">Ref: {rec.reference_number}</span>
+                          </td>
+                          <td className="py-3 px-4 font-bold text-brand-deep-green text-sm">
+                            +{formatMoney(rec.amount)}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="px-2 py-1 rounded-full text-xs font-extrabold uppercase bg-brand-light-green text-brand-deep-green">
+                              {String(rec.status || "DRAFT")}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 max-w-[280px]">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {receiptReadiness[rec.id]?.action && (
+                                <button
+                                  type="button"
+                                  disabled={!receiptReadiness[rec.id]?.allowed || receiptActionId !== null || receiptDeletingId !== null}
+                                  onClick={() => handleReceiptLifecycle(rec)}
+                                  className="btn-primary text-xs px-3 py-1.5 disabled:opacity-50 flex items-center gap-1"
+                                >
+                                  <CheckCircle2 size={12} />
+                                  {receiptActionId === rec.id ? "Memproses…" : ({ submit: "Ajukan", "approve-and-post": "Setujui & Posting", approve: "Setujui", post: "Posting Penerimaan" } as Record<string, string>)[receiptReadiness[rec.id].action!]}
                                 </button>
-                              </div>
-                            )}
+                              )}
+                              {rec.status !== "POSTED" && (
+                                <button
+                                  type="button"
+                                  disabled={receiptActionId !== null || receiptDeletingId !== null}
+                                  onClick={() => handleDeleteReceipt(rec.id)}
+                                  className="py-1.5 px-3 text-xs font-bold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:border-red-300 transition-all flex items-center gap-1 whitespace-nowrap shadow-2xs"
+                                  title="Hapus Catatan Uang Masuk"
+                                >
+                                  <Trash2 size={12} className="text-red-600" />
+                                  {receiptDeletingId === rec.id ? "Menghapus…" : "Hapus Catatan"}
+                                </button>
+                              )}
+                            </div>
+                            <p className="text-xs text-text-secondary mt-1">{receiptReadiness[rec.id]?.message || (rec.status === "POSTED" ? "Sudah dibukukan." : "Memuat kewenangan…")}</p>
+                            {receiptActionError[rec.id] && <p role="alert" className="text-xs text-red-600 mt-1">{receiptActionError[rec.id]}</p>}
                           </td>
                         </tr>
-                      );})}
+                      ))}
                     </tbody>
                   </table>
                 </div>
-              )}
+              </div>
             </div>
-          </div>
-        )
-      )}
+          )}
 
-      {/* ── TAB: ASET TETAP ──────────────────────── */}
-      {activeTab === "assets" && (
-        <div className="card rounded-2xl p-6">
-          <FixedAssetsWorkspace />
-        </div>
-      )}
+          {/* ── TAB 8: KAS & BANK MUTASI (CASH & BANK) ── */}
+          {activeTab === "cashbank" && (
+            <div className="flex flex-col gap-5">
+              {/* Header */}
+              <div className="flex items-start justify-between flex-wrap gap-2">
+                <div>
+                  <h3 className="text-sm font-bold text-text-primary">Buku Kas & Bank Perusahaan (Cash & Bank Ledger)</h3>
+                  <p className="text-xs text-text-secondary">Pantau saldo real-time akun bank dan alur mutasi uang masuk vs uang keluar.</p>
+                </div>
+                <div className="ml-auto flex items-center justify-end gap-2">
+                  {canOperateFinance && <button onClick={() => { const offset = ledgerAccounts.find((account) => String(account.account_code) === "3200" && account.status === "ACTIVE"); setBankOpeningForm((current) => ({ ...current, offset_account_id: current.offset_account_id || String(offset?.id ?? "") })); setIsBankOpeningFormOpen((open) => !open); }} className="btn-secondary py-1.5 px-3 text-xs gap-1.5 border border-blue-200 text-blue-800 hover:bg-blue-50">
+                    <Plus size={13} /> {isBankOpeningFormOpen ? "Tutup rekening baru" : "Rekening baru + saldo awal"}
+                  </button>}
+                  <button onClick={() => { setReceiptErrors({}); setReceiptForm((current) => ({ ...current, bank_account: current.bank_account || bankAccounts[0]?.id || "" })); setIsCashReceiptQuickOpen((open) => !open); }} className="btn-secondary py-1.5 px-3 text-xs gap-1.5 border border-brand-green text-brand-deep-green hover:bg-brand-light-green">
+                    <Plus size={13} /> {isCashReceiptQuickOpen ? "Tutup input" : "Catat Uang Masuk"}
+                  </button>
+                  <button onClick={() => selectFinanceTab("ap")} className="btn-primary py-1.5 px-3 text-xs gap-1.5 bg-brand-deep-green">
+                    <CreditCard size={13} /> Bayar dari Tagihan AP
+                  </button>
+                </div>
+              </div>
 
-      {/* ── TAB: TUTUP BUKU ──────────────────────── */}
-      {activeTab === "period_closing" && (
-        <div className="card rounded-2xl p-6">
-          <PeriodClosingWorkspace />
-        </div>
-      )}
+              {canOperateFinance && isBankOpeningFormOpen && <form onSubmit={handleCreateBankAccountOpening} className="rounded-2xl border border-blue-200 bg-blue-50/50 p-4 shadow-xs">
+                <div className="mb-3"><h4 className="text-sm font-extrabold text-blue-950">Tambah rekening Kas & Bank</h4><p className="mt-0.5 text-[10px] text-blue-900">Saldo awal akan masuk ke Buku Besar sebagai jurnal berimbang, sehingga saldo rekening langsung terlihat.</p></div>
+                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-6">
+                  <label className="text-[10px] font-bold text-slate-700">Nama bank<input required value={bankOpeningForm.bank_name} onChange={(event) => setBankOpeningForm({ ...bankOpeningForm, bank_name: event.target.value })} placeholder="BCA / Mandiri / Kas Tunai" className="input mt-1 w-full py-2 text-xs" /></label>
+                  <label className="text-[10px] font-bold text-slate-700">Nomor rekening<input required value={bankOpeningForm.account_number} onChange={(event) => setBankOpeningForm({ ...bankOpeningForm, account_number: event.target.value })} placeholder="Nomor rekening" className="input mt-1 w-full py-2 text-xs font-mono" /></label>
+                  <label className="text-[10px] font-bold text-slate-700">Atas nama<input required value={bankOpeningForm.account_name} onChange={(event) => setBankOpeningForm({ ...bankOpeningForm, account_name: event.target.value })} placeholder="Nama pemilik" className="input mt-1 w-full py-2 text-xs" /></label>
+                  <label className="text-[10px] font-bold text-slate-700">Saldo awal (Rp)<IDRInput value={bankOpeningForm.opening_amount} onChange={(opening_amount) => setBankOpeningForm({ ...bankOpeningForm, opening_amount })} placeholder="0" className="input mt-1 w-full py-2 text-xs font-bold" showPrefix={false} /></label>
+                  <label className="text-[10px] font-bold text-slate-700">Tanggal saldo awal<input required={Number(bankOpeningForm.opening_amount || 0) > 0} type="date" value={bankOpeningForm.opening_date} onChange={(event) => setBankOpeningForm({ ...bankOpeningForm, opening_date: event.target.value })} className="input mt-1 w-full py-2 text-xs" /></label>
+                  <label className="text-[10px] font-bold text-slate-700">Sumber saldo awal<select required={Number(bankOpeningForm.opening_amount || 0) > 0} value={bankOpeningForm.offset_account_id} onChange={(event) => setBankOpeningForm({ ...bankOpeningForm, offset_account_id: event.target.value })} className="input mt-1 w-full py-2 text-xs"><option value="">Pilih akun lawan</option>{ledgerAccounts.filter((account) => account.status === "ACTIVE" && ["EQUITY", "LIABILITY"].includes(String(account.account_type).toUpperCase()) && String(account.normal_balance).toUpperCase() === "CREDIT").map((account) => <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select></label>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-blue-100 pt-3"><p className="text-[10px] text-slate-600">Jika saldo awal Rp 0, rekening dibuat tanpa jurnal saldo awal.</p><button type="submit" disabled={Boolean(financePending["create-bank-account-opening"])} className="btn-primary inline-flex items-center gap-1.5 py-2 px-4 text-xs font-bold disabled:cursor-wait disabled:opacity-60"><CheckCircle2 size={13} />{financePending["create-bank-account-opening"] ? "Menyimpan…" : "Simpan rekening & saldo"}</button></div>
+              </form>}
 
-      {/* ── TAB: AUDIT TRAIL ─────────────────────── */}
-      {activeTab === "audit_trail" && (
-        <div className="card rounded-2xl p-6">
-          <AuditTrailWorkspace startDate={financePeriodStart || undefined} endDate={financePeriodEnd || undefined} />
-        </div>
-      )}
+              {isCashReceiptQuickOpen && <form noValidate onSubmit={handleCreateCustomerReceipt} className="rounded-2xl border border-blue-200 bg-blue-50/50 p-4 shadow-xs">
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                  <div><h4 className="text-sm font-extrabold text-blue-950">Input cepat uang masuk</h4><p className="mt-0.5 text-[10px] text-blue-900">Pilih proyek atau invoice, isi nominal dan rekening. Transaksi tersimpan sebagai draft untuk persetujuan.</p></div>
+                  <button type="button" onClick={() => { setIsCashReceiptQuickOpen(false); setIsReceiptModalOpen(true); }} className="text-[10px] font-bold text-blue-800 underline underline-offset-2">Input lengkap (termasuk potongan pajak)</button>
+                </div>
+                {(receiptErrors.project_name || receiptErrors.customer_name) && <p role="alert" className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-[10px] text-red-700">{receiptErrors.project_name || receiptErrors.customer_name}</p>}
+                <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+                  <label className="text-[10px] font-bold text-slate-700">Proyek<select required value={receiptForm.project_id} onChange={(event) => { const projectId = event.target.value; const project = financeProjectOptions.find((row) => String(row.id) === projectId); setReceiptForm((current) => ({ ...current, project_id: projectId, project_name: project?.project_name || project?.name || "", customer_name: project?.customer_name || project?.client_name || "" })); setReceiptErrors((current) => ({ ...current, project_name: "", customer_name: "" })); }} className="input mt-1 w-full py-2 text-xs"><option value="">Pilih proyek</option>{financeProjectOptions.map((project) => <option key={project.id} value={project.id}>{project.project_code ? `${project.project_code} — ` : ""}{project.project_name || project.name}</option>)}</select></label>
+                  <label className="text-[10px] font-bold text-slate-700">Invoice / termin<select value={receiptForm.invoice_ref} onChange={(event) => { const invoiceId = event.target.value; const invoice = customerInvoices.find((row) => row.id === invoiceId); const remaining = invoice ? Number(invoice.outstanding_amount ?? (Number(invoice.total_amount ?? 0) - Number(invoice.paid_amount ?? 0))) : 0; setReceiptForm((current) => ({ ...current, invoice_ref: invoiceId, customer_name: invoice?.party?.display_name || invoice?.party?.legal_name || current.customer_name, project_name: invoice?.project?.name || current.project_name, project_id: invoice?.project_id || current.project_id, amount: remaining > 0 ? String(remaining) : current.amount })); setReceiptErrors((current) => ({ ...current, invoice_ref: "", amount: "" })); }} className="input mt-1 w-full py-2 text-xs"><option value="">Tanpa invoice</option>{customerInvoices.filter((invoice) => invoice.status === "POSTED" && Number(invoice.outstanding_amount ?? (Number(invoice.total_amount ?? 0) - Number(invoice.paid_amount ?? 0))) > 0).map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.invoice_number} · sisa {formatMoney(invoice.outstanding_amount ?? Number(invoice.total_amount ?? 0) - Number(invoice.paid_amount ?? 0))}</option>)}</select></label>
+                  <label className="text-[10px] font-bold text-slate-700">Nominal masuk (Rp)<IDRInput required placeholder="0" value={receiptForm.amount} onChange={(amount) => updateReceiptField("amount", amount)} className="input mt-1 w-full py-2 text-xs font-bold" showPrefix={false} />{receiptError("amount")}</label>
+                  <label className="text-[10px] font-bold text-slate-700">Rekening penerima<select required value={receiptForm.bank_account} onChange={(event) => updateReceiptField("bank_account", event.target.value)} className="input mt-1 w-full py-2 text-xs"><option value="">Pilih rekening</option>{bankAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select>{receiptError("bank_account")}</label>
+                  <label className="text-[10px] font-bold text-slate-700">Tanggal<input required type="date" value={receiptForm.payment_date} onChange={(event) => updateReceiptField("payment_date", event.target.value)} className="input mt-1 w-full py-2 text-xs" /></label>
+                  <label className="text-[10px] font-bold text-slate-700">No. bukti / referensi<input required value={receiptForm.reference_number} onChange={(event) => updateReceiptField("reference_number", event.target.value)} placeholder="Nomor transfer" className="input mt-1 w-full py-2 text-xs" />{receiptError("reference_number")}</label>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-blue-100 pt-3">
+                  <span className="text-[10px] text-slate-600">Klien: <b>{receiptForm.customer_name || "otomatis dari proyek / invoice"}</b> · Metode: transfer bank</span>
+                  <button type="submit" disabled={receiptSaving || Boolean(financePending["create-customer-receipt"])} className="btn-primary inline-flex items-center gap-1.5 py-2 px-4 text-xs font-bold disabled:cursor-wait disabled:opacity-60"><CheckCircle2 size={13} />{receiptSaving || financePending["create-customer-receipt"] ? "Menyimpan…" : "Simpan draft"}</button>
+                </div>
+              </form>}
 
-      {/* ── TAB: EXECUTIVE AUDIT REPORT ───────────── */}
-      {activeTab === "executive_report" && (
-        <div className="card rounded-2xl p-3 sm:p-5 lg:p-6">
-          <ExecutiveAuditReportWorkspace startDate={financePeriodStart || undefined} endDate={financePeriodEnd || undefined} />
-        </div>
-      )}
+              {/* 4 Kartu Rekening Bank */}
+              <FinanceSummarySection
+                title="Ringkasan Rekening Kas & Bank"
+                subtitle="Saldo rekening yang tersedia untuk alur penerimaan dan pembayaran."
+              >
+                <div className="workspace-kpis grid gap-3">
+                  {bankAccounts.map((b) => (
+                    <div key={b.id} className="card p-4 rounded-xl border border-blue-200 border-l-4 border-l-[#163D64] bg-white flex flex-col justify-between min-h-[120px] shadow-sm">
+                      <div>
+                        <div className="flex items-center justify-between text-xs font-bold text-text-secondary uppercase tracking-wide">
+                          <span>{b.type.replace("_", " ")}</span>
+                          <Landmark size={14} className="text-brand-green" />
+                        </div>
+                        <strong className="text-sm font-bold text-text-primary block mt-1">{b.name.split("—")[0]}</strong>
+                        <span className="text-xs text-text-secondary tabular-nums block mt-0.5">{b.number}</span>
+                      </div>
+                      <div className="mt-3 pt-2 border-t border-text-tertiary/40 flex items-center justify-between gap-2">
+                        <span className="text-xs text-text-secondary whitespace-nowrap">{b.balance == null ? "Status Saldo:" : "Saldo Tersedia:"}</span>
+                        {b.balance == null ? (
+                          <span className="status-chip whitespace-nowrap">Belum Tersedia</span>
+                        ) : (
+                          <strong className="text-base font-black tabular-nums text-brand-deep-green whitespace-nowrap">{formatMoney(b.balance)}</strong>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </FinanceSummarySection>
+
+              {/* Notice jika ada penerimaan uang masuk yang masih Draft / Butuh Approval */}
+              {customerReceipts.filter(r => r.status !== "POSTED").length > 0 && (
+                <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200/90 text-xs text-amber-950 flex items-center justify-between flex-wrap gap-2 shadow-2xs">
+                  <div className="flex items-center gap-2.5">
+                    <Clock size={16} className="text-amber-600 shrink-0" />
+                    <span>
+                      Terdapat <strong>{customerReceipts.filter(r => r.status !== "POSTED").length} penerimaan uang masuk</strong> yang masih berstatus <strong>Draft / Menunggu Posting</strong>.
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCashBankFilter("PENDING")}
+                      className="btn-secondary py-1 px-3 text-xs font-bold border-amber-300 text-amber-900 bg-white hover:bg-amber-100"
+                    >
+                      Tampilkan di Tabel Kas ➔
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Mutasi Kas & Bank (Inflow vs Outflow) */}
+              <div className="card p-5 rounded-2xl border border-text-tertiary bg-white flex flex-col gap-3">
+                <div className="flex items-center justify-between flex-wrap gap-2 border-b border-text-tertiary/40 pb-3">
+                  <div>
+                    <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider">Buku Mutasi Arus Kas Riil (Inflows & Disbursements)</h4>
+                    <p className="text-2xs text-text-secondary mt-0.5">Daftar mutasi arus kas masuk, pengeluaran AP, dan penerimaan dalam proses.</p>
+                  </div>
+
+                  {/* Filter Tabs */}
+                  <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setCashBankFilter("ALL")}
+                      className={cn("px-3 py-1 rounded-lg text-2xs font-bold transition-all", cashBankFilter === "ALL" ? "bg-white text-brand-deep-green shadow-xs" : "text-text-secondary hover:text-text-primary")}
+                    >
+                      Semua ({postedReceipts.length + vendorBills.filter(b => b.status === "PAID").length + customerReceipts.filter(r => r.status !== "POSTED").length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCashBankFilter("POSTED")}
+                      className={cn("px-3 py-1 rounded-lg text-2xs font-bold transition-all", cashBankFilter === "POSTED" ? "bg-white text-brand-deep-green shadow-xs" : "text-text-secondary hover:text-text-primary")}
+                    >
+                      Dibukukan ({postedReceipts.length + vendorBills.filter(b => b.status === "PAID").length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCashBankFilter("PENDING")}
+                      className={cn("px-3 py-1 rounded-lg text-2xs font-bold transition-all", cashBankFilter === "PENDING" ? "bg-white text-amber-700 shadow-xs" : "text-text-secondary hover:text-text-primary")}
+                    >
+                      Draft / Review ({customerReceipts.filter(r => r.status !== "POSTED").length})
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 p-2">
+                  <input value={cashBankSearch} onChange={(event) => setCashBankSearch(event.target.value)} placeholder="Cari nomor bukti, lawan transaksi, rekening…" aria-label="Cari mutasi kas dan bank" className="input min-w-[240px] flex-1 py-2 text-xs" />
+                  <span className="text-[10px] font-semibold text-slate-500">{cashBankFilter === "PENDING" ? searchedPendingCashReceipts.length : cashBankFilter === "POSTED" ? searchedPostedReceipts.length + searchedPaidVendorBills.length : searchedPendingCashReceipts.length + searchedPostedReceipts.length + searchedPaidVendorBills.length} transaksi ditampilkan</span>
+                </div>
+
+                <div className="table-scroll-wrapper border border-text-tertiary/50 rounded-xl">
+                  <table className="w-full data-table text-xs text-left min-w-[650px]">
+                    <thead>
+                      <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider border-b">
+                        <th className="w-[112px] py-3 px-3 font-bold">Tanggal</th>
+                        <th className="py-3 px-4 font-bold">Status & Tipe</th>
+                        <th className="py-3 px-4 font-bold">Rekening Kas/Bank</th>
+                        <th className="py-3 px-4 font-bold">Keterangan / Lawan Transaksi</th>
+                        <th className="py-3 px-4 font-bold text-right">Nominal Mutasi</th>
+                        <th className="py-3 px-4 font-bold text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {/* Empty state bila belum ada transaksi sesuai filter */}
+                      {((cashBankFilter === "POSTED" && searchedPostedReceipts.length === 0 && searchedPaidVendorBills.length === 0) ||
+                        (cashBankFilter === "PENDING" && searchedPendingCashReceipts.length === 0) ||
+                        (cashBankFilter === "ALL" && searchedPendingCashReceipts.length === 0 && searchedPostedReceipts.length === 0 && searchedPaidVendorBills.length === 0)) && (
+                          <tr>
+                            <td colSpan={6} className="py-10 text-center text-text-secondary">
+                              <div className="flex flex-col items-center justify-center gap-2">
+                                <WalletCards size={32} className="text-slate-300" />
+                                <p className="text-xs font-semibold text-slate-700">Tidak ada transaksi mutasi pada filter ini.</p>
+                                <p className="text-2xs text-text-secondary max-w-md">
+                                  Gunakan tombol <strong>[+ Catat Uang Masuk]</strong> di atas untuk menambahkan transaksi penerimaan baru.
+                                </p>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+
+                      {/* Penerimaan yang masih DRAFT / PENDING (tampil pada filter ALL dan PENDING) */}
+                      {cashBankFilter !== "POSTED" && searchedPendingCashReceipts.map((rec) => (
+                        <tr key={`pending-${rec.id}`} className="hover:bg-amber-50/30 bg-amber-50/10">
+                          <td className="whitespace-nowrap py-3 px-3 text-xs tabular-nums">{formatDate(rec.payment_date)}</td>
+                          <td className="py-3 px-4">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-2xs font-extrabold uppercase bg-amber-100 text-amber-800 border border-amber-200">
+                              🟡 {rec.status === "APPROVED" ? "Disetujui" : "Draft (Pending)"}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 font-semibold text-text-primary">{String(rec.bank_account || "Rekening belum ditentukan").split("—")[0]}</td>
+                          <td className="py-3 px-4">
+                            <span className="text-text-primary block font-medium">{rec.customer_name} — {rec.project_name || rec.invoice_ref}</span>
+                            <span className="text-2xs text-text-secondary block font-mono">Ref: {rec.reference_number}</span>
+                          </td>
+                          <td className="py-3 px-4 font-black text-right text-amber-700 text-sm">
+                            +{formatMoney(rec.amount)}
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                disabled={receiptActionId !== null || receiptDeletingId !== null}
+                                onClick={() => handleReceiptLifecycle(rec)}
+                                className="btn-primary py-1.5 px-3 text-2xs font-bold shadow-xs whitespace-nowrap flex items-center gap-1.5"
+                              >
+                                <CheckCircle2 size={12} />
+                                {receiptActionId === rec.id ? "Memproses…" : "Posting Sekarang"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={receiptActionId !== null || receiptDeletingId !== null}
+                                onClick={() => handleDeleteReceipt(rec.id)}
+                                className="py-1.5 px-3 text-2xs font-bold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:border-red-300 transition-all shadow-xs flex items-center gap-1.5 whitespace-nowrap"
+                                title="Hapus Catatan Uang Masuk"
+                              >
+                                <Trash2 size={12} className="text-red-600" />
+                                {receiptDeletingId === rec.id ? "Menghapus…" : "Hapus Catatan"}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+
+                      {/* Mutasi Uang Masuk yang sudah POSTED (tampil pada filter ALL dan POSTED) */}
+                      {cashBankFilter !== "PENDING" && searchedPostedReceipts.map((rec) => (
+                        <tr key={`in-${rec.id}`} className="hover:bg-brand-light-green/20">
+                          <td className="whitespace-nowrap py-3 px-3 text-xs tabular-nums">{formatDate(rec.payment_date)}</td>
+                          <td className="py-3 px-4">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-extrabold uppercase bg-brand-light-green text-brand-deep-green">
+                              🟢 Masuk (POSTED)
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 font-semibold text-text-primary">{String(rec.bank_account || "Rekening belum ditentukan").split("—")[0]}</td>
+                          <td className="py-3 px-4">
+                            <span className="text-text-primary block font-medium">{rec.customer_name} — {rec.invoice_ref}</span>
+                            <span className="text-2xs text-text-secondary block font-mono">Ref: {rec.reference_number}</span>
+                          </td>
+                          <td className="py-3 px-4 font-black text-right text-brand-green text-sm">
+                            +{formatMoney(rec.amount)}
+                          </td>
+                          <td className="py-3 px-4 text-center text-2xs text-brand-deep-green font-semibold">
+                            ✓ Dibukukan
+                          </td>
+                        </tr>
+                      ))}
+
+                      {/* Mutasi Uang Keluar Tagihan Vendor (tampil pada filter ALL dan POSTED) */}
+                      {cashBankFilter !== "PENDING" && searchedPaidVendorBills.map((b) => (
+                        <tr key={`out-${b.id}`} className="hover:bg-red-50/20">
+                          <td className="whitespace-nowrap py-3 px-3 text-xs tabular-nums">{formatDate(b.due_date)}</td>
+                          <td className="py-3 px-4">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-extrabold uppercase bg-red-100 text-red-800">
+                              🔴 Keluar (PAID)
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 font-semibold text-text-primary">{b.bank_account_name || "-"}</td>
+                          <td className="py-3 px-4">
+                            <span className="text-text-primary block font-medium">Pembayaran Tagihan Vendor: {b.supplier_name}</span>
+                            <span className="text-2xs text-text-secondary block font-mono">Inv: {b.invoice_number}</span>
+                          </td>
+                          <td className="py-3 px-4 font-black text-right text-red-600 text-sm">
+                            -{formatMoney(b.amount)}
+                          </td>
+                          <td className="py-3 px-4 text-center text-2xs text-slate-500 font-semibold">
+                            ✓ Dibayar
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── TAB: MASTER PERUSAHAAN & BANK ─────────── */}
+          {activeTab === "company_master" && (
+            tabErrors["company_master"] ? (
+              <div className="card rounded-2xl overflow-hidden">
+                <AccessDeniedState compact section="Master Perusahaan & Bank" />
+              </div>
+            ) : (
+              <CompanyMasterWorkspace />
+            )
+          )}
+
+          {/* ── TAB 10: PERPAJAKAN PROYEK (TAX COMPLIANCE) ── */}
+          {activeTab === "tax" && (
+            tabErrors["tax"] ? (
+              <div className="card rounded-2xl overflow-hidden">
+                <AccessDeniedState compact section="Perpajakan" />
+              </div>
+            ) : (
+              <ProjectTaxWorkspace startDate={financePeriodStart || undefined} endDate={financePeriodEnd || undefined} />
+            )
+          )}
+
+          {/* ── TAB: BUKU BESAR & TRIAL BALANCE ─────── */}
+          {activeTab === "gl" && (
+            tabErrors["gl"] ? (
+              <div className="card rounded-2xl overflow-hidden">
+                <AccessDeniedState compact section="Buku Besar (GL)" />
+              </div>
+            ) : (
+              <div className="flex flex-col gap-5">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
+                      <BookOpen size={16} className="text-brand-green" /> Buku Besar & Trial Balance (General Ledger)
+                    </h3>
+                    <p className="text-xs text-text-secondary">Saldo dihitung secara real-time dari akumulasi jurnal yang telah diposting (POSTED).</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setGlActiveTab("trial")} className={cn("tab-btn text-xs", glActiveTab === "trial" && "active")}>Trial Balance</button>
+                    <button onClick={() => setGlActiveTab("entries")} className={cn("tab-btn text-xs", glActiveTab === "entries" && "active")}>Jurnal Umum</button>
+                  </div>
+                </div>
+
+                <p className="text-xs text-text-secondary">Rentang aktif: {financePeriodStart && financePeriodEnd ? `${formatDate(financePeriodStart)} – ${formatDate(financePeriodEnd)}` : "kalender periode belum disiapkan"}</p>
+
+                {glActiveTab === "trial" && (
+                  <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
+                    {/* Summary Banner */}
+                    {trialBalance && (
+                      <div className={cn(
+                        "flex items-center gap-3 px-5 py-3 text-xs font-semibold border-b",
+                        trialBalance.is_balanced
+                          ? "bg-brand-light-green border-brand-primary-soft text-brand-deep-green"
+                          : "bg-red-50 border-red-200 text-red-800"
+                      )}>
+                        {trialBalance.is_balanced
+                          ? <><CheckCircle2 size={15} /> Trial Balance SEIMBANG — Total Debit = Total Kredit ({formatRupiah(trialBalance.total_debit)})</>
+                          : <><AlertTriangle size={15} /> TIDAK SEIMBANG! Debit: {formatRupiah(trialBalance.total_debit)} ≠ Kredit: {formatRupiah(trialBalance.total_credit)}</>}
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-2 border-b border-gray-100 bg-white p-4 sm:flex-row sm:items-center">
+                      <label className="relative min-w-0 flex-1">
+                        <span className="sr-only">Cari akun</span>
+                        <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" aria-hidden="true" />
+                        <input
+                          type="search"
+                          value={trialBalanceSearch}
+                          onChange={event => { setTrialBalanceSearch(event.target.value); setTrialBalancePage(1); }}
+                          placeholder="Cari kode atau nama akun..."
+                          className="input w-full pl-9 text-xs"
+                        />
+                      </label>
+                      <label className="sr-only" htmlFor="trial-balance-type-filter">Filter tipe akun</label>
+                      <select
+                        id="trial-balance-type-filter"
+                        value={trialBalanceTypeFilter}
+                        onChange={event => { setTrialBalanceTypeFilter(event.target.value); setTrialBalancePage(1); }}
+                        className="input w-full text-xs sm:w-52"
+                      >
+                        <option value="ALL">Semua tipe akun</option>
+                        {Array.from(new Set((trialBalance?.accounts || []).map((account: any) => account.account_type).filter(Boolean))).sort().map((type: any) => (
+                          <option key={type} value={type}>{type}</option>
+                        ))}
+                      </select>
+                      <span className="whitespace-nowrap text-xs text-text-secondary">{trialBalanceAccounts.length} akun</span>
+                    </div>
+                    <div className="table-scroll-wrapper">
+                      <table className="w-full data-table text-xs min-w-[700px]">
+                        <thead>
+                          <tr className="bg-gray-50 text-2xs uppercase tracking-wider text-text-secondary">
+                            <th className="py-3 px-4 text-left">Kode Akun</th>
+                            <th className="py-3 px-4 text-left">Nama Akun</th>
+                            <th className="py-3 px-4 text-left">Tipe</th>
+                            <th className="py-3 px-4 text-right">Total Debit</th>
+                            <th className="py-3 px-4 text-right">Total Kredit</th>
+                            <th className="py-3 px-4 text-right">Saldo Bersih</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {visibleTrialBalanceAccounts.map((acc: any) => (
+                            <tr key={acc.account_id} className="hover:bg-gray-50/50">
+                              <td className="py-2.5 px-4 font-mono font-bold text-brand-deep-green">{acc.account_code}</td>
+                              <td className="py-2.5 px-4 font-medium text-text-primary">{acc.account_name}</td>
+                              <td className="py-2.5 px-4">
+                                <span className={cn("badge text-2xs",
+                                  acc.account_type === "ASSET" ? "badge-neutral" :
+                                    acc.account_type === "REVENUE" ? "badge-success" :
+                                      acc.account_type === "EXPENSE" ? "bg-red-100 text-red-700" :
+                                        acc.account_type === "LIABILITY" ? "bg-orange-100 text-orange-700" :
+                                          "bg-purple-100 text-purple-700"
+                                )}>{acc.account_type}</span>
+                              </td>
+                              <td className="py-2.5 px-4 text-right font-mono">{acc.total_debit > 0 ? formatRupiah(acc.total_debit) : "-"}</td>
+                              <td className="py-2.5 px-4 text-right font-mono">{acc.total_credit > 0 ? formatRupiah(acc.total_credit) : "-"}</td>
+                              <td className={cn("py-2.5 px-4 text-right font-bold font-mono",
+                                acc.net_balance >= 0 ? "text-brand-deep-green" : "text-red-600"
+                              )}>{formatRupiah(acc.net_balance)}</td>
+                            </tr>
+                          ))}
+                          {!trialBalanceAccounts.length && (
+                            <tr><td colSpan={6} className="text-center py-10 text-xs text-text-secondary">
+                              <BookOpen size={32} className="mx-auto mb-2 opacity-30" />
+                              {trialBalance?.accounts?.length ? "Tidak ada akun yang cocok dengan pencarian atau filter." : "Belum ada data jurnal yang diposting."}
+                            </td></tr>
+                          )}
+                        </tbody>
+                        {trialBalance?.accounts?.length > 0 && (
+                          <tfoot className="bg-gray-100 border-t-2 border-text-tertiary">
+                            <tr>
+                              <td colSpan={3} className="py-3 px-4 text-xs font-black text-text-primary uppercase">GRAND TOTAL</td>
+                              <td className="py-3 px-4 text-right font-black font-mono text-brand-deep-green">{formatRupiah(trialBalance.total_debit)}</td>
+                              <td className="py-3 px-4 text-right font-black font-mono text-red-700">{formatRupiah(trialBalance.total_credit)}</td>
+                              <td className="py-3 px-4 text-right font-black font-mono">{formatRupiah(trialBalance.total_debit - trialBalance.total_credit)}</td>
+                            </tr>
+                          </tfoot>
+                        )}
+                      </table>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 px-4 py-3">
+                      <span className="text-xs text-text-secondary">
+                        {trialBalanceAccounts.length ? `Menampilkan ${(visibleTrialBalancePage - 1) * GL_PAGE_SIZE + 1}–${Math.min(visibleTrialBalancePage * GL_PAGE_SIZE, trialBalanceAccounts.length)} dari ${trialBalanceAccounts.length} akun` : "Tidak ada akun untuk ditampilkan"}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button type="button" disabled={visibleTrialBalancePage <= 1} onClick={() => setTrialBalancePage(visibleTrialBalancePage - 1)} className="btn-secondary inline-flex items-center gap-1 px-3 py-1.5 text-xs disabled:opacity-50">
+                          <ChevronLeft size={14} /> Sebelumnya
+                        </button>
+                        <span className="text-xs font-semibold text-text-secondary">{visibleTrialBalancePage} / {trialBalancePageCount}</span>
+                        <button type="button" disabled={visibleTrialBalancePage >= trialBalancePageCount} onClick={() => setTrialBalancePage(visibleTrialBalancePage + 1)} className="btn-secondary inline-flex items-center gap-1 px-3 py-1.5 text-xs disabled:opacity-50">
+                          Berikutnya <ChevronRight size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {glActiveTab === "entries" && (
+                  <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
+                    <div className="px-5 py-3 border-b bg-gray-50 flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-text-primary">Daftar Jurnal Umum (Journal Entries)</h4>
+                      <span className="text-xs text-text-secondary">{filteredJournalEntries.length} dari {journalEntries.length} jurnal</span>
+                    </div>
+                    <div className="flex flex-col gap-2 border-b border-gray-100 bg-white p-4 sm:flex-row sm:items-center">
+                      <label className="relative min-w-0 flex-1">
+                        <span className="sr-only">Cari jurnal umum</span>
+                        <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" aria-hidden="true" />
+                        <input
+                          type="search"
+                          value={journalSearch}
+                          onChange={event => { setJournalSearch(event.target.value); setJournalPage(1); }}
+                          placeholder="Cari nomor jurnal, tanggal, atau keterangan..."
+                          className="input w-full pl-9 text-xs"
+                        />
+                      </label>
+                      <label className="sr-only" htmlFor="journal-status-filter">Filter status jurnal</label>
+                      <select
+                        id="journal-status-filter"
+                        value={journalStatusFilter}
+                        onChange={event => { setJournalStatusFilter(event.target.value); setJournalPage(1); }}
+                        className="input w-full text-xs sm:w-52"
+                      >
+                        <option value="ALL">Semua status</option>
+                        {Array.from(new Set(journalEntries.map((entry: any) => entry.status).filter(Boolean))).sort().map((status: any) => (
+                          <option key={status} value={status}>{status}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="table-scroll-wrapper">
+                      <table className="w-full data-table text-xs min-w-[720px]">
+                        <thead>
+                          <tr className="bg-gray-50 text-2xs uppercase tracking-wider text-text-secondary">
+                            <th className="w-[145px] max-w-[145px] py-3 px-3 text-left">No. Jurnal</th>
+                            <th className="py-3 px-4 text-left">Tanggal Posting</th>
+                            <th className="py-3 px-4 text-left">Keterangan</th>
+                            <th className="py-3 px-4 text-center">Status</th>
+                            <th className="py-3 px-4 text-center">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {visibleJournalEntries.map((je: any) => (
+                            <tr key={je.id} className="hover:bg-gray-50/50">
+                              <td className="max-w-[145px] truncate whitespace-nowrap py-2.5 px-3 font-mono text-xs font-bold text-brand-deep-green" title={je.entry_number || je.id}>
+                                {formatJournalCode(je.entry_number || je.id?.slice(0, 8))}
+                              </td>
+                              <td className="py-2.5 px-4 font-mono text-2xs text-text-secondary">{je.posting_date ? new Date(je.posting_date).toLocaleDateString("id-ID") : "-"}</td>
+                              <td className="py-2.5 px-4 text-text-primary max-w-xs truncate">{je.description || "Jurnal Umum"}</td>
+                              <td className="py-2.5 px-4 text-center">
+                                <span className={cn("badge text-2xs",
+                                  je.status === "POSTED" ? "badge-success" :
+                                    je.status === "REVERSED" ? "bg-orange-100 text-orange-700" :
+                                      je.status === "DRAFT" ? "badge-neutral" : "badge-neutral"
+                                )}>{je.status}</span>
+                              </td>
+                              <td className="py-2.5 px-4 text-center">
+                                {je.status === "POSTED" && !je.is_reversed && (
+                                  <button
+                                    onClick={() => { setSelectedJournalEntry(je); setIsReversalModalOpen(true); }}
+                                    className="btn-ghost text-2xs text-orange-600 hover:text-orange-800 py-1 px-2 gap-1"
+                                  >
+                                    <ArrowLeftRight size={11} /> Storno
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                          {!filteredJournalEntries.length && (
+                            <tr><td colSpan={5} className="text-center py-10 text-xs text-text-secondary">
+                              <Activity size={32} className="mx-auto mb-2 opacity-30" />
+                              {journalEntries.length ? "Tidak ada jurnal yang cocok dengan pencarian atau filter." : "Belum ada jurnal entry."}
+                            </td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 px-4 py-3">
+                      <span className="text-xs text-text-secondary">
+                        {filteredJournalEntries.length ? `Menampilkan ${(visibleJournalPage - 1) * GL_PAGE_SIZE + 1}–${Math.min(visibleJournalPage * GL_PAGE_SIZE, filteredJournalEntries.length)} dari ${filteredJournalEntries.length} jurnal` : "Tidak ada jurnal untuk ditampilkan"}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button type="button" disabled={visibleJournalPage <= 1} onClick={() => setJournalPage(visibleJournalPage - 1)} className="btn-secondary inline-flex items-center gap-1 px-3 py-1.5 text-xs disabled:opacity-50">
+                          <ChevronLeft size={14} /> Sebelumnya
+                        </button>
+                        <span className="text-xs font-semibold text-text-secondary">{visibleJournalPage} / {journalPageCount}</span>
+                        <button type="button" disabled={visibleJournalPage >= journalPageCount} onClick={() => setJournalPage(visibleJournalPage + 1)} className="btn-secondary inline-flex items-center gap-1 px-3 py-1.5 text-xs disabled:opacity-50">
+                          Berikutnya <ChevronRight size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          )}
+
+          {activeTab === "coa" && <ChartOfAccountsWorkspace canOperate={canOperateFinance} />}
+          {activeTab === "payroll" && <PayrollWorkspace canOperate={canOperateFinance} />}
+          {activeTab === "recurring_expenses" && <RecurringExpensesWorkspace canOperate={canOperateFinance} />}
+          {activeTab === "tax_setup" && <TaxCoaMappingWorkspace canOperate={canOperateFinance} />}
+
+          {/* ── TAB: LAPORAN KEUANGAN ────────────────── */}
+          {activeTab === "lapkeu" && (
+            tabErrors["lapkeu"] ? (
+              <div className="card rounded-2xl overflow-hidden">
+                <AccessDeniedState compact section="Laporan Keuangan" />
+              </div>
+            ) : (
+              <div className="flex flex-col gap-5">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
+                      <BarChart3 size={16} className="text-brand-green" /> Laporan Keuangan Real-Time
+                    </h3>
+                    <p className="text-xs text-text-secondary">Digenerate secara otomatis dari General Ledger. Selalu sinkron dengan data transaksi terkini.</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setLapkeuActiveTab("pl")} className={cn("tab-btn text-xs", lapkeuActiveTab === "pl" && "active")}>Laba Rugi (P&L)</button>
+                    <button onClick={() => setLapkeuActiveTab("bs")} className={cn("tab-btn text-xs", lapkeuActiveTab === "bs" && "active")}>Neraca (Balance Sheet)</button>
+                  </div>
+                </div>
+
+                {lapkeuActiveTab === "pl" && (
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-start">
+                    {/* Summary left, account detail right. */}
+                    <div className="lg:col-span-4">
+                      <FinanceSummarySection
+                        title="Ringkasan Laba Rugi"
+                        subtitle="Ikhtisar pendapatan, beban, dan hasil bersih sebelum rincian akun."
+                      >
+                        <div className="grid grid-cols-1 gap-3">
+                          <div className={cn("card rounded-2xl p-4 border-l-4", profitLoss?.is_profit ? "border-brand-green" : "border-red-500")}>
+                            <span className="text-xs text-text-secondary">Total Pendapatan</span>
+                            <p className="break-words text-xl font-black tabular-nums text-brand-deep-green">{formatRupiah(profitLoss?.total_revenue ?? 0)}</p>
+                          </div>
+                          <div className="card rounded-2xl p-4 border-l-4 border-red-400">
+                            <span className="text-xs text-text-secondary">Total Beban</span>
+                            <p className="break-words text-xl font-black tabular-nums text-red-600">{formatRupiah(profitLoss?.total_expense ?? 0)}</p>
+                          </div>
+                          <div className={cn("card rounded-2xl p-4 border-l-4", (profitLoss?.net_profit_loss ?? 0) >= 0 ? "border-brand-green" : "border-red-600")}>
+                            <span className="text-xs text-text-secondary">Laba / Rugi Bersih</span>
+                            <p className={cn("text-xl font-black", (profitLoss?.net_profit_loss ?? 0) >= 0 ? "text-brand-deep-green" : "text-red-700")}>
+                              {formatRupiah(profitLoss?.net_profit_loss ?? 0)}
+                            </p>
+                          </div>
+                        </div>
+                      </FinanceSummarySection>
+                    </div>
+
+                    <div className="grid min-w-0 grid-cols-1 gap-4 lg:col-span-8 xl:grid-cols-2">
+                      {/* Revenue Table */}
+                      <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
+                        <div className="px-4 py-3 bg-brand-light-green border-b border-brand-primary-soft">
+                          <h4 className="text-xs font-bold text-brand-deep-green flex items-center gap-1.5"><TrendingUp size={13} /> Pendapatan (Revenue)</h4>
+                        </div>
+                        <div className="divide-y divide-gray-100">
+                          {profitLoss?.revenues?.map((r: any, i: number) => (
+                            <div key={i} className="flex items-center justify-between gap-3 px-4 py-3 text-xs">
+                              <div className="min-w-0">
+                                <span className="font-mono text-brand-deep-green text-2xs">{r.account_code}</span>
+                                <p className="font-medium text-text-primary">{r.account_name}</p>
+                              </div>
+                              <span className="shrink-0 whitespace-nowrap text-right font-bold tabular-nums text-brand-deep-green">{formatRupiah(r.amount)}</span>
+                            </div>
+                          ))}
+                          {!profitLoss?.revenues?.length && <p className="text-xs text-center py-6 text-text-secondary">Belum ada data pendapatan.</p>}
+                        </div>
+                        {profitLoss?.total_revenue > 0 && (
+                          <div className="px-4 py-2.5 bg-brand-light-green border-t flex justify-between text-xs font-black text-brand-deep-green">
+                            <span>TOTAL PENDAPATAN</span>
+                            <span>{formatRupiah(profitLoss.total_revenue)}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Expense Table */}
+                      <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
+                        <div className="px-4 py-3 bg-red-50 border-b border-red-200">
+                          <h4 className="text-xs font-bold text-red-800 flex items-center gap-1.5"><TrendingDown size={13} /> Beban (Expenses)</h4>
+                        </div>
+                        <div className="divide-y divide-gray-100">
+                          {profitLoss?.expenses?.map((e: any, i: number) => (
+                            <div key={i} className="flex items-center justify-between gap-3 px-4 py-3 text-xs">
+                              <div className="min-w-0">
+                                <span className="font-mono text-red-600 text-2xs">{e.account_code}</span>
+                                <p className="font-medium text-text-primary">{e.account_name}</p>
+                              </div>
+                              <span className="shrink-0 whitespace-nowrap text-right font-bold tabular-nums text-red-700">{formatRupiah(e.amount)}</span>
+                            </div>
+                          ))}
+                          {!profitLoss?.expenses?.length && <p className="text-xs text-center py-6 text-text-secondary">Belum ada data beban.</p>}
+                        </div>
+                        {profitLoss?.total_expense > 0 && (
+                          <div className="px-4 py-2.5 bg-red-50 border-t flex justify-between text-xs font-black text-red-800">
+                            <span>TOTAL BEBAN</span>
+                            <span>{formatRupiah(profitLoss.total_expense)}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Net P&L Summary */}
+                      <div className="card rounded-2xl p-5 border border-text-tertiary flex flex-col gap-4 xl:col-span-2">
+                        <h4 className="text-xs font-bold text-text-primary">Ringkasan Laba Rugi</h4>
+                        <div className="space-y-3">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-text-secondary">Pendapatan Kotor</span>
+                            <span className="font-bold text-brand-deep-green">{formatRupiah(profitLoss?.total_revenue ?? 0)}</span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-text-secondary">HPP / COGS</span>
+                            <span className="font-bold text-red-700">{formatRupiah(profitLoss?.expenses?.filter((e: any) => e.account_code?.startsWith('5')).reduce((s: number, e: any) => s + e.amount, 0) ?? 0)}</span>
+                          </div>
+                          <hr className="border-text-tertiary" />
+                          <div className="flex justify-between text-xs">
+                            <span className="font-semibold text-text-primary">Laba Kotor</span>
+                            <span className="font-bold text-brand-deep-green">{formatRupiah(Number(profitLoss?.total_revenue ?? 0) - Number(profitLoss?.expenses?.filter((e: any) => e.account_code?.startsWith('5')).reduce((s: number, e: any) => s + e.amount, 0) ?? 0))}</span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-text-secondary">Beban Operasional</span>
+                            <span className="font-bold text-orange-700">{formatRupiah(profitLoss?.expenses?.filter((e: any) => e.account_code?.startsWith('6')).reduce((s: number, e: any) => s + e.amount, 0) ?? 0)}</span>
+                          </div>
+                          <hr className="border-text-tertiary" />
+                          <div className="flex justify-between text-sm">
+                            <span className="font-black text-text-primary">Laba / Rugi Bersih</span>
+                            <span className={cn("font-black", (profitLoss?.net_profit_loss ?? 0) >= 0 ? "text-brand-deep-green" : "text-red-700")}>
+                              {formatRupiah(profitLoss?.net_profit_loss ?? 0)}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-2xs text-text-secondary border-t pt-2">
+                          Generated: {profitLoss?.generated_at ? new Date(profitLoss.generated_at).toLocaleString("id-ID") : "-"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {lapkeuActiveTab === "bs" && (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* Assets */}
+                    <details className="card group rounded-2xl border border-text-tertiary bg-white">
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl bg-blue-50 px-4 py-3 marker:hidden [&::-webkit-details-marker]:hidden">
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-1.5 text-xs font-bold text-blue-800"><Building size={13} /> ASET (Assets)<span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-blue-700">{balanceSheet?.assets?.length || 0} akun</span></span>
+                          <span className="mt-1 block text-xs font-black tabular-nums text-blue-800">Total {formatRupiah(balanceSheet?.total_assets ?? 0)}</span>
+                        </span>
+                        <ChevronDown size={15} className="shrink-0 text-blue-700 transition-transform group-open:rotate-180" aria-hidden="true" />
+                      </summary>
+                      <div className="max-h-[480px] overflow-auto border-t border-blue-200">
+                        <table className="w-full min-w-[420px] border-collapse text-left text-xs">
+                          <thead className="sticky top-0 z-10 bg-blue-50 text-[10px] font-semibold uppercase tracking-wide text-blue-800"><tr><th className="px-4 py-2">Kode</th><th className="px-4 py-2">Nama Akun</th><th className="px-4 py-2 text-right">Saldo</th></tr></thead>
+                          <tbody className="divide-y divide-gray-100 bg-white">
+                            {balanceSheet?.assets?.map((a: any, i: number) => <tr key={i} className="hover:bg-blue-50/40"><td className="whitespace-nowrap px-4 py-2.5 font-mono text-[10px] text-text-secondary">{a.account_code}</td><td className="px-4 py-2.5 text-text-primary">{a.account_name}</td><td className="whitespace-nowrap px-4 py-2.5 text-right font-bold tabular-nums text-blue-700">{formatRupiah(a.amount)}</td></tr>)}
+                            {!balanceSheet?.assets?.length && <tr><td colSpan={3} className="px-4 py-6 text-center text-text-secondary">Belum ada data aset.</td></tr>}
+                          </tbody>
+                        </table>
+                      </div>
+                    </details>
+
+                    {/* Liabilities + Equity */}
+                    <div className="flex flex-col gap-4">
+                      <details className="card group rounded-2xl border border-text-tertiary bg-white">
+                        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl bg-orange-50 px-4 py-3 marker:hidden [&::-webkit-details-marker]:hidden">
+                          <span className="min-w-0"><span className="flex items-center gap-1.5 text-xs font-bold text-orange-800"><Layers size={13} /> KEWAJIBAN (Liabilities)<span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-orange-700">{balanceSheet?.liabilities?.length || 0} akun</span></span><span className="mt-1 block text-xs font-black tabular-nums text-orange-800">Total {formatRupiah(balanceSheet?.total_liabilities ?? 0)}</span></span>
+                          <ChevronDown size={15} className="shrink-0 text-orange-700 transition-transform group-open:rotate-180" aria-hidden="true" />
+                        </summary>
+                        <div className="max-h-[360px] overflow-auto border-t border-orange-200"><table className="w-full min-w-[420px] border-collapse text-left text-xs"><thead className="sticky top-0 z-10 bg-orange-50 text-[10px] font-semibold uppercase tracking-wide text-orange-800"><tr><th className="px-4 py-2">Kode</th><th className="px-4 py-2">Nama Akun</th><th className="px-4 py-2 text-right">Saldo</th></tr></thead><tbody className="divide-y divide-gray-100 bg-white">{balanceSheet?.liabilities?.map((l: any, i: number) => <tr key={i} className="hover:bg-orange-50/40"><td className="whitespace-nowrap px-4 py-2.5 font-mono text-[10px] text-text-secondary">{l.account_code}</td><td className="px-4 py-2.5 text-text-primary">{l.account_name}</td><td className="whitespace-nowrap px-4 py-2.5 text-right font-bold tabular-nums text-orange-700">{formatRupiah(l.amount)}</td></tr>)}{!balanceSheet?.liabilities?.length && <tr><td colSpan={3} className="px-4 py-5 text-center text-text-secondary">Belum ada kewajiban.</td></tr>}</tbody></table></div>
+                      </details>
+                      <details className="card group rounded-2xl border border-text-tertiary bg-white">
+                        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl bg-purple-50 px-4 py-3 marker:hidden [&::-webkit-details-marker]:hidden">
+                          <span className="min-w-0"><span className="flex items-center gap-1.5 text-xs font-bold text-purple-800"><ShieldCheck size={13} /> EKUITAS (Equity)<span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-purple-700">{balanceSheet?.equity?.length || 0} akun</span></span><span className="mt-1 block text-xs font-black tabular-nums text-purple-800">Total {formatRupiah(balanceSheet?.total_equity ?? 0)}</span></span>
+                          <ChevronDown size={15} className="shrink-0 text-purple-700 transition-transform group-open:rotate-180" aria-hidden="true" />
+                        </summary>
+                        <div className="max-h-[360px] overflow-auto border-t border-purple-200"><table className="w-full min-w-[420px] border-collapse text-left text-xs"><thead className="sticky top-0 z-10 bg-purple-50 text-[10px] font-semibold uppercase tracking-wide text-purple-800"><tr><th className="px-4 py-2">Kode</th><th className="px-4 py-2">Nama Akun</th><th className="px-4 py-2 text-right">Saldo</th></tr></thead><tbody className="divide-y divide-gray-100 bg-white">{balanceSheet?.equity?.map((e: any, i: number) => <tr key={i} className="hover:bg-purple-50/40"><td className="whitespace-nowrap px-4 py-2.5 font-mono text-[10px] text-text-secondary">{e.account_code}</td><td className="px-4 py-2.5 text-text-primary">{e.account_name}</td><td className="whitespace-nowrap px-4 py-2.5 text-right font-bold tabular-nums text-purple-700">{formatRupiah(e.amount)}</td></tr>)}{!balanceSheet?.equity?.length && <tr><td colSpan={3} className="px-4 py-5 text-center text-text-secondary">Belum ada data ekuitas.</td></tr>}</tbody></table></div>
+                      </details>
+                      {/* Balance Check */}
+                      <div className={cn(
+                        "card rounded-xl p-4 flex items-center gap-3 text-xs font-semibold border",
+                        balanceSheet?.is_balanced ? "bg-brand-light-green border-brand-primary-soft text-brand-deep-green" : "bg-red-50 border-red-300 text-red-800"
+                      )}>
+                        {balanceSheet?.is_balanced
+                          ? <><CheckCircle2 size={15} /> Neraca SEIMBANG: Total Aset = Total Kewajiban + Ekuitas</>
+                          : <><AlertTriangle size={15} /> Neraca TIDAK SEIMBANG! Periksa jurnal.</>}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          )}
+
+          {/* ── TAB: BANKING HUB & REKONSILIASI ─────── */}
+          {activeTab === "banking_hub" && (
+            tabErrors["banking_hub"] ? (
+              <div className="card rounded-2xl overflow-hidden">
+                <AccessDeniedState compact section="Banking Hub" />
+              </div>
+            ) : (
+              <div className="flex flex-col gap-5">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <h3 className="text-base font-bold text-text-primary flex items-center gap-2">
+                      <Banknote size={16} className="text-brand-green" /> Banking Hub & Rekonsiliasi Bank
+                    </h3>
+                    <p className="text-sm text-text-secondary">Impor mutasi rekening bank dan cocokkan dengan transaksi di buku besar secara otomatis.</p>
+                  </div>
+                </div>
+
+                <div className="card rounded-2xl p-4 border border-text-tertiary bg-white flex flex-wrap items-end gap-3">
+                  <div className="min-w-[220px] flex-1">
+                    <label className="block text-xs font-semibold text-text-secondary mb-1">Rekening Bank</label>
+                    <select value={bankImportAccountId} onChange={(event) => setBankImportAccountId(event.target.value)} className="input w-full">
+                      <option value="">Pilih rekening</option>
+                      {bankAccounts.map((account) => <option key={account.id} value={account.id}>{account.bank} · {account.number}</option>)}
+                    </select>
+                  </div>
+                  <div className="min-w-[220px] flex-1">
+                    <label className="block text-xs font-semibold text-text-secondary mb-1">File mutasi (CSV)</label>
+                    <input type="file" accept=".csv,text/csv" onChange={(event) => setBankImportFile(event.target.files?.[0] ?? null)} className="block w-full text-sm text-text-secondary file:mr-3 file:rounded-lg file:border-0 file:bg-brand-light-green file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand-deep-green" />
+                  </div>
+                  <button type="button" onClick={importBankStatement} disabled={bankImporting || !bankImportAccountId || !bankImportFile} className="btn-primary px-4 py-2 text-sm disabled:opacity-50">
+                    {bankImporting ? "Mengimpor…" : "Impor Mutasi CSV"}
+                  </button>
+                  <p className="w-full text-xs text-text-secondary">CSV: kolom tanggal, keterangan, nominal, dan tipe (DB/CR). Maksimal 5 MB.</p>
+                </div>
+
+                {/* Ringkasan Saldo Real-Time */}
+                <div className="workspace-kpis grid gap-3">
+                  {bankAccounts.map((b) => (
+                    <div key={b.id} className={cn("card p-4 rounded-[14px] border bg-white flex flex-col justify-between shadow-xs", bankImportAccountId === b.id ? "border-brand-primary ring-2 ring-brand-primary/15" : "border-text-tertiary")}>
+                      <div className="flex items-center justify-between text-xs font-bold text-text-secondary uppercase">
+                        <span>{b.type.replace(/_/g, " ")}</span>
+                        <Landmark size={14} className="text-brand-green" />
+                      </div>
+                      <strong className="text-sm font-bold text-text-primary block mt-1">{b.bank}</strong>
+                      <span className="text-xs text-text-secondary font-mono mt-0.5">{b.number}</span>
+                      <div className="mt-3 pt-2 border-t border-text-tertiary/40 flex items-center justify-between gap-2">
+                        <span className="text-xs text-text-secondary whitespace-nowrap">{b.balance == null ? "Status Saldo:" : "Saldo Buku:"}</span>
+                        {b.balance == null ? (
+                          <span className="status-chip whitespace-nowrap">Belum Tersedia</span>
+                        ) : (
+                          <strong className="text-sm font-black text-brand-deep-green whitespace-nowrap">{formatMoney(b.balance)}</strong>
+                        )}
+                      </div>
+                      <button type="button" onClick={() => setBankImportAccountId(b.id)} aria-pressed={bankImportAccountId === b.id} className={cn("mt-3 w-full rounded-lg border px-3 py-2 text-sm font-semibold transition-colors", bankImportAccountId === b.id ? "border-brand-primary bg-brand-primary text-white" : "border-brand-primary/30 bg-brand-light-green text-brand-deep-green hover:border-brand-primary")}>
+                        {bankImportAccountId === b.id ? "Rekening Dipilih" : "Pilih untuk Rekonsiliasi"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Rekonsiliasi Status */}
+                <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
+                  <div className="px-5 py-3 border-b bg-gray-50 flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-text-primary">Status Rekonsiliasi Bank</h4>
+                    <span className="text-xs text-text-secondary">
+                      {new Set(bankStatements.map((line: any) => line.bank_statement_id).filter(Boolean)).size} statement | {bankReconciliations.filter((r: any) => r.status === "MATCHED").length} matched
+                    </span>
+                  </div>
+                  {bankStatements.length === 0 ? (
+                    <div className="py-12 flex flex-col items-center gap-3 text-center">
+                      <ArrowLeftRight size={36} className="text-brand-green opacity-30" />
+                      <p className="text-sm text-text-secondary">Belum ada mutasi rekening yang diimpor.</p>
+                      <p className="text-xs text-text-secondary">Pilih rekening dan unggah file CSV pada form di atas untuk memulai rekonsiliasi.</p>
+                    </div>
+                  ) : (
+                    <div className="table-scroll-wrapper">
+                      <table className="w-full data-table text-sm min-w-[640px]">
+                        <thead>
+                          <tr className="bg-gray-50 text-xs uppercase tracking-wider text-text-secondary">
+                            <th className="py-3 px-4 text-left">Tanggal</th>
+                            <th className="py-3 px-4 text-left">Referensi</th>
+                            <th className="py-3 px-4 text-left">Keterangan</th>
+                            <th className="py-3 px-4 text-right">Debit</th>
+                            <th className="py-3 px-4 text-right">Kredit</th>
+                            <th className="py-3 px-4 text-center">Status</th>
+                            <th className="py-3 px-4 text-left">Cocokkan Pembayaran</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {bankStatements.map((stmt: any) => {
+                            const reconciliation = bankReconciliations.find((item: any) => item.bank_statement_line_id === stmt.id);
+                            const isMatched = reconciliation?.status === "MATCHED";
+                            return (
+                              <tr key={stmt.id} className="hover:bg-gray-50/50">
+                                <td className="!text-sm py-2.5 px-4 font-mono">{stmt.transaction_date ? new Date(stmt.transaction_date).toLocaleDateString("id-ID") : "-"}</td>
+                                <td className="!text-sm py-2.5 px-4 font-mono text-brand-deep-green">{stmt.reference_number || "-"}</td>
+                                <td className="!text-sm py-2.5 px-4 text-text-primary">{stmt.description}</td>
+                                <td className="!text-sm py-2.5 px-4 text-right text-brand-deep-green font-bold">{stmt.debit_amount > 0 ? formatMoney(stmt.debit_amount) : "-"}</td>
+                                <td className="!text-sm py-2.5 px-4 text-right text-red-600 font-bold">{stmt.credit_amount > 0 ? formatMoney(stmt.credit_amount) : "-"}</td>
+                                <td className="!text-sm py-2.5 px-4 text-center">
+                                  <span className={cn("badge text-xs",
+                                    isMatched ? "badge-success" : "badge-neutral"
+                                  )}>{isMatched ? "MATCHED" : "UNRECONCILED"}</span>
+                                </td>
+                                <td className="!text-sm py-2.5 px-4">
+                                  {isMatched ? <span className="text-2xs text-text-secondary">Sudah dicocokkan</span> : (
+                                    <div className="flex min-w-[250px] gap-2">
+                                      <select value={bankMatchPaymentIds[String(stmt.id)] || ""} onChange={(event) => setBankMatchPaymentIds((current) => ({ ...current, [String(stmt.id)]: event.target.value }))} className="input min-w-0 flex-1 text-xs" disabled={!bankMatchPayments.length || bankMatchingLineId === String(stmt.id)}>
+                                        <option value="">{bankMatchPayments.length ? "Pilih pembayaran atau penerimaan" : "Belum ada transaksi yang sudah dibukukan"}</option>
+                                        {bankMatchPayments.map((payment: any) => <option key={payment.id} value={payment.id}>{payment.payment_type === "CUSTOMER_RECEIPT" ? "Penerimaan pelanggan" : "Pembayaran vendor"} · {payment.reference_number || payment.id.slice(0, 8)} · {formatMoney(Number(payment.amount || 0))}</option>)}
+                                      </select>
+                                      <button type="button" onClick={() => matchBankStatementLine(stmt)} disabled={!bankMatchPaymentIds[String(stmt.id)] || bankMatchingLineId === String(stmt.id)} className="btn-outline px-2 py-1 text-xs disabled:opacity-50">
+                                        {bankMatchingLineId === String(stmt.id) ? "…" : "Cocokkan"}
+                                      </button>
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          )}
+
+          {/* ── TAB: ASET TETAP ──────────────────────── */}
+          {activeTab === "assets" && (
+            <div className="card rounded-2xl p-6">
+              <FixedAssetsWorkspace />
+            </div>
+          )}
+
+          {/* ── TAB: TUTUP BUKU ──────────────────────── */}
+          {activeTab === "period_closing" && (
+            <div className="card rounded-2xl p-6">
+              <PeriodClosingWorkspace />
+            </div>
+          )}
+
+          {/* ── TAB: AUDIT TRAIL ─────────────────────── */}
+          {activeTab === "audit_trail" && (
+            <div className="card rounded-2xl p-6">
+              <AuditTrailWorkspace startDate={financePeriodStart || undefined} endDate={financePeriodEnd || undefined} />
+            </div>
+          )}
+
+          {/* ── TAB: EXECUTIVE AUDIT REPORT ───────────── */}
+          {activeTab === "executive_report" && (
+            <div className="card rounded-2xl p-3 sm:p-5 lg:p-6">
+              <ExecutiveAuditReportWorkspace startDate={financePeriodStart || undefined} endDate={financePeriodEnd || undefined} />
+            </div>
+          )}
 
         </div>
       </div>
@@ -3187,16 +3208,16 @@ export default function FinanceClient() {
                 return;
               }
               const { data: billResponse } = await api.post("/api/v1/finance/billing-documents/", {
-              billing_type: "SUPPLIER_INVOICE",
-              party_id: apForm.supplier_id,
-              project_id: apForm.project_id || null,
-              invoice_number: apForm.invoice_number,
-              invoice_date: new Date().toISOString(),
-              due_date: apForm.due_date || null,
-              subtotal: Number(apForm.amount),
-              tax_amount: 0,
-              total_amount: Number(apForm.amount),
-            });
+                billing_type: "SUPPLIER_INVOICE",
+                party_id: apForm.supplier_id,
+                project_id: apForm.project_id || null,
+                invoice_number: apForm.invoice_number,
+                invoice_date: new Date().toISOString(),
+                due_date: apForm.due_date || null,
+                subtotal: Number(apForm.amount),
+                tax_amount: 0,
+                total_amount: Number(apForm.amount),
+              });
               const bill = billResponse?.data ?? billResponse;
               let billLineId = "";
               try {
@@ -3841,28 +3862,37 @@ function TabFundingProyek({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Helper resolusi nominal dana yang aman dari berbagai kemungkinan nama field backend
-/**
- * getFundingAmount coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
- */
+  /**
+   * getFundingAmount coordinates the UI behavior represented by this function.
+   *
+   * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+   * @returns The rendered React node, callback result, or Promise declared by the implementation.
+   * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+   */
   const getFundingAmount = (f: any): number => {
     return Number(f.amount ?? f.funding_amount ?? f.requested_amount ?? f.approved_limit ?? f.total_amount ?? 0);
   };
+  const existingFundingIds = new Set(fundings.map((f) => String(f.id)));
   const fundingRows = [
-    ...fundRequests.map((request) => ({ ...request, _canonical_request: true, purpose: request.description || request.title, requested_amount: request.amount, project_name: request.project_name || projects.find((project) => String(project.id) === String(request.project_id))?.project_name })),
+    ...fundRequests
+      .filter((request) => !existingFundingIds.has(String(request.id)))
+      .map((request) => ({
+        ...request,
+        _canonical_request: true,
+        purpose: request.description || request.title,
+        requested_amount: request.amount,
+        project_name: request.project_name || projects.find((project) => String(project.id) === String(request.project_id))?.project_name,
+      })),
     ...fundings,
   ];
 
-/**
- * handleDecision coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
- */
+  /**
+   * handleDecision coordinates the UI behavior represented by this function.
+   *
+   * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+   * @returns The rendered React node, callback result, or Promise declared by the implementation.
+   * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+   */
   const handleDecision = async () => {
     if (!selectedFunding) return;
     if (decisionAction === "DISBURSED" && !fundingBankAccountId) {
@@ -3898,13 +3928,13 @@ function TabFundingProyek({
     }
   };
 
-/**
- * handleDeleteFunding coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
- */
+  /**
+   * handleDeleteFunding coordinates the UI behavior represented by this function.
+   *
+   * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+   * @returns The rendered React node, callback result, or Promise declared by the implementation.
+   * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+   */
   const handleDeleteFunding = async (id: string | number) => {
     if (!confirm("Apakah Anda yakin ingin menghapus pengajuan dana ini?")) return;
     try {
@@ -3960,7 +3990,7 @@ function TabFundingProyek({
                 const status = (f.status || "DRAFT").toUpperCase();
                 const isPending = !f._canonical_request && ["DRAFT", "SUBMITTED", "VERIFIED", "PENDING"].includes(status);
                 const isApproved = status === "APPROVED";
-                const isDisbursed = status === "DISBURSED" || status === "ACTIVE";
+                const isDisbursed = ["DRAWN", "DISBURSED", "ACTIVE"].includes(status);
 
                 return (
                   <tr key={f.id} className="hover:bg-brand-light-green/20">
@@ -3991,9 +4021,9 @@ function TabFundingProyek({
                       <span className={cn(
                         "px-2 py-0.5 rounded-full text-2xs font-extrabold uppercase",
                         isDisbursed ? "bg-blue-100 text-blue-800" :
-                        isApproved ? "bg-brand-light-green text-brand-deep-green" :
-                        status === "REJECTED" ? "bg-red-100 text-red-800" :
-                        "bg-amber-100 text-amber-800"
+                          isApproved ? "bg-brand-light-green text-brand-deep-green" :
+                            status === "REJECTED" ? "bg-red-100 text-red-800" :
+                              "bg-amber-100 text-amber-800"
                       )}>
                         {status}
                       </span>
@@ -4152,8 +4182,8 @@ function TabFundingProyek({
                 className={cn(
                   "btn-primary text-xs py-2 px-4 font-bold shadow-xs",
                   decisionAction === "REJECTED" ? "bg-red-600 hover:bg-red-700 text-white" :
-                  decisionAction === "DISBURSED" ? "bg-blue-600 hover:bg-blue-700 text-white" :
-                  "bg-brand-green hover:bg-brand-deep-green text-white"
+                    decisionAction === "DISBURSED" ? "bg-blue-600 hover:bg-blue-700 text-white" :
+                      "bg-brand-green hover:bg-brand-deep-green text-white"
                 )}
               >
                 {isSubmitting ? "Memproses..." : decisionAction === "DISBURSED" ? "Eksekusi Pencairan" : `Konfirmasi ${decisionAction}`}
