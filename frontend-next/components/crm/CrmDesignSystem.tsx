@@ -356,48 +356,60 @@ export function CRMKanbanBoard<T extends { id: string | number }>({
 }: {
   columns: CRMKanbanColumn<T>[];
   renderCard: (item: T, column: CRMKanbanColumn<T>) => React.ReactNode;
-  onMoveCard?: (itemId: string, targetColumnId: string) => void;
+  onMoveCard?: (itemId: string, targetColumnId: string, targetIndex?: number) => void;
   canDrag?: boolean;
   emptyColumnText?: string;
   pendingIds?: Set<string>;
 }) {
   const [draggedId, setDraggedId] = useState<string | null>(null);
-  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
+  const [draggedFromCol, setDraggedFromCol] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ colId: string; index: number } | null>(null);
+
+  const resetDrag = () => {
+    setDraggedId(null);
+    setDraggedFromCol(null);
+    setDropTarget(null);
+  };
 
   return (
-    <div className="flex gap-3.5 overflow-x-auto pb-3">
+    <div className="flex gap-3.5 overflow-x-auto pb-3 select-none">
       {columns.map((col) => {
         const tone = CRM_TONE_STYLES[col.tone];
-        const isOver = dragOverCol === col.id;
+        const isOverCol = dropTarget?.colId === col.id;
         return (
           <div
             key={col.id}
             onDragOver={(e) => {
-              if (!canDrag || !onMoveCard) return;
+              if (!canDrag || !onMoveCard || !draggedId) return;
               e.preventDefault();
-              if (dragOverCol !== col.id) setDragOverCol(col.id);
+              e.dataTransfer.dropEffect = "move";
+              if (dropTarget?.colId !== col.id) {
+                setDropTarget({ colId: col.id, index: col.items.length });
+              }
             }}
-            onDragLeave={() => {
-              if (dragOverCol === col.id) setDragOverCol(null);
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                if (dropTarget?.colId === col.id) setDropTarget(null);
+              }
             }}
             onDrop={(e) => {
               if (!canDrag || !onMoveCard) return;
               e.preventDefault();
               const id = e.dataTransfer.getData("text/plain") || draggedId;
-              setDragOverCol(null);
-              setDraggedId(null);
-              if (id) onMoveCard(id, col.id);
+              const targetIdx = dropTarget?.colId === col.id ? dropTarget.index : col.items.length;
+              resetDrag();
+              if (id) onMoveCard(id, col.id, targetIdx);
             }}
             className={cn(
-              "flex min-w-[268px] max-w-[320px] flex-1 flex-col rounded-xl border transition-all",
+              "flex min-w-[272px] max-w-[320px] flex-1 flex-col rounded-2xl border transition-[border-color,box-shadow,background-color] duration-150",
               tone.colBg,
               tone.colBorder,
-              isOver && "ring-2 ring-[#0876CD]/50 bg-[#E7F2FF]/40"
+              isOverCol && "ring-2 ring-[#2649B3]/35 border-[#2649B3]/50"
             )}
           >
             <div
               className={cn(
-                "flex items-center justify-between gap-2 rounded-t-xl border-b px-3.5 py-2.5",
+                "flex items-center justify-between gap-2 rounded-t-2xl border-b px-3.5 py-2.5",
                 tone.colHeaderBg,
                 tone.colBorder
               )}
@@ -425,44 +437,84 @@ export function CRMKanbanBoard<T extends { id: string | number }>({
               </div>
             </div>
 
-            <div className="flex flex-1 flex-col gap-2.5 p-2.5 max-h-[620px] overflow-y-auto">
-              {col.items.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-slate-300/80 bg-white/50 py-8 text-center text-[11px] text-slate-400">
+            <div
+              onDragOver={(e) => {
+                if (!canDrag || !onMoveCard || !draggedId) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                if (e.target === e.currentTarget) {
+                  setDropTarget({ colId: col.id, index: col.items.length });
+                }
+              }}
+              className="flex flex-1 flex-col gap-2.5 p-2.5 max-h-[620px] overflow-y-auto"
+            >
+              {col.items.length === 0 && !isOverCol ? (
+                <div className="rounded-xl border border-dashed border-slate-300/80 bg-white/60 py-8 text-center text-[11px] text-slate-400">
                   {emptyColumnText}
                 </div>
               ) : (
-                col.items.map((item) => (
-                  <div
-                    key={String(item.id)}
-                    draggable={Boolean(canDrag && onMoveCard)}
-                    onDragStart={(e) => {
-                      if (!canDrag || !onMoveCard) return;
-                      setDraggedId(String(item.id));
-                      e.dataTransfer.setData("text/plain", String(item.id));
-                      e.dataTransfer.effectAllowed = "move";
-                    }}
-                    onDragEnd={() => {
-                      setDraggedId(null);
-                      setDragOverCol(null);
-                    }}
-                    className={cn(
-                      "group relative rounded-xl border border-slate-200/90 bg-white p-3 shadow-2xs transition-all hover:border-blue-300 hover:shadow-sm",
-                      draggedId === String(item.id) && "opacity-45 scale-[0.98]"
-                    )}
-                  >
-                    {pendingIds?.has(String(item.id)) && (
-                      <div className="pointer-events-none absolute right-2 top-2.5 inline-flex items-center gap-1 rounded-full bg-[#E7F2FF] px-1.5 py-0.5 text-[10px] font-medium text-[#0868B5]">
-                        <Loader2 size={10} className="animate-spin" />
-                      </div>
-                    )}
-                    {canDrag && onMoveCard && !pendingIds?.has(String(item.id)) && (
-                      <div className="pointer-events-none absolute right-2 top-2.5 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100">
-                        <GripVertical size={13} />
-                      </div>
-                    )}
-                    {renderCard(item, col)}
-                  </div>
-                ))
+                <>
+                  {col.items.map((item, idx) => {
+                    const itemKey = String(item.id);
+                    const isDragged = draggedId === itemKey;
+                    const showPlaceholderBefore =
+                      isOverCol &&
+                      dropTarget?.index === idx &&
+                      !isDragged &&
+                      !(draggedFromCol === col.id && col.items[idx - 1] && String(col.items[idx - 1].id) === draggedId);
+
+                    return (
+                      <React.Fragment key={itemKey}>
+                        {showPlaceholderBefore && (
+                          <div className="h-16 rounded-xl border-2 border-dashed border-[#2649B3]/45 bg-[#EAF6FF]/75 transition-all duration-150" />
+                        )}
+                        <div
+                          draggable={Boolean(canDrag && onMoveCard)}
+                          onDragStart={(e) => {
+                            if (!canDrag || !onMoveCard) return;
+                            setDraggedId(itemKey);
+                            setDraggedFromCol(col.id);
+                            e.dataTransfer.setData("text/plain", itemKey);
+                            e.dataTransfer.effectAllowed = "move";
+                          }}
+                          onDragOver={(e) => {
+                            if (!canDrag || !onMoveCard || !draggedId) return;
+                            e.preventDefault();
+                            e.stopPropagation();
+                            e.dataTransfer.dropEffect = "move";
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const isTopHalf = e.clientY < rect.top + rect.height / 2;
+                            const nextIndex = isTopHalf ? idx : idx + 1;
+                            if (dropTarget?.colId !== col.id || dropTarget?.index !== nextIndex) {
+                              setDropTarget({ colId: col.id, index: nextIndex });
+                            }
+                          }}
+                          onDragEnd={resetDrag}
+                          className={cn(
+                            "group relative rounded-xl border border-[#E2E8F0] bg-white p-3 shadow-2xs transition-[transform,box-shadow,border-color,opacity] duration-150 ease-out",
+                            canDrag && onMoveCard && "cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:border-[#A9D9FF] hover:shadow-md",
+                            isDragged && "opacity-35 scale-[0.98] border-dashed border-[#2649B3]/50 shadow-none"
+                          )}
+                        >
+                          {pendingIds?.has(itemKey) && (
+                            <div className="pointer-events-none absolute right-2 top-2.5 inline-flex items-center gap-1 rounded-full bg-[#E7F2FF] px-1.5 py-0.5 text-[10px] font-medium text-[#0868B5]">
+                              <Loader2 size={10} className="animate-spin" />
+                            </div>
+                          )}
+                          {canDrag && onMoveCard && !pendingIds?.has(itemKey) && (
+                            <div className="pointer-events-none absolute right-2 top-2.5 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100">
+                              <GripVertical size={13} />
+                            </div>
+                          )}
+                          {renderCard(item, col)}
+                        </div>
+                      </React.Fragment>
+                    );
+                  })}
+                  {isOverCol && (dropTarget?.index ?? col.items.length) >= col.items.length && (
+                    <div className="h-16 rounded-xl border-2 border-dashed border-[#2649B3]/45 bg-[#EAF6FF]/75 transition-all duration-150" />
+                  )}
+                </>
               )}
             </div>
           </div>

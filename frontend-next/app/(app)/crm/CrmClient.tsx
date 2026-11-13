@@ -1294,7 +1294,7 @@ function TabDeals({
         viewMode={pipelineViewMode}
         onViewModeChange={(mode) => onPipelineViewModeChange?.(mode)}
         onOpenNewOpp={() => setIsNewOppOpen(true)}
-        onMoveStage={(opp, stage) => void handleOpportunityStageChange(opp, stage)}
+        onMoveStage={(opp, stage) => handleOpportunityStageChange(opp, stage)}
         onDealWon={(opp) => void handleDealWon(opp)}
         onMarkLost={(opp) => void handleMarkLost(opp.id)}
         onOpenActivity={(opp) => {

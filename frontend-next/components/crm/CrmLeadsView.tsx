@@ -103,6 +103,7 @@ export function CrmLeadsView({
   const [optimisticBuckets, setOptimisticBuckets] = useState<Record<string, string>>({});
   const [pendingLeadIds, setPendingLeadIds] = useState<Set<string>>(() => new Set());
   const latestLeadSeqRef = useRef<Record<string, number>>({});
+  const [columnOrder, setColumnOrder] = useState<Record<string, string[]>>({});
 
   // Drawer state
   const [drawerLead, setDrawerLead] = useState<any | null>(null);
@@ -212,20 +213,60 @@ export function CrmLeadsView({
   }, [enrichedLeads, sourceFilter, serviceFilter, ownerFilter, statusFilter, search]);
 
   const kanbanColumns: CRMKanbanColumn<any>[] = useMemo(() => {
-    return LEAD_COLUMNS.map((col) => ({
-      id: col.id,
-      title: col.title,
-      tone: col.tone,
-      items: filteredLeads.filter((l) => l._bucket === col.id),
-    }));
-  }, [filteredLeads]);
+    return LEAD_COLUMNS.map((col) => {
+      const rawItems = filteredLeads.filter((l) => l._bucket === col.id);
+      const order = columnOrder[col.id];
+      const items = order && order.length > 0
+        ? [...rawItems].sort((a, b) => {
+            const ia = order.indexOf(String(a.id));
+            const ib = order.indexOf(String(b.id));
+            if (ia === -1 && ib === -1) return 0;
+            if (ia === -1) return 1;
+            if (ib === -1) return -1;
+            return ia - ib;
+          })
+        : rawItems;
+      return {
+        id: col.id,
+        title: col.title,
+        tone: col.tone,
+        items,
+      };
+    });
+  }, [filteredLeads, columnOrder]);
 
-  const handleMoveLeadStage = async (leadId: string, targetBucket: string) => {
+  const applyLeadOrder = (idKey: string, sourceCol: string, targetCol: string, targetIndex?: number) => {
+    setColumnOrder((prev) => {
+      const next = { ...prev };
+      const getIds = (colId: string) =>
+        next[colId] ?? filteredLeads.filter((l) => l._bucket === colId).map((l) => String(l.id));
+
+      const sourceIds = getIds(sourceCol).filter((id) => id !== idKey);
+      next[sourceCol] = sourceIds;
+
+      const targetIds = sourceCol === targetCol ? [...sourceIds] : getIds(targetCol).filter((id) => id !== idKey);
+      const insertAt =
+        typeof targetIndex === "number"
+          ? Math.max(0, Math.min(targetIndex, targetIds.length))
+          : targetIds.length;
+      targetIds.splice(insertAt, 0, idKey);
+      next[targetCol] = targetIds;
+      return next;
+    });
+  };
+
+  const handleMoveLeadStage = async (leadId: string, targetBucket: string, targetIndex?: number) => {
     const idKey = String(leadId);
     const lead = enrichedLeads.find((l) => String(l.id) === idKey);
-    if (!lead || lead._bucket === targetBucket) return;
+    if (!lead) return;
     if (lead._isConverted) {
       toast.error("Lead yang sudah dikonversi menjadi Opportunity tidak dapat dipindahkan.");
+      return;
+    }
+
+    // Same-column reorder (instant, no API call)
+    if (lead._bucket === targetBucket) {
+      applyLeadOrder(idKey, lead._bucket, targetBucket, targetIndex);
       return;
     }
 
@@ -233,7 +274,8 @@ export function CrmLeadsView({
     const seq = (latestLeadSeqRef.current[idKey] || 0) + 1;
     latestLeadSeqRef.current[idKey] = seq;
 
-    // Immediate Optimistic UI update
+    // Immediate Optimistic UI update + exact drop position
+    applyLeadOrder(idKey, prevBucket, targetBucket, targetIndex);
     setOptimisticBuckets((prev) => ({ ...prev, [idKey]: targetBucket }));
     setPendingLeadIds((prev) => {
       const next = new Set(prev);
@@ -252,6 +294,7 @@ export function CrmLeadsView({
     } catch (err: any) {
       if (latestLeadSeqRef.current[idKey] === seq) {
         setOptimisticBuckets((prev) => ({ ...prev, [idKey]: prevBucket }));
+        applyLeadOrder(idKey, targetBucket, prevBucket);
         toast.error(err?.response?.data?.detail || err?.response?.data?.error?.message || "Gagal memperbarui status Lead. Posisi dikembalikan.");
       }
     } finally {

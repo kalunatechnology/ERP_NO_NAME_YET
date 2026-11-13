@@ -95,6 +95,7 @@ export function CrmSalesPipelineShell({
   // Drawer
   const [drawerOpp, setDrawerOpp] = useState<any | null>(null);
   const [drawerTab, setDrawerTab] = useState<"overview" | "activities" | "notes" | "estimate">("overview");
+  const [columnOrder, setColumnOrder] = useState<Record<string, string[]>>({});
 
   const partyById = useMemo(
     () => new Map((data.parties || []).map((p: any) => [String(p.id), p])),
@@ -205,7 +206,18 @@ export function CrmSalesPipelineShell({
 
   const kanbanColumns: CRMKanbanColumn<any>[] = useMemo(() => {
     return PIPELINE_COLUMNS.map((col) => {
-      const items = filteredOpps.filter((o) => o._bucket === col.id);
+      const rawItems = filteredOpps.filter((o) => o._bucket === col.id);
+      const order = columnOrder[col.id];
+      const items = order && order.length > 0
+        ? [...rawItems].sort((a, b) => {
+            const ia = order.indexOf(String(a.id));
+            const ib = order.indexOf(String(b.id));
+            if (ia === -1 && ib === -1) return 0;
+            if (ia === -1) return 1;
+            if (ib === -1) return -1;
+            return ia - ib;
+          })
+        : rawItems;
       const colSum = items.reduce((s, o) => s + o._amount, 0);
       return {
         id: col.id,
@@ -215,13 +227,40 @@ export function CrmSalesPipelineShell({
         headerMeta: items.length > 0 ? formatMoney(colSum) : undefined,
       };
     });
-  }, [filteredOpps]);
+  }, [filteredOpps, columnOrder]);
 
-  const handleCardDrop = (oppId: string, targetCol: string) => {
+  const applyCardOrder = (idKey: string, sourceCol: string, targetCol: string, targetIndex?: number) => {
+    setColumnOrder((prev) => {
+      const next = { ...prev };
+      const getIds = (colId: string) =>
+        next[colId] ?? filteredOpps.filter((o) => o._bucket === colId).map((o) => String(o.id));
+
+      const sourceIds = getIds(sourceCol).filter((id) => id !== idKey);
+      next[sourceCol] = sourceIds;
+
+      const targetIds = sourceCol === targetCol ? [...sourceIds] : getIds(targetCol).filter((id) => id !== idKey);
+      const insertAt =
+        typeof targetIndex === "number"
+          ? Math.max(0, Math.min(targetIndex, targetIds.length))
+          : targetIds.length;
+      targetIds.splice(insertAt, 0, idKey);
+      next[targetCol] = targetIds;
+      return next;
+    });
+  };
+
+  const handleCardDrop = (oppId: string, targetCol: string, targetIndex?: number) => {
     const idKey = String(oppId);
     const opp = enrichedOpps.find((o) => String(o.id) === idKey);
-    if (!opp || opp._bucket === targetCol) return;
+    if (!opp) return;
     if (["WON", "LOST"].includes(opp._bucket)) return;
+
+    // Same-column reorder (instant, no API call needed)
+    if (opp._bucket === targetCol) {
+      applyCardOrder(idKey, opp._bucket, targetCol, targetIndex);
+      return;
+    }
+
     if (targetCol === "WON") {
       onDealWon(opp);
       return;
@@ -235,7 +274,8 @@ export function CrmSalesPipelineShell({
     const seq = (latestMoveSeqRef.current[idKey] || 0) + 1;
     latestMoveSeqRef.current[idKey] = seq;
 
-    // 1. Immediate Optimistic UI update
+    // 1. Immediate Optimistic UI update + exact target position
+    applyCardOrder(idKey, prevBucket, targetCol, targetIndex);
     setOptimisticBuckets((prev) => ({ ...prev, [idKey]: targetCol }));
     setPendingOppIds((prev) => {
       const next = new Set(prev);
@@ -249,11 +289,13 @@ export function CrmSalesPipelineShell({
         if (latestMoveSeqRef.current[idKey] !== seq) return;
         if (ok === false) {
           setOptimisticBuckets((prev) => ({ ...prev, [idKey]: prevBucket }));
+          applyCardOrder(idKey, targetCol, prevBucket);
         }
       })
       .catch(() => {
         if (latestMoveSeqRef.current[idKey] !== seq) return;
         setOptimisticBuckets((prev) => ({ ...prev, [idKey]: prevBucket }));
+        applyCardOrder(idKey, targetCol, prevBucket);
       })
       .finally(() => {
         if (latestMoveSeqRef.current[idKey] !== seq) return;
