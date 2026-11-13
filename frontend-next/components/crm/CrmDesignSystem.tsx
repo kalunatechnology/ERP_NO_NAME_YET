@@ -541,7 +541,7 @@ export function CRMRightDrawer({
   onTabChange,
   children,
   footer,
-  side = "left",
+  side = "right",
 }: {
   isOpen: boolean;
   onClose: () => void;
