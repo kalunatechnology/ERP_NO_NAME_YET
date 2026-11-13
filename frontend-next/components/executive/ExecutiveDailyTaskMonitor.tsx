@@ -67,7 +67,7 @@ function FilterSelect({ icon, label, value, onChange, children }: {
         <span className="text-[#2F80ED]">{icon}</span>{label}
       </span>
       <span className="relative block">
-        <select value={value} onChange={(event) => onChange(event.target.value)} className="h-[42px] w-full appearance-none rounded-[13px] border border-[#3157C8] bg-white px-5 pr-11 text-[13px] font-medium text-[#294BB2] outline-none transition focus:ring-2 focus:ring-[#DCEEFF] sm:text-[14px]">
+        <select value={value} onChange={(event) => onChange(event.target.value)} className="h-[42px] w-full appearance-none rounded-[13px] border border-[#3157C8] bg-white px-5 pr-11 text-[13px] font-medium text-[#1D4ED8] outline-none transition focus:ring-2 focus:ring-[#DCEEFF] sm:text-[14px]">
           {children}
         </select>
         <ChevronDown size={19} strokeWidth={2.2} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[#3157C8]" />
@@ -150,12 +150,12 @@ function DailyTaskDetail({ record, onClose }: { record: DailyTaskRecord; onClose
             <div className="mb-2 flex items-center gap-2 text-[#2F80ED]"><FileText size={21} /><span className="text-xs font-bold uppercase tracking-[0.08em]">Detail Daily Task</span></div>
             <h3 id="daily-task-detail-title" className="break-words text-[22px] font-bold leading-tight text-black sm:text-[26px]">{record.task.title || record.task.activity_input || "Aktivitas harian"}</h3>
           </div>
-          <button ref={closeButtonRef} type="button" onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#D9D9D9] text-[#4F5050] transition hover:border-[#3157C8] hover:bg-[#F4F7FF] hover:text-[#294BB2] focus:outline-none focus:ring-2 focus:ring-[#DCEEFF]" aria-label="Tutup"><X size={20} /></button>
+          <button ref={closeButtonRef} type="button" onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#D9D9D9] text-[#4F5050] transition hover:border-[#3157C8] hover:bg-[#F4F7FF] hover:text-[#1D4ED8] focus:outline-none focus:ring-2 focus:ring-[#DCEEFF]" aria-label="Tutup"><X size={20} /></button>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-7 sm:py-6">
           <div className="mb-6 flex flex-wrap items-center gap-2">
             <span className={cn("inline-flex rounded-[9px] px-3 py-1.5 text-xs font-medium", status.className)}>{status.label}</span>
-            <span className="inline-flex rounded-[9px] bg-[#EAF6FF] px-3 py-1.5 text-xs font-semibold text-[#294BB2]">{Number(record.task.progress ?? (status.label === "Finished" ? 100 : 0))}% selesai</span>
+            <span className="inline-flex rounded-[9px] bg-[#EFF6FF] px-3 py-1.5 text-xs font-semibold text-[#1D4ED8]">{Number(record.task.progress ?? (status.label === "Finished" ? 100 : 0))}% selesai</span>
           </div>
           <dl className="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2">
             <DetailItem label="Project">{record.projectName}</DetailItem>
@@ -348,13 +348,13 @@ export function ExecutiveDailyTaskMonitor({ projects, loading = false }: { proje
                 ) : filteredRecords.map((row, index) => {
                   const status = taskStatus(row);
                   return (
-                    <tr key={row.id} className={cn("h-[116px] border-t border-[#F0F0F0] align-middle transition-colors hover:bg-[#EAF6FF]", index === 0 && "bg-[#EAF6FF]")}>
+                    <tr key={row.id} className={cn("h-[116px] border-t border-[#F0F0F0] align-middle transition-colors hover:bg-[#EFF6FF]", index === 0 && "bg-[#EFF6FF]")}>
                       <td className="px-5 text-[12px] text-[#4F5050]">{index + 1}</td>
-                      <td className="min-w-0 px-3 py-5"><p className="break-words text-[14px] font-bold leading-5 text-[#111318]">{row.projectName}</p><p className="mt-2 break-words text-[12px] leading-5 text-[#17191C]">{row.mainTaskName}</p><p className="mt-1 flex flex-wrap items-center gap-x-2 text-[12px] text-[#4F5050]"><span>{formatDate(row.plannedDate)}</span><span aria-hidden="true">|</span><span className="font-medium text-[#42ACFB]">{row.timeSlot || "-"}</span></p></td>
+                      <td className="min-w-0 px-3 py-5"><p className="break-words text-[14px] font-bold leading-5 text-[#111318]">{row.projectName}</p><p className="mt-2 break-words text-[12px] leading-5 text-[#17191C]">{row.mainTaskName}</p><p className="mt-1 flex flex-wrap items-center gap-x-2 text-[12px] text-[#4F5050]"><span>{formatDate(row.plannedDate)}</span><span aria-hidden="true">|</span><span className="font-medium text-[#1D4ED8]">{row.timeSlot || "-"}</span></p></td>
                       <td className="px-4 py-5 text-[13px] leading-5 text-[#17191C]"><p className="line-clamp-3 break-words">{row.task.activity_input || row.task.title || "Aktivitas harian"}</p></td>
                       <td className="px-3 py-5">{(() => { const comparison = row.task.output_review_category ? { score: Number(row.task.output_similarity_score || 0), category: row.task.output_review_category } : compareTaskOutput(row.task.output_target, row.task.output_result); return comparison.category === "NOT_EVALUATED" ? <span className="text-xs italic text-[#8A8E95]">Belum dinilai</span> : <span className={cn("inline-flex rounded-lg px-2.5 py-1.5 text-[11px] font-bold", comparison.category === "SUFFICIENTLY_ALIGNED" ? "bg-emerald-100 text-emerald-800" : comparison.category === "NEEDS_REVIEW" ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-800")}>{outputReviewLabel(comparison.category)} · {comparison.score}%</span>; })()}</td>
                       <td className="px-3 text-center"><span className={cn("inline-flex whitespace-nowrap rounded-[9px] px-3 py-1.5 text-[11px] font-medium", status.className)}>{status.label}</span></td>
-                      <td className="px-3"><button type="button" onClick={() => setSelectedRecord(row)} className="inline-flex items-center gap-2 rounded-full bg-[#EAF6FF] px-3 py-1.5 text-[12px] font-medium text-[#3157C8] transition hover:bg-[#DCEEFF] focus:outline-none focus:ring-2 focus:ring-[#BDD7FF]" aria-label={`Lihat detail ${row.task.title || row.task.activity_input || "Daily Task"}`}><FileText size={15} className="text-[#2F80ED]" /> Details</button></td>
+                      <td className="px-3"><button type="button" onClick={() => setSelectedRecord(row)} className="inline-flex items-center gap-2 rounded-full bg-[#EFF6FF] px-3 py-1.5 text-[12px] font-medium text-[#3157C8] transition hover:bg-[#DCEEFF] focus:outline-none focus:ring-2 focus:ring-[#BDD7FF]" aria-label={`Lihat detail ${row.task.title || row.task.activity_input || "Daily Task"}`}><FileText size={15} className="text-[#2F80ED]" /> Details</button></td>
                     </tr>
                   );
                 })}

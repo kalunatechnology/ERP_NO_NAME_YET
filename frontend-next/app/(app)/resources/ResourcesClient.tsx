@@ -146,7 +146,7 @@ export default function ResourcesClient() {
           </h1>
           <p className="page-description flex flex-wrap items-center gap-x-1.5 gap-y-1">
             <span>Pusat arsip digital, katalog data transaksi, dan dokumentasi operasional terintegrasi</span>
-            <MarkaWordmark className="h-auto w-14 text-[#2649B3]" />
+            <MarkaWordmark className="h-auto w-14 text-[#1E3A8A]" />
             <span>ERP</span>
           </p>
         </div>

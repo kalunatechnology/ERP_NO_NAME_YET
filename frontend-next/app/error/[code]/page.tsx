@@ -85,11 +85,11 @@ export default function DynamicErrorPage({
       style={{ backgroundImage: `url('/Background_not_found.svg')` }}
     >
       <div className="z-10 flex flex-col items-center text-center max-w-md mx-auto">
-        <h1 className="text-7xl sm:text-8xl font-black text-[#2649B3] tracking-tight leading-none">
+        <h1 className="text-7xl sm:text-8xl font-black text-[#1E3A8A] tracking-tight leading-none">
           {code}
         </h1>
 
-        <h2 className="mt-4 text-2xl sm:text-3xl font-bold text-[#294BB2]">
+        <h2 className="mt-4 text-2xl sm:text-3xl font-bold text-[#1D4ED8]">
           {config.title}
         </h2>
 
@@ -99,7 +99,7 @@ export default function DynamicErrorPage({
 
         <Link
           href={config.buttonHref}
-          className="mt-6 inline-flex items-center justify-center px-6 py-2.5 rounded-lg bg-[#2649B3] hover:bg-[#294BB2] text-white text-sm font-medium transition-colors shadow-sm active:scale-95"
+          className="mt-6 inline-flex items-center justify-center px-6 py-2.5 rounded-lg bg-[#1E3A8A] hover:bg-[#1D4ED8] text-white text-sm font-medium transition-colors shadow-sm active:scale-95"
         >
           {config.buttonText}
         </Link>

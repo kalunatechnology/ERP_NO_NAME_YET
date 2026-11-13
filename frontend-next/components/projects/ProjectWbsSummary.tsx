@@ -31,7 +31,7 @@ export function ProjectWbsSummary({
           <CheckCircle2 size={11} />
           {completedDailyCount}/{dailyCount} Daily Task
         </span>
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-[#294BB2] border border-blue-200 font-bold" title="Progres Paket Kerja">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-[#1D4ED8] border border-blue-200 font-bold" title="Progres Paket Kerja">
           <Percent size={11} />
           {Math.round(progressPercent)}%
         </span>

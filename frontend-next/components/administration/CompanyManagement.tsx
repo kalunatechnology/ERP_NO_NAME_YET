@@ -234,7 +234,7 @@ export function CompanyManagement({
             <span className="text-xs font-semibold uppercase tracking-wider text-[#64748B]">
               Total Entitas Company
             </span>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#EEF2FF] text-[#2649B3]">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#EEF2FF] text-[#1E3A8A]">
               <Building2 size={18} />
             </div>
           </div>
@@ -273,7 +273,7 @@ export function CompanyManagement({
               placeholder="Cari nama legal atau kode company..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-10 w-full rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] pl-10 pr-4 text-sm text-[#0F172A] placeholder-[#94A3B8] outline-none transition focus:border-[#2649B3] focus:bg-white"
+              className="h-10 w-full rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] pl-10 pr-4 text-sm text-[#0F172A] placeholder-[#94A3B8] outline-none transition focus:border-[#1E3A8A] focus:bg-white"
             />
           </div>
 
@@ -282,7 +282,7 @@ export function CompanyManagement({
             <select
               value={selectedTenantFilter}
               onChange={(e) => onFilterTenantChange(e.target.value)}
-              className="h-10 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3.5 text-sm font-medium text-[#475569] outline-none transition focus:border-[#2649B3] focus:bg-white"
+              className="h-10 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3.5 text-sm font-medium text-[#475569] outline-none transition focus:border-[#1E3A8A] focus:bg-white"
             >
               <option value="ALL">Semua Tenant</option>
               {tenants.map((t) => (
@@ -296,7 +296,7 @@ export function CompanyManagement({
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-10 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3.5 text-sm font-medium text-[#475569] outline-none transition focus:border-[#2649B3] focus:bg-white"
+            className="h-10 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3.5 text-sm font-medium text-[#475569] outline-none transition focus:border-[#1E3A8A] focus:bg-white"
           >
             <option value="ALL">Semua Status</option>
             <option value="ACTIVE">Aktif</option>
@@ -306,7 +306,7 @@ export function CompanyManagement({
 
         <button
           onClick={() => handleOpenCreate(selectedTenantFilter !== "ALL" ? selectedTenantFilter : undefined)}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#2649B3] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1D3A96]"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#1E3A8A] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1D3A96]"
         >
           <Plus size={16} /> Buat Company Baru
         </button>
@@ -347,7 +347,7 @@ export function CompanyManagement({
                   return (
                     <tr key={comp.id} className="transition hover:bg-[#F8FAFC]">
                       <td className="px-6 py-4 font-mono font-semibold text-[#0F172A]">
-                        <span className="inline-flex items-center rounded-lg bg-[#F1F5F9] px-2.5 py-1 text-xs font-bold text-[#2649B3]">
+                        <span className="inline-flex items-center rounded-lg bg-[#F1F5F9] px-2.5 py-1 text-xs font-bold text-[#1E3A8A]">
                           {comp.company_code || "-"}
                         </span>
                       </td>
@@ -368,7 +368,7 @@ export function CompanyManagement({
                       </td>
                       <td className="px-6 py-4">
                         <div className="space-y-0.5">
-                          <span className="inline-flex items-center rounded-md bg-[#EEF2FF] px-2 py-0.5 text-xs font-medium text-[#2649B3]">
+                          <span className="inline-flex items-center rounded-md bg-[#EEF2FF] px-2 py-0.5 text-xs font-medium text-[#1E3A8A]">
                             {comp.business_category || "General"}
                           </span>
                           <p className="font-mono text-xs text-[#64748B]">
@@ -396,7 +396,7 @@ export function CompanyManagement({
                         <div className="inline-flex items-center gap-2">
                           <button
                             onClick={() => onSelectCompanyForModules(comp.id)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-[#2649B3] bg-white px-2.5 py-1 text-xs font-semibold text-[#2649B3] transition hover:bg-[#EEF2FF]"
+                            className="inline-flex items-center gap-1 rounded-lg border border-[#1E3A8A] bg-white px-2.5 py-1 text-xs font-semibold text-[#1E3A8A] transition hover:bg-[#EEF2FF]"
                             title="Konfigurasi modul komersial company ini"
                           >
                             <Sliders size={13} /> Modul
@@ -441,7 +441,7 @@ export function CompanyManagement({
                   setInitialAdminId(users.find((user) => user.tenant_id === nextTenantId)?.id || "");
                   setAssignAdmin(false);
                 }}
-                className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#2649B3]"
+                className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#1E3A8A]"
                 required
               >
                 {tenants.map((t) => (
@@ -461,7 +461,7 @@ export function CompanyManagement({
                 placeholder="Contoh: SMA-01, ARS-TECH"
                 value={companyCode}
                 onChange={(e) => setCompanyCode(e.target.value.toUpperCase())}
-                className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3.5 text-sm font-mono uppercase text-[#0F172A] outline-none transition focus:border-[#2649B3]"
+                className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3.5 text-sm font-mono uppercase text-[#0F172A] outline-none transition focus:border-[#1E3A8A]"
                 required
               />
             </div>
@@ -476,7 +476,7 @@ export function CompanyManagement({
               placeholder="Contoh: PT Sinergi Muda Arsa Indonesia"
               value={legalName}
               onChange={(e) => setLegalName(e.target.value)}
-              className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3.5 text-sm text-[#0F172A] outline-none transition focus:border-[#2649B3]"
+              className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3.5 text-sm text-[#0F172A] outline-none transition focus:border-[#1E3A8A]"
               required
             />
           </div>
@@ -489,7 +489,7 @@ export function CompanyManagement({
               <select
                 value={businessCategory}
                 onChange={(e) => setBusinessCategory(e.target.value)}
-                className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#2649B3]"
+                className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#1E3A8A]"
               >
                 <option value="General">General Business</option>
                 <option value="Holding">Holding Company</option>
@@ -510,14 +510,14 @@ export function CompanyManagement({
                 placeholder="01.234.567.8-901.000 (atau -)"
                 value={taxNumber}
                 onChange={(e) => setTaxNumber(e.target.value)}
-                className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3.5 text-sm font-mono text-[#0F172A] outline-none transition focus:border-[#2649B3]"
+                className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3.5 text-sm font-mono text-[#0F172A] outline-none transition focus:border-[#1E3A8A]"
               />
             </div>
           </div>
 
           {/* Preset Modul Awal */}
           <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
-            <label className="block text-xs font-semibold uppercase tracking-wider text-[#2649B3]">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-[#1E3A8A]">
               Preset Modul Awal (Commercial Entitlement)
             </label>
             <p className="mt-1 text-xs text-[#64748B]">
@@ -528,7 +528,7 @@ export function CompanyManagement({
               <label
                 className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${
                   modulePreset === "STANDARD"
-                    ? "border-[#2649B3] bg-white shadow-sm"
+                    ? "border-[#1E3A8A] bg-white shadow-sm"
                     : "border-[#E2E8F0] bg-transparent hover:bg-white"
                 }`}
               >
@@ -537,7 +537,7 @@ export function CompanyManagement({
                   name="preset"
                   checked={modulePreset === "STANDARD"}
                   onChange={() => setModulePreset("STANDARD")}
-                  className="mt-0.5 text-[#2649B3]"
+                  className="mt-0.5 text-[#1E3A8A]"
                 />
                 <div>
                   <p className="text-xs font-bold text-[#0F172A]">Paket Standar ERP (Rekomendasi)</p>
@@ -548,7 +548,7 @@ export function CompanyManagement({
               <label
                 className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${
                   modulePreset === "ALL"
-                    ? "border-[#2649B3] bg-white shadow-sm"
+                    ? "border-[#1E3A8A] bg-white shadow-sm"
                     : "border-[#E2E8F0] bg-transparent hover:bg-white"
                 }`}
               >
@@ -557,7 +557,7 @@ export function CompanyManagement({
                   name="preset"
                   checked={modulePreset === "ALL"}
                   onChange={() => setModulePreset("ALL")}
-                  className="mt-0.5 text-[#2649B3]"
+                  className="mt-0.5 text-[#1E3A8A]"
                 />
                 <div>
                   <p className="text-xs font-bold text-[#0F172A]">Semua Modul Aktif</p>
@@ -568,7 +568,7 @@ export function CompanyManagement({
               <label
                 className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${
                   modulePreset === "MINIMAL"
-                    ? "border-[#2649B3] bg-white shadow-sm"
+                    ? "border-[#1E3A8A] bg-white shadow-sm"
                     : "border-[#E2E8F0] bg-transparent hover:bg-white"
                 }`}
               >
@@ -577,7 +577,7 @@ export function CompanyManagement({
                   name="preset"
                   checked={modulePreset === "MINIMAL"}
                   onChange={() => setModulePreset("MINIMAL")}
-                  className="mt-0.5 text-[#2649B3]"
+                  className="mt-0.5 text-[#1E3A8A]"
                 />
                 <div>
                   <p className="text-xs font-bold text-[#0F172A]">Minimal (Core Saja)</p>
@@ -588,7 +588,7 @@ export function CompanyManagement({
               <label
                 className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${
                   modulePreset === "NONE"
-                    ? "border-[#2649B3] bg-white shadow-sm"
+                    ? "border-[#1E3A8A] bg-white shadow-sm"
                     : "border-[#E2E8F0] bg-transparent hover:bg-white"
                 }`}
               >
@@ -597,7 +597,7 @@ export function CompanyManagement({
                   name="preset"
                   checked={modulePreset === "NONE"}
                   onChange={() => setModulePreset("NONE")}
-                  className="mt-0.5 text-[#2649B3]"
+                  className="mt-0.5 text-[#1E3A8A]"
                 />
                 <div>
                   <p className="text-xs font-bold text-[#0F172A]">Konfigurasi Manual</p>
@@ -611,7 +611,7 @@ export function CompanyManagement({
           <div className="rounded-xl border border-[#E2E8F0] bg-white p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <UserCheck size={16} className="text-[#2649B3]" />
+                <UserCheck size={16} className="text-[#1E3A8A]" />
                 <span className="text-xs font-semibold text-[#0F172A]">
                   Tugaskan Initial Company Admin
                 </span>
@@ -627,7 +627,7 @@ export function CompanyManagement({
                     setInitialAdminId(eligibleAdminUsers[0]?.id || "");
                   }
                 }}
-                className="h-4 w-4 rounded border-gray-300 text-[#2649B3]"
+                className="h-4 w-4 rounded border-gray-300 text-[#1E3A8A]"
               />
             </div>
             <p className="mt-1 text-xs text-[#64748B]">
@@ -644,7 +644,7 @@ export function CompanyManagement({
                 <select
                   value={initialAdminId}
                   onChange={(e) => setInitialAdminId(e.target.value)}
-                  className="mt-1 h-10 w-full rounded-xl border border-[#E2E8F0] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#2649B3]"
+                  className="mt-1 h-10 w-full rounded-xl border border-[#E2E8F0] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#1E3A8A]"
                 >
                   {eligibleAdminUsers.map((u) => (
                     <option key={u.id} value={u.id}>
@@ -667,7 +667,7 @@ export function CompanyManagement({
             <button
               type="submit"
               disabled={submitting}
-              className="rounded-xl bg-[#2649B3] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#1D3A96] disabled:opacity-50"
+              className="rounded-xl bg-[#1E3A8A] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#1D3A96] disabled:opacity-50"
             >
               {submitting ? "Membuat Entitas..." : "Buat & Pasang Entitas"}
             </button>
@@ -692,7 +692,7 @@ export function CompanyManagement({
               type="text"
               value={editLegalName}
               onChange={(e) => setEditLegalName(e.target.value)}
-              className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3.5 text-sm text-[#0F172A] outline-none transition focus:border-[#2649B3]"
+              className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3.5 text-sm text-[#0F172A] outline-none transition focus:border-[#1E3A8A]"
               required
             />
           </div>
@@ -704,7 +704,7 @@ export function CompanyManagement({
             <select
               value={editCategory}
               onChange={(e) => setEditCategory(e.target.value)}
-              className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#2649B3]"
+              className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#1E3A8A]"
             >
               <option value="General">General Business</option>
               <option value="Holding">Holding Company</option>
@@ -724,7 +724,7 @@ export function CompanyManagement({
               type="text"
               value={editTaxNumber}
               onChange={(e) => setEditTaxNumber(e.target.value)}
-              className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3.5 text-sm font-mono text-[#0F172A] outline-none transition focus:border-[#2649B3]"
+              className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3.5 text-sm font-mono text-[#0F172A] outline-none transition focus:border-[#1E3A8A]"
             />
           </div>
 
@@ -735,7 +735,7 @@ export function CompanyManagement({
             <select
               value={editStatus}
               onChange={(e) => setEditStatus(e.target.value)}
-              className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#2649B3]"
+              className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#1E3A8A]"
             >
               <option value="ACTIVE">Aktif (Operasional Terbuka)</option>
               <option value="INACTIVE">Nonaktif (Akses Ditutup)</option>
@@ -753,7 +753,7 @@ export function CompanyManagement({
             <button
               type="submit"
               disabled={submitting}
-              className="rounded-xl bg-[#2649B3] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#1D3A96] disabled:opacity-50"
+              className="rounded-xl bg-[#1E3A8A] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#1D3A96] disabled:opacity-50"
             >
               {submitting ? "Menyimpan..." : "Perbarui Company"}
             </button>

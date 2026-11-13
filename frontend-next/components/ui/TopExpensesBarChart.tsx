@@ -58,7 +58,7 @@ export function TopExpensesBarChart({
       {/* ── Card Header ── */}
       <div className="flex items-center justify-between gap-4 mb-5 pb-2 border-b border-gray-100/80">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-[#EAF6FF] flex items-center justify-center text-[#2649B3] shadow-2xs flex-shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-[#EFF6FF] flex items-center justify-center text-[#1E3A8A] shadow-2xs flex-shrink-0">
             <TrendingDown size={20} strokeWidth={2.2} />
           </div>
           <div className="min-w-0">
@@ -109,13 +109,13 @@ export function TopExpensesBarChart({
                   key={item.id}
                   onMouseEnter={() => setHoveredExpense(item)}
                   onMouseLeave={() => setHoveredExpense(null)}
-                  className="grid grid-cols-[minmax(140px,220px)_1fr] gap-4 sm:gap-6 items-center py-2.5 px-2 -mx-2 rounded-xl hover:bg-[#EAF6FF] transition-all group"
+                  className="grid grid-cols-[minmax(140px,220px)_1fr] gap-4 sm:gap-6 items-center py-2.5 px-2 -mx-2 rounded-xl hover:bg-[#EFF6FF] transition-all group"
                 >
                   {/* Left Column: Category Label */}
                   <div className="flex items-center gap-2.5 min-w-0 pr-2">
-                    <div className="w-2.5 h-2.5 rounded-full bg-[#2649B3] flex-shrink-0" />
+                    <div className="w-2.5 h-2.5 rounded-full bg-[#1E3A8A] flex-shrink-0" />
                     <span
-                      className="text-xs sm:text-sm font-bold text-[#090909] truncate group-hover:text-[#2649B3] transition-colors"
+                      className="text-xs sm:text-sm font-bold text-[#090909] truncate group-hover:text-[#1E3A8A] transition-colors"
                       title={item.label}
                     >
                       {item.label}
@@ -123,9 +123,9 @@ export function TopExpensesBarChart({
                   </div>
 
                   {/* Right Column: Full Width Rounded Pill Track */}
-                  <div className="w-full bg-[#EAF6FF] rounded-full h-7 relative overflow-hidden shadow-2xs group-hover:bg-[#EAF6FF] transition-colors p-0.5">
+                  <div className="w-full bg-[#EFF6FF] rounded-full h-7 relative overflow-hidden shadow-2xs group-hover:bg-[#EFF6FF] transition-colors p-0.5">
                     <div
-                      className="h-full bg-[#2649B3] group-hover:bg-[#2649B3] rounded-full flex items-center justify-end px-3 transition-all duration-500 shadow-xs cursor-pointer min-w-[60px]"
+                      className="h-full bg-[#1E3A8A] group-hover:bg-[#1E3A8A] rounded-full flex items-center justify-end px-3 transition-all duration-500 shadow-xs cursor-pointer min-w-[60px]"
                       style={{ width: `${Math.min(100, Math.max(12, item.percentage))}%` }}
                     >
                       <span className="text-2xs sm:text-xs font-black text-white select-none whitespace-nowrap tracking-tight">
@@ -146,13 +146,13 @@ export function TopExpensesBarChart({
           <div className="flex items-center gap-2">
             <span className="font-extrabold text-[#090909]">{hoveredExpense.label}</span>
             {hoveredExpense.category && (
-              <span className="text-3xs bg-[#EAF6FF] text-[#2649B3] px-2.5 py-0.5 rounded-full font-bold border border-[#9FD6FF]">
+              <span className="text-3xs bg-[#EFF6FF] text-[#1E3A8A] px-2.5 py-0.5 rounded-full font-bold border border-[#BFDBFE]">
                 {hoveredExpense.category}
               </span>
             )}
           </div>
           <div>
-            Total Pengeluaran: <strong className="text-[#2649B3] text-sm font-extrabold">{hoveredExpense.amountText}</strong> ({hoveredExpense.percentage}% dari alokasi biaya terbesar)
+            Total Pengeluaran: <strong className="text-[#1E3A8A] text-sm font-extrabold">{hoveredExpense.amountText}</strong> ({hoveredExpense.percentage}% dari alokasi biaya terbesar)
           </div>
         </div>
       )}

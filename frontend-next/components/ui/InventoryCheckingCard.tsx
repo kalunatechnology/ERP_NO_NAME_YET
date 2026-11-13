@@ -117,19 +117,19 @@ export function InventoryCheckingCard({
       )}
     >
       {/* Header Banner */}
-      <div className="bg-[#EAF6FF] rounded-xl px-3.5 py-2 flex items-center justify-between">
+      <div className="bg-[#EFF6FF] rounded-xl px-3.5 py-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <PackageCheck size={16} className="text-[#2649B3]" />
+          <PackageCheck size={16} className="text-[#1E3A8A]" />
           <span className="text-xs font-bold text-[#090909]">Inventory Checking</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-bold text-[#294BB2] tracking-wider">REAL TIME</span>
+          <span className="text-[10px] font-bold text-[#1D4ED8] tracking-wider">REAL TIME</span>
           <button
             type="button"
             onClick={loadData}
             title="Muat ulang stok"
             className={cn(
-              "p-0.5 text-[#294BB2] hover:text-[#2649B3] transition-colors cursor-pointer",
+              "p-0.5 text-[#1D4ED8] hover:text-[#1E3A8A] transition-colors cursor-pointer",
               loading && "animate-spin"
             )}
           >
@@ -143,7 +143,7 @@ export function InventoryCheckingCard({
         <span className="text-xs font-bold text-[#090909] truncate" title={data.itemName}>
           {data.itemName}
         </span>
-        <span className="text-xs font-bold text-[#294BB2] flex-shrink-0 font-mono">
+        <span className="text-xs font-bold text-[#1D4ED8] flex-shrink-0 font-mono">
           {data.warehouseCode}
         </span>
       </div>
@@ -171,12 +171,12 @@ export function InventoryCheckingCard({
           <span className="text-xs text-[#4F5050] font-medium">Stock status</span>
           <div
             className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold flex-shrink-0 ${
-              isAvailable ? "bg-[#9FD6FF] text-[#2649B3]" : "bg-red-100 text-red-700"
+              isAvailable ? "bg-[#BFDBFE] text-[#1E3A8A]" : "bg-red-100 text-red-700"
             }`}
           >
             <span>{isAvailable ? "Available" : "Shortage / PO Req"}</span>
             {isAvailable ? (
-              <CheckCircle2 size={13} className="text-[#2649B3]" />
+              <CheckCircle2 size={13} className="text-[#1E3A8A]" />
             ) : (
               <AlertTriangle size={13} className="text-red-700" />
             )}

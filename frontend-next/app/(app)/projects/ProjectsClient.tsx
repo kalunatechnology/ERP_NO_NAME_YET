@@ -1754,9 +1754,9 @@ export default function ProjectsClient() {
             <label htmlFor="project-search" className="sr-only">Cari proyek berdasarkan nama, kode, atau PM</label>
             <div className="relative min-w-0 flex-1 sm:max-w-xs">
               <Search size={16} className="absolute left-3 top-3 text-text-secondary" aria-hidden="true" />
-              <input id="project-search" type="search" value={projectSearch} onChange={(event) => setProjectSearch(event.target.value)} placeholder="Cari nama, kode, atau PM..." className="h-10 w-full rounded-full border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-xs text-text-primary outline-none transition focus:border-[#294BB2] focus:bg-white focus:ring-2 focus:ring-[#294BB2]/15" />
+              <input id="project-search" type="search" value={projectSearch} onChange={(event) => setProjectSearch(event.target.value)} placeholder="Cari nama, kode, atau PM..." className="h-10 w-full rounded-full border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-xs text-text-primary outline-none transition focus:border-[#1D4ED8] focus:bg-white focus:ring-2 focus:ring-[#1D4ED8]/15" />
             </div>
-            <button type="button" onClick={() => router.push("/tasks#task-management")} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-full bg-[#294BB2] px-4 text-xs font-bold text-white shadow-sm transition hover:bg-[#203F9C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#294BB2]/40 focus-visible:ring-offset-2">
+            <button type="button" onClick={() => router.push("/tasks#task-management")} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-full bg-[#1D4ED8] px-4 text-xs font-bold text-white shadow-sm transition hover:bg-[#203F9C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1D4ED8]/40 focus-visible:ring-offset-2">
               Lihat Weekly Task <ArrowRight size={15} aria-hidden="true" />
             </button>
           </div>
@@ -1769,7 +1769,7 @@ export default function ProjectsClient() {
               id="project-selector"
               value={selectedId ?? ""}
               onChange={(e) => navigateProject(e.target.value)}
-              className="block h-10 w-full min-w-0 max-w-full truncate rounded-full border border-gray-300 bg-white px-4 text-xs font-semibold text-text-primary outline-none transition focus:border-[#294BB2] focus:ring-2 focus:ring-[#294BB2]/20"
+              className="block h-10 w-full min-w-0 max-w-full truncate rounded-full border border-gray-300 bg-white px-4 text-xs font-semibold text-text-primary outline-none transition focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#1D4ED8]/20"
             >
               {filteredProjects.length === 0 && <option disabled value="">Tidak ada proyek yang cocok</option>}
               {selectedProject && !filteredProjects.some((project) => String(project.id) === String(selectedProject.id)) && (
@@ -1788,7 +1788,7 @@ export default function ProjectsClient() {
             <div className="no-scrollbar flex min-w-0 items-center gap-2 overflow-x-auto">
             {["ALL", ...projectClients].map((client) => {
               const selected = projectClientFilter === client;
-              return <button key={client} type="button" aria-pressed={selected} onClick={() => setProjectClientFilter(client)} className={cn("inline-flex min-h-9 shrink-0 items-center rounded-full border px-3 py-1.5 text-xs font-semibold transition", selected ? "border-[#294BB2] bg-[#EEF3FF] text-[#294BB2]" : "border-gray-200 bg-white text-text-secondary hover:border-[#B8C8F5] hover:bg-gray-50 hover:text-text-primary")}>{client === "ALL" ? "Semua Client" : client}</button>;
+              return <button key={client} type="button" aria-pressed={selected} onClick={() => setProjectClientFilter(client)} className={cn("inline-flex min-h-9 shrink-0 items-center rounded-full border px-3 py-1.5 text-xs font-semibold transition", selected ? "border-[#1D4ED8] bg-[#EEF3FF] text-[#1D4ED8]" : "border-gray-200 bg-white text-text-secondary hover:border-[#B8C8F5] hover:bg-gray-50 hover:text-text-primary")}>{client === "ALL" ? "Semua Client" : client}</button>;
             })}
             </div>
           </div>
@@ -1796,10 +1796,10 @@ export default function ProjectsClient() {
 
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
           <label className="flex items-center gap-2 text-2xs font-semibold text-text-secondary">Bulan
-            <input aria-label="Bulan filter Weekly proyek" type="month" value={projectWeeklyCalendar.month} onChange={(event) => { projectWeeklyCalendar.changeMonth(event.target.value); setProjectWeekFilter("SELECTED"); }} className="h-10 min-w-0 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-text-primary outline-none focus:border-[#294BB2] focus:ring-2 focus:ring-[#294BB2]/15" />
+            <input aria-label="Bulan filter Weekly proyek" type="month" value={projectWeeklyCalendar.month} onChange={(event) => { projectWeeklyCalendar.changeMonth(event.target.value); setProjectWeekFilter("SELECTED"); }} className="h-10 min-w-0 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-text-primary outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#1D4ED8]/15" />
           </label>
           <label htmlFor="project-week-filter" className="flex items-center gap-2 text-2xs font-semibold text-text-secondary">Weekly
-            <select id="project-week-filter" value={projectWeekFilter === "ALL" ? "ALL" : String(projectWeeklyCalendar.week)} disabled={projectWeeklyCalendar.loading || Boolean(projectWeeklyCalendar.error)} onChange={(event) => { if (event.target.value === "ALL") setProjectWeekFilter("ALL"); else { projectWeeklyCalendar.setWeek(Number(event.target.value)); setProjectWeekFilter("SELECTED"); } }} className="h-10 min-w-0 max-w-full rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-text-primary outline-none focus:border-[#294BB2] focus:ring-2 focus:ring-[#294BB2]/15">
+            <select id="project-week-filter" value={projectWeekFilter === "ALL" ? "ALL" : String(projectWeeklyCalendar.week)} disabled={projectWeeklyCalendar.loading || Boolean(projectWeeklyCalendar.error)} onChange={(event) => { if (event.target.value === "ALL") setProjectWeekFilter("ALL"); else { projectWeeklyCalendar.setWeek(Number(event.target.value)); setProjectWeekFilter("SELECTED"); } }} className="h-10 min-w-0 max-w-full rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-text-primary outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#1D4ED8]/15">
               <option value="ALL">Semua minggu</option>
               {projectWeeklyCalendar.periods.map((period) => <option key={period.id} value={period.week}>Weekly {period.week} ({formatDate(period.start)} – {formatDate(period.end)})</option>)}
             </select>
@@ -1808,9 +1808,9 @@ export default function ProjectsClient() {
         </div>
 
         <details className="group rounded-xl border border-gray-200 bg-gray-50/60">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-xs font-semibold text-text-secondary marker:hidden hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#294BB2]/30">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-xs font-semibold text-text-secondary marker:hidden hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1D4ED8]/30">
             <span>Filter dan alat proyek lainnya</span>
-            <ChevronDown size={15} className="shrink-0 text-[#294BB2] transition-transform group-open:rotate-180" aria-hidden="true" />
+            <ChevronDown size={15} className="shrink-0 text-[#1D4ED8] transition-transform group-open:rotate-180" aria-hidden="true" />
           </summary>
           <div className="flex flex-col gap-3 border-t border-gray-200 p-3">
         <div className="flex flex-col gap-2">
@@ -1831,12 +1831,12 @@ export default function ProjectsClient() {
                   onClick={() => { projectWeeklyCalendar.setWeek(period.week); setProjectWeekFilter("SELECTED"); }}
                   className={cn(
                     "flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition",
-                    isSelected ? "border-[#294BB2] bg-[#EEF3FF] text-[#294BB2]" : "border-text-tertiary bg-white text-text-secondary hover:bg-gray-50",
+                    isSelected ? "border-[#1D4ED8] bg-[#EEF3FF] text-[#1D4ED8]" : "border-text-tertiary bg-white text-text-secondary hover:bg-gray-50",
                   )}
                 >
                   <span>Weekly {period.week}</span>
                   <span className="text-2xs opacity-75">({formatDate(period.start)} – {formatDate(period.end)})</span>
-                  <span className={cn("rounded-full px-1.5 py-0.5 text-2xs font-bold", isSelected ? "bg-[#294BB2] text-white" : "bg-black/5")}>{projectWeekCounts[period.week] ?? 0}</span>
+                  <span className={cn("rounded-full px-1.5 py-0.5 text-2xs font-bold", isSelected ? "bg-[#1D4ED8] text-white" : "bg-black/5")}>{projectWeekCounts[period.week] ?? 0}</span>
                 </button>;
               })}
             </div>
@@ -1859,7 +1859,7 @@ export default function ProjectsClient() {
                 className={cn(
                   "inline-flex min-h-9 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
                   projectPipelineView === view.key
-                    ? "border-[#294BB2] bg-[#EEF3FF] text-[#294BB2]"
+                    ? "border-[#1D4ED8] bg-[#EEF3FF] text-[#1D4ED8]"
                     : "border-text-tertiary bg-white text-text-secondary hover:bg-gray-50 hover:text-text-primary"
                 )}
               >
@@ -1875,14 +1875,14 @@ export default function ProjectsClient() {
           {canCreateProject && (
             <button
               onClick={() => setIsCreateProjOpen(true)}
-              className="btn-primary py-1.5 px-3 text-xs gap-1.5 whitespace-nowrap bg-[#294BB2] hover:bg-[#203F9C]"
+              className="btn-primary py-1.5 px-3 text-xs gap-1.5 whitespace-nowrap bg-[#1D4ED8] hover:bg-[#203F9C]"
             >
               <Plus size={14} /> Proyek Baru
             </button>
           )}
 
           {isExecutive && !canUpdateProject && (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 text-[#2649B3] border border-blue-200 text-2xs font-bold tracking-tight shadow-2xs">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 text-[#1E3A8A] border border-blue-200 text-2xs font-bold tracking-tight shadow-2xs">
               Executive Overseer · View Only
             </span>
           )}
@@ -1890,7 +1890,7 @@ export default function ProjectsClient() {
           {canUpdateSelectedProject && canViewFinancials && (
             <button
               onClick={() => setIsEditFinancialsOpen(true)}
-              className="btn-secondary text-xs gap-1.5 py-1.5 px-3 border border-[#B8C8F5] bg-[#EEF3FF] text-[#294BB2] hover:bg-[#E4ECFF] whitespace-nowrap shadow-xs font-semibold"
+              className="btn-secondary text-xs gap-1.5 py-1.5 px-3 border border-[#B8C8F5] bg-[#EEF3FF] text-[#1D4ED8] hover:bg-[#E4ECFF] whitespace-nowrap shadow-xs font-semibold"
             >
               <TrendingUp size={14} /> Target Finansial Proyek
             </button>
@@ -1900,7 +1900,7 @@ export default function ProjectsClient() {
           {canUpdateSelectedProject && canViewFinancials && (
             <button
               onClick={() => setIsFundingRequestOpen(true)}
-              className="btn-primary text-xs gap-1.5 py-1.5 px-3 bg-[#294BB2] text-white hover:bg-[#203F9C] whitespace-nowrap font-semibold shadow-xs"
+              className="btn-primary text-xs gap-1.5 py-1.5 px-3 bg-[#1D4ED8] text-white hover:bg-[#203F9C] whitespace-nowrap font-semibold shadow-xs"
             >
               <Wallet size={14} /> Pengajuan Dana
             </button>
@@ -1909,7 +1909,7 @@ export default function ProjectsClient() {
           {canUpdateSelectedProject && (
             <button
               onClick={handleRecalculateHealth}
-              className="btn-outline py-1.5 px-3 text-xs gap-1.5 text-[#294BB2] border-[#B8C8F5] hover:bg-[#EEF3FF] whitespace-nowrap"
+              className="btn-outline py-1.5 px-3 text-xs gap-1.5 text-[#1D4ED8] border-[#B8C8F5] hover:bg-[#EEF3FF] whitespace-nowrap"
             >
               <Zap size={14} className="text-amber-500 fill-amber-500" /> Hitung Health (EVM)
             </button>
@@ -1941,8 +1941,8 @@ export default function ProjectsClient() {
       {selectedProject && pendingWeeklyCount > 0 && allowsProjectManagement && (selectedAuthority?.can_review_weekly_tasks ?? selectedAuthority?.can_manage_weekly_tasks) && (
         <section aria-label="Persetujuan target mingguan" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50/70 px-4 py-3">
           <div className="flex min-w-0 items-center gap-2.5">
-            <ShieldCheck size={19} className="shrink-0 text-[#294BB2]" aria-hidden="true" />
-            <p className="text-sm font-semibold text-text-primary"><span className="text-[#294BB2]">{pendingWeeklyCount}</span> target mingguan menunggu persetujuan</p>
+            <ShieldCheck size={19} className="shrink-0 text-[#1D4ED8]" aria-hidden="true" />
+            <p className="text-sm font-semibold text-text-primary"><span className="text-[#1D4ED8]">{pendingWeeklyCount}</span> target mingguan menunggu persetujuan</p>
           </div>
           <button type="button" onClick={() => {
             navigateProject(selectedProject.id, "TREE");
@@ -1972,8 +1972,8 @@ export default function ProjectsClient() {
             className={cn(
               "flex items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-bold transition-all sm:px-4",
               activeTab === tab.key
-                ? "bg-[#294BB2] text-white shadow-sm"
-                : "text-text-secondary hover:bg-[#EEF3FF] hover:text-[#294BB2]"
+                ? "bg-[#1D4ED8] text-white shadow-sm"
+                : "text-text-secondary hover:bg-[#EEF3FF] hover:text-[#1D4ED8]"
             )}
           >
             <tab.icon size={14} />
@@ -1987,7 +1987,7 @@ export default function ProjectsClient() {
 
       {/* ── Project Hero Banner & Financial KPIs ── */}
       {selectedProject && (userRole !== "staff" || canManageSelectedProject) && (
-        <div className="card relative overflow-hidden rounded-[24px] border-0 bg-[#294BB2] p-5 text-white shadow-card-lg sm:p-6 lg:p-7">
+        <div className="card relative overflow-hidden rounded-[24px] border-0 bg-[#1D4ED8] p-5 text-white shadow-card-lg sm:p-6 lg:p-7">
           <div className="relative z-10 flex flex-col justify-between gap-5 md:flex-row md:items-center lg:gap-8">
             <div className="flex min-w-0 max-w-3xl flex-col gap-2">
               <div className="flex items-center gap-2 flex-wrap">
@@ -2091,7 +2091,7 @@ export default function ProjectsClient() {
               {selectedAuthority?.can_manage_wbs ? (
                 <button
                   onClick={() => setIsCreateMainTaskOpen(true)}
-                  className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-xl bg-white px-3 py-2 text-xs font-bold text-[#294BB2] shadow-sm transition-all hover:bg-[#EEF3FF]"
+                  className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-xl bg-white px-3 py-2 text-xs font-bold text-[#1D4ED8] shadow-sm transition-all hover:bg-[#EEF3FF]"
                 >
                   <Plus size={14} /> Tambah Main Task
                 </button>
@@ -2141,9 +2141,9 @@ export default function ProjectsClient() {
       )}
 
       <details className="group overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 marker:hidden hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#294BB2]/30 sm:px-5">
-          <span className="min-w-0"><span className="block text-[10px] font-bold uppercase tracking-[0.12em] text-[#294BB2]">Informasi tambahan</span><span className="mt-0.5 block truncate text-sm font-bold text-text-primary">Tahapan, timeline, dan ringkasan proyek</span></span>
-          <ChevronDown size={17} className="shrink-0 text-[#294BB2] transition-transform group-open:rotate-180" aria-hidden="true" />
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 marker:hidden hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1D4ED8]/30 sm:px-5">
+          <span className="min-w-0"><span className="block text-[10px] font-bold uppercase tracking-[0.12em] text-[#1D4ED8]">Informasi tambahan</span><span className="mt-0.5 block truncate text-sm font-bold text-text-primary">Tahapan, timeline, dan ringkasan proyek</span></span>
+          <ChevronDown size={17} className="shrink-0 text-[#1D4ED8] transition-transform group-open:rotate-180" aria-hidden="true" />
         </summary>
         <div className="flex flex-col gap-5 border-t border-gray-100 p-4 sm:p-5">
       {selectedProject && (userRole !== "staff" || canManageSelectedProject) && (
@@ -2830,7 +2830,7 @@ export default function ProjectsClient() {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="flex items-center gap-2 text-sm font-extrabold tracking-wide text-slate-900">
-                    <DollarSign size={18} className="text-[#2649B3]" /> Analisis Laba Rugi (P&L) & Realisasi Finansial Proyek
+                    <DollarSign size={18} className="text-[#1E3A8A]" /> Analisis Laba Rugi (P&L) & Realisasi Finansial Proyek
                   </h3>
                   <span className={cn(
                     "badge text-2xs font-extrabold px-2 py-0.5 rounded-full",
@@ -2850,14 +2850,14 @@ export default function ProjectsClient() {
                 {isPM && (
                   <button
                     onClick={() => setIsEditFinancialsOpen(true)}
-                    className="btn-outline gap-1.5 border-[#BFDBFE] px-3 py-1 text-xs text-[#2649B3] hover:bg-[#EFF6FF]"
+                    className="btn-outline gap-1.5 border-[#BFDBFE] px-3 py-1 text-xs text-[#1E3A8A] hover:bg-[#EFF6FF]"
                   >
                     <Edit size={12} /> Edit Target Finansial & Budget
                   </button>
                 )}
                 <button
                   onClick={() => setIsFundingRequestOpen(true)}
-                  className="btn-primary gap-1.5 bg-[#2649B3] px-3 py-1 text-xs font-bold hover:bg-[#203D91]"
+                  className="btn-primary gap-1.5 bg-[#1E3A8A] px-3 py-1 text-xs font-bold hover:bg-[#203D91]"
                 >
                   <Plus size={12} /> + Ajukan Permintaan Dana (Budgeting)
                 </button>
@@ -2870,7 +2870,7 @@ export default function ProjectsClient() {
                 <span className="mt-1 block text-base font-extrabold text-slate-900">
                   {formatRupiah(Number(financialPerformance?.expected_revenue ?? selectedProject?.contract_amount ?? 0))}
                 </span>
-                <span className="mt-1 block text-2xs font-medium text-[#2649B3]">
+                <span className="mt-1 block text-2xs font-medium text-[#1E3A8A]">
                   Invoiced: {formatRupiah(Number(financialPerformance?.invoiced_revenue ?? 0))}
                 </span>
               </div>
@@ -3207,7 +3207,7 @@ export default function ProjectsClient() {
               <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-2.5 text-xs">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <span className="text-2xs font-bold uppercase tracking-wider text-[#294BB2]">
+                    <span className="text-2xs font-bold uppercase tracking-wider text-[#1D4ED8]">
                       Departemen Proyek / SPV Aktif
                     </span>
                     <div className="mt-0.5 font-bold text-text-primary">
@@ -3224,7 +3224,7 @@ export default function ProjectsClient() {
                         className={cn(
                           "rounded-md px-2 py-1 text-2xs font-bold transition",
                           assignDeptFilter === "PROJECT_DEPT"
-                            ? "bg-[#294BB2] text-white"
+                            ? "bg-[#1D4ED8] text-white"
                             : "text-text-secondary hover:text-text-primary",
                         )}
                       >
@@ -3236,7 +3236,7 @@ export default function ProjectsClient() {
                         className={cn(
                           "rounded-md px-2 py-1 text-2xs font-bold transition",
                           assignDeptFilter === "ALL"
-                            ? "bg-[#294BB2] text-white"
+                            ? "bg-[#1D4ED8] text-white"
                             : "text-text-secondary hover:text-text-primary",
                         )}
                       >
@@ -3274,7 +3274,7 @@ export default function ProjectsClient() {
                       <button
                         type="button"
                         onClick={() => { setAssignDeptFilter("ALL"); setAssignUserSearch(""); }}
-                        className="mt-1.5 text-xs font-bold text-[#294BB2] underline"
+                        className="mt-1.5 text-xs font-bold text-[#1D4ED8] underline"
                       >
                         Tampilkan semua anggota company ({companyUsers.length})
                       </button>
@@ -3613,7 +3613,7 @@ export default function ProjectsClient() {
             {editDailyForm.output_result.trim() && editDailyForm.output_target.trim() && (
               <div className={cn(
                 "mt-2 flex items-center justify-between rounded-lg px-3 py-2 text-2xs font-bold",
-                editOutputComparison.category === "SUFFICIENTLY_ALIGNED" ? "bg-blue-100 text-[#2649B3]" :
+                editOutputComparison.category === "SUFFICIENTLY_ALIGNED" ? "bg-blue-100 text-[#1E3A8A]" :
                 editOutputComparison.category === "NEEDS_REVIEW" ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-800"
               )}>
                 <span>{outputReviewLabel(editOutputComparison.category)}</span>
@@ -3630,8 +3630,8 @@ export default function ProjectsClient() {
               </div>
               <div className="text-sm font-semibold text-[#435247] tabular-nums">{checklistProgress}%</div>
             </div>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#EAF6FF]" role="progressbar" aria-valuenow={checklistProgress} aria-valuemin={0} aria-valuemax={100}>
-              <div className="h-full rounded-full bg-[#294BB2] transition-all duration-300" style={{ width: `${checklistProgress}%` }} />
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#EFF6FF]" role="progressbar" aria-valuenow={checklistProgress} aria-valuemin={0} aria-valuemax={100}>
+              <div className="h-full rounded-full bg-[#1D4ED8] transition-all duration-300" style={{ width: `${checklistProgress}%` }} />
             </div>
 
             <div className="mt-4 space-y-1">
@@ -3642,7 +3642,7 @@ export default function ProjectsClient() {
                     {done && <Check size={11} strokeWidth={3} />}
                   </span>
                   <span className={cn('min-w-0 flex-1 text-xs', done ? 'text-[#667068]' : 'text-[#435247]')}>{item.title}</span>
-                  {item.target_date && <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#EAF6FF] px-3 py-1 text-2xs font-medium text-[#2649B3]">
+                  {item.target_date && <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#EFF6FF] px-3 py-1 text-2xs font-medium text-[#1E3A8A]">
                     {new Date(item.target_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}<Clock size={11} />
                   </span>}
                 </button>;
@@ -3667,7 +3667,7 @@ export default function ProjectsClient() {
               </div>
               <span className={cn(
                 "shrink-0 rounded-full px-3 py-1 text-2xs font-semibold",
-                editDailyForm.status === "BLOCKED" ? "bg-red-100 text-red-700" : checklistProgress >= 100 ? "bg-[#EAF6FF] text-[#2649B3]" : "bg-[#EAF6FF] text-[#2649B3]"
+                editDailyForm.status === "BLOCKED" ? "bg-red-100 text-red-700" : checklistProgress >= 100 ? "bg-[#EFF6FF] text-[#1E3A8A]" : "bg-[#EFF6FF] text-[#1E3A8A]"
               )}>
                 {editDailyForm.status === "BLOCKED" ? "Blocked" : checklistProgress >= 100 ? "Completed" : checklistProgress > 0 ? "In Progress" : "Not Started"}
               </span>

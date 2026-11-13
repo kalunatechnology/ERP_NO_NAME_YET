@@ -47,7 +47,7 @@ export function CompletionRateCard({
           <h3 className="text-sm font-extrabold text-[#090909]">Tingkat Penyelesaian Proyek</h3>
           <p className="text-2xs text-[#4F5050] font-medium mt-0.5">Progres aktual tiap proyek</p>
         </div>
-        <div className="w-8 h-8 rounded-xl bg-[#EAF6FF] text-[#2649B3] border border-[#9FD6FF] flex items-center justify-center flex-shrink-0 shadow-2xs">
+        <div className="w-8 h-8 rounded-xl bg-[#EFF6FF] text-[#1E3A8A] border border-[#BFDBFE] flex items-center justify-center flex-shrink-0 shadow-2xs">
           <CheckCircle2 size={16} strokeWidth={2.2} />
         </div>
       </div>
@@ -76,10 +76,10 @@ export function CompletionRateCard({
                     </td>
                     <td className="px-2 py-3 align-middle">
                       <div className="flex items-center gap-2">
-                        <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-[#EAF6FF]">
-                          <div className="h-full rounded-full bg-[#2649B3] transition-all duration-700" style={{ width: `${val}%` }} />
+                        <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-[#EFF6FF]">
+                          <div className="h-full rounded-full bg-[#1E3A8A] transition-all duration-700" style={{ width: `${val}%` }} />
                         </div>
-                        <span className="w-10 shrink-0 text-right text-xs font-extrabold tabular-nums text-[#2649B3]">{Math.round(val)}%</span>
+                        <span className="w-10 shrink-0 text-right text-xs font-extrabold tabular-nums text-[#1E3A8A]">{Math.round(val)}%</span>
                       </div>
                     </td>
                   </tr>

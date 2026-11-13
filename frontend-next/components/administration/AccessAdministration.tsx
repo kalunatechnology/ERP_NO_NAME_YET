@@ -551,10 +551,10 @@ export function AccessAdministration() {
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      <header className="rounded-[28px] border border-[#EAF6FF] bg-[#FDFDFD] px-6 py-6 md:px-8 shadow-sm">
+      <header className="rounded-[28px] border border-[#EFF6FF] bg-[#FDFDFD] px-6 py-6 md:px-8 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-5">
           <div className="max-w-2xl">
-            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-[#2649B3] text-white">
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-[#1E3A8A] text-white">
               <ShieldCheck size={20} />
             </div>
             <h1 className="text-2xl font-bold tracking-tight text-[#090909]">
@@ -568,13 +568,13 @@ export function AccessAdministration() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Link href={isSuper && selectedCompany ? `/administration/crm-integrations?company_id=${encodeURIComponent(selectedCompany)}` : "/administration/crm-integrations"} className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#D9D9D9] bg-white px-4 text-sm font-medium text-[#2649B3] hover:bg-[#FDFDFD]">
+            <Link href={isSuper && selectedCompany ? `/administration/crm-integrations?company_id=${encodeURIComponent(selectedCompany)}` : "/administration/crm-integrations"} className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#D9D9D9] bg-white px-4 text-sm font-medium text-[#1E3A8A] hover:bg-[#FDFDFD]">
               <Sliders size={15} /> Integrasi CRM
             </Link>
             {isSuper && (
               <button
                 onClick={() => setSuperInviteOpen(true)}
-                className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#2649B3] px-4 text-sm font-semibold text-white hover:bg-[#1D3A96]"
+                className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#1E3A8A] px-4 text-sm font-semibold text-white hover:bg-[#1D3A96]"
               >
                 <UserPlus size={16} /> Tambah User
               </button>
@@ -582,7 +582,7 @@ export function AccessAdministration() {
             {!isSuper && (
               <button
                 onClick={() => setInviteOpen((v) => !v)}
-                className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#2649B3] px-4 text-sm font-semibold text-white hover:bg-[#1D3A96]"
+                className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#1E3A8A] px-4 text-sm font-semibold text-white hover:bg-[#1D3A96]"
               >
                 <UserPlus size={16} /> Invite user
               </button>
@@ -592,7 +592,7 @@ export function AccessAdministration() {
                 void loadBase();
                 void loadCompanyContext();
               }}
-              className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#D9D9D9] bg-white px-4 text-sm font-medium text-[#2649B3] hover:bg-[#FDFDFD]"
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#D9D9D9] bg-white px-4 text-sm font-medium text-[#1E3A8A] hover:bg-[#FDFDFD]"
             >
               <RefreshCw size={15} /> Refresh
             </button>
@@ -606,7 +606,7 @@ export function AccessAdministration() {
               onClick={() => setActiveTab("tenants")}
               className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
                 activeTab === "tenants"
-                  ? "bg-[#2649B3] text-white shadow-sm"
+                  ? "bg-[#1E3A8A] text-white shadow-sm"
                   : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
               }`}
             >
@@ -617,7 +617,7 @@ export function AccessAdministration() {
               onClick={() => setActiveTab("companies")}
               className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
                 activeTab === "companies"
-                  ? "bg-[#2649B3] text-white shadow-sm"
+                  ? "bg-[#1E3A8A] text-white shadow-sm"
                   : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
               }`}
             >
@@ -628,7 +628,7 @@ export function AccessAdministration() {
               onClick={() => setActiveTab("modules")}
               className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
                 activeTab === "modules"
-                  ? "bg-[#2649B3] text-white shadow-sm"
+                  ? "bg-[#1E3A8A] text-white shadow-sm"
                   : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
               }`}
             >
@@ -639,7 +639,7 @@ export function AccessAdministration() {
               onClick={() => setActiveTab("departments")}
               className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
                 activeTab === "departments"
-                  ? "bg-[#2649B3] text-white shadow-sm"
+                  ? "bg-[#1E3A8A] text-white shadow-sm"
                   : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
               }`}
             >
@@ -650,7 +650,7 @@ export function AccessAdministration() {
               onClick={() => setActiveTab("users")}
               className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
                 activeTab === "users"
-                  ? "bg-[#2649B3] text-white shadow-sm"
+                  ? "bg-[#1E3A8A] text-white shadow-sm"
                   : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
               }`}
             >
@@ -668,7 +668,7 @@ export function AccessAdministration() {
                 onClick={() => setCompanyViewTab("members")}
                 className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
                   companyViewTab === "members"
-                    ? "bg-[#2649B3] text-white shadow-sm"
+                    ? "bg-[#1E3A8A] text-white shadow-sm"
                     : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
                 }`}
               >
@@ -679,7 +679,7 @@ export function AccessAdministration() {
                 onClick={() => setCompanyViewTab("departments")}
                 className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
                   companyViewTab === "departments"
-                    ? "bg-[#2649B3] text-white shadow-sm"
+                    ? "bg-[#1E3A8A] text-white shadow-sm"
                     : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
                 }`}
               >
@@ -690,7 +690,7 @@ export function AccessAdministration() {
               <button
                 type="button"
                 onClick={() => openNewDepartmentModal("DEPARTMENT")}
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#2649B3] bg-[#EAF6FF] px-3.5 text-xs font-semibold text-[#2649B3] hover:bg-[#D9EEFF]"
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#1E3A8A] bg-[#EFF6FF] px-3.5 text-xs font-semibold text-[#1E3A8A] hover:bg-[#D9EEFF]"
               >
                 + Buat Departemen / Cost Center
               </button>
@@ -785,7 +785,7 @@ export function AccessAdministration() {
             <div className="rounded-[24px] border border-[#EFEFEF] bg-white p-6 space-y-5">
               <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#EFEFEF] pb-4">
                 <div>
-                  <h2 className="text-lg font-bold text-[#2649B3]">Departemen, Divisi & Cost Center</h2>
+                  <h2 className="text-lg font-bold text-[#1E3A8A]">Departemen, Divisi & Cost Center</h2>
                   <p className="mt-0.5 text-xs text-[#4F5050]">
                     Kelola struktur Departemen dan Divisi beserta Cost Center Budgeting dan delegasi modul untuk Company terpilih.
                   </p>
@@ -808,14 +808,14 @@ export function AccessAdministration() {
                   <button
                     type="button"
                     onClick={() => openNewDepartmentModal("DEPARTMENT")}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#2649B3] px-3.5 text-xs font-semibold text-white hover:bg-[#1D3A96]"
+                    className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#1E3A8A] px-3.5 text-xs font-semibold text-white hover:bg-[#1D3A96]"
                   >
                     + Buat Departemen
                   </button>
                   <button
                     type="button"
                     onClick={() => openNewDepartmentModal("DIVISION")}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#2649B3] bg-[#EAF6FF] px-3.5 text-xs font-semibold text-[#2649B3] hover:bg-[#D9EEFF]"
+                    className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#1E3A8A] bg-[#EFF6FF] px-3.5 text-xs font-semibold text-[#1E3A8A] hover:bg-[#D9EEFF]"
                   >
                     + Buat Divisi
                   </button>
@@ -839,7 +839,7 @@ export function AccessAdministration() {
                       <tr key={d.id} className="hover:bg-[#FDFDFD]">
                         <td className="px-4 py-3">
                           <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
-                            d.unit_type === "DIVISION" ? "bg-purple-50 text-purple-700" : "bg-[#EAF6FF] text-[#2649B3]"
+                            d.unit_type === "DIVISION" ? "bg-purple-50 text-purple-700" : "bg-[#EFF6FF] text-[#1E3A8A]"
                           }`}>
                             {d.unit_type === "DIVISION" ? "DIVISI" : "DEPARTEMEN"}
                           </span>
@@ -871,7 +871,7 @@ export function AccessAdministration() {
                             <button
                               type="button"
                               onClick={() => openEditDepartmentModal(d)}
-                              className="rounded-lg border border-[#D9D9D9] px-2.5 py-1 text-xs font-semibold text-[#2649B3] hover:bg-[#EAF6FF]"
+                              className="rounded-lg border border-[#D9D9D9] px-2.5 py-1 text-xs font-semibold text-[#1E3A8A] hover:bg-[#EFF6FF]"
                             >
                               Edit
                             </button>
@@ -905,7 +905,7 @@ export function AccessAdministration() {
               <div className="rounded-[24px] border border-[#EFEFEF] bg-white">
                 <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#EFEFEF] px-6 py-4">
                   <div>
-                    <h2 className="font-bold text-[#2649B3]">Semua Pengguna Platform</h2>
+                    <h2 className="font-bold text-[#1E3A8A]">Semua Pengguna Platform</h2>
                     <p className="mt-0.5 text-xs text-[#4F5050]">{users.length} pengguna terdaftar di seluruh tenant</p>
                   </div>
                   <div className="relative">
@@ -914,7 +914,7 @@ export function AccessAdministration() {
                       value={userSearch}
                       onChange={(e) => setUserSearch(e.target.value)}
                       placeholder="Cari nama atau email…"
-                      className="h-9 w-64 rounded-xl border border-[#EFEFEF] bg-[#FDFDFD] pl-8 pr-3 text-sm outline-none focus:border-[#42ACFB]"
+                      className="h-9 w-64 rounded-xl border border-[#EFEFEF] bg-[#FDFDFD] pl-8 pr-3 text-sm outline-none focus:border-[#1D4ED8]"
                     />
                   </div>
                 </div>
@@ -946,7 +946,7 @@ export function AccessAdministration() {
                             <tr key={u.id} className="transition hover:bg-[#FDFDFD]">
                               <td className="px-6 py-3">
                                 <div className="flex items-center gap-2.5">
-                                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EAF6FF] text-xs font-bold text-[#2649B3]">
+                                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EFF6FF] text-xs font-bold text-[#1E3A8A]">
                                     {(u.full_name || u.email).slice(0, 2).toUpperCase()}
                                   </span>
                                   <div>
@@ -959,7 +959,7 @@ export function AccessAdministration() {
                               <td className="px-6 py-3 text-xs text-[#4F5050]">{userCompany?.legal_name || "-"}</td>
                               <td className="px-6 py-3">
                                 {u.roles && u.roles.length > 0 ? (
-                                  <span className="rounded-full bg-[#EAF6FF] px-2.5 py-0.5 text-xs font-medium text-[#2649B3]">
+                                  <span className="rounded-full bg-[#EFF6FF] px-2.5 py-0.5 text-xs font-medium text-[#1E3A8A]">
                                     {u.roles[0].role_name || u.roles[0].role_code}
                                   </span>
                                 ) : (
@@ -989,7 +989,7 @@ export function AccessAdministration() {
         <div className="rounded-2xl border border-[#EFEFEF] bg-white p-6 space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#EFEFEF] pb-4">
             <div>
-              <h2 className="text-lg font-bold text-[#2649B3]">Kelola Departemen, Divisi & Cost Center</h2>
+              <h2 className="text-lg font-bold text-[#1E3A8A]">Kelola Departemen, Divisi & Cost Center</h2>
               <p className="mt-1 text-xs text-[#4F5050]">
                 Setiap Departemen atau Divisi yang ditandai sebagai <b>Cost Center</b> otomatis muncul di dropdown <b>Buat Budget Plan</b> dan mewariskan modulnya ke seluruh <b>GM</b>, <b>SPV</b>, dan <b>STAFF</b> di dalamnya.
               </p>
@@ -998,14 +998,14 @@ export function AccessAdministration() {
               <button
                 type="button"
                 onClick={() => openNewDepartmentModal("DEPARTMENT")}
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#2649B3] px-4 text-xs font-semibold text-white hover:bg-[#1D3A96]"
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#1E3A8A] px-4 text-xs font-semibold text-white hover:bg-[#1D3A96]"
               >
                 + Buat Departemen Baru
               </button>
               <button
                 type="button"
                 onClick={() => openNewDepartmentModal("DIVISION")}
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#2649B3] bg-[#EAF6FF] px-4 text-xs font-semibold text-[#2649B3] hover:bg-[#D9EEFF]"
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#1E3A8A] bg-[#EFF6FF] px-4 text-xs font-semibold text-[#1E3A8A] hover:bg-[#D9EEFF]"
               >
                 + Buat Divisi Baru
               </button>
@@ -1020,7 +1020,7 @@ export function AccessAdministration() {
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-extrabold ${
-                          d.unit_type === "DIVISION" ? "bg-purple-100 text-purple-800" : "bg-[#EAF6FF] text-[#2649B3]"
+                          d.unit_type === "DIVISION" ? "bg-purple-100 text-purple-800" : "bg-[#EFF6FF] text-[#1E3A8A]"
                         }`}>
                           {d.unit_type === "DIVISION" ? "DIVISI" : "DEPARTEMEN"}
                         </span>
@@ -1043,7 +1043,7 @@ export function AccessAdministration() {
                       <button
                         type="button"
                         onClick={() => openEditDepartmentModal(d)}
-                        className="rounded-lg border border-[#D9D9D9] bg-white px-2.5 py-1 text-xs font-semibold text-[#2649B3] hover:bg-[#EAF6FF]"
+                        className="rounded-lg border border-[#D9D9D9] bg-white px-2.5 py-1 text-xs font-semibold text-[#1E3A8A] hover:bg-[#EFF6FF]"
                       >
                         Edit
                       </button>
@@ -1061,7 +1061,7 @@ export function AccessAdministration() {
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {(d.modules || []).length > 0 ? (
                         (d.modules || []).map((modKey) => (
-                          <span key={modKey} className="rounded-lg bg-[#EAF6FF] px-2.5 py-0.5 text-[11px] font-semibold text-[#2649B3]">
+                          <span key={modKey} className="rounded-lg bg-[#EFF6FF] px-2.5 py-0.5 text-[11px] font-semibold text-[#1E3A8A]">
                             {MODULE_LABELS[String(modKey).toUpperCase()]?.name || modKey}
                           </span>
                         ))
@@ -1082,7 +1082,7 @@ export function AccessAdministration() {
                           if (!e.target.value) return;
                           void handleSaveUserDepartmentRole(d.id, undefined, e.target.value);
                         }}
-                        className="h-7 rounded-lg border border-[#D9D9D9] bg-white px-2 text-[11px] font-semibold text-[#2649B3] outline-none focus:border-[#2649B3]"
+                        className="h-7 rounded-lg border border-[#D9D9D9] bg-white px-2 text-[11px] font-semibold text-[#1E3A8A] outline-none focus:border-[#1E3A8A]"
                       >
                         <option value="">+ Assign User ke {d.code}…</option>
                         {displayedUsers
@@ -1104,7 +1104,7 @@ export function AccessAdministration() {
                               className="inline-flex items-center gap-1 rounded-lg border border-[#D9D9D9] bg-white px-2 py-0.5 text-[11px] font-medium text-[#090909]"
                             >
                               <span>{u.full_name || u.email}</span>
-                              <span className="rounded bg-[#EAF6FF] px-1 text-[9px] font-bold text-[#2649B3]">
+                              <span className="rounded bg-[#EFF6FF] px-1 text-[9px] font-bold text-[#1E3A8A]">
                                 {String(u.role_level || "STAFF").toUpperCase()}
                               </span>
                             </span>
@@ -1129,11 +1129,11 @@ export function AccessAdministration() {
                   <p className="text-xs font-semibold uppercase tracking-[.14em] text-[#4F5050]">
                     Company members
                   </p>
-                  <p className="mt-1 text-sm text-[#2649B3]">
+                  <p className="mt-1 text-sm text-[#1E3A8A]">
                     {displayedUsers.length} active identities
                   </p>
                 </div>
-                <Users size={19} className="text-[#42ACFB]" />
+                <Users size={19} className="text-[#1D4ED8]" />
               </div>
               <div className="relative mt-4">
                 <Search
@@ -1144,7 +1144,7 @@ export function AccessAdministration() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search team member"
-                  className="h-10 w-full rounded-xl border border-[#EFEFEF] bg-white pl-9 pr-3 text-sm outline-none focus:border-[#42ACFB]"
+                  className="h-10 w-full rounded-xl border border-[#EFEFEF] bg-white pl-9 pr-3 text-sm outline-none focus:border-[#1D4ED8]"
                 />
               </div>
             </div>
@@ -1160,12 +1160,12 @@ export function AccessAdministration() {
                     key={member.id}
                     onClick={() => setSelectedUserId(member.id)}
                     className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${
-                      active ? "bg-[#EAF6FF]" : "hover:bg-[#EAF6FF]"
+                      active ? "bg-[#EFF6FF]" : "hover:bg-[#EFF6FF]"
                     }`}
                   >
                     <span
                       className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-                        active ? "bg-[#2649B3] text-white" : "bg-[#EFEFEF] text-[#2649B3]"
+                        active ? "bg-[#1E3A8A] text-white" : "bg-[#EFEFEF] text-[#1E3A8A]"
                       }`}
                     >
                       {(member.full_name || member.email)
@@ -1176,14 +1176,14 @@ export function AccessAdministration() {
                         .toUpperCase()}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-[#2649B3]">
+                      <span className="block truncate text-sm font-semibold text-[#1E3A8A]">
                         {member.full_name || member.email}
                       </span>
                       <span className="block truncate text-xs text-[#4F5050]">
                         {member.id === user?.id ? "Your account · " : ""}
                         {roleName}
                       </span>
-                      <span className="mt-0.5 block truncate text-[11px] font-medium text-[#2649B3]/80">
+                      <span className="mt-0.5 block truncate text-[11px] font-medium text-[#1E3A8A]/80">
                         {(() => {
                           const dept = departments.find((d) => String(d.id) === String(member.department_id || ""));
                           const lvl = String(member.role_level || "STAFF").toUpperCase();
@@ -1193,7 +1193,7 @@ export function AccessAdministration() {
                     </span>
                     <ChevronRight
                       size={15}
-                      className={active ? "text-[#2649B3]" : "text-[#D9D9D9]"}
+                      className={active ? "text-[#1E3A8A]" : "text-[#D9D9D9]"}
                     />
                   </button>
                 );
@@ -1209,7 +1209,7 @@ export function AccessAdministration() {
                     <p className="text-xs font-semibold uppercase tracking-[.14em] text-[#4F5050]">
                       Access profile
                     </p>
-                    <h2 className="mt-1 text-xl font-semibold text-[#2649B3]">
+                    <h2 className="mt-1 text-xl font-semibold text-[#1E3A8A]">
                       {selectedUser.full_name || selectedUser.email}
                     </h2>
                     <p className="mt-1 flex items-center gap-1.5 text-sm text-[#4F5050]">
@@ -1220,7 +1220,7 @@ export function AccessAdministration() {
                     className={`rounded-full px-3 py-1 text-xs font-semibold ${
                       selectedUser.is_active === false
                         ? "bg-red-50 text-red-700"
-                        : "bg-[#EAF6FF] text-[#2649B3]"
+                        : "bg-[#EFF6FF] text-[#1E3A8A]"
                     }`}
                   >
                     {selectedUser.is_active === false ? "Inactive" : "Active"}
@@ -1244,12 +1244,12 @@ export function AccessAdministration() {
                 <div className="mt-6 rounded-2xl border border-[#EFEFEF] p-5 bg-[#FDFDFD]">
                   <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <h3 className="font-semibold text-[#2649B3]">Departemen, Divisi & Hierarki 3 Role (GM / SPV / STAFF)</h3>
+                      <h3 className="font-semibold text-[#1E3A8A]">Departemen, Divisi & Hierarki 3 Role (GM / SPV / STAFF)</h3>
                       <p className="mt-0.5 text-xs text-[#4F5050]">
                         Hubungkan anggota tim ke Departemen/Divisi (Cost Center) dan tetapkan wewenang 3 level hierarki untuk modul, CRM, dan approval anggaran.
                       </p>
                     </div>
-                    <span className="rounded-full bg-[#EAF6FF] px-3 py-1 text-xs font-bold text-[#2649B3]">
+                    <span className="rounded-full bg-[#EFF6FF] px-3 py-1 text-xs font-bold text-[#1E3A8A]">
                       Level: {String(selectedUser.role_level || "STAFF").toUpperCase()}
                     </span>
                   </div>
@@ -1260,7 +1260,7 @@ export function AccessAdministration() {
                         disabled={savingDeptRole}
                         value={selectedUser.department_id || ""}
                         onChange={(e) => void handleSaveUserDepartmentRole(e.target.value || null, String(selectedUser.role_level || "STAFF"))}
-                        className="h-10 w-full rounded-xl border border-[#D9D9D9] bg-white px-3 text-xs font-semibold text-[#090909] outline-none focus:border-[#2649B3] disabled:opacity-60"
+                        className="h-10 w-full rounded-xl border border-[#D9D9D9] bg-white px-3 text-xs font-semibold text-[#090909] outline-none focus:border-[#1E3A8A] disabled:opacity-60"
                       >
                         <option value="">-- Belum Ditempatkan di Departemen / Divisi --</option>
                         {departments.map((d) => (
@@ -1276,7 +1276,7 @@ export function AccessAdministration() {
                         disabled={savingDeptRole}
                         value={String(selectedUser.role_level || "STAFF").toUpperCase()}
                         onChange={(e) => void handleSaveUserDepartmentRole(selectedUser.department_id || null, e.target.value)}
-                        className="h-10 w-full rounded-xl border border-[#D9D9D9] bg-white px-3 text-xs font-semibold text-[#090909] outline-none focus:border-[#2649B3] disabled:opacity-60"
+                        className="h-10 w-full rounded-xl border border-[#D9D9D9] bg-white px-3 text-xs font-semibold text-[#090909] outline-none focus:border-[#1E3A8A] disabled:opacity-60"
                       >
                         <option value="GM">GM — General Manager (Visibilitas Lintas Divisi & Override Budget)</option>
                         <option value="SPV">SPV — Supervisor / Manager Divisi (Approval Divisi & Delegasi Tim)</option>
@@ -1287,13 +1287,13 @@ export function AccessAdministration() {
 
                   <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <h3 className="font-semibold text-[#2649B3]">Assigned Roles</h3>
+                      <h3 className="font-semibold text-[#1E3A8A]">Assigned Roles</h3>
                       <p className="mt-0.5 text-xs text-[#4F5050]">
                         Peran yang ditugaskan kepada pengguna pada company ini. Pengguna dapat berganti peran aktif melalui menu atas.
                       </p>
                     </div>
                     {userRolesData.roles.find((r) => r.is_active) && (
-                      <div className="flex items-center gap-1.5 rounded-full bg-[#EAF6FF] px-3 py-1 text-xs font-semibold text-[#2649B3]">
+                      <div className="flex items-center gap-1.5 rounded-full bg-[#EFF6FF] px-3 py-1 text-xs font-semibold text-[#1E3A8A]">
                         <span className="text-2xs text-[#4F5050]">Active Role:</span>
                         <span>{userRolesData.roles.find((r) => r.is_active)?.role_name || userRolesData.roles.find((r) => r.is_active)?.role_code}</span>
                       </div>
@@ -1317,8 +1317,8 @@ export function AccessAdministration() {
                             key={item.code}
                             className={`flex items-center justify-between gap-2 rounded-xl border p-3 text-xs transition cursor-pointer ${
                               assigned
-                                ? "border-[#2649B3]/40 bg-white shadow-xs font-semibold text-[#2649B3]"
-                                : "border-[#EFEFEF] bg-white text-[#090909] hover:border-[#2649B3]/20"
+                                ? "border-[#1E3A8A]/40 bg-white shadow-xs font-semibold text-[#1E3A8A]"
+                                : "border-[#EFEFEF] bg-white text-[#090909] hover:border-[#1E3A8A]/20"
                             } ${isSelf ? "cursor-not-allowed opacity-60" : ""}`}
                           >
                             <div className="flex items-center gap-2.5">
@@ -1327,11 +1327,11 @@ export function AccessAdministration() {
                                 checked={assigned}
                                 disabled={isSelf || updating}
                                 onChange={() => handleToggleUserRole(item.code, assigned)}
-                                className="h-4 w-4 rounded border-[#D9D9D9] text-[#2649B3] focus:ring-[#2649B3]"
+                                className="h-4 w-4 rounded border-[#D9D9D9] text-[#1E3A8A] focus:ring-[#1E3A8A]"
                               />
                               <span>{item.label}</span>
                             </div>
-                            {updating && <RefreshCw size={12} className="animate-spin text-[#2649B3]" />}
+                            {updating && <RefreshCw size={12} className="animate-spin text-[#1E3A8A]" />}
                           </label>
                         );
                       })}
@@ -1342,7 +1342,7 @@ export function AccessAdministration() {
                 <div className="mt-6">
                   <div className="mb-4 flex items-end justify-between gap-4">
                     <div>
-                      <h3 className="font-semibold text-[#2649B3]">Module permissions</h3>
+                      <h3 className="font-semibold text-[#1E3A8A]">Module permissions</h3>
                       <p className="mt-1 text-xs text-[#4F5050]">
                         Role default mempertahankan hak bawaan. Pilihan lain membuat override khusus user.
                       </p>
@@ -1381,10 +1381,10 @@ export function AccessAdministration() {
                         >
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#EAF6FF] text-[10px] font-bold text-[#2649B3]">
+                              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#EFF6FF] text-[10px] font-bold text-[#1E3A8A]">
                                 {module.module_code.slice(0, 2)}
                               </span>
-                              <p className="text-sm font-semibold text-[#2649B3]">{meta.name}</p>
+                              <p className="text-sm font-semibold text-[#1E3A8A]">{meta.name}</p>
                             </div>
                             <p className="ml-9 mt-1 text-xs text-[#4F5050]">{meta.description}</p>
                           </div>
@@ -1399,8 +1399,8 @@ export function AccessAdministration() {
                                   onClick={() => setUserAccess(module.module_code, choice.mode)}
                                   className={`segmented-control-item min-h-9 px-2.5 ${
                                     checked
-                                      ? "segmented-control-item-active ring-1 ring-[#9FD6FF]"
-                                      : "text-[#4F5050] hover:text-[#2649B3]"
+                                      ? "segmented-control-item-active ring-1 ring-[#BFDBFE]"
+                                      : "text-[#4F5050] hover:text-[#1E3A8A]"
                                   } disabled:cursor-not-allowed disabled:opacity-50`}
                                 >
                                   <Icon size={13} /> {choice.label}
@@ -1414,7 +1414,7 @@ export function AccessAdministration() {
                     {!loading && approvedModules.length === 0 && (
                       <div className="rounded-2xl border border-dashed border-[#D9D9D9] p-10 text-center">
                         <LockKeyhole className="mx-auto text-[#4F5050]" />
-                        <p className="mt-3 font-semibold text-[#2649B3]">No modules provisioned</p>
+                        <p className="mt-3 font-semibold text-[#1E3A8A]">No modules provisioned</p>
                         <p className="mt-1 text-xs text-[#4F5050]">
                           Super Admin must enable a company module before it can be delegated.
                         </p>
@@ -1437,15 +1437,15 @@ export function AccessAdministration() {
         <form onSubmit={submitInvite} className="rounded-2xl border border-[#EFEFEF] bg-white p-5">
           <div className="mb-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <UserPlus size={17} className="text-[#2649B3]" />
-              <h2 className="font-semibold text-[#2649B3]">Invite company member</h2>
+              <UserPlus size={17} className="text-[#1E3A8A]" />
+              <h2 className="font-semibold text-[#1E3A8A]">Invite company member</h2>
             </div>
             <button type="button" onClick={() => setInviteOpen(false)} className="text-xs text-[#4F5050] underline">Batal</button>
           </div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             <input
               required
-              className="h-11 rounded-[11px] border border-[#EFEFEF] px-3 text-sm placeholder:text-gray-400 outline-none focus:border-[#42ACFB]"
+              className="h-11 rounded-[11px] border border-[#EFEFEF] px-3 text-sm placeholder:text-gray-400 outline-none focus:border-[#1D4ED8]"
               placeholder="Nama lengkap *"
               value={invite.name}
               onChange={(e) => setInvite({ ...invite, name: e.target.value })}
@@ -1453,7 +1453,7 @@ export function AccessAdministration() {
             <input
               required
               type="email"
-              className="h-11 rounded-[11px] border border-[#EFEFEF] px-3 text-sm placeholder:text-gray-400 outline-none focus:border-[#42ACFB]"
+              className="h-11 rounded-[11px] border border-[#EFEFEF] px-3 text-sm placeholder:text-gray-400 outline-none focus:border-[#1D4ED8]"
               placeholder="Email *"
               value={invite.email}
               onChange={(e) => setInvite({ ...invite, email: e.target.value })}
@@ -1462,14 +1462,14 @@ export function AccessAdministration() {
               required
               minLength={8}
               type="password"
-              className="h-11 rounded-[11px] border border-[#EFEFEF] px-3 text-sm placeholder:text-gray-400 outline-none focus:border-[#42ACFB]"
+              className="h-11 rounded-[11px] border border-[#EFEFEF] px-3 text-sm placeholder:text-gray-400 outline-none focus:border-[#1D4ED8]"
               placeholder="Password sementara (min. 8 karakter) *"
               value={invite.password}
               onChange={(e) => setInvite({ ...invite, password: e.target.value })}
             />
             <select
               required
-              className="h-11 rounded-[11px] border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#42ACFB]"
+              className="h-11 rounded-[11px] border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#1D4ED8]"
               value={invite.role_code}
               onChange={(e) => setInvite({ ...invite, role_code: e.target.value })}
             >
@@ -1483,7 +1483,7 @@ export function AccessAdministration() {
                 ))}
             </select>
             <select
-              className="h-11 rounded-[11px] border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#42ACFB]"
+              className="h-11 rounded-[11px] border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#1D4ED8]"
               value={invite.department_id}
               onChange={(e) => setInvite({ ...invite, department_id: e.target.value })}
             >
@@ -1496,7 +1496,7 @@ export function AccessAdministration() {
             </select>
             <select
               required
-              className="h-11 rounded-[11px] border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#42ACFB]"
+              className="h-11 rounded-[11px] border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#1D4ED8]"
               value={invite.role_level}
               onChange={(e) => setInvite({ ...invite, role_level: e.target.value })}
             >
@@ -1508,7 +1508,7 @@ export function AccessAdministration() {
           <div className="mt-4 flex justify-end">
             <button
               type="submit"
-              className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#2649B3] px-5 text-sm font-semibold text-white hover:bg-[#1D3A96]"
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#1E3A8A] px-5 text-sm font-semibold text-white hover:bg-[#1D3A96]"
             >
               <Check size={15} /> Kirim undangan
             </button>
@@ -1522,7 +1522,7 @@ export function AccessAdministration() {
           <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
             <div className="mb-5 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#2649B3] text-white">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#1E3A8A] text-white">
                   <UserPlus size={17} />
                 </div>
                 <div>
@@ -1540,7 +1540,7 @@ export function AccessAdministration() {
                   <label className="mb-1 block text-xs font-semibold text-[#4F5050]">Nama Lengkap *</label>
                   <input
                     required
-                    className="h-10 w-full rounded-xl border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#42ACFB]"
+                    className="h-10 w-full rounded-xl border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#1D4ED8]"
                     placeholder="Nama lengkap user"
                     value={superInvite.name}
                     onChange={(e) => setSuperInvite({ ...superInvite, name: e.target.value })}
@@ -1551,7 +1551,7 @@ export function AccessAdministration() {
                   <input
                     required
                     type="email"
-                    className="h-10 w-full rounded-xl border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#42ACFB]"
+                    className="h-10 w-full rounded-xl border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#1D4ED8]"
                     placeholder="email@domain.com"
                     value={superInvite.email}
                     onChange={(e) => setSuperInvite({ ...superInvite, email: e.target.value })}
@@ -1564,7 +1564,7 @@ export function AccessAdministration() {
                   required
                   minLength={8}
                   type="password"
-                  className="h-10 w-full rounded-xl border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#42ACFB]"
+                  className="h-10 w-full rounded-xl border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#1D4ED8]"
                   placeholder="Password sementara"
                   value={superInvite.password}
                   onChange={(e) => setSuperInvite({ ...superInvite, password: e.target.value })}
@@ -1574,7 +1574,7 @@ export function AccessAdministration() {
                 <label className="mb-1 block text-xs font-semibold text-[#4F5050]">Tenant *</label>
                 <select
                   required
-                  className="h-10 w-full rounded-xl border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#42ACFB]"
+                  className="h-10 w-full rounded-xl border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#1D4ED8]"
                   value={superInvite.tenant_id}
                   onChange={(e) => setSuperInvite({
                     ...superInvite,
@@ -1593,7 +1593,7 @@ export function AccessAdministration() {
                 <label className="mb-1 block text-xs font-semibold text-[#4F5050]">Company *</label>
                 <select
                   required
-                  className="h-10 w-full rounded-xl border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#42ACFB] disabled:opacity-50"
+                  className="h-10 w-full rounded-xl border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#1D4ED8] disabled:opacity-50"
                   value={superInvite.company_id}
                   disabled={!superInvite.tenant_id}
                   onChange={(e) => setSuperInvite({ ...superInvite, company_id: e.target.value })}
@@ -1608,7 +1608,7 @@ export function AccessAdministration() {
                 <label className="mb-1 block text-xs font-semibold text-[#4F5050]">Role *</label>
                 <select
                   required
-                  className="h-10 w-full rounded-xl border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#42ACFB]"
+                  className="h-10 w-full rounded-xl border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#1D4ED8]"
                   value={superInvite.role_code}
                   onChange={(e) => setSuperInvite({ ...superInvite, role_code: e.target.value })}
                 >
@@ -1634,7 +1634,7 @@ export function AccessAdministration() {
                 <button
                   type="submit"
                   disabled={superInviteSubmitting}
-                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#2649B3] px-5 text-sm font-semibold text-white hover:bg-[#1D3A96] disabled:opacity-60"
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#1E3A8A] px-5 text-sm font-semibold text-white hover:bg-[#1D3A96] disabled:opacity-60"
                 >
                   <Check size={15} /> {superInviteSubmitting ? "Menyimpan…" : "Buat User"}
                 </button>
@@ -1672,7 +1672,7 @@ export function AccessAdministration() {
                   <select
                     value={deptForm.unit_type}
                     onChange={(e) => setDeptForm({ ...deptForm, unit_type: e.target.value as "DEPARTMENT" | "DIVISION" })}
-                    className="h-10 w-full rounded-xl border border-[#D9D9D9] px-3 text-sm outline-none focus:border-[#2649B3]"
+                    className="h-10 w-full rounded-xl border border-[#D9D9D9] px-3 text-sm outline-none focus:border-[#1E3A8A]"
                   >
                     <option value="DEPARTMENT">Departemen Utama</option>
                     <option value="DIVISION">Divisi / Sub-Unit</option>
@@ -1685,7 +1685,7 @@ export function AccessAdministration() {
                     value={deptForm.code}
                     onChange={(e) => setDeptForm({ ...deptForm, code: e.target.value.toUpperCase() })}
                     placeholder="Contoh: SALES, FIN, OPS, IT, DIV-B2B"
-                    className="h-10 w-full rounded-xl border border-[#D9D9D9] px-3 text-sm font-mono uppercase outline-none focus:border-[#2649B3]"
+                    className="h-10 w-full rounded-xl border border-[#D9D9D9] px-3 text-sm font-mono uppercase outline-none focus:border-[#1E3A8A]"
                   />
                 </div>
                 <div className="sm:col-span-2">
@@ -1695,7 +1695,7 @@ export function AccessAdministration() {
                     value={deptForm.name}
                     onChange={(e) => setDeptForm({ ...deptForm, name: e.target.value })}
                     placeholder="Contoh: Sales & Marketing / Divisi Enterprise B2B"
-                    className="h-10 w-full rounded-xl border border-[#D9D9D9] px-3 text-sm outline-none focus:border-[#2649B3]"
+                    className="h-10 w-full rounded-xl border border-[#D9D9D9] px-3 text-sm outline-none focus:border-[#1E3A8A]"
                   />
                 </div>
                 {deptForm.unit_type === "DIVISION" && (
@@ -1704,7 +1704,7 @@ export function AccessAdministration() {
                     <select
                       value={deptForm.parent_id}
                       onChange={(e) => setDeptForm({ ...deptForm, parent_id: e.target.value })}
-                      className="h-10 w-full rounded-xl border border-[#D9D9D9] px-3 text-sm outline-none focus:border-[#2649B3]"
+                      className="h-10 w-full rounded-xl border border-[#D9D9D9] px-3 text-sm outline-none focus:border-[#1E3A8A]"
                     >
                       <option value="">-- Tanpa Induk / Mandiri --</option>
                       {departments
@@ -1722,7 +1722,7 @@ export function AccessAdministration() {
                   <select
                     value={deptForm.manager_user_id}
                     onChange={(e) => setDeptForm({ ...deptForm, manager_user_id: e.target.value })}
-                    className="h-10 w-full rounded-xl border border-[#D9D9D9] px-3 text-sm outline-none focus:border-[#2649B3]"
+                    className="h-10 w-full rounded-xl border border-[#D9D9D9] px-3 text-sm outline-none focus:border-[#1E3A8A]"
                   >
                     <option value="">-- Pilih Manager / SPV (Opsional) --</option>
                     {users.map((u) => (
@@ -1738,7 +1738,7 @@ export function AccessAdministration() {
                       type="checkbox"
                       checked={deptForm.is_cost_center}
                       onChange={(e) => setDeptForm({ ...deptForm, is_cost_center: e.target.checked })}
-                      className="h-4 w-4 rounded border-[#D9D9D9] text-[#2649B3]"
+                      className="h-4 w-4 rounded border-[#D9D9D9] text-[#1E3A8A]"
                     />
                     Aktif sebagai Cost Center Budgeting
                   </label>
@@ -1746,7 +1746,7 @@ export function AccessAdministration() {
               </div>
 
               <div className="border-t border-[#EFEFEF] pt-3">
-                <label className="mb-2 block text-xs font-bold text-[#2649B3]">
+                <label className="mb-2 block text-xs font-bold text-[#1E3A8A]">
                   Checklist Delegasi Modul (Diwariskan ke Anggota Departemen/Divisi)
                 </label>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -1760,7 +1760,7 @@ export function AccessAdministration() {
                         key={modCode}
                         className={`flex items-center gap-2 rounded-xl border p-2.5 text-xs cursor-pointer transition ${
                           checked
-                            ? "border-[#2649B3] bg-[#EAF6FF]/60 font-semibold text-[#2649B3]"
+                            ? "border-[#1E3A8A] bg-[#EFF6FF]/60 font-semibold text-[#1E3A8A]"
                             : "border-[#EFEFEF] bg-white text-[#090909]"
                         }`}
                       >
@@ -1773,7 +1773,7 @@ export function AccessAdministration() {
                               : deptForm.module_keys.filter((k) => k !== modCode);
                             setDeptForm({ ...deptForm, module_keys: next });
                           }}
-                          className="h-4 w-4 rounded border-[#D9D9D9] text-[#2649B3]"
+                          className="h-4 w-4 rounded border-[#D9D9D9] text-[#1E3A8A]"
                         />
                         <span className="truncate">{MODULE_LABELS[modCode]?.name || modCode}</span>
                       </label>
@@ -1793,7 +1793,7 @@ export function AccessAdministration() {
                 <button
                   type="submit"
                   disabled={deptSubmitting}
-                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#2649B3] px-5 text-xs font-semibold text-white hover:bg-[#1D3A96] disabled:opacity-50"
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#1E3A8A] px-5 text-xs font-semibold text-white hover:bg-[#1D3A96] disabled:opacity-50"
                 >
                   <Check size={15} /> {deptSubmitting ? "Menyimpan…" : "Simpan Departemen / Divisi"}
                 </button>

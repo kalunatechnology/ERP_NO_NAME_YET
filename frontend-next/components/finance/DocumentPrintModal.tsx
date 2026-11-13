@@ -67,7 +67,7 @@ export function DocumentPrintModal({ isOpen, onClose, documentData }: DocumentPr
         {/* Modal Action Header (Hidden in Print) */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#EFEFEF] bg-[#FDFDFD] print:hidden">
           <div className="flex items-center gap-2">
-            <FileText size={18} className="text-[#2649B3]" />
+            <FileText size={18} className="text-[#1E3A8A]" />
             <span className="text-sm font-extrabold text-[#090909]">
               Pratinjau Cetak Dokumen Resmi
             </span>
@@ -77,7 +77,7 @@ export function DocumentPrintModal({ isOpen, onClose, documentData }: DocumentPr
             <button
               type="button"
               onClick={handlePrint}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#2649B3] hover:bg-[#2649B3] text-white text-xs font-bold shadow-xs transition-all"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#1E3A8A] hover:bg-[#1E3A8A] text-white text-xs font-bold shadow-xs transition-all"
             >
               <Printer size={14} />
               <span>Cetak / Simpan PDF</span>
@@ -93,13 +93,13 @@ export function DocumentPrintModal({ isOpen, onClose, documentData }: DocumentPr
         </div>
 
         {/* Printable Document Body */}
-        <div className="p-8 sm:p-10 overflow-y-auto space-y-6 text-[#2649B3] print:p-0">
+        <div className="p-8 sm:p-10 overflow-y-auto space-y-6 text-[#1E3A8A] print:p-0">
           
           {/* 1. Legal Company Header */}
-          <div className="flex items-start justify-between border-b-2 border-[#2649B3] pb-6">
+          <div className="flex items-start justify-between border-b-2 border-[#1E3A8A] pb-6">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <div className="w-7 h-7 rounded-lg bg-[#2649B3] text-white flex items-center justify-center font-black text-sm">
+                <div className="w-7 h-7 rounded-lg bg-[#1E3A8A] text-white flex items-center justify-center font-black text-sm">
                   M
                 </div>
                 <h1 className="text-xl font-black tracking-tight text-[#090909]">
@@ -114,7 +114,7 @@ export function DocumentPrintModal({ isOpen, onClose, documentData }: DocumentPr
             </div>
 
             <div className="text-right">
-              <span className="text-xs font-black uppercase text-[#2649B3] tracking-wider block">
+              <span className="text-xs font-black uppercase text-[#1E3A8A] tracking-wider block">
                 {titleMap[documentData.type]}
               </span>
               <span className="text-base font-black font-mono text-[#090909] block mt-1">
@@ -165,7 +165,7 @@ export function DocumentPrintModal({ isOpen, onClose, documentData }: DocumentPr
           <div className="border border-[#EFEFEF] rounded-xl overflow-hidden">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-[#2649B3] text-white text-3xs uppercase font-extrabold tracking-wider">
+                <tr className="bg-[#1E3A8A] text-white text-3xs uppercase font-extrabold tracking-wider">
                   <th className="py-2.5 px-3 w-10 text-center">No</th>
                   <th className="py-2.5 px-3">Deskripsi Item / Pekerjaan</th>
                   <th className="py-2.5 px-3 text-right w-20">Volume</th>
@@ -194,8 +194,8 @@ export function DocumentPrintModal({ isOpen, onClose, documentData }: DocumentPr
           {/* 4. Financial Summary Breakdown */}
           <div className="flex flex-col sm:flex-row justify-between items-start gap-6 pt-2">
             {/* Bank Transfer Info */}
-            <div className="max-w-sm text-2xs space-y-2 p-3.5 rounded-xl bg-[#EAF6FF]/50 border border-[#D9D9D9]">
-              <div className="flex items-center gap-1.5 font-bold text-[#2649B3]">
+            <div className="max-w-sm text-2xs space-y-2 p-3.5 rounded-xl bg-[#EFF6FF]/50 border border-[#D9D9D9]">
+              <div className="flex items-center gap-1.5 font-bold text-[#1E3A8A]">
                 <Landmark size={14} />
                 <span>Instruksi Pembayaran Resmi:</span>
               </div>
@@ -217,11 +217,11 @@ export function DocumentPrintModal({ isOpen, onClose, documentData }: DocumentPr
               </div>
               <div className="flex justify-between py-1 border-b border-[#EFEFEF]">
                 <span className="text-[#4F5050]">PPN (11%)</span>
-                <span className="font-bold font-mono text-[#2649B3]">{formatRupiah(ppn)}</span>
+                <span className="font-bold font-mono text-[#1E3A8A]">{formatRupiah(ppn)}</span>
               </div>
-              <div className="flex justify-between py-2 border-t-2 border-[#2649B3] text-sm">
+              <div className="flex justify-between py-2 border-t-2 border-[#1E3A8A] text-sm">
                 <span className="font-black text-[#090909]">TOTAL AKHIR</span>
-                <span className="font-black font-mono text-[#2649B3] text-base">
+                <span className="font-black font-mono text-[#1E3A8A] text-base">
                   {formatRupiah(grandTotal)}
                 </span>
               </div>
@@ -232,14 +232,14 @@ export function DocumentPrintModal({ isOpen, onClose, documentData }: DocumentPr
           <div className="pt-8 border-t border-[#EFEFEF] flex items-end justify-between text-xs">
             <div className="flex items-center gap-3">
               <div className="w-16 h-16 rounded-xl border border-[#D9D9D9] bg-[#FDFDFD] flex items-center justify-center p-1">
-                <QrCode size={48} className="text-[#2649B3]" />
+                <QrCode size={48} className="text-[#1E3A8A]" />
               </div>
               <div className="text-3xs text-[#4F5050] space-y-0.5">
-                <span className="font-bold text-[#2649B3] block">DIGITALLY VERIFIED</span>
+                <span className="font-bold text-[#1E3A8A] block">DIGITALLY VERIFIED</span>
                 <span>Dokumen sah & diterbitkan oleh</span>
                 <span className="flex items-center gap-1">
                   <span className="font-mono">System ERP</span>
-                  <MarkaWordmark className="h-auto w-12 text-[#2649B3]" />
+                  <MarkaWordmark className="h-auto w-12 text-[#1E3A8A]" />
                 </span>
               </div>
             </div>

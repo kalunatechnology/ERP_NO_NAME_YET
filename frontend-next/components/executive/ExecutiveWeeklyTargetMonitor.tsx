@@ -119,7 +119,7 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
     <section className="rounded-[24px] border border-[#D9D9D9] bg-white px-4 py-6 sm:px-7 sm:py-8 lg:px-9">
       <div className="flex flex-col gap-6">
         <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[#EAF6FF] text-[#3157C8]"><Target size={23} /></span>
+          <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[#EFF6FF] text-[#3157C8]"><Target size={23} /></span>
           <div className="min-w-0">
             <h2 className="text-[28px] font-bold leading-tight tracking-[-0.025em] text-black sm:text-[34px]">Weekly Target Staff</h2>
             <p className="mt-2 max-w-2xl text-sm leading-5 text-[#5A5B5D]">Pantau target dan progres staf berdasarkan periode, staf, proyek, dan status.</p>
@@ -208,7 +208,7 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
             >
               <span>Weekly {item.week}</span>
               <span className="text-[10px] font-normal opacity-80">({formatDate(item.start).slice(0, 6)} – {formatDate(item.end)})</span>
-              <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-bold", isSelected ? "bg-white/20 text-white" : "bg-[#EAF6FF] text-[#3157C8]")}>
+              <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-bold", isSelected ? "bg-white/20 text-white" : "bg-[#EFF6FF] text-[#3157C8]")}>
                 {weekCounts[item.week] ?? 0}
               </span>
             </button>
@@ -266,7 +266,7 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
                 return (
                   <Fragment key={record.id}><tr className="border-t border-[#ECEDEF] align-middle transition-colors hover:bg-[#F7FAFF]">
                     <td className="px-4 py-5">
-                      <span className="inline-flex rounded-lg bg-[#EAF6FF] px-2.5 py-1 text-xs font-extrabold text-[#3157C8]">
+                      <span className="inline-flex rounded-lg bg-[#EFF6FF] px-2.5 py-1 text-xs font-extrabold text-[#3157C8]">
                         {record.calendarWeekLabel || (period ? `Weekly ${period.week}` : "Weekly")}
                       </span>
                       <p className="mt-1.5 text-[10px] font-semibold text-[#5A5B5D]">

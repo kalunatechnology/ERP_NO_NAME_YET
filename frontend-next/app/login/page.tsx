@@ -80,7 +80,7 @@ const ANIM_STYLES = `
   }
   .mk-input:focus {
     box-shadow: 0 0 0 3px rgba(41,75,178,0.12);
-    border-color: #2649B3;
+    border-color: #1E3A8A;
   }
   .mk-ghost-card {
     transition: transform 0.15s ease, box-shadow 0.15s ease;
@@ -166,7 +166,7 @@ const GHOST_CATEGORIES = [
 ];
 
 const CAT_COLOR: Record<string, string> = {
-  sma: "#2649B3",
+  sma: "#1E3A8A",
   exec: "#7C3AED",
   pm: "#0EA5E9",
   fin: "#F59E0B",
@@ -305,7 +305,7 @@ function LoginFormContent() {
       {/* ── TOP SLIM PROGRESS BAR (Minimalist Transition Progress) ── */}
       {(submitting || isTransitioning) && (
         <div className="fixed top-0 left-0 right-0 z-[9999] h-[3px] bg-transparent overflow-hidden">
-          <div className="mk-top-bar-anim h-full bg-[#294BB2] shadow-[0_0_8px_#294BB2]" />
+          <div className="mk-top-bar-anim h-full bg-[#1D4ED8] shadow-[0_0_8px_#1D4ED8]" />
         </div>
       )}
 
@@ -322,7 +322,7 @@ function LoginFormContent() {
             className="w-full lg:w-[420px] shrink-0 text-white relative overflow-hidden min-h-[320px] sm:min-h-[400px] lg:min-h-0 lg:h-full"
             style={{
               background:
-                "linear-gradient(180deg, #2649B3 0%, #294BB2 48%, #8BCBFB 100%)",
+                "linear-gradient(180deg, #1E3A8A 0%, #1D4ED8 48%, #8BCBFB 100%)",
             }}
           >
             <div className="absolute inset-0" aria-hidden="true">
@@ -382,7 +382,7 @@ function LoginFormContent() {
 
             {/* Bottom Area: Full Width Form */}
             <div className="w-full flex flex-col gap-5 mt-auto pb-1 lg:pb-0">
-              <h2 className="mk-fade-up-2 text-2xl sm:text-[32px] leading-none font-bold text-[#294BB2] tracking-tight">
+              <h2 className="mk-fade-up-2 text-2xl sm:text-[32px] leading-none font-bold text-[#1D4ED8] tracking-tight">
                 Log In
               </h2>
 
@@ -393,7 +393,7 @@ function LoginFormContent() {
               >
                 {/* Field 1: Your Email */}
                 <div className="mk-fade-up-3 flex flex-col gap-3">
-                  <label className="text-xs font-medium text-[#2649B3]">
+                  <label className="text-xs font-medium text-[#1E3A8A]">
                     Your Email
                   </label>
                   <input
@@ -412,7 +412,7 @@ function LoginFormContent() {
 
                 {/* Field 2: Password */}
                 <div className="mk-fade-up-4 flex flex-col gap-3">
-                  <label className="text-xs font-medium text-[#2649B3]">
+                  <label className="text-xs font-medium text-[#1E3A8A]">
                     Password
                   </label>
                   <div className="relative flex items-center">
@@ -451,7 +451,7 @@ function LoginFormContent() {
                       "w-full h-[46px] lg:h-[50px] mt-0.5 rounded-[12px] text-white font-medium text-xs sm:text-sm transition-all duration-200 flex items-center justify-center cursor-pointer shadow-xs",
                       (submitting || isTransitioning)
                         ? "bg-[#1E293B] shadow-inner"
-                        : "bg-[#294BB2] hover:bg-[#2649B3] active:scale-[0.995]"
+                        : "bg-[#1D4ED8] hover:bg-[#1E3A8A] active:scale-[0.995]"
                     )}
                   >
                     {(submitting || isTransitioning) ? (
@@ -465,7 +465,7 @@ function LoginFormContent() {
                   </button>
 
                   {/* Divider */}
-                  <div className="text-center text-xs text-[#2649B3] font-medium my-0">
+                  <div className="text-center text-xs text-[#1E3A8A] font-medium my-0">
                     or
                   </div>
 
@@ -512,9 +512,9 @@ function LoginFormContent() {
             <button
               type="button"
               onClick={() => setShowGhostPanel(!showGhostPanel)}
-              className="text-xs font-bold text-[#2649B3] hover:text-[#090909] flex items-center gap-2 px-5 py-2 rounded-full bg-[#EAF6FF] border border-[#9FD6FF] shadow-2xs transition-all cursor-pointer hover:bg-[#EAF6FF]"
+              className="text-xs font-bold text-[#1E3A8A] hover:text-[#090909] flex items-center gap-2 px-5 py-2 rounded-full bg-[#EFF6FF] border border-[#BFDBFE] shadow-2xs transition-all cursor-pointer hover:bg-[#EFF6FF]"
             >
-              <Ghost size={15} className="text-[#294BB2]" />
+              <Ghost size={15} className="text-[#1D4ED8]" />
               <span>
                 {showGhostPanel
                   ? "Tutup Panel Akses Cepat"
@@ -524,7 +524,7 @@ function LoginFormContent() {
             </button>
 
             {showGhostPanel && (
-              <div className="mk-ghost-panel w-full bg-white border border-[#294BB2]/30 rounded-2xl p-4 mt-2 shadow-sm flex flex-col gap-3">
+              <div className="mk-ghost-panel w-full bg-white border border-[#1D4ED8]/30 rounded-2xl p-4 mt-2 shadow-sm flex flex-col gap-3">
                 {/* Filter Category Tabs */}
                 <div className="flex gap-1.5 overflow-x-auto pb-1 border-b border-slate-100 no-scrollbar">
                   {GHOST_CATEGORIES.map((c) => (
@@ -535,7 +535,7 @@ function LoginFormContent() {
                       className={cn(
                         "px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer",
                         filterCat === c.cat
-                          ? "bg-[#294BB2] text-white shadow-xs"
+                          ? "bg-[#1D4ED8] text-white shadow-xs"
                           : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                       )}
                     >
@@ -549,12 +549,12 @@ function LoginFormContent() {
                   {filteredLoginUsers.map((u) => {
                     const emailKey = `email-${u.email}`;
                     const pwKey = `pw-${u.email}`;
-                    const color = CAT_COLOR[u.cat] || "#294BB2";
+                    const color = CAT_COLOR[u.cat] || "#1D4ED8";
 
                     return (
                       <div
                         key={u.email}
-                        className="mk-ghost-card p-3 rounded-2xl border border-[#EFEFEF] bg-[#FDFDFD] hover:bg-[#EAF6FF]/30 flex flex-col justify-between gap-2 shadow-2xs"
+                        className="mk-ghost-card p-3 rounded-2xl border border-[#EFEFEF] bg-[#FDFDFD] hover:bg-[#EFF6FF]/30 flex flex-col justify-between gap-2 shadow-2xs"
                       >
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center justify-between gap-1">
@@ -652,7 +652,7 @@ export default function LoginPage() {
     <Suspense
       fallback={
         <div className="min-h-screen w-full flex items-center justify-center bg-white">
-          <div className="w-8 h-8 rounded-full border-2 border-[#294BB2] border-t-transparent animate-spin" />
+          <div className="w-8 h-8 rounded-full border-2 border-[#1D4ED8] border-t-transparent animate-spin" />
         </div>
       }
     >

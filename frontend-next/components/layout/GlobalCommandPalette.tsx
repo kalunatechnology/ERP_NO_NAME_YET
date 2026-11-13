@@ -236,7 +236,7 @@ export function GlobalCommandPalette({ isOpen, onClose }: CommandPaletteProps) {
         {/* Footer brand */}
         <div className="px-4 py-2.5 bg-gray-50 border-t border-gray-100 flex items-center justify-end text-3xs text-text-secondary">
           <span className="flex items-center gap-1.5 font-semibold text-brand-deep-green">
-            <MarkaWordmark className="h-auto w-12 text-[#2649B3]" />
+            <MarkaWordmark className="h-auto w-12 text-[#1E3A8A]" />
             <span>ERP Quick Access</span>
           </span>
         </div>

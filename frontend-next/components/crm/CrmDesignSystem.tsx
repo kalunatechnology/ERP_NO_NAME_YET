@@ -21,81 +21,81 @@ export const CRM_TONE_STYLES: Record<
   }
 > = {
   blue: {
-    cardBg: "bg-[#EAF6FF]",
-    cardBorder: "border-[#D9D9D9]",
-    iconBg: "bg-[#D8EEFF]",
-    text: "text-[#006BBC]",
-    colBg: "bg-[#F6FBFF]",
-    colHeaderBg: "bg-[#DDF0FF]",
-    colBorder: "border-[#A9D9FF]",
-    badgeBg: "bg-[#A9D9FF] text-[#006BBC]",
-    dot: "bg-[#0092FF]",
+    cardBg: "bg-white",
+    cardBorder: "border-[#E2E8F0]",
+    iconBg: "bg-[#EFF6FF]",
+    text: "text-[#1D4ED8]",
+    colBg: "bg-[#F8FAFC]",
+    colHeaderBg: "bg-[#F1F5F9]",
+    colBorder: "border-[#E2E8F0]",
+    badgeBg: "bg-[#DBEAFE] text-[#1E40AF]",
+    dot: "bg-[#1D4ED8]",
   },
   purple: {
-    cardBg: "bg-[#FAF3FF]",
-    cardBorder: "border-[#D9D9D9]",
-    iconBg: "bg-[#F4E7FE]",
-    text: "text-[#A600FF]",
-    colBg: "bg-[#FAF3FF]",
-    colHeaderBg: "bg-[#F4E7FE]",
-    colBorder: "border-[#DDD6FE]",
-    badgeBg: "bg-[#F0DDFF] text-[#A600FF]",
-    dot: "bg-[#A600FF]",
+    cardBg: "bg-white",
+    cardBorder: "border-[#E2E8F0]",
+    iconBg: "bg-[#EEF2FF]",
+    text: "text-[#4338CA]",
+    colBg: "bg-[#F8FAFC]",
+    colHeaderBg: "bg-[#F1F5F9]",
+    colBorder: "border-[#E2E8F0]",
+    badgeBg: "bg-[#E0E7FF] text-[#3730A3]",
+    dot: "bg-[#4F46E5]",
   },
   amber: {
-    cardBg: "bg-[#FEF5E6]",
-    cardBorder: "border-[#D9D9D9]",
-    iconBg: "bg-[#FEF5E6]",
-    text: "text-[#E28000]",
-    colBg: "bg-[#FFFBF5]",
-    colHeaderBg: "bg-[#FFEBD4]",
-    colBorder: "border-[#FFD2A4]",
-    badgeBg: "bg-[#FFD2A4] text-[#E28000]",
-    dot: "bg-[#E28000]",
+    cardBg: "bg-white",
+    cardBorder: "border-[#E2E8F0]",
+    iconBg: "bg-[#FEF3C7]",
+    text: "text-[#B45309]",
+    colBg: "bg-[#F8FAFC]",
+    colHeaderBg: "bg-[#F1F5F9]",
+    colBorder: "border-[#E2E8F0]",
+    badgeBg: "bg-[#FEF3C7] text-[#92400E]",
+    dot: "bg-[#D97706]",
   },
   pink: {
-    cardBg: "bg-[#FFF9FF]",
-    cardBorder: "border-[#D9D9D9]",
-    iconBg: "bg-[#FFE4FE]",
-    text: "text-[#FF00F2]",
-    colBg: "bg-[#FFF9FF]",
-    colHeaderBg: "bg-[#FFE5FE]",
-    colBorder: "border-[#FFCCFD]",
-    badgeBg: "bg-[#FFCCFD] text-[#FF00F2]",
-    dot: "bg-[#FF00F2]",
+    cardBg: "bg-white",
+    cardBorder: "border-[#E2E8F0]",
+    iconBg: "bg-[#E0F2FE]",
+    text: "text-[#0369A1]",
+    colBg: "bg-[#F8FAFC]",
+    colHeaderBg: "bg-[#F1F5F9]",
+    colBorder: "border-[#E2E8F0]",
+    badgeBg: "bg-[#E0F2FE] text-[#075985]",
+    dot: "bg-[#0284C7]",
   },
   green: {
-    cardBg: "bg-[#DAF8D7]",
-    cardBorder: "border-[#D9D9D9]",
-    iconBg: "bg-[#DAF8D7]",
-    text: "text-[#0B8E00]",
-    colBg: "bg-[#FAFFF9]",
-    colHeaderBg: "bg-[#DAF8D7]",
-    colBorder: "border-[#B0E2AC]",
-    badgeBg: "bg-[#B0E2AC] text-[#0B8E00]",
-    dot: "bg-[#0B8E00]",
+    cardBg: "bg-white",
+    cardBorder: "border-[#E2E8F0]",
+    iconBg: "bg-[#ECFDF5]",
+    text: "text-[#047857]",
+    colBg: "bg-[#F8FAFC]",
+    colHeaderBg: "bg-[#F1F5F9]",
+    colBorder: "border-[#E2E8F0]",
+    badgeBg: "bg-[#D1FAE5] text-[#065F46]",
+    dot: "bg-[#059669]",
   },
   red: {
-    cardBg: "bg-[#FFE5E5]",
-    cardBorder: "border-[#D9D9D9]",
-    iconBg: "bg-[#FFE5E5]",
-    text: "text-[#FF0000]",
-    colBg: "bg-[#FFF7F7]",
-    colHeaderBg: "bg-[#FFE5E5]",
-    colBorder: "border-[#FFB6B6]",
-    badgeBg: "bg-[#FFB6B6] text-[#FF0000]",
-    dot: "bg-[#FF0000]",
+    cardBg: "bg-white",
+    cardBorder: "border-[#E2E8F0]",
+    iconBg: "bg-[#FEF2F2]",
+    text: "text-[#B91C1C]",
+    colBg: "bg-[#F8FAFC]",
+    colHeaderBg: "bg-[#F1F5F9]",
+    colBorder: "border-[#E2E8F0]",
+    badgeBg: "bg-[#FEE2E2] text-[#991B1B]",
+    dot: "bg-[#DC2626]",
   },
   slate: {
     cardBg: "bg-white",
-    cardBorder: "border-[#D9D9D9]",
-    iconBg: "bg-[#EDEDED]",
-    text: "text-[#353535]",
+    cardBorder: "border-[#E2E8F0]",
+    iconBg: "bg-[#F1F5F9]",
+    text: "text-[#334155]",
     colBg: "bg-[#F8FAFC]",
-    colHeaderBg: "bg-[#EDEDED]",
-    colBorder: "border-[#D9D9D9]",
-    badgeBg: "bg-[#D9D9D9] text-[#353535]",
-    dot: "bg-[#626262]",
+    colHeaderBg: "bg-[#F1F5F9]",
+    colBorder: "border-[#E2E8F0]",
+    badgeBg: "bg-[#E2E8F0] text-[#334155]",
+    dot: "bg-[#64748B]",
   },
 };
 
@@ -140,7 +140,7 @@ export function CRMKpiRow({
               tone.cardBg,
               tone.cardBorder,
               item.onClick && "cursor-pointer hover:shadow-sm hover:-translate-y-0.5",
-              item.active && "border-[#2649B3] shadow-xs"
+              item.active && "border-[#1D4ED8] shadow-xs"
             )}
           >
             <div className="flex items-start justify-between gap-2">
@@ -274,7 +274,7 @@ export function CRMFilterBar({
             value={searchValue}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={searchPlaceholder}
-            className="w-full rounded-xl border border-[#D9D9D9] bg-[#F8FAFC] py-2 pl-8.5 pr-3 text-xs text-[#090909] placeholder:text-[#7D7D7D] focus:border-[#2649B3] focus:bg-white focus:outline-none transition-colors"
+            className="w-full rounded-xl border border-[#D9D9D9] bg-[#F8FAFC] py-2 pl-8.5 pr-3 text-xs text-[#090909] placeholder:text-[#7D7D7D] focus:border-[#1D4ED8] focus:bg-white focus:outline-none transition-colors"
           />
         </label>
 
@@ -284,7 +284,7 @@ export function CRMFilterBar({
             aria-label={filter.ariaLabel || filter.id}
             value={filter.value}
             onChange={(e) => filter.onChange(e.target.value)}
-            className="rounded-xl border border-[#D9D9D9] bg-white px-3 py-2 text-xs font-medium text-[#353535] focus:border-[#2649B3] focus:outline-none transition-colors"
+            className="rounded-xl border border-[#D9D9D9] bg-white px-3 py-2 text-xs font-medium text-[#353535] focus:border-[#1D4ED8] focus:outline-none transition-colors"
           >
             {filter.options.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -307,7 +307,7 @@ export function CRMFilterBar({
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all",
                     active
-                      ? "bg-white text-[#2649B3] shadow-2xs font-bold"
+                      ? "bg-white text-[#1E3A8A] shadow-2xs font-bold"
                       : "text-[#626262] hover:text-[#090909]"
                   )}
                 >
@@ -317,7 +317,7 @@ export function CRMFilterBar({
                     <span
                       className={cn(
                         "rounded-full px-1.5 py-0.2 text-[10px] font-bold",
-                        active ? "bg-[#EAF6FF] text-[#2649B3]" : "bg-[#EDEDED] text-[#626262]"
+                        active ? "bg-[#EFF6FF] text-[#1E3A8A]" : "bg-[#EDEDED] text-[#626262]"
                       )}
                     >
                       {opt.badge}
@@ -389,7 +389,7 @@ export function CRMKanbanBoard<T extends { id: string | number }>({
               "flex min-w-[268px] max-w-[320px] flex-1 flex-col rounded-xl border transition-all",
               tone.colBg,
               tone.colBorder,
-              isOver && "ring-2 ring-[#2649B3] ring-offset-1"
+              isOver && "ring-2 ring-[#1E3A8A] ring-offset-1"
             )}
           >
             <div
@@ -541,7 +541,7 @@ export function CRMRightDrawer({
                   className={cn(
                     "-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-semibold transition-colors",
                     active
-                      ? "border-[#2649B3] text-[#2649B3] font-bold"
+                      ? "border-[#1D4ED8] text-[#1E3A8A] font-bold"
                       : "border-transparent text-[#7D7D7D] hover:text-[#090909]"
                   )}
                 >
@@ -549,7 +549,7 @@ export function CRMRightDrawer({
                   {tab.badge !== undefined && (
                     <span className={cn(
                       "rounded-full px-1.5 py-0.2 text-[10px] font-bold",
-                      active ? "bg-[#EAF6FF] text-[#2649B3]" : "bg-[#EDEDED] text-[#626262]"
+                      active ? "bg-[#EFF6FF] text-[#1E3A8A]" : "bg-[#EDEDED] text-[#626262]"
                     )}>
                       {tab.badge}
                     </span>

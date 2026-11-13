@@ -22,32 +22,32 @@ const config: Config = {
         brand: {
           // Legacy keys are intentionally retained while the application
           // migrates from the old green identity to the approved blue scale.
-          "deep-green":    "#2649B3",
-          "green":         "#294BB2",
-          "light-green":   "#EAF6FF",
-          "gradient-from": "#42ACFB",
-          "gradient-to":   "#2649B3",
-          primary:          "#294BB2",
-          "primary-dark":  "#2649B3",
-          "primary-soft":  "#9FD6FF",
-          "primary-pale":  "#EAF6FF",
-          muted:            "#3F528B",
+          "deep-green":    "#1E3A8A",
+          "green":         "#1D4ED8",
+          "light-green":   "#EFF6FF",
+          "gradient-from": "#1E40AF",
+          "gradient-to":   "#1E3A8A",
+          primary:          "#1D4ED8",
+          "primary-dark":  "#1E3A8A",
+          "primary-soft":  "#93C5FD",
+          "primary-pale":  "#EFF6FF",
+          muted:            "#475569",
         },
         text: {
-          primary:   "#090909",
-          secondary: "#4F5050",
-          tertiary:  "#D9D9D9",
+          primary:   "#0F172A",
+          secondary: "#475569",
+          tertiary:  "#E2E8F0",
         },
         bg: {
-          lighter: "#FFFFFF",
-          light:   "#FDFDFD",
+          lighter: "#F8FAFC",
+          light:   "#F0F4F8",
         },
         status: {
-          online:  "#66D575",
+          online:  "#10B981",
           offline: "#CACACA",
-          warning: "#F59E0B",
-          danger:  "#EF4444",
-          info:    "#3B82F6",
+          warning: "#D97706",
+          danger:  "#DC2626",
+          info:    "#1D4ED8",
         },
       },
 
@@ -100,8 +100,8 @@ const config: Config = {
 
       /* ── Gradients ───────────────────────────────────── */
       backgroundImage: {
-        "brand-gradient": "linear-gradient(180deg, #42ACFB 0%, #2649B3 100%)",
-        "brand-gradient-h": "linear-gradient(90deg, #42ACFB 0%, #2649B3 100%)",
+        "brand-gradient": "linear-gradient(180deg, #1E40AF 0%, #1E3A8A 100%)",
+        "brand-gradient-h": "linear-gradient(90deg, #1E40AF 0%, #1E3A8A 100%)",
       },
 
       /* ── Transitions ─────────────────────────────────── */

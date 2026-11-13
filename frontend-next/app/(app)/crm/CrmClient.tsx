@@ -218,7 +218,7 @@ function ActionBtn({ onClick, label, variant = "primary", icon: Icon, small, dis
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function KpiCard({ label, value, icon: Icon, iconBg = "#EAF6FF", iconColor = "#294BB2" }: {
+function KpiCard({ label, value, icon: Icon, iconBg = "#EFF6FF", iconColor = "#1D4ED8" }: {
   label: string; value: string | number;
   icon: React.ElementType; iconBg?: string; iconColor?: string;
 }) {
@@ -463,8 +463,8 @@ function TabDashboard({ data, dash }: { data: CRMData; dash: CRMDashboard }) {
           label="Bobot Pipeline" 
           value={formatMoney(dash?.weighted_project_value)} 
           icon={DollarSign} 
-          iconBg="#EAF6FF"
-          iconColor="#294BB2"
+          iconBg="#EFF6FF"
+          iconColor="#1D4ED8"
         />
         <KpiCard 
           label="Win Rate" 

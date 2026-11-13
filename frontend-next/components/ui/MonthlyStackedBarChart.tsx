@@ -28,8 +28,8 @@ export interface MonthlyStackedBarChartProps {
   subtitle?: string;
   data?: MonthlyBarItem[];
   maxValue?: number; // explicit max in Millions (e.g. 500 for 500 Jt, 1000 for 1 M, 100000 for 100 M)
-  primaryColor?: string; // default bottom '#2649B3'
-  secondaryColor?: string; // default top '#42ACFB'
+  primaryColor?: string; // default bottom '#1E3A8A'
+  secondaryColor?: string; // default top '#1D4ED8'
   primaryLabel?: string;
   secondaryLabel?: string;
   unit?: string;
@@ -96,8 +96,8 @@ export function MonthlyStackedBarChart({
   subtitle,
   data,
   maxValue: explicitMaxValue,
-  primaryColor = "#2649B3",
-  secondaryColor = "#42ACFB",
+  primaryColor = "#1E3A8A",
+  secondaryColor = "#1D4ED8",
   primaryLabel = "Realisasi Kas",
   secondaryLabel = "WIP / Proyeksi Biaya",
   unit,
@@ -324,7 +324,7 @@ export function MonthlyStackedBarChart({
 
           {/* ── Interactive Max Scale Selector (500 Jt s/d 100 Miliar) ── */}
           <div className="flex items-center gap-1.5 bg-[#F9FAFB] border border-[#EFEFEF] px-2.5 py-1 rounded-xl shadow-2xs">
-            <SlidersHorizontal size={13} className="text-[#294BB2]" />
+            <SlidersHorizontal size={13} className="text-[#1D4ED8]" />
             <span className="text-xs font-semibold text-[#4F5050] hidden sm:inline">Skala:</span>
             <select
               value={selectedScale}
@@ -365,7 +365,7 @@ export function MonthlyStackedBarChart({
         <div className="flex flex-col justify-between pr-3 select-none w-18 flex-shrink-0 text-right">
           {yTicks.map((tick, i) => (
             <div key={i} className="flex items-center justify-end h-0">
-              <span className="text-[13px] font-semibold text-[#2649B3] tracking-tight">
+              <span className="text-[13px] font-semibold text-[#1E3A8A] tracking-tight">
                 {tick.label}
               </span>
             </div>
@@ -379,7 +379,7 @@ export function MonthlyStackedBarChart({
             {yTicks.map((_, i) => (
               <div
                 key={i}
-                className="w-full border-b border-dashed border-[#9FD6FF]/60 h-0"
+                className="w-full border-b border-dashed border-[#BFDBFE]/60 h-0"
               />
             ))}
           </div>
@@ -420,13 +420,13 @@ export function MonthlyStackedBarChart({
                     {/* Branded empty state: neutral information, not an error. */}
                     {isZero ? (
                       <div
-                        className="relative flex h-28 w-full flex-col items-center justify-center overflow-hidden rounded-[14px] border border-dashed border-[#9FD6FF] px-1 text-center shadow-2xs transition-all duration-200 group-hover:border-[#42ACFB]"
+                        className="relative flex h-28 w-full flex-col items-center justify-center overflow-hidden rounded-[14px] border border-dashed border-[#BFDBFE] px-1 text-center shadow-2xs transition-all duration-200 group-hover:border-[#1D4ED8]"
                         style={{
-                          background: "repeating-linear-gradient(45deg, #F8FBFF, #F8FBFF 6px, #EAF6FF 6px, #EAF6FF 12px)",
+                          background: "repeating-linear-gradient(45deg, #F8FBFF, #F8FBFF 6px, #EFF6FF 6px, #EFF6FF 12px)",
                         }}
                         title={`${item.month}: Belum ada transaksi tercatat`}
                       >
-                        <span className="block w-full select-none text-center text-[10px] font-bold uppercase leading-tight tracking-tight text-[#2649B3]/75">
+                        <span className="block w-full select-none text-center text-[10px] font-bold uppercase leading-tight tracking-tight text-[#1E3A8A]/75">
                           Belum<br />tercatat
                         </span>
                       </div>
@@ -466,7 +466,7 @@ export function MonthlyStackedBarChart({
                   {/* X-Axis Month Label */}
                   <span className={cn(
                     "absolute -bottom-6 text-[13px] font-semibold transition-colors",
-                    isZero ? "text-[#9CA3AF] group-hover:text-[#4F5050]" : "text-[#4F5050] group-hover:text-[#2649B3] group-hover:font-bold"
+                    isZero ? "text-[#9CA3AF] group-hover:text-[#4F5050]" : "text-[#4F5050] group-hover:text-[#1E3A8A] group-hover:font-bold"
                   )}>
                     {item.month}
                   </span>
@@ -488,7 +488,7 @@ export function MonthlyStackedBarChart({
           {/* Active Highlight Bar */}
           <div
             onMouseDown={handleMouseDown}
-            className="absolute top-0 bottom-0 bg-[#2649B3] rounded-full transition-all duration-150 cursor-grab active:cursor-grabbing hover:bg-[#2649B3]"
+            className="absolute top-0 bottom-0 bg-[#1E3A8A] rounded-full transition-all duration-150 cursor-grab active:cursor-grabbing hover:bg-[#1E3A8A]"
             style={{
               width: `${sliderWidthPercent}%`,
               left: `${sliderLeftPercent}%`,
@@ -500,7 +500,7 @@ export function MonthlyStackedBarChart({
       {/* Floating Tooltip Detail on Hover */}
       {hoveredItem && (
         <div
-          className="fixed z-50 bg-[#2649B3] text-[13px] px-3.5 py-2.5 rounded-xl border border-[#4F70D8] shadow-xl pointer-events-none transform -translate-x-1/2 -translate-y-full -mt-2 flex flex-col gap-1.5 min-w-[210px]"
+          className="fixed z-50 bg-[#1E3A8A] text-[13px] px-3.5 py-2.5 rounded-xl border border-[#4F70D8] shadow-xl pointer-events-none transform -translate-x-1/2 -translate-y-full -mt-2 flex flex-col gap-1.5 min-w-[210px]"
           style={{
             left: hoveredItem.x,
             top: hoveredItem.y,
@@ -528,7 +528,7 @@ export function MonthlyStackedBarChart({
             </>
           ) : (
             <>
-              <div className="flex items-center justify-between border-b border-white/20 pb-1 font-bold text-[#9FD6FF]">
+              <div className="flex items-center justify-between border-b border-white/20 pb-1 font-bold text-[#BFDBFE]">
                 <span>Bulan {hoveredItem.item.month}</span>
                 <span>
                   Total: {formatValueDisplay(hoveredItem.item.bottomValue + hoveredItem.item.topValue)}
@@ -536,14 +536,14 @@ export function MonthlyStackedBarChart({
               </div>
               <div className="flex items-center justify-between gap-3 text-xs pt-0.5">
                 <span className="flex items-center gap-1 text-[#EFEFEF]">
-                  <span className="w-2 h-2 rounded-full bg-[#2649B3]" />
+                  <span className="w-2 h-2 rounded-full bg-[#1E3A8A]" />
                   {primaryLabel}:
                 </span>
                 <span className="font-semibold">{formatValueDisplay(hoveredItem.item.bottomValue)}</span>
               </div>
               <div className="flex items-center justify-between gap-3 text-xs">
                 <span className="flex items-center gap-1 text-[#EFEFEF]">
-                  <span className="w-2 h-2 rounded-full bg-[#42ACFB]" />
+                  <span className="w-2 h-2 rounded-full bg-[#1D4ED8]" />
                   {secondaryLabel}:
                 </span>
                 <span className="font-semibold">{formatValueDisplay(hoveredItem.item.topValue)}</span>

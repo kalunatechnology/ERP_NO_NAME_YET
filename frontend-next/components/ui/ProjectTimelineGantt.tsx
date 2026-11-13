@@ -77,7 +77,7 @@ export function ProjectTimelineGantt({
       {/* ── Card Header ── */}
       <div className="flex items-center justify-between gap-4 mb-5 pb-2 border-b border-gray-100/80">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-[#EAF6FF] flex items-center justify-center text-[#2649B3] shadow-2xs flex-shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-[#EFF6FF] flex items-center justify-center text-[#1E3A8A] shadow-2xs flex-shrink-0">
             <Calendar size={20} strokeWidth={2.2} />
           </div>
           <div className="min-w-0">
@@ -137,7 +137,7 @@ export function ProjectTimelineGantt({
                     key={task.id}
                     onMouseEnter={() => setHoveredTask(task)}
                     onMouseLeave={() => setHoveredTask(null)}
-                    className="grid grid-cols-[minmax(140px,220px)_1fr] gap-4 sm:gap-6 items-center py-2 px-2 -mx-2 rounded-xl hover:bg-[#EAF6FF] transition-all group"
+                    className="grid grid-cols-[minmax(140px,220px)_1fr] gap-4 sm:gap-6 items-center py-2 px-2 -mx-2 rounded-xl hover:bg-[#EFF6FF] transition-all group"
                   >
                     {/* Left Column: Task Name with Indicator Dot */}
                     <div className="flex items-center gap-2.5 min-w-0 pr-2">
@@ -145,14 +145,14 @@ export function ProjectTimelineGantt({
                         className={cn(
                           "w-2.5 h-2.5 rounded-full flex-shrink-0 transition-transform group-hover:scale-125",
                           isCompleted
-                            ? "bg-[#2649B3]"
+                            ? "bg-[#1E3A8A]"
                             : task.progress > 0
-                            ? "bg-[#294BB2]"
+                            ? "bg-[#1D4ED8]"
                             : "bg-[#C7C7C7]"
                         )}
                       />
                       <span
-                        className="text-xs sm:text-sm font-bold text-[#090909] truncate group-hover:text-[#2649B3] transition-colors"
+                        className="text-xs sm:text-sm font-bold text-[#090909] truncate group-hover:text-[#1E3A8A] transition-colors"
                         title={task.name}
                       >
                         {task.name}
@@ -181,12 +181,12 @@ export function ProjectTimelineGantt({
                           }}
                         >
                           {/* Background Bar Span */}
-                          <div className="absolute inset-0 bg-[#EAF6FF] rounded-full" />
+                          <div className="absolute inset-0 bg-[#EFF6FF] rounded-full" />
 
                           {/* Progress Fill */}
                           {task.progress > 0 ? (
                             <div
-                              className="relative flex h-full min-w-[38px] items-center justify-end rounded-full bg-[#2649B3] px-2 transition-all duration-500 shadow-2xs"
+                              className="relative flex h-full min-w-[38px] items-center justify-end rounded-full bg-[#1E3A8A] px-2 transition-all duration-500 shadow-2xs"
                               style={{ width: `${Math.min(100, Math.max(10, task.progress))}%` }}
                             >
                               <span className="text-[10px] sm:text-[11px] font-black text-white leading-none select-none tracking-tight">
@@ -196,7 +196,7 @@ export function ProjectTimelineGantt({
                           ) : (
                             /* 0% Progress Indicator */
                             <div className="relative h-full w-full flex items-center px-1.5 gap-1.5">
-                              <div className="w-3.5 h-3.5 rounded-full bg-[#2649B3] flex items-center justify-center flex-shrink-0 shadow-2xs">
+                              <div className="w-3.5 h-3.5 rounded-full bg-[#1E3A8A] flex items-center justify-center flex-shrink-0 shadow-2xs">
                                 <div className="w-1.5 h-1.5 rounded-full bg-white" />
                               </div>
                               <span className="text-[10px] font-bold text-[#2E8CFF] select-none">
@@ -222,7 +222,7 @@ export function ProjectTimelineGantt({
             <select
               value={pageSize}
               onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }}
-              className="rounded-lg border border-[#D9D9D9] bg-white px-2 py-1 font-semibold text-[#090909] outline-none focus:border-[#2649B3]"
+              className="rounded-lg border border-[#D9D9D9] bg-white px-2 py-1 font-semibold text-[#090909] outline-none focus:border-[#1E3A8A]"
               aria-label="Jumlah task per halaman"
             >
               {[6, 10, 20].map((size) => <option key={size} value={size}>{size}</option>)}
@@ -247,7 +247,7 @@ export function ProjectTimelineGantt({
                 className={cn(
                   "min-w-7 rounded-lg px-2.5 py-1 text-xs font-bold transition-colors",
                   page === pageNumber
-                    ? "bg-[#2649B3] text-white shadow-xs"
+                    ? "bg-[#1E3A8A] text-white shadow-xs"
                     : "border border-[#D9D9D9] text-[#4F5050] hover:bg-gray-50 hover:text-[#090909]"
                 )}
               >
@@ -272,7 +272,7 @@ export function ProjectTimelineGantt({
         <div className="mt-4 pt-3 border-t border-[#EFEFEF] flex flex-wrap items-center justify-between gap-3 text-xs text-[#4F5050] animate-fadeIn">
           <div className="flex items-center gap-2">
             <span className="font-extrabold text-[#090909]">{hoveredTask.name}</span>
-            <span className="text-3xs bg-[#EAF6FF] text-[#2649B3] px-2 py-0.5 rounded-full font-bold border border-[#9FD6FF]">
+            <span className="text-3xs bg-[#EFF6FF] text-[#1E3A8A] px-2 py-0.5 rounded-full font-bold border border-[#BFDBFE]">
               Minggu {hoveredTask.startWeek} – Minggu {hoveredTask.endWeek}
             </span>
           </div>
@@ -283,7 +283,7 @@ export function ProjectTimelineGantt({
               </span>
             )}
             <span>
-              Progres Realisasi: <strong className="text-[#2649B3]">{hoveredTask.progress}%</strong>
+              Progres Realisasi: <strong className="text-[#1E3A8A]">{hoveredTask.progress}%</strong>
             </span>
           </div>
         </div>

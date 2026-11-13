@@ -71,8 +71,8 @@ function KpiCard({
   value,
   subLabel,
   icon: Icon,
-  iconBg = "#EAF6FF",
-  iconColor = "#2649B3",
+  iconBg = "#EFF6FF",
+  iconColor = "#1E3A8A",
   trend,
   onClick,
   largeValue = false,
@@ -80,8 +80,8 @@ function KpiCard({
   return (
     <div
       className={cn(
-        "flex flex-col justify-between gap-3 p-4 sm:p-5 rounded-[18px] min-w-0 bg-[#EAF6FF] border border-[#D9D9D9] transition-all duration-150 select-none shadow-xs",
-        onClick && "cursor-pointer hover:shadow-card-md hover:border-[#294BB2]/50 hover:-translate-y-0.5"
+        "flex flex-col justify-between gap-3 p-4 sm:p-5 rounded-[18px] min-w-0 bg-[#EFF6FF] border border-[#D9D9D9] transition-all duration-150 select-none shadow-xs",
+        onClick && "cursor-pointer hover:shadow-card-md hover:border-[#1D4ED8]/50 hover:-translate-y-0.5"
       )}
       onClick={onClick}
     >
@@ -102,7 +102,7 @@ function KpiCard({
         <div className="flex items-center gap-1.5 pt-1 border-t border-[#D9D9D9]/60">
           <div className={cn(
             "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-bold",
-            trend.up ? "bg-[#9FD6FF] text-[#2649B3]" : "bg-[#FEE2E2] text-[#991B1B]"
+            trend.up ? "bg-[#BFDBFE] text-[#1E3A8A]" : "bg-[#FEE2E2] text-[#991B1B]"
           )}>
             {trend.up ? <ChevronUp size={12} strokeWidth={2.5} /> : <ChevronDown size={12} strokeWidth={2.5} />}
             <span>{trend.value}</span>
@@ -126,7 +126,7 @@ function SectionHeader({ title, actionLabel, actionHref }: { title: string; acti
     <div className="flex items-center justify-between mb-3.5">
       <h2 className="text-sm sm:text-base font-extrabold text-[#090909] tracking-tight">{title}</h2>
       {actionLabel && actionHref && (
-        <Link href={actionHref} className="flex items-center gap-1 text-xs font-bold text-[#294BB2] hover:text-[#2649B3] transition-colors">
+        <Link href={actionHref} className="flex items-center gap-1 text-xs font-bold text-[#1D4ED8] hover:text-[#1E3A8A] transition-colors">
           <span>{actionLabel}</span>
           <ArrowRight size={13} strokeWidth={2.2} />
         </Link>
@@ -157,7 +157,7 @@ function StatusBadge({ status }: { status: string }) {
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function ProgressBar({ value, color = "#294BB2", height = 7 }: { value: number; color?: string; height?: number }) {
+function ProgressBar({ value, color = "#1D4ED8", height = 7 }: { value: number; color?: string; height?: number }) {
   return (
     <div className="w-full bg-[#EFEFEF] rounded-full overflow-hidden p-0.5 shadow-2xs" style={{ height }}>
       <div
@@ -279,7 +279,7 @@ function PMDashboard({ projects, loading, userId }: { projects: Project[]; loadi
             <h2 id="pm-dashboard-summary" className="text-base sm:text-lg font-extrabold tracking-tight text-[#090909]">Summary</h2>
             <p className="mt-0.5 text-xs text-[#4F5050]">Ringkasan proyek, kesehatan portofolio, dan tugas hari ini.</p>
           </div>
-          <Link href="/projects" className="flex shrink-0 items-center gap-1 text-xs font-bold text-[#294BB2] hover:text-[#2649B3] transition-colors">
+          <Link href="/projects" className="flex shrink-0 items-center gap-1 text-xs font-bold text-[#1D4ED8] hover:text-[#1E3A8A] transition-colors">
             Lihat semua <ArrowRight size={13} strokeWidth={2.2} />
           </Link>
         </div>
@@ -287,7 +287,7 @@ function PMDashboard({ projects, loading, userId }: { projects: Project[]; loadi
         {/* ── Project Metrics ───────────────── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <KpiCard label="Total Proyek" value={total} subLabel="semua status" icon={FolderKanban} iconBg="#EFF6FF" iconColor="#1D4ED8" largeValue />
-          <KpiCard label="Aktif Berjalan" value={active} subLabel="in progress" icon={Activity} iconBg="#EAF6FF" iconColor="#294BB2" trend={active > 0 ? { value: `${active} proyek aktif`, up: true } : null} largeValue />
+          <KpiCard label="Aktif Berjalan" value={active} subLabel="in progress" icon={Activity} iconBg="#EFF6FF" iconColor="#1D4ED8" trend={active > 0 ? { value: `${active} proyek aktif`, up: true } : null} largeValue />
           <KpiCard label="Terlambat" value={delayed} subLabel="melewati deadline" icon={AlertTriangle} iconBg="#FEF2F2" iconColor="#DC2626" trend={delayed > 0 ? { value: `${delayed} perlu perhatian`, up: false } : null} largeValue />
           <KpiCard label="Rata-rata Progress" value={`${avgProgress}%`} subLabel="seluruh proyek" icon={Target} iconBg="#FAF5FF" iconColor="#7E22CE" largeValue />
         </div>
@@ -308,7 +308,7 @@ function PMDashboard({ projects, loading, userId }: { projects: Project[]; loadi
         <div className="bg-white border border-[#D5DCE8] rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3 pb-3 border-b border-[#E2E8F0]">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-[#EAF6FF] flex items-center justify-center text-[#2649B3]">
+              <div className="w-8 h-8 rounded-lg bg-[#EFF6FF] flex items-center justify-center text-[#1E3A8A]">
                 <Clock size={17} />
               </div>
               <h3 className="text-sm font-bold text-[#090909]">Tugas Operasional Hari Ini</h3>
@@ -324,9 +324,9 @@ function PMDashboard({ projects, loading, userId }: { projects: Project[]; loadi
               <span className="text-3xl font-extrabold leading-none text-[#090909]">{todayCount}</span>
               <span className="text-xs text-[#4F5050] mt-2 font-medium">Total Task Hari Ini</span>
             </div>
-            <div className="min-h-24 p-4 rounded-xl bg-[#EFF7FF] border border-[#9FD6FF] text-center flex flex-col justify-center">
-              <span className="text-3xl font-extrabold leading-none text-[#2649B3]">{doneToday}</span>
-              <span className="text-xs text-[#2649B3] mt-2 font-semibold">Selesai Hari Ini</span>
+            <div className="min-h-24 p-4 rounded-xl bg-[#EFF7FF] border border-[#BFDBFE] text-center flex flex-col justify-center">
+              <span className="text-3xl font-extrabold leading-none text-[#1E3A8A]">{doneToday}</span>
+              <span className="text-xs text-[#1E3A8A] mt-2 font-semibold">Selesai Hari Ini</span>
             </div>
             <div className={cn(
               "min-h-24 p-4 rounded-xl text-center flex flex-col justify-center border",
@@ -412,7 +412,7 @@ function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <KpiCard
             label="Total Anggaran" value={formatMoney(kpis.totalBudget)}
-            subLabel="budget proyek" icon={DollarSign} iconBg="#EAF6FF" iconColor="#294BB2"
+            subLabel="budget proyek" icon={DollarSign} iconBg="#EFF6FF" iconColor="#1D4ED8"
           />
           <KpiCard
             label="Terpakai" value={formatMoney(kpis.usedBudget)}
@@ -525,7 +525,7 @@ function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData 
                   </div>
                   <ProgressBar
                     value={ps.utilization}
-                    color={ps.utilization > 90 ? "#DC2626" : ps.utilization > 70 ? "#D97706" : "#294BB2"}
+                    color={ps.utilization > 90 ? "#DC2626" : ps.utilization > 70 ? "#D97706" : "#1D4ED8"}
                     height={5}
                   />
                 </div>
@@ -682,8 +682,8 @@ function ExecutiveDashboard({ projects, finData, loading }: {
         className={cn(
           "flex-1 sm:flex-none rounded-[14px] px-5 py-2.5 text-sm font-bold transition-colors",
           activeTab === "overview"
-            ? "bg-[#294BB2] text-white shadow-sm"
-            : "text-[#4F5050] hover:bg-[#F4F7FF] hover:text-[#294BB2]"
+            ? "bg-[#1D4ED8] text-white shadow-sm"
+            : "text-[#4F5050] hover:bg-[#F4F7FF] hover:text-[#1D4ED8]"
         )}
       >
         Overview
@@ -694,8 +694,8 @@ function ExecutiveDashboard({ projects, finData, loading }: {
         className={cn(
           "flex-1 sm:flex-none rounded-[14px] px-5 py-2.5 text-sm font-bold transition-colors",
           activeTab === "daily_tasks"
-            ? "bg-[#294BB2] text-white shadow-sm"
-            : "text-[#4F5050] hover:bg-[#F4F7FF] hover:text-[#294BB2]"
+            ? "bg-[#1D4ED8] text-white shadow-sm"
+            : "text-[#4F5050] hover:bg-[#F4F7FF] hover:text-[#1D4ED8]"
         )}
       >
         Daily Task Staff
@@ -706,8 +706,8 @@ function ExecutiveDashboard({ projects, finData, loading }: {
         className={cn(
           "flex-1 sm:flex-none rounded-[14px] px-5 py-2.5 text-sm font-bold transition-colors",
           activeTab === "weekly_targets"
-            ? "bg-[#294BB2] text-white shadow-sm"
-            : "text-[#4F5050] hover:bg-[#F4F7FF] hover:text-[#294BB2]"
+            ? "bg-[#1D4ED8] text-white shadow-sm"
+            : "text-[#4F5050] hover:bg-[#F4F7FF] hover:text-[#1D4ED8]"
         )}
       >
         Weekly Target Staff
@@ -740,12 +740,12 @@ function ExecutiveDashboard({ projects, finData, loading }: {
       <section>
         <SectionHeader title="Company Overview" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <KpiCard label="Total Proyek" value={total} subLabel={`${active} aktif`} icon={FolderKanban} iconBg="#EAF6FF" iconColor="#294BB2" />
-          <KpiCard label="Overall Progress" value={`${avgProgress}%`} subLabel="rata-rata" icon={Activity} iconBg="#EAF6FF" iconColor="#294BB2" />
+          <KpiCard label="Total Proyek" value={total} subLabel={`${active} aktif`} icon={FolderKanban} iconBg="#EFF6FF" iconColor="#1D4ED8" />
+          <KpiCard label="Overall Progress" value={`${avgProgress}%`} subLabel="rata-rata" icon={Activity} iconBg="#EFF6FF" iconColor="#1D4ED8" />
           <KpiCard label="Total Anggaran" value={kpis ? formatMoney(kpis.totalBudget) : "-"}
-            subLabel={kpis ? `${kpis.budgetUtilization}% digunakan` : ""} icon={DollarSign} iconBg="#EAF6FF" iconColor="#294BB2" />
+            subLabel={kpis ? `${kpis.budgetUtilization}% digunakan` : ""} icon={DollarSign} iconBg="#EFF6FF" iconColor="#1D4ED8" />
           <KpiCard label="Perlu Keputusan" value={pendingCount}
-            subLabel={urgentPending > 0 ? `${urgentPending} URGENT` : "pending approval"} icon={CheckSquare} iconBg="#EAF6FF" iconColor="#294BB2"
+            subLabel={urgentPending > 0 ? `${urgentPending} URGENT` : "pending approval"} icon={CheckSquare} iconBg="#EFF6FF" iconColor="#1D4ED8"
             trend={urgentPending > 0 ? { value: `${urgentPending} butuh perhatian`, up: false } : null} />
         </div>
       </section>
@@ -800,7 +800,7 @@ function ExecutiveDashboard({ projects, finData, loading }: {
             subLabel="proyek sedang aktif"
             icon={Activity}
             iconBg="#DCEEFF"
-            iconColor="#2649B3"
+            iconColor="#1E3A8A"
           />
           <KpiCard
             label="Terlambat"
@@ -885,7 +885,7 @@ function ExecutiveDashboard({ projects, finData, loading }: {
                 </div>
                 <ProgressBar
                   value={kpis.budgetUtilization}
-                  color={kpis.budgetUtilization > 90 ? "#DC2626" : kpis.budgetUtilization > 70 ? "#D97706" : "#294BB2"}
+                  color={kpis.budgetUtilization > 90 ? "#DC2626" : kpis.budgetUtilization > 70 ? "#D97706" : "#1D4ED8"}
                   height={8}
                 />
               </div>
@@ -946,8 +946,8 @@ function CRMDashboard({
             value={formatMoney(totalPipeline)}
             subLabel={`${activeOpportunityCount} deal aktif`}
             icon={DollarSign}
-            iconBg="#EAF6FF"
-            iconColor="#294BB2"
+            iconBg="#EFF6FF"
+            iconColor="#1D4ED8"
           />
           <KpiCard
             label="Win Rate"
@@ -1118,8 +1118,8 @@ function StaffDashboard({ projects, loading, overtimeSummary }: { projects: Proj
             value={completedToday}
             subLabel={`${todayTasks.length > 0 ? Math.round((completedToday / todayTasks.length) * 100) : 0}% tuntas`}
             icon={CheckCircle2}
-            iconBg="#EAF6FF"
-            iconColor="#294BB2"
+            iconBg="#EFF6FF"
+            iconColor="#1D4ED8"
           />
           <KpiCard
             label="Perlu Perhatian"
@@ -1222,7 +1222,7 @@ function StaffDashboard({ projects, loading, overtimeSummary }: { projects: Proj
         <div className="flex items-center justify-between gap-4 flex-wrap border-t border-[#D9D9D9] pt-3">
           <Link
             href="/tasks#task-submission"
-            className="inline-flex min-h-9 items-center gap-2 rounded-full border border-[#D9E5FF] bg-[#F3F8FF] px-3 text-xs font-semibold text-[#294BB2] transition-colors hover:bg-[#EAF6FF]"
+            className="inline-flex min-h-9 items-center gap-2 rounded-full border border-[#D9E5FF] bg-[#F3F8FF] px-3 text-xs font-semibold text-[#1D4ED8] transition-colors hover:bg-[#EFF6FF]"
             aria-label={`Pengajuan tugas, ${pendingSubmissions.length} perlu dilengkapi`}
             title="Pengajuan tugas"
           >
@@ -1378,9 +1378,9 @@ export default function DashboardClient() {
         <div className="flex items-center gap-2">
           {canUseRequests && userRole !== "super_admin" && <button
             onClick={() => setIsNewRequestModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[14px] bg-[#2649B3] hover:bg-[#2649B3] text-white text-xs font-extrabold shadow-sm hover:shadow-md transition-all select-none"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[14px] bg-[#1E3A8A] hover:bg-[#1E3A8A] text-white text-xs font-extrabold shadow-sm hover:shadow-md transition-all select-none"
           >
-            <Sparkles size={14} className="text-[#EAF6FF]" />
+            <Sparkles size={14} className="text-[#EFF6FF]" />
             <span>Request Card</span>
           </button>}
           <button

@@ -128,9 +128,9 @@ export function ProjectMilestoneCard({
       )}
     >
       {/* Left Sidebar: Project Lists */}
-      <div className="bg-[#EAF6FF]/50 p-3 sm:p-4 flex flex-col gap-2 border-b md:border-b-0 md:border-r border-[#EAF6FF]">
+      <div className="bg-[#EFF6FF]/50 p-3 sm:p-4 flex flex-col gap-2 border-b md:border-b-0 md:border-r border-[#EFF6FF]">
         <div className="flex items-center gap-2">
-          <FolderKanban size={17} className="text-[#294BB2]" />
+          <FolderKanban size={17} className="text-[#1D4ED8]" />
           <h4 className="text-sm font-bold text-[#090909]">Daftar Proyek</h4>
         </div>
         <label className="sr-only" htmlFor="project-milestone-status-filter">Filter status proyek</label>
@@ -138,7 +138,7 @@ export function ProjectMilestoneCard({
           id="project-milestone-status-filter"
           value={pipelineView}
           onChange={(event) => changePipelineView(event.target.value as typeof pipelineView)}
-          className="h-9 w-full rounded-lg border border-[#D5E3F2] bg-white px-2.5 text-xs font-semibold text-[#2649B3] outline-none focus:border-[#294BB2] focus:ring-2 focus:ring-[#9FD6FF]/60"
+          className="h-9 w-full rounded-lg border border-[#D5E3F2] bg-white px-2.5 text-xs font-semibold text-[#1E3A8A] outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]/60"
         >
           {pipelineOptions.map((view) => {
             const count = view.key === "ALL"
@@ -165,7 +165,7 @@ export function ProjectMilestoneCard({
                   className={cn(
                     "group flex w-full cursor-pointer items-center justify-between rounded-xl px-2.5 py-1.5 text-left text-xs transition-all",
                     isSelected
-                      ? "bg-white text-[#090909] shadow-xs font-bold border border-[#9FD6FF]"
+                      ? "bg-white text-[#090909] shadow-xs font-bold border border-[#BFDBFE]"
                       : "text-[#4F5050] hover:bg-white/60 hover:text-[#090909]"
                   )}
                 >
@@ -174,7 +174,7 @@ export function ProjectMilestoneCard({
                     {prj.code && (
                       <span className="text-[10px] font-mono text-neutral-400">{prj.code}</span>
                     )}
-                    <span className="mt-0.5 w-fit rounded-full bg-[#EAF6FF] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#2649B3]">
+                    <span className="mt-0.5 w-fit rounded-full bg-[#EFF6FF] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#1E3A8A]">
                       {getProjectLifecycleLabel(prj.lifecycle_status)}
                     </span>
                   </div>
@@ -182,7 +182,7 @@ export function ProjectMilestoneCard({
                     size={14}
                     className={cn(
                       "flex-shrink-0 transition-transform",
-                      isSelected ? "text-[#294BB2] translate-x-0.5" : "opacity-0 group-hover:opacity-100"
+                      isSelected ? "text-[#1D4ED8] translate-x-0.5" : "opacity-0 group-hover:opacity-100"
                     )}
                   />
                 </button>
@@ -197,7 +197,7 @@ export function ProjectMilestoneCard({
               <select
                 value={projectPageSize}
                 onChange={(event) => { setProjectPageSize(Number(event.target.value)); setProjectPage(1); }}
-                className="h-7 rounded-lg border border-[#D9D9D9] bg-white px-2 py-0.5 text-2xs font-semibold text-[#090909] outline-none focus:border-[#2649B3]"
+                className="h-7 rounded-lg border border-[#D9D9D9] bg-white px-2 py-0.5 text-2xs font-semibold text-[#090909] outline-none focus:border-[#1E3A8A]"
               >
                 {[5, 10, 20].map((size) => <option key={size} value={size}>{size}</option>)}
               </select>
@@ -232,13 +232,13 @@ export function ProjectMilestoneCard({
         <div>
           <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100/80 gap-2">
             <div className="flex items-center gap-2 min-w-0">
-              <MilestoneIcon size={18} className="text-[#294BB2] flex-shrink-0" />
+              <MilestoneIcon size={18} className="text-[#1D4ED8] flex-shrink-0" />
               <h4 className="text-sm sm:text-base font-bold text-[#090909] truncate">
                 Milestones &amp; Gates Proyek
               </h4>
             </div>
             {currentMilestones.length > 0 && (
-              <span className="text-2xs font-bold text-[#2649B3] bg-[#EAF6FF] px-2.5 py-0.5 rounded-full flex-shrink-0">
+              <span className="text-2xs font-bold text-[#1E3A8A] bg-[#EFF6FF] px-2.5 py-0.5 rounded-full flex-shrink-0">
                 {activeCount} / {currentMilestones.length} Tahap ({progressPercent}%)
               </span>
             )}
@@ -263,7 +263,7 @@ export function ProjectMilestoneCard({
                   className={cn(
                     "w-[240px] sm:w-[270px] rounded-[14px] p-3.5 flex flex-col gap-2.5 transition-all flex-shrink-0 shadow-2xs",
                     m.isActive
-                      ? "bg-[#EAF6FF] border border-[#9FD6FF]"
+                      ? "bg-[#EFF6FF] border border-[#BFDBFE]"
                       : "bg-white border border-[#EFEFEF] hover:border-neutral-300"
                   )}
                 >
@@ -273,7 +273,7 @@ export function ProjectMilestoneCard({
                       className={cn(
                         "w-5 h-5 rounded-[6px] flex items-center justify-center text-xs font-black flex-shrink-0 mt-0.5 shadow-2xs",
                         m.isActive || m.status === "COMPLETED"
-                          ? "bg-[#2649B3] text-white"
+                          ? "bg-[#1E3A8A] text-white"
                           : "bg-neutral-100 text-neutral-600"
                       )}
                     >
@@ -305,7 +305,7 @@ export function ProjectMilestoneCard({
         {currentMilestones.length > 0 && (
           <div className="w-full bg-[#E5E5E5] h-1.5 rounded-full mt-3 overflow-hidden">
             <div
-              className="bg-[#2649B3] h-full rounded-full transition-all duration-500"
+              className="bg-[#1E3A8A] h-full rounded-full transition-all duration-500"
               style={{ width: `${progressPercent}%` }}
             />
           </div>

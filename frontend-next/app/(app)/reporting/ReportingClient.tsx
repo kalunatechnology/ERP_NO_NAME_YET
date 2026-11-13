@@ -102,7 +102,7 @@ function MetricCard({ label, value, sub, valueColor, icon: Icon, iconBg, iconCol
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function ProgressBarSimple({ value, color = "#294BB2" }: { value: number; color?: string }) {
+function ProgressBarSimple({ value, color = "#1D4ED8" }: { value: number; color?: string }) {
   return (
     <div className="w-full bg-gray-100 rounded-full overflow-hidden h-1.5">
       <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, value))}%`, background: color }} />
@@ -198,17 +198,17 @@ function TabProjectPnL({ data }: { data: ReturnType<typeof createDefaultData> })
 
       {/* KPI Row */}
       <div className="workspace-kpis grid gap-3">
-        <MetricCard label="Nilai Kontrak (Revenue)" value={formatMoney(revenue)} sub="Target Pendapatan" icon={DollarSign} iconBg="#EAF6FF" iconColor="#294BB2" />
+        <MetricCard label="Nilai Kontrak (Revenue)" value={formatMoney(revenue)} sub="Target Pendapatan" icon={DollarSign} iconBg="#EFF6FF" iconColor="#1D4ED8" />
         <MetricCard label="Total Biaya Aktual" value={formatMoney(totalCost)} sub="Cost of Goods Sold (HPP)" icon={TrendingUp} iconBg="#FEF2F2" iconColor="#DC2626" valueColor="#DC2626" />
         <MetricCard
           label="Gross Profit" value={formatMoney(grossProfit)} sub="Laba Kotor Proyek" icon={grossProfit >= 0 ? ArrowUpRight : ArrowDownRight}
-          iconBg={grossProfit >= 0 ? "#EAF6FF" : "#FEF2F2"} iconColor={grossProfit >= 0 ? "#294BB2" : "#DC2626"}
-          valueColor={grossProfit >= 0 ? "#294BB2" : "#DC2626"}
+          iconBg={grossProfit >= 0 ? "#EFF6FF" : "#FEF2F2"} iconColor={grossProfit >= 0 ? "#1D4ED8" : "#DC2626"}
+          valueColor={grossProfit >= 0 ? "#1D4ED8" : "#DC2626"}
         />
         <MetricCard
           label="Gross Margin" value={`${grossMarginPct.toFixed(1)}%`} sub={`Target: > 20%`} icon={BarChart3}
-          iconBg={grossMarginPct >= 20 ? "#EAF6FF" : "#FFFBEB"} iconColor={grossMarginPct >= 20 ? "#294BB2" : "#D97706"}
-          valueColor={grossMarginPct >= 20 ? "#294BB2" : "#D97706"}
+          iconBg={grossMarginPct >= 20 ? "#EFF6FF" : "#FFFBEB"} iconColor={grossMarginPct >= 20 ? "#1D4ED8" : "#D97706"}
+          valueColor={grossMarginPct >= 20 ? "#1D4ED8" : "#D97706"}
         />
       </div>
 
@@ -226,7 +226,7 @@ function TabProjectPnL({ data }: { data: ReturnType<typeof createDefaultData> })
                     <span className="text-text-secondary">{row.label}</span>
                     <span className="font-semibold text-text-primary">{formatMoney(row.value)} ({pct.toFixed(0)}%)</span>
                   </div>
-                  <ProgressBarSimple value={pct} color={["#294BB2","#2563EB","#7C3AED","#EA580C"][i]} />
+                  <ProgressBarSimple value={pct} color={["#1D4ED8","#2563EB","#7C3AED","#EA580C"][i]} />
                 </div>
               );
             })}
@@ -286,9 +286,9 @@ function TabExecutive({ data }: { data: ReturnType<typeof createDefaultData> }) 
     <div className="flex flex-col gap-5">
       {/* Portfolio KPIs */}
       <div className="workspace-kpis grid gap-3">
-        <MetricCard label="Total Portofolio Kontrak" value={formatMoney(totalRevenue)} sub={`${data.projects.length} Proyek Terdaftar`} icon={DollarSign} iconBg="#EAF6FF" iconColor="#294BB2" />
+        <MetricCard label="Total Portofolio Kontrak" value={formatMoney(totalRevenue)} sub={`${data.projects.length} Proyek Terdaftar`} icon={DollarSign} iconBg="#EFF6FF" iconColor="#1D4ED8" />
         <MetricCard label="Total Pengeluaran Riil" value={formatMoney(totalActualCost)} sub="Seluruh Proyek Aktif" icon={TrendingUp} iconBg="#FEF2F2" iconColor="#DC2626" valueColor="#DC2626" />
-        <MetricCard label="Total Laba Kotor" value={formatMoney(totalGrossProfit)} sub={`Rata-rata Margin ${avgMargin.toFixed(1)}%`} icon={ArrowUpRight} iconBg="#EAF6FF" iconColor="#294BB2" valueColor="#294BB2" />
+        <MetricCard label="Total Laba Kotor" value={formatMoney(totalGrossProfit)} sub={`Rata-rata Margin ${avgMargin.toFixed(1)}%`} icon={ArrowUpRight} iconBg="#EFF6FF" iconColor="#1D4ED8" valueColor="#1D4ED8" />
         <MetricCard label="Proyek Berjalan" value={`${activeProjects} Aktif`} sub={`${data.projects.length - activeProjects} Selesai/Draft`} icon={Layers} iconBg="#EFF6FF" iconColor="#2563EB" />
       </div>
 
@@ -325,10 +325,10 @@ function TabExecutive({ data }: { data: ReturnType<typeof createDefaultData> }) 
                     <td className="px-4 py-3"><StatusBadge status={getProjectLifecycleLabel(p.lifecycle_status)} /></td>
                     <td className="px-4 py-3 text-right font-medium">{formatMoney(pBudget)}</td>
                     <td className="px-4 py-3 text-right font-medium text-red-600">{formatMoney(pCost)}</td>
-                    <td className="px-4 py-3 text-right font-bold" style={{ color: pProfit >= 0 ? "#294BB2" : "#DC2626" }}>
+                    <td className="px-4 py-3 text-right font-bold" style={{ color: pProfit >= 0 ? "#1D4ED8" : "#DC2626" }}>
                       {formatMoney(pProfit)}
                     </td>
-                    <td className="px-4 py-3 text-right font-bold" style={{ color: pMargin >= 20 ? "#294BB2" : "#D97706" }}>
+                    <td className="px-4 py-3 text-right font-bold" style={{ color: pMargin >= 20 ? "#1D4ED8" : "#D97706" }}>
                       {pMargin.toFixed(1)}%
                     </td>
                   </tr>
@@ -504,7 +504,7 @@ function TabAttendance({ data }: { data: ReturnType<typeof createDefaultData> })
       <table className="data-table w-full min-w-[520px]">
         <thead><tr><th>Hari / Tanggal</th><th>Durasi (Mulai / Selesai)</th><th>Total Jam</th></tr></thead>
         <tbody>
-          {dailyRows.length === 0 ? <tr><td colSpan={3} className="py-8 text-center text-[#2649B3] bg-[#F8FBFF]">Belum ada aktivitas kerja pada filter ini.</td></tr> : dailyRows.map((row) => (
+          {dailyRows.length === 0 ? <tr><td colSpan={3} className="py-8 text-center text-[#1E3A8A] bg-[#F8FBFF]">Belum ada aktivitas kerja pada filter ini.</td></tr> : dailyRows.map((row) => (
             <tr key={row.date}>
               <td>{formatDate(row.date)}</td>
               <td>{formatClock(row.started_at)} / {formatClock(row.ended_at)}</td>
@@ -664,8 +664,8 @@ export default function ReportingClient() {
               <style>
                 @page { size: A4; margin: 18mm; }
                 body { font-family: 'Fira Sans', sans-serif; color: #1E293B; line-height: 1.5; }
-                header { border-bottom: 3px solid #2649B3; padding-bottom: 16px; margin-bottom: 28px; }
-                h1 { color: #17358F; margin: 0; font-size: 26px; } h2 { color: #2649B3; margin-top: 28px; }
+                header { border-bottom: 3px solid #1E3A8A; padding-bottom: 16px; margin-bottom: 28px; }
+                h1 { color: #17358F; margin: 0; font-size: 26px; } h2 { color: #1E3A8A; margin-top: 28px; }
                 table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 12px; }
                 th, td { border: 1px solid #CBD5E1; padding: 8px 12px; text-align: left; }
                 th { background-color: #F1F5F9; font-weight: bold; }

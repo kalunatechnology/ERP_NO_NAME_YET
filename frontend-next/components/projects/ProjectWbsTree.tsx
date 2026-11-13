@@ -168,7 +168,7 @@ export function ProjectWbsTree({
         </div>
         <div className="relative min-w-0 sm:w-80">
           <Search size={16} className="absolute left-3 top-3 text-text-secondary" aria-hidden="true" />
-          <input id="wbs-search" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari Task, Target, Anggota" className="h-10 w-full min-w-0 rounded-full border border-gray-200 bg-gray-50 pl-9 pr-3 text-xs text-text-primary outline-none transition focus:border-[#294BB2] focus:bg-white focus:ring-2 focus:ring-[#294BB2]/15" />
+          <input id="wbs-search" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari Task, Target, Anggota" className="h-10 w-full min-w-0 rounded-full border border-gray-200 bg-gray-50 pl-9 pr-3 text-xs text-text-primary outline-none transition focus:border-[#1D4ED8] focus:bg-white focus:ring-2 focus:ring-[#1D4ED8]/15" />
         </div>
       </div>
       {/* WBS Action Toolbar & Global Expand/Collapse controls */}
@@ -193,7 +193,7 @@ export function ProjectWbsTree({
                 className="inline-flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-white text-text-secondary hover:text-text-primary transition-all font-semibold"
                 title="Buka semua paket kerja dan target"
               >
-                <ChevronsDown size={13} className="text-[#2649B3]" />
+                <ChevronsDown size={13} className="text-[#1E3A8A]" />
                 <span>Buka Semua</span>
               </button>
               <button
@@ -211,7 +211,7 @@ export function ProjectWbsTree({
           {canManageWbs && (
             <button
               onClick={onCreateMainTaskClick}
-              className="btn-primary gap-1.5 bg-[#294BB2] px-3 py-1.5 text-xs shadow-xs hover:bg-[#203F9C]"
+              className="btn-primary gap-1.5 bg-[#1D4ED8] px-3 py-1.5 text-xs shadow-xs hover:bg-[#203F9C]"
             >
               <Plus size={14} /> Tambah Main Task
             </button>
@@ -222,7 +222,7 @@ export function ProjectWbsTree({
       {/* Main Tasks List */}
       {mainTasks.length === 0 ? (
         <div className="card p-12 rounded-2xl text-center border-dashed border-2">
-          <Layers size={36} className="mx-auto mb-2 text-[#294BB2] opacity-70" />
+          <Layers size={36} className="mx-auto mb-2 text-[#1D4ED8] opacity-70" />
           <h3 className="text-sm font-bold text-text-primary">Belum ada Paket Kerja (Main Task) pada proyek ini</h3>
           <p className="text-xs text-text-secondary mt-1 max-w-md mx-auto">
             {canManageWbs

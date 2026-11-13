@@ -134,7 +134,7 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
         {/* Hamburger: always visible, activates mobile sidebar below lg */}
         <button
           onClick={onMenuToggle}
-          className="flex-shrink-0 p-1.5 rounded-lg text-[#4F5050] hover:text-[#2649B3] hover:bg-[#EAF6FF] transition-colors lg:hidden cursor-pointer"
+          className="flex-shrink-0 p-1.5 rounded-lg text-[#4F5050] hover:text-[#1E3A8A] hover:bg-[#EFF6FF] transition-colors lg:hidden cursor-pointer"
           id="topbar-menu-btn"
           aria-label="Buka menu"
         >
@@ -153,7 +153,7 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
                 return (
                   <li key={crumb.href} className="flex items-center gap-1.5 sm:gap-2 min-w-0">
                     {i > 0 && (
-                      <ChevronRight size={13} className="text-[#9FD6FF] flex-shrink-0" aria-hidden="true" />
+                      <ChevronRight size={13} className="text-[#BFDBFE] flex-shrink-0" aria-hidden="true" />
                     )}
                     {isLast ? (
                       <span
@@ -165,7 +165,7 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
                     ) : (
                       <Link
                         href={crumb.href}
-                        className="text-xs sm:text-sm text-[#4F5050] hover:text-[#2649B3] transition-colors truncate"
+                        className="text-xs sm:text-sm text-[#4F5050] hover:text-[#1E3A8A] transition-colors truncate"
                       >
                         {crumb.label}
                       </Link>
@@ -193,13 +193,13 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
             <div className="relative hidden md:block" ref={compRef}>
               <button
                 onClick={() => setIsCompanyDropdownOpen(!isCompanyDropdownOpen)}
-                className="flex items-center gap-1.5 sm:gap-2 h-9 px-3 rounded-full bg-white border border-[#EFEFEF] hover:border-[#9FD6FF] hover:bg-[#FDFDFD] text-xs shadow-2xs transition-all cursor-pointer"
+                className="flex items-center gap-1.5 sm:gap-2 h-9 px-3 rounded-full bg-white border border-[#EFEFEF] hover:border-[#BFDBFE] hover:bg-[#FDFDFD] text-xs shadow-2xs transition-all cursor-pointer"
                 title={`Company context: ${activeCompanyName}`}
               >
-                <Building2 size={13} className="text-[#2649B3] flex-shrink-0" />
+                <Building2 size={13} className="text-[#1E3A8A] flex-shrink-0" />
                 <span className="text-[#4F5050] font-medium hidden lg:inline">Company:</span>
-                <strong className="text-[#2649B3] font-semibold truncate max-w-[110px] md:max-w-[140px] xl:max-w-[190px]">{activeCompanyName}</strong>
-                <span className="hidden xl:inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#EAF6FF] text-[#2649B3]">Admin Pick</span>
+                <strong className="text-[#1E3A8A] font-semibold truncate max-w-[110px] md:max-w-[140px] xl:max-w-[190px]">{activeCompanyName}</strong>
+                <span className="hidden xl:inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#EFF6FF] text-[#1E3A8A]">Admin Pick</span>
                 <ChevronDown size={12} className="text-[#4F5050] flex-shrink-0" />
               </button>
 
@@ -214,12 +214,12 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
                         toast.success("Context Global aktif.");
                       }}
                       className={cn(
-                        "w-full text-left p-2 rounded-xl text-xs flex items-center justify-between hover:bg-[#EAF6FF]/50 transition-colors",
-                        !company && "bg-[#EAF6FF] font-bold text-[#2649B3]"
+                        "w-full text-left p-2 rounded-xl text-xs flex items-center justify-between hover:bg-[#EFF6FF]/50 transition-colors",
+                        !company && "bg-[#EFF6FF] font-bold text-[#1E3A8A]"
                       )}
                     >
                       <span>Global · Semua company</span>
-                      {!company && <Check size={13} className="text-[#2649B3]" />}
+                      {!company && <Check size={13} className="text-[#1E3A8A]" />}
                     </button>
                     {companies.map(c => (
                       <button
@@ -230,12 +230,12 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
                           toast.success(`Company aktif: ${c.name}`);
                         }}
                         className={cn(
-                          "w-full text-left p-2 rounded-xl text-xs flex items-center justify-between hover:bg-[#EAF6FF]/50 transition-colors",
-                          company === String(c.id) && "bg-[#EAF6FF] font-bold text-[#2649B3]"
+                          "w-full text-left p-2 rounded-xl text-xs flex items-center justify-between hover:bg-[#EFF6FF]/50 transition-colors",
+                          company === String(c.id) && "bg-[#EFF6FF] font-bold text-[#1E3A8A]"
                         )}
                       >
                         <span className="truncate">{c.name}</span>
-                        {company === String(c.id) && <Check size={13} className="text-[#2649B3]" />}
+                        {company === String(c.id) && <Check size={13} className="text-[#1E3A8A]" />}
                       </button>
                     ))}
                   </div>
@@ -244,11 +244,11 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
             </div>
           ) : (
             /* Non-admin dynamically bound to their company */
-            <div className="hidden md:flex items-center gap-1.5 h-9 px-3 rounded-full bg-[#EAF6FF]/60 border border-[#9FD6FF]/40 text-xs" title={`Akun Anda terikat resmi ke ${activeCompanyName}`}>
-              <Building2 size={13} className="text-[#2649B3] flex-shrink-0" />
+            <div className="hidden md:flex items-center gap-1.5 h-9 px-3 rounded-full bg-[#EFF6FF]/60 border border-[#BFDBFE]/40 text-xs" title={`Akun Anda terikat resmi ke ${activeCompanyName}`}>
+              <Building2 size={13} className="text-[#1E3A8A] flex-shrink-0" />
               <span className="text-[#4F5050] font-medium hidden lg:inline">Company:</span>
-              <strong className="text-[#2649B3] font-semibold truncate max-w-[130px] xl:max-w-[180px]">{activeCompanyName}</strong>
-              <Lock size={11} className="text-[#2649B3] flex-shrink-0" />
+              <strong className="text-[#1E3A8A] font-semibold truncate max-w-[130px] xl:max-w-[180px]">{activeCompanyName}</strong>
+              <Lock size={11} className="text-[#1E3A8A] flex-shrink-0" />
             </div>
           );
         })()}
@@ -261,7 +261,7 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
           aria-label="Pilih bahasa / Select language"
         >
           <span
-            className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[#2649B3]"
+            className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[#1E3A8A]"
             aria-hidden="true"
           >
             <Globe2 size={14} strokeWidth={2} />
@@ -277,10 +277,10 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
                 onClick={() => setLanguage(locale)}
                 className={cn(
                   "inline-flex h-7 min-w-8 items-center justify-center rounded-full px-2 text-[10px] font-extrabold uppercase tracking-[0.02em] transition-all duration-150",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#294BB2]/30 focus-visible:ring-offset-1",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1D4ED8]/30 focus-visible:ring-offset-1",
                   isActive
-                    ? "bg-[#2649B3] text-white shadow-2xs"
-                    : "text-[#4F5050] hover:bg-[#EAF6FF] hover:text-[#2649B3]"
+                    ? "bg-[#1E3A8A] text-white shadow-2xs"
+                    : "text-[#4F5050] hover:bg-[#EFF6FF] hover:text-[#1E3A8A]"
                 )}
                 aria-pressed={isActive}
                 aria-label={locale === "id" ? "Gunakan Bahasa Indonesia" : "Use English"}
@@ -296,7 +296,7 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
         <button
           type="button"
           onClick={() => setIsCommandPaletteOpen(true)}
-          className="flex items-center gap-1.5 sm:gap-2 h-9 px-2.5 sm:px-3.5 rounded-full bg-[#F8FAFC] hover:bg-white border border-[#E2E8F0] hover:border-[#9FD6FF] transition-all text-xs text-[#4F5050] cursor-pointer shadow-2xs flex-shrink-0"
+          className="flex items-center gap-1.5 sm:gap-2 h-9 px-2.5 sm:px-3.5 rounded-full bg-[#F8FAFC] hover:bg-white border border-[#E2E8F0] hover:border-[#BFDBFE] transition-all text-xs text-[#4F5050] cursor-pointer shadow-2xs flex-shrink-0"
           title="Pencarian Cepat & Navigasi (Ctrl+K)"
         >
           <Search size={14} className="text-[#4F5050] flex-shrink-0" aria-hidden="true" />
@@ -311,11 +311,11 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
           <button
             type="button"
             onClick={() => router.push('/reporting?tab=attendance')}
-            className="flex-shrink-0 h-9 px-3 rounded-full bg-white border border-[#EFEFEF] hover:border-[#9FD6FF] hover:bg-[#EAF6FF]/30 text-[#4F5050] hover:text-[#2649B3] active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
+            className="flex-shrink-0 h-9 px-3 rounded-full bg-white border border-[#EFEFEF] hover:border-[#BFDBFE] hover:bg-[#EFF6FF]/30 text-[#4F5050] hover:text-[#1E3A8A] active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
             aria-label="Buka laporan kehadiran"
             title="Laporan Kehadiran"
           >
-            <CalendarCheck size={15} className="text-[#2649B3]" aria-hidden="true" />
+            <CalendarCheck size={15} className="text-[#1E3A8A]" aria-hidden="true" />
             <span className="hidden 2xl:inline text-xs font-semibold">Attendance</span>
           </button>
         )}
@@ -324,7 +324,7 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
         <button
           type="button"
           onClick={onNotificationClick ? onNotificationClick : () => toast("Semua notifikasi dan alert tersinkronisasi.")}
-          className="flex-shrink-0 h-9 w-9 rounded-full bg-white border border-[#EFEFEF] hover:border-[#9FD6FF] hover:bg-[#EAF6FF]/30 text-[#4F5050] hover:text-[#2649B3] active:scale-95 transition-all relative cursor-pointer flex items-center justify-center shadow-2xs"
+          className="flex-shrink-0 h-9 w-9 rounded-full bg-white border border-[#EFEFEF] hover:border-[#BFDBFE] hover:bg-[#EFF6FF]/30 text-[#4F5050] hover:text-[#1E3A8A] active:scale-95 transition-all relative cursor-pointer flex items-center justify-center shadow-2xs"
           aria-label="Buka Notifikasi & Feed Tim"
           title={unreadCount > 0 ? `${unreadCount} notifikasi belum dibuka` : "Buka Notifikasi & Feed Tim"}
         >
@@ -342,12 +342,12 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
         <div className="relative flex-shrink-0" ref={menuRef}>
           <button
             onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-            className="flex items-center gap-2 h-9 p-1 pl-1 pr-2.5 rounded-full bg-white border border-[#EFEFEF] hover:border-[#9FD6FF] hover:bg-[#FDFDFD] transition-all shadow-2xs cursor-pointer"
+            className="flex items-center gap-2 h-9 p-1 pl-1 pr-2.5 rounded-full bg-white border border-[#EFEFEF] hover:border-[#BFDBFE] hover:bg-[#FDFDFD] transition-all shadow-2xs cursor-pointer"
             aria-label="Menu profil pengguna"
           >
             <div
               className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-extrabold text-white shadow-2xs flex-shrink-0"
-              style={{ background: "linear-gradient(135deg, #42ACFB 0%, #2649B3 100%)" }}
+              style={{ background: "linear-gradient(135deg, #1D4ED8 0%, #1E3A8A 100%)" }}
             >
               {initial}
             </div>
@@ -364,14 +364,14 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
               <div className="px-4 py-3 border-b border-[#EFEFEF] flex items-center gap-3">
                 <div
                   className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-extrabold text-white shadow-2xs flex-shrink-0"
-                  style={{ background: "linear-gradient(135deg, #42ACFB 0%, #2649B3 100%)" }}
+                  style={{ background: "linear-gradient(135deg, #1D4ED8 0%, #1E3A8A 100%)" }}
                 >
                   {initial}
                 </div>
                 <div className="flex flex-col min-w-0">
                   <span className="text-xs font-bold text-[#090909] truncate">{displayName}</span>
                   <span className="text-2xs text-[#4F5050] truncate font-mono">{user?.email}</span>
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-3xs font-semibold bg-[#EAF6FF] text-[#2649B3] mt-1 w-fit">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-3xs font-semibold bg-[#EFF6FF] text-[#1E3A8A] mt-1 w-fit">
                     {roleName}
                   </span>
                 </div>
@@ -403,7 +403,7 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
                                 setSwitchingRole(false);
                               }
                             }}
-                            className={cn("flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs transition-colors", active ? "bg-[#EAF6FF] font-bold text-[#2649B3]" : "text-text-primary hover:bg-bg-light", switchingRole && "opacity-60")}
+                            className={cn("flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs transition-colors", active ? "bg-[#EFF6FF] font-bold text-[#1E3A8A]" : "text-text-primary hover:bg-bg-light", switchingRole && "opacity-60")}
                           >
                             <span>{role.role_name || code}</span>
                             {active && <Check size={13} />}

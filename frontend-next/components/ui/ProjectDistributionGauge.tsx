@@ -56,9 +56,9 @@ export function ProjectDistributionGauge({
     statusLabel.toLowerCase().includes("cautious") ||
     statusLabel.toLowerCase().includes("caution");
 
-  const badgeFill = isGood ? "#EAF6FF" : isCautious ? "#FEF3C7" : "#FEE2E2";
-  const badgeStroke = isGood ? "#9FD6FF" : isCautious ? "#FDE68A" : "#FCA5A5";
-  const badgeText = isGood ? "#2649B3" : isCautious ? "#92400E" : "#991B1B";
+  const badgeFill = isGood ? "#EFF6FF" : isCautious ? "#FEF3C7" : "#FEE2E2";
+  const badgeStroke = isGood ? "#BFDBFE" : isCautious ? "#FDE68A" : "#FCA5A5";
+  const badgeText = isGood ? "#1E3A8A" : isCautious ? "#92400E" : "#991B1B";
 
   return (
     <div
@@ -70,10 +70,10 @@ export function ProjectDistributionGauge({
       {/* Header */}
       <div className="flex items-center justify-between gap-2 pb-3 border-b border-[#EFEFEF] min-w-0">
         <div className="flex items-center gap-2 min-w-0">
-          <div className="w-2.5 h-2.5 rounded-full bg-[#294BB2] animate-pulse flex-shrink-0" />
+          <div className="w-2.5 h-2.5 rounded-full bg-[#1D4ED8] animate-pulse flex-shrink-0" />
           <h3 className="text-sm font-extrabold text-[#090909] truncate">Project Distribution</h3>
         </div>
-        <span className="text-3xs font-extrabold text-[#2649B3] bg-[#EAF6FF] border border-[#9FD6FF] px-2.5 py-0.5 rounded-full flex-shrink-0 whitespace-nowrap">
+        <span className="text-3xs font-extrabold text-[#1E3A8A] bg-[#EFF6FF] border border-[#BFDBFE] px-2.5 py-0.5 rounded-full flex-shrink-0 whitespace-nowrap">
           Portfolio Health
         </span>
       </div>
@@ -92,8 +92,8 @@ export function ProjectDistributionGauge({
               <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
                 <stop offset="0%" stopColor="#FF9946" />
                 <stop offset="35%" stopColor="#FFE17F" />
-                <stop offset="70%" stopColor="#294BB2" />
-                <stop offset="100%" stopColor="#2649B3" />
+                <stop offset="70%" stopColor="#1D4ED8" />
+                <stop offset="100%" stopColor="#1E3A8A" />
               </linearGradient>
             </defs>
 
@@ -167,13 +167,13 @@ export function ProjectDistributionGauge({
         {/* Legend */}
         <div className="flex flex-col gap-1.5 w-full min-w-0 sm:pl-2">
           {[
-            { color: "#2649B3", label: "On-track", count: onTrackCount },
+            { color: "#1E3A8A", label: "On-track", count: onTrackCount },
             { color: "#FFE17F", label: "Caution", count: cautiousCount },
             { color: "#FF9946", label: "Off-track", count: offTrackCount },
           ].map(({ color, label, count }) => (
             <div
               key={label}
-              className="flex items-center justify-between text-xs py-1.5 px-2 rounded-xl bg-[#FDFDFD] border border-[#EFEFEF] hover:bg-[#EAF6FF]/40 transition-colors"
+              className="flex items-center justify-between text-xs py-1.5 px-2 rounded-xl bg-[#FDFDFD] border border-[#EFEFEF] hover:bg-[#EFF6FF]/40 transition-colors"
             >
               <div className="flex items-center gap-2 min-w-0 pr-1">
                 <span
@@ -184,7 +184,7 @@ export function ProjectDistributionGauge({
                   {label}
                 </span>
               </div>
-              <span className="font-extrabold text-[#2649B3] bg-[#EAF6FF] border border-[#9FD6FF] px-2 py-0.5 rounded-full text-2xs tabular-nums flex-shrink-0">
+              <span className="font-extrabold text-[#1E3A8A] bg-[#EFF6FF] border border-[#BFDBFE] px-2 py-0.5 rounded-full text-2xs tabular-nums flex-shrink-0">
                 {count}
               </span>
             </div>

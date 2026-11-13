@@ -15,7 +15,7 @@ export function MarkaPlusName({ className = "", compact = false, ...props }: Mar
       <span>Marka</span>
       <span
         aria-hidden="true"
-        className={`ml-[0.22em] inline-block bg-gradient-to-r from-[#294BB2] to-[#1688E8] bg-clip-text font-black italic tracking-[-0.04em] text-transparent ${
+        className={`ml-[0.22em] inline-block bg-gradient-to-r from-[#1D4ED8] to-[#1688E8] bg-clip-text font-black italic tracking-[-0.04em] text-transparent ${
           compact
             ? "text-[0.82em]"
             : "text-[0.9em]"

@@ -302,9 +302,9 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="relative w-full max-w-[560px] bg-[#FDFDFD] border border-[#D9D9D9] rounded-[26px] shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#D9D9D9] bg-[#EAF6FF]/40">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#D9D9D9] bg-[#EFF6FF]/40">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-[#2649B3] flex items-center justify-center text-white shadow-2xs">
+            <div className="w-8 h-8 rounded-full bg-[#1E3A8A] flex items-center justify-center text-white shadow-2xs">
               <ShieldCheck size={16} />
             </div>
             <div>
@@ -332,7 +332,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
 
           {/* Status Badge & Type */}
           <div className="flex items-center justify-between">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#EAF6FF] border border-[#D9D9D9] text-xs font-extrabold text-[#2649B3]">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#EFF6FF] border border-[#D9D9D9] text-xs font-extrabold text-[#1E3A8A]">
               {request.request_type === "FUND_REQUEST" ? <Coins size={13} /> : request.request_type === "MEETING" ? <Users size={13} /> : request.request_type === "LEAVE" ? <Coffee size={13} /> : <Briefcase size={13} />}
               <span>{request.request_type.replace("_", " ")}</span>
             </div>
@@ -346,10 +346,10 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
 
           {/* Fund Details (if Fund Request) */}
           {request.amount && (
-            <div className="p-4 rounded-[18px] bg-[#EAF6FF]/80 border border-[#9FD6FF] flex items-center justify-between">
+            <div className="p-4 rounded-[18px] bg-[#EFF6FF]/80 border border-[#BFDBFE] flex items-center justify-between">
               <div>
-                <span className="text-3xs font-bold text-[#2649B3] uppercase tracking-wider block">Nominal Diajukan</span>
-                <span className="text-lg font-black text-[#2649B3]">
+                <span className="text-3xs font-bold text-[#1E3A8A] uppercase tracking-wider block">Nominal Diajukan</span>
+                <span className="text-lg font-black text-[#1E3A8A]">
                   Rp {Number(request.amount).toLocaleString("id-ID")}
                 </span>
                 {request.budget_category && (
@@ -360,7 +360,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
               </div>
               {request.bank_target && (
                 <div className="text-right max-w-[200px]">
-                  <span className="text-3xs font-bold text-[#2649B3] uppercase tracking-wider block">Rekening Target</span>
+                  <span className="text-3xs font-bold text-[#1E3A8A] uppercase tracking-wider block">Rekening Target</span>
                   <span className="text-2xs font-semibold text-[#090909] break-words">{request.bank_target}</span>
                 </div>
               )}
@@ -382,7 +382,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                 Staff Penanggung Jawab (PIC)
               </span>
               {displayedAssignee ? (
-                <span className="text-2xs font-semibold px-2 py-0.5 rounded-full bg-[#EAF6FF] text-[#2649B3] flex items-center gap-1">
+                <span className="text-2xs font-semibold px-2 py-0.5 rounded-full bg-[#EFF6FF] text-[#1E3A8A] flex items-center gap-1">
                   <Check size={11} />
                   {displayedAssignee.name}
                 </span>
@@ -396,7 +396,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                 value={selectedAssigneeId}
                 onChange={(e) => setSelectedAssigneeId(e.target.value)}
                 disabled={assigning}
-                className="flex-1 rounded-[12px] border border-[#D9D9D9] bg-white px-3 py-2 text-xs text-[#4F5050] focus:outline-none focus:ring-2 focus:ring-[#294BB2]/30 focus:border-[#294BB2] disabled:opacity-60"
+                className="flex-1 rounded-[12px] border border-[#D9D9D9] bg-white px-3 py-2 text-xs text-[#4F5050] focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30 focus:border-[#1D4ED8] disabled:opacity-60"
               >
                 <option value="">-- Pilih Staff --</option>
                 {teamMembers.map((m) => (
@@ -409,7 +409,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                 type="button"
                 onClick={handleAssign}
                 disabled={assigning || !selectedAssigneeId || selectedAssigneeId === (localAssignee?.id ?? request.assignee_user_id)}
-                className="px-3.5 py-2 rounded-[12px] bg-[#2649B3] text-white text-xs font-bold transition-all disabled:opacity-40 shrink-0 flex items-center gap-1.5 min-w-[80px] justify-center"
+                className="px-3.5 py-2 rounded-[12px] bg-[#1E3A8A] text-white text-xs font-bold transition-all disabled:opacity-40 shrink-0 flex items-center gap-1.5 min-w-[80px] justify-center"
               >
                 {assigning ? (
                   <>
@@ -431,7 +431,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
               </span>
               <div className="flex flex-wrap gap-1.5">
                 {request.tagged_users.map((u: any, i: number) => (
-                  <div key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#EAF6FF] border border-[#D9D9D9] text-2xs font-semibold text-[#090909]">
+                  <div key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#EFF6FF] border border-[#D9D9D9] text-2xs font-semibold text-[#090909]">
                     <Image
                       src={u.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(u.id || i)}`}
                       alt={u.name}
@@ -449,17 +449,17 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
 
           {/* LPJ SUBMISSION FORM (When Disbursed or Registered) */}
           {isDisbursedOrRegistered && request.request_type === "FUND_REQUEST" && (
-            <div className="p-4 rounded-[18px] bg-white border border-[#294BB2]/40 shadow-xs space-y-3">
+            <div className="p-4 rounded-[18px] bg-white border border-[#1D4ED8]/40 shadow-xs space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Receipt size={16} className="text-[#294BB2]" />
+                  <Receipt size={16} className="text-[#1D4ED8]" />
                   <span className="text-xs font-extrabold text-[#090909]">Pertanggungjawaban Dana (LPJ)</span>
                 </div>
                 {!showLPJForm && (
                   <button
                     type="button"
                     onClick={() => setShowLPJForm(true)}
-                    className="px-3 py-1 rounded-lg bg-[#EAF6FF] text-[#2649B3] text-2xs font-bold hover:bg-[#9FD6FF] transition-colors"
+                    className="px-3 py-1 rounded-lg bg-[#EFF6FF] text-[#1E3A8A] text-2xs font-bold hover:bg-[#BFDBFE] transition-colors"
                   >
                     + Input LPJ &amp; Nota
                   </button>
@@ -477,7 +477,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                       onChange={setLpjRealization}
                       placeholder="Contoh: 4.850.000"
                       disabled={editSaving}
-                      className="text-xs font-bold text-[#4F5050] focus:border-[#294BB2] disabled:opacity-60"
+                      className="text-xs font-bold text-[#4F5050] focus:border-[#1D4ED8] disabled:opacity-60"
                       showPrefix={false}
                     />
                   </div>
@@ -491,14 +491,14 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                       placeholder="Keterangan pengeluaran dan informasi sisa dana..."
                       rows={2}
                       disabled={editSaving}
-                      className="w-full px-3 py-2 rounded-xl border border-[#D9D9D9] text-xs text-[#4F5050] focus:outline-none focus:border-[#294BB2] resize-none disabled:opacity-60"
+                      className="w-full px-3 py-2 rounded-xl border border-[#D9D9D9] text-xs text-[#4F5050] focus:outline-none focus:border-[#1D4ED8] resize-none disabled:opacity-60"
                     />
                   </div>
                   <button
                     type="button"
                     onClick={handleSubmitLPJ}
                     disabled={editSaving}
-                    className="w-full py-2.5 rounded-xl bg-[#294BB2] hover:bg-[#2649B3] text-white text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                    className="w-full py-2.5 rounded-xl bg-[#1D4ED8] hover:bg-[#1E3A8A] text-white text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
                   >
                     {editSaving ? (
                       <>
@@ -526,7 +526,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                 placeholder="Tuliskan catatan evaluasi atau alasan revisi..."
                 rows={2}
                 disabled={loading}
-                className="w-full px-3.5 py-2 rounded-[14px] bg-white border border-[#D9D9D9] text-xs font-medium text-[#090909] focus:outline-none focus:ring-2 focus:ring-[#294BB2]/40 resize-none disabled:opacity-60"
+                className="w-full px-3.5 py-2 rounded-[14px] bg-white border border-[#D9D9D9] text-xs font-medium text-[#090909] focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/40 resize-none disabled:opacity-60"
               />
             </div>
           )}
@@ -538,7 +538,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
             type="button"
             onClick={onClose}
             disabled={isAnySaving}
-            className="px-4 py-2.5 rounded-[14px] text-xs font-bold text-[#4F5050] hover:bg-[#EAF6FF] disabled:opacity-40 transition-colors"
+            className="px-4 py-2.5 rounded-[14px] text-xs font-bold text-[#4F5050] hover:bg-[#EFF6FF] disabled:opacity-40 transition-colors"
           >
             Tutup
           </button>
@@ -558,7 +558,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                   Rekening sumber pencairan
                 </label>
                 <select
-                  className="w-full rounded-[12px] border border-[#D9D9D9] bg-white px-3 py-2 text-xs text-[#4F5050] focus:outline-none focus:ring-2 focus:ring-[#294BB2]/30 focus:border-[#294BB2] disabled:opacity-60"
+                  className="w-full rounded-[12px] border border-[#D9D9D9] bg-white px-3 py-2 text-xs text-[#4F5050] focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30 focus:border-[#1D4ED8] disabled:opacity-60"
                   value={bankId}
                   onChange={e => setBankId(e.target.value)}
                   disabled={loading}
@@ -574,7 +574,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                   Referensi transfer aktual
                 </label>
                 <input
-                  className="w-full rounded-[12px] border border-[#D9D9D9] bg-white px-3 py-2 text-xs text-[#4F5050] focus:outline-none focus:ring-2 focus:ring-[#294BB2]/30 focus:border-[#294BB2] disabled:opacity-60"
+                  className="w-full rounded-[12px] border border-[#D9D9D9] bg-white px-3 py-2 text-xs text-[#4F5050] focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30 focus:border-[#1D4ED8] disabled:opacity-60"
                   value={bankReference}
                   onChange={e => setBankReference(e.target.value)}
                   placeholder="Nomor referensi transfer bank"
@@ -587,7 +587,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                   type="button"
                   onClick={handleDisburseAction}
                   disabled={loading || !bankId || !bankReference.trim()}
-                  className="px-4 py-2.5 rounded-[14px] bg-[#2649B3] text-white text-xs font-extrabold shadow-md transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  className="px-4 py-2.5 rounded-[14px] bg-[#1E3A8A] text-white text-xs font-extrabold shadow-md transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
                   {loading ? <Loader2 size={13} className="animate-spin" /> : null}
                   <span>Catat Pencairan Dana</span>
@@ -610,7 +610,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                   type="button"
                   onClick={() => handleVerifyLPJByOM("APPROVE")}
                   disabled={loading}
-                  className="px-5 py-2.5 rounded-[14px] bg-[#2649B3] text-white text-xs font-extrabold shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50"
+                  className="px-5 py-2.5 rounded-[14px] bg-[#1E3A8A] text-white text-xs font-extrabold shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50"
                 >
                   {loading ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={15} />}
                   <span>✓ Verifikasi LPJ &amp; Tutup Tiket (Closed)</span>

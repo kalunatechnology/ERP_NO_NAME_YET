@@ -74,9 +74,9 @@ export function BudgetCheckStatusCard({
       )}
     >
       {/* Header Banner */}
-      <div className="bg-[#EAF6FF] rounded-xl px-3.5 py-2 flex items-center justify-between">
+      <div className="bg-[#EFF6FF] rounded-xl px-3.5 py-2 flex items-center justify-between">
         <span className="text-xs font-bold text-[#090909]">{title}</span>
-        <span className="text-[10px] font-bold text-[#294BB2] tracking-wider">{statusLabel}</span>
+        <span className="text-[10px] font-bold text-[#1D4ED8] tracking-wider">{statusLabel}</span>
       </div>
 
       {projects.length > 0 && (
@@ -126,13 +126,13 @@ export function BudgetCheckStatusCard({
           <div
             className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold flex-shrink-0 ${
               isValid
-                ? "bg-[#9FD6FF] text-[#2649B3]"
+                ? "bg-[#BFDBFE] text-[#1E3A8A]"
                 : "bg-red-100 text-red-700"
             }`}
           >
             <span>{isValid ? "Valid" : "Overbudget"}</span>
             {isValid ? (
-              <CheckCircle2 size={13} className="text-[#2649B3]" />
+              <CheckCircle2 size={13} className="text-[#1E3A8A]" />
             ) : (
               <AlertTriangle size={13} className="text-red-700" />
             )}

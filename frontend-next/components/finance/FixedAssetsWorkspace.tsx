@@ -476,7 +476,7 @@ export default function FixedAssetsWorkspace() {
             <h2 className="text-xl font-bold tracking-tight text-[#090909]">
               Register & Penyusutan Aset Tetap
             </h2>
-            <span className="inline-flex items-center gap-1 rounded-md bg-[#EAF6FF] px-2 py-0.5 text-2xs font-extrabold uppercase text-[#2649B3]">
+            <span className="inline-flex items-center gap-1 rounded-md bg-[#EFF6FF] px-2 py-0.5 text-2xs font-extrabold uppercase text-[#1E3A8A]">
               <Sparkles size={11} /> Auto Straight-Line
             </span>
           </div>
@@ -514,7 +514,7 @@ export default function FixedAssetsWorkspace() {
               type="button"
               onClick={handleRunBatchDepreciation}
               disabled={batchLoading}
-              className="flex items-center gap-1 rounded-lg bg-[#2649B3] px-3 py-1.5 text-xs font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+              className="flex items-center gap-1 rounded-lg bg-[#1E3A8A] px-3 py-1.5 text-xs font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               <RefreshCw size={13} className={batchLoading ? "animate-spin" : ""} />
               {batchLoading ? "Memproses..." : "Batch Susutkan"}
@@ -698,7 +698,7 @@ export default function FixedAssetsWorkspace() {
 
                     return (
                       <tr key={asset.id} className="transition-colors hover:bg-slate-50/70">
-                        <td className="py-3 px-3 font-mono font-bold text-[#2649B3]">
+                        <td className="py-3 px-3 font-mono font-bold text-[#1E3A8A]">
                           {asset.asset_code}
                         </td>
                         <td className="py-3 px-3">
@@ -727,7 +727,7 @@ export default function FixedAssetsWorkspace() {
                             <button
                               type="button"
                               onClick={() => handleOpenSchedule(asset.id)}
-                              className="rounded-lg border border-[#BCDFFF] bg-[#EAF6FF] px-2.5 py-1 text-2xs font-bold text-[#2649B3] hover:bg-[#d8edff] transition-colors"
+                              className="rounded-lg border border-[#BCDFFF] bg-[#EFF6FF] px-2.5 py-1 text-2xs font-bold text-[#1E3A8A] hover:bg-[#d8edff] transition-colors"
                               title="Buka jadwal penyusutan"
                             >
                               Jadwal
@@ -785,7 +785,7 @@ export default function FixedAssetsWorkspace() {
               <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between border-b border-[#EFEFEF] pb-3">
                 <div>
                   <h3 className="text-sm font-bold text-[#090909]">
-                    Jadwal Penyusutan Garis Lurus: <span className="text-[#2649B3]">{selectedScheduleAsset?.asset_name}</span>
+                    Jadwal Penyusutan Garis Lurus: <span className="text-[#1E3A8A]">{selectedScheduleAsset?.asset_name}</span>
                   </h3>
                   <p className="text-2xs text-[#6B7280]">
                     Kode: <b>{selectedScheduleAsset?.asset_code}</b> · Total Periode: <b>{schedule.length} Bulan</b>
@@ -925,7 +925,7 @@ export default function FixedAssetsWorkspace() {
           <div className="flex items-center justify-between flex-wrap gap-3 pb-4 border-b border-gray-100 mb-4">
             <div>
               <h3 className="text-sm font-bold text-[#090909] flex items-center gap-2">
-                <Layers size={16} className="text-[#2649B3]" /> Master Kategori Aset Tetap
+                <Layers size={16} className="text-[#1E3A8A]" /> Master Kategori Aset Tetap
               </h3>
               <p className="text-xs text-[#6B7280] mt-0.5">
                 Kategori aset mengelompokkan aktiva kapital dan menghubungkan akun buku besar aset tetap &amp; akumulasi depresiasi.
@@ -956,7 +956,7 @@ export default function FixedAssetsWorkspace() {
                   const count = assets.filter((a) => a.category_id === c.id || a.category_id === c.category_code).length;
                   return (
                     <tr key={c.id} className="hover:bg-slate-50/60">
-                      <td className="py-3 px-4 font-mono font-bold text-[#2649B3]">
+                      <td className="py-3 px-4 font-mono font-bold text-[#1E3A8A]">
                         {c.category_code}
                       </td>
                       <td className="py-3 px-4 font-semibold text-[#090909]">
@@ -1019,7 +1019,7 @@ export default function FixedAssetsWorkspace() {
                 <button
                   type="button"
                   onClick={() => setIsAddCategoryModalOpen(true)}
-                  className="text-2xs font-bold text-[#2649B3] hover:underline flex items-center gap-1"
+                  className="text-2xs font-bold text-[#1E3A8A] hover:underline flex items-center gap-1"
                 >
                   <Plus size={11} /> Tambah Kategori
                 </button>

@@ -28,7 +28,7 @@ export default function CRMIntegrationCenter() {
     </CollapsibleGuideline>
 
     <div className="overflow-x-auto rounded-2xl border border-[#E2E8F0] bg-white p-2 shadow-sm" role="tablist" aria-label="Pengaturan integrasi CRM">
-      <div className="flex min-w-max gap-2">{tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" role="tab" aria-selected={active === id} onClick={() => setActive(id)} className={`inline-flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${active === id ? "bg-[#2649B3] text-white shadow-sm" : "text-[#475569] hover:bg-[#F1F5F9]"}`}><Icon size={16}/>{label}</button>)}</div>
+      <div className="flex min-w-max gap-2">{tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" role="tab" aria-selected={active === id} onClick={() => setActive(id)} className={`inline-flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${active === id ? "bg-[#1E3A8A] text-white shadow-sm" : "text-[#475569] hover:bg-[#F1F5F9]"}`}><Icon size={16}/>{label}</button>)}</div>
     </div>
 
     <div role="tabpanel">

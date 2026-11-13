@@ -146,10 +146,10 @@ export function RequestCardFeed({ onRequestClick, refreshTrigger }: RequestCardF
       key={req.id}
       type="button"
       onClick={() => onRequestClick(req)}
-      className="w-full rounded-xl border border-[#D9E2EE] bg-white p-3 text-left shadow-2xs transition-all hover:border-[#294BB2]/50 hover:shadow-sm"
+      className="w-full rounded-xl border border-[#D9E2EE] bg-white p-3 text-left shadow-2xs transition-all hover:border-[#1D4ED8]/50 hover:shadow-sm"
     >
       <div className="flex items-start gap-2.5">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#D9E2EE] bg-[#EAF6FF] text-[#2649B3]">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#D9E2EE] bg-[#EFF6FF] text-[#1E3A8A]">
           <Users size={15} />
         </span>
         <span className="min-w-0 flex-1">
@@ -159,7 +159,7 @@ export function RequestCardFeed({ onRequestClick, refreshTrigger }: RequestCardF
       </div>
       <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-[#EEF2F7] pt-2 text-[11px] text-[#4F5050]">
         <span className="inline-flex items-center gap-1.5 font-medium">
-          <Clock size={12} className="text-[#294BB2]" />
+          <Clock size={12} className="text-[#1D4ED8]" />
           {req.start_at && <>
             {meetingDateKey(req.start_at) !== today && `${new Date(req.start_at).toLocaleDateString("id-ID", { day: "numeric", month: "short" })} · `}
             {new Date(req.start_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
@@ -180,7 +180,7 @@ export function RequestCardFeed({ onRequestClick, refreshTrigger }: RequestCardF
                 className="h-5 w-5 rounded-full border border-white object-cover"
               />
             ))}
-            {req.tagged_users.length > 3 && <span className="flex h-5 w-5 items-center justify-center rounded-full border border-white bg-[#EAF6FF] text-[9px] font-bold text-[#2649B3]">+{req.tagged_users.length - 3}</span>}
+            {req.tagged_users.length > 3 && <span className="flex h-5 w-5 items-center justify-center rounded-full border border-white bg-[#EFF6FF] text-[9px] font-bold text-[#1E3A8A]">+{req.tagged_users.length - 3}</span>}
           </span>
         )}
       </div>
@@ -191,7 +191,7 @@ export function RequestCardFeed({ onRequestClick, refreshTrigger }: RequestCardF
     <section className="flex min-w-0 flex-col gap-2 rounded-2xl border border-[#D9E2EE] bg-[#F8FBFF] p-3 sm:p-4">
       <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-2">
         <h4 className="text-sm font-extrabold text-[#090909]">{title}</h4>
-        <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-[#2649B3]">{items.length}</span>
+        <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-[#1E3A8A]">{items.length}</span>
       </div>
       {items.length ? <div className="flex max-h-[290px] flex-col gap-2 overflow-y-auto pr-1">{items.map(renderMeetingCard)}</div> : (
         <p className="rounded-xl border border-dashed border-[#D5E3F2] bg-white px-3 py-5 text-center text-xs text-[#64748B]">{emptyText}</p>
@@ -207,9 +207,9 @@ export function RequestCardFeed({ onRequestClick, refreshTrigger }: RequestCardF
             <h3 className="text-sm font-extrabold tracking-tight text-[#090909]">Today&apos;s &amp; Incoming Meeting</h3>
             <p className="mt-0.5 text-xs text-[#64748B]">Jadwal rapat hari ini dan yang akan datang.</p>
           </div>
-          {refreshing && <RefreshCw size={13} className="text-[#2649B3] animate-spin" aria-label="Memperbarui" />}
+          {refreshing && <RefreshCw size={13} className="text-[#1E3A8A] animate-spin" aria-label="Memperbarui" />}
         </div>
-        <Link href="/requests" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[#D9E2EE] bg-white px-3 py-2 text-xs font-bold text-[#2649B3] transition-colors hover:bg-[#EAF6FF]">
+        <Link href="/requests" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[#D9E2EE] bg-white px-3 py-2 text-xs font-bold text-[#1E3A8A] transition-colors hover:bg-[#EFF6FF]">
           Lihat detail <ArrowRight size={13} />
         </Link>
       </div>
@@ -217,7 +217,7 @@ export function RequestCardFeed({ onRequestClick, refreshTrigger }: RequestCardF
       {initialLoading ? (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {[1, 2].map(i => (
-            <div key={i} className="h-44 rounded-2xl border border-[#D9E2EE] bg-[#EAF6FF]/50 animate-pulse" />
+            <div key={i} className="h-44 rounded-2xl border border-[#D9E2EE] bg-[#EFF6FF]/50 animate-pulse" />
           ))}
         </div>
       ) : fetchError ? (
@@ -226,7 +226,7 @@ export function RequestCardFeed({ onRequestClick, refreshTrigger }: RequestCardF
           <p className="text-xs text-red-600 font-semibold">{fetchError}</p>
           <button
             onClick={() => fetchRequests(false)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#EAF6FF] text-[#2649B3] text-xs font-bold hover:bg-[#9FD6FF] transition-colors"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#EFF6FF] text-[#1E3A8A] text-xs font-bold hover:bg-[#BFDBFE] transition-colors"
           >
             <RefreshCw size={13} />
             Coba Lagi

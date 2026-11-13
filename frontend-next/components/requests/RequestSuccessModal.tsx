@@ -35,7 +35,7 @@ export function RequestSuccessModal({ isOpen, onClose, requestData }: RequestSuc
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="relative w-full max-w-[380px] bg-white border border-[#D9D9D9] rounded-[28px] shadow-2xl p-8 text-center flex flex-col items-center animate-in zoom-in-95 duration-200">
         {/* Glowing Green Check Icon Container */}
-        <div className="w-18 h-18 rounded-full bg-gradient-to-b from-[#294BB2] to-[#2649B3] flex items-center justify-center text-white shadow-lg mb-5 ring-8 ring-[#EAF6FF]">
+        <div className="w-18 h-18 rounded-full bg-gradient-to-b from-[#1D4ED8] to-[#1E3A8A] flex items-center justify-center text-white shadow-lg mb-5 ring-8 ring-[#EFF6FF]">
           <Check size={36} strokeWidth={3} />
         </div>
 
@@ -49,13 +49,13 @@ export function RequestSuccessModal({ isOpen, onClose, requestData }: RequestSuc
 
         {/* Request Pill Summary */}
         {requestData && (
-          <div className="w-full mb-6 p-3 rounded-[16px] bg-[#EAF6FF] border border-[#D9D9D9] text-left">
-            <div className="flex items-center justify-between text-3xs font-bold text-[#294BB2] uppercase tracking-wider mb-0.5">
+          <div className="w-full mb-6 p-3 rounded-[16px] bg-[#EFF6FF] border border-[#D9D9D9] text-left">
+            <div className="flex items-center justify-between text-3xs font-bold text-[#1D4ED8] uppercase tracking-wider mb-0.5">
               <span>{requestData.request_type || "REQUEST"}</span>
               <span className="font-mono text-[#090909]">{requestData.request_number}</span>
             </div>
             <p className="text-xs font-bold text-[#090909] truncate">{requestData.title}</p>
-            <p className="text-3xs text-[#4F5050] mt-1">Status: <span className="font-bold text-[#294BB2]">{type.includes("MEETING") ? "Scheduled" : "Registered"}</span></p>
+            <p className="text-3xs text-[#4F5050] mt-1">Status: <span className="font-bold text-[#1D4ED8]">{type.includes("MEETING") ? "Scheduled" : "Registered"}</span></p>
           </div>
         )}
 
@@ -63,7 +63,7 @@ export function RequestSuccessModal({ isOpen, onClose, requestData }: RequestSuc
         <button
           type="button"
           onClick={onClose}
-          className="w-full py-3 rounded-[16px] bg-[#2649B3] hover:bg-[#2649B3] text-white text-xs font-extrabold shadow-md hover:shadow-lg transition-all"
+          className="w-full py-3 rounded-[16px] bg-[#1E3A8A] hover:bg-[#1E3A8A] text-white text-xs font-extrabold shadow-md hover:shadow-lg transition-all"
         >
           Back to Home
         </button>
