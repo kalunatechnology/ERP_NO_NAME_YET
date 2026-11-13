@@ -44,10 +44,10 @@ export function CompletionRateCard({
       {/* Header */}
       <div className="flex items-center justify-between pb-3.5 border-b border-[#EFEFEF]">
         <div>
-          <h3 className="text-sm font-extrabold text-[#090909]">Tingkat Penyelesaian Proyek</h3>
-          <p className="text-2xs text-[#4F5050] font-medium mt-0.5">Progres aktual tiap proyek</p>
+          <h3 className="text-sm font-extrabold text-[#0F172A]">Tingkat Penyelesaian Proyek</h3>
+          <p className="text-2xs text-[#64748B] font-medium mt-0.5">Progres aktual tiap proyek</p>
         </div>
-        <div className="w-8 h-8 rounded-xl bg-[#EFF6FF] text-[#1E3A8A] border border-[#BFDBFE] flex items-center justify-center flex-shrink-0 shadow-2xs">
+        <div className="w-8 h-8 rounded-xl bg-[#E7F2FF] text-[#163D64] border border-[#BAE6FD] flex items-center justify-center flex-shrink-0 shadow-2xs">
           <CheckCircle2 size={16} strokeWidth={2.2} />
         </div>
       </div>
@@ -55,7 +55,7 @@ export function CompletionRateCard({
       {/* Progress Items */}
       <div className="min-h-0 flex-1 overflow-y-auto py-3">
         {displayRates.length === 0 ? (
-          <div className="py-6 text-center text-xs text-[#4F5050]">
+          <div className="py-6 text-center text-xs text-[#64748B]">
             Belum ada data progres klaster (Proyek baru diinisiasi)
           </div>
         ) : (
@@ -72,14 +72,14 @@ export function CompletionRateCard({
                 return (
                   <tr key={item.id} className="group hover:bg-[#F8FBFF]">
                     <td className="px-2 py-3 align-middle">
-                      <span className="block truncate text-xs font-semibold text-[#090909]" title={item.industry}>{item.industry}</span>
+                      <span className="block truncate text-xs font-semibold text-[#0F172A]" title={item.industry}>{item.industry}</span>
                     </td>
                     <td className="px-2 py-3 align-middle">
                       <div className="flex items-center gap-2">
-                        <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-[#EFF6FF]">
-                          <div className="h-full rounded-full bg-[#1E3A8A] transition-all duration-700" style={{ width: `${val}%` }} />
+                        <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-[#E7F2FF]">
+                          <div className="h-full rounded-full bg-[#163D64] transition-all duration-700" style={{ width: `${val}%` }} />
                         </div>
-                        <span className="w-10 shrink-0 text-right text-xs font-extrabold tabular-nums text-[#1E3A8A]">{Math.round(val)}%</span>
+                        <span className="w-10 shrink-0 text-right text-xs font-extrabold tabular-nums text-[#163D64]">{Math.round(val)}%</span>
                       </div>
                     </td>
                   </tr>
@@ -91,7 +91,7 @@ export function CompletionRateCard({
       </div>
 
       {/* Footnote */}
-      <p className="text-3xs text-[#4F5050] font-normal leading-tight pt-3 border-t border-[#EFEFEF]">
+      <p className="text-3xs text-[#64748B] font-normal leading-tight pt-3 border-t border-[#EFEFEF]">
         *Progres dihitung berdasarkan realisasi terbaru tiap proyek.
       </p>
     </div>

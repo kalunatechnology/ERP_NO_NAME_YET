@@ -240,7 +240,7 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
   return (
     <form onSubmit={submit} className="card rounded-xl p-4" aria-labelledby="staff-timesheet-form-title">
       <div className="mb-4 flex items-start gap-3">
-        <span className="rounded-xl bg-[#EFF6FF] p-2 text-[#1E3A8A]"><Clock3 size={18} /></span>
+        <span className="rounded-xl bg-[#E7F2FF] p-2 text-[#163D64]"><Clock3 size={18} /></span>
         <div>
           <h2 id="staff-timesheet-form-title" className="text-sm font-bold text-text-primary">Catat Jam Kerja & Lembur</h2>
           <p className="mt-0.5 text-xs text-text-secondary">Timer tersimpan di server dan tetap berjalan saat berpindah tab, halaman dimuat ulang, atau browser kembali aktif.</p>
@@ -287,14 +287,14 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
         </label>
         <div className="text-xs font-semibold text-text-secondary">
           Kehadiran &amp; timer kerja
-          <div className="mt-1 flex h-10 items-center justify-between rounded-[11px] border border-[#BFDBFE] bg-[#F8FBFF] px-2.5">
+          <div className="mt-1 flex h-10 items-center justify-between rounded-[11px] border border-[#BAE6FD] bg-[#F8FBFF] px-2.5">
             <span className="font-mono text-sm font-bold text-text-primary">{workElapsedLabel}</span>
             {!workTimerRunning ? (
               <button
                 type="button"
                 onClick={workStartedAt ? undefined : startWork}
                 disabled={Boolean(workEndedAt) || actionBusy || (!sessionId && !projectId)}
-                className="inline-flex items-center gap-1 rounded-lg bg-[#EFF6FF] px-2.5 py-1.5 text-2xs font-bold text-[#1E3A8A] disabled:opacity-60"
+                className="inline-flex items-center gap-1 rounded-lg bg-[#E7F2FF] px-2.5 py-1.5 text-2xs font-bold text-[#163D64] disabled:opacity-60"
               >
                 <Play size={12} /> {syncingTimer ? "Sinkronisasi" : workEndedAt ? "Selesai" : timerAction === "start-work" ? "Memulai..." : "Mulai Kerja"}
               </button>
@@ -303,7 +303,7 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
                 type="button"
                 onClick={stopWork}
                 disabled={actionBusy}
-                className="inline-flex items-center gap-1 rounded-lg bg-[#1E3A8A] px-2.5 py-1.5 text-2xs font-bold text-white disabled:opacity-60"
+                className="inline-flex items-center gap-1 rounded-lg bg-[#163D64] px-2.5 py-1.5 text-2xs font-bold text-white disabled:opacity-60"
               ><Square size={12} /> {timerAction === "stop-work" ? "Mengakhiri..." : "Akhiri Kerja"}</button>
             )}
           </div>
@@ -322,7 +322,7 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
                 type="button"
                 onClick={startOvertime}
                 disabled={!workEndedAt || Boolean(overtimeEndedAt) || actionBusy}
-                className="inline-flex items-center gap-1 rounded-lg bg-[#EFF6FF] px-2.5 py-1.5 text-2xs font-bold text-[#1E3A8A] disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded-lg bg-[#E7F2FF] px-2.5 py-1.5 text-2xs font-bold text-[#163D64] disabled:opacity-50"
               ><Play size={12} /> {overtimeEndedAt ? "Terkunci" : timerAction === "start-overtime" ? "Memulai..." : "Mulai Lembur"}</button>
             ) : (
               <button
@@ -352,7 +352,7 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
             Bukti penyelesaian lembur {Number(overtimeHours) > 0 ? <span className="form-required">*</span> : <span className="form-optional">(opsional)</span>}
           </span>
           <span className="mt-1 flex h-[38px] items-center gap-2 rounded-[11px] border border-text-tertiary bg-white px-3 focus-within:border-brand-green focus-within:ring-2 focus-within:ring-brand-green/20 transition-all">
-            <Link2 size={14} className="shrink-0 text-[#1E3A8A]" />
+            <Link2 size={14} className="shrink-0 text-[#163D64]" />
             <input
               type="url"
               value={evidenceUrl}

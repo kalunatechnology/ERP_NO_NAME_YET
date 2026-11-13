@@ -246,7 +246,7 @@ export function MarbotConfigModal({
     >
       {loading ? (
         <div className="flex items-center justify-center py-12 text-sm text-[#64748B]">
-          <RefreshCw className="mr-2 h-4 w-4 animate-spin text-[#1E3A8A]" /> Memuat konfigurasi chatbot...
+          <RefreshCw className="mr-2 h-4 w-4 animate-spin text-[#163D64]" /> Memuat konfigurasi chatbot...
         </div>
       ) : nativeStatus ? (
         <div className="space-y-3 py-4 text-sm text-slate-700">
@@ -321,7 +321,7 @@ export function MarbotConfigModal({
               ].map(([label, value]) => (
                 <div key={label} className="rounded-xl border border-[#E2E8F0] bg-white p-3">
                   <div className="font-semibold uppercase tracking-wider text-[#64748B]">{label}</div>
-                  <div className="mt-1 break-words font-bold text-[#1E3A8A]">{value}</div>
+                  <div className="mt-1 break-words font-bold text-[#163D64]">{value}</div>
                 </div>
               ))}
               <div className="col-span-2 text-[11px] text-[#64748B] sm:col-span-3">
@@ -349,7 +349,7 @@ export function MarbotConfigModal({
                 value={externalTenantId}
                 onChange={(e) => setExternalTenantId(e.target.value)}
                 placeholder="Misal: SINERGI_MUDA_ARSA atau kode unik chatbot"
-                className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3.5 text-sm font-mono text-[#0F172A] outline-none transition focus:border-[#1E3A8A]"
+                className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3.5 text-sm font-mono text-[#0F172A] outline-none transition focus:border-[#163D64]"
               />
               <p className="mt-1 text-[11px] text-[#64748B]">
                 ID tenant yang didaftarkan pada server Chatbot / Lite-MCP. Biasanya sama dengan Kode Tenant ERP.
@@ -368,7 +368,7 @@ export function MarbotConfigModal({
                   value={chatbotUrl}
                   onChange={(e) => setChatbotUrl(e.target.value)}
                   placeholder="https://marbot.arsalynk.com"
-                  className="h-10 w-full rounded-xl border border-[#E2E8F0] pl-10 pr-3.5 text-sm font-mono text-[#0F172A] outline-none transition focus:border-[#1E3A8A]"
+                  className="h-10 w-full rounded-xl border border-[#E2E8F0] pl-10 pr-3.5 text-sm font-mono text-[#0F172A] outline-none transition focus:border-[#163D64]"
                 />
               </div>
               <p className="mt-1 text-[11px] text-[#64748B]">
@@ -388,7 +388,7 @@ export function MarbotConfigModal({
                   value={chatbotApiKey}
                   onChange={(e) => setChatbotApiKey(e.target.value)}
                   placeholder={configured ? "•••••••• (Biarkan jika tidak ingin mengubah)" : "Masukkan token API key"}
-                  className="h-10 w-full rounded-xl border border-[#E2E8F0] pl-10 pr-3.5 text-sm font-mono text-[#0F172A] outline-none transition focus:border-[#1E3A8A]"
+                  className="h-10 w-full rounded-xl border border-[#E2E8F0] pl-10 pr-3.5 text-sm font-mono text-[#0F172A] outline-none transition focus:border-[#163D64]"
                 />
               </div>
               <p className="mt-1 text-[11px] text-[#64748B]">
@@ -408,7 +408,7 @@ export function MarbotConfigModal({
                   value={inboundSecret}
                   onChange={(e) => setInboundSecret(e.target.value)}
                   placeholder={configured ? "•••••••• (Biarkan jika tidak diubah)" : "HMAC secret untuk signed context"}
-                  className="h-10 w-full rounded-xl border border-[#E2E8F0] pl-10 pr-3.5 text-sm font-mono text-[#0F172A] outline-none transition focus:border-[#1E3A8A]"
+                  className="h-10 w-full rounded-xl border border-[#E2E8F0] pl-10 pr-3.5 text-sm font-mono text-[#0F172A] outline-none transition focus:border-[#163D64]"
                 />
               </div>
               <p className="mt-1 text-[11px] text-[#64748B]">
@@ -428,7 +428,7 @@ export function MarbotConfigModal({
                   value={outboundSecret}
                   onChange={(e) => setOutboundSecret(e.target.value)}
                   placeholder={configured ? "•••••••• (Biarkan jika tidak diubah)" : "HMAC secret callback tool"}
-                  className="h-10 w-full rounded-xl border border-[#E2E8F0] pl-10 pr-3.5 text-sm font-mono text-[#0F172A] outline-none transition focus:border-[#1E3A8A]"
+                  className="h-10 w-full rounded-xl border border-[#E2E8F0] pl-10 pr-3.5 text-sm font-mono text-[#0F172A] outline-none transition focus:border-[#163D64]"
                 />
               </div>
               <p className="mt-1 text-[11px] text-[#64748B]">
@@ -445,7 +445,7 @@ export function MarbotConfigModal({
                 value={roleMapJson}
                 onChange={(e) => setRoleMapJson(e.target.value)}
                 placeholder='{"DIRECTOR": "EXECUTIVE", "FINANCE": "FINANCIAL_ANALYST"}'
-                className="mt-1.5 w-full rounded-xl border border-[#E2E8F0] p-3 text-xs font-mono text-[#0F172A] outline-none transition focus:border-[#1E3A8A]"
+                className="mt-1.5 w-full rounded-xl border border-[#E2E8F0] p-3 text-xs font-mono text-[#0F172A] outline-none transition focus:border-[#163D64]"
               />
               <p className="mt-1 text-[11px] text-[#64748B]">
                 Mapping kode role internal ERP ke role yang dipahami oleh engine persona Marka Plus.
@@ -462,7 +462,7 @@ export function MarbotConfigModal({
                 disabled={testing || !chatbotUrl || chatbotUrl === "https://"}
                 className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 text-xs font-semibold text-[#334155] shadow-sm transition hover:bg-[#F8FAFC] disabled:opacity-50"
               >
-                <RefreshCw className={`h-3.5 w-3.5 ${testing ? "animate-spin text-[#1E3A8A]" : ""}`} />
+                <RefreshCw className={`h-3.5 w-3.5 ${testing ? "animate-spin text-[#163D64]" : ""}`} />
                 {testing ? "Menguji..." : "Test Koneksi"}
               </button>
 
@@ -470,7 +470,7 @@ export function MarbotConfigModal({
                 type="button"
                 onClick={handleProvision}
                 disabled={provisioning}
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#1E3A8A] px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-[#1D3A96] disabled:opacity-50"
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#163D64] px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-[#1D3A96] disabled:opacity-50"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${provisioning ? "animate-spin" : ""}`} />
                 {provisioning ? "Memproses..." : mode === "MANAGED" ? "Sync Contract" : "Provision"}
@@ -500,7 +500,7 @@ export function MarbotConfigModal({
               {mode !== "MANAGED" && <button
                 type="submit"
                 disabled={saving}
-                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-[#1E3A8A] px-4 text-xs font-semibold text-white shadow-sm transition hover:bg-[#1D3A96] disabled:opacity-50"
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-[#163D64] px-4 text-xs font-semibold text-white shadow-sm transition hover:bg-[#1D3A96] disabled:opacity-50"
               >
                 <Bot className="h-3.5 w-3.5" />
                 {saving ? "Menyimpan..." : "Simpan Konfigurasi"}

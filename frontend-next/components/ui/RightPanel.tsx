@@ -135,7 +135,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
         <section aria-labelledby="right-panel-alert-title" aria-busy={loading || refreshing}>
           <header className="flex items-start justify-between gap-3 border-b border-[#EFEFEF] pb-3">
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 text-[#1D4ED8]">
+              <div className="flex items-center gap-2 text-[#0876CD]">
                 <Bell size={16} strokeWidth={2} className="shrink-0" aria-hidden="true" />
                 <h2
                   id="right-panel-alert-title"
@@ -147,7 +147,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
 
               <div className="mt-1 flex items-center gap-1.5 pl-6">
                 <span className="h-2 w-2 shrink-0 rounded-full bg-[#66D575] animate-pulse" aria-hidden="true" />
-                <span className="text-[11px] font-semibold leading-none text-[#4F5050] whitespace-nowrap">
+                <span className="text-[11px] font-semibold leading-none text-[#64748B] whitespace-nowrap">
                   Real Time
                 </span>
               </div>
@@ -160,9 +160,9 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
                 disabled={refreshing}
                 className={cn(
                   "inline-flex h-8 w-8 items-center justify-center rounded-lg",
-                  "text-[#4F5050] transition-colors duration-150",
-                  "hover:bg-[#EFF6FF] hover:text-[#1E3A8A]",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1D4ED8]/30",
+                  "text-[#64748B] transition-colors duration-150",
+                  "hover:bg-[#E7F2FF] hover:text-[#163D64]",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0876CD]/30",
                   "disabled:pointer-events-none disabled:opacity-50"
                 )}
                 aria-label="Segarkan alert"
@@ -180,9 +180,9 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
                 onClick={isMobile ? onClose : onToggleCollapse}
                 className={cn(
                   "inline-flex h-8 w-8 items-center justify-center rounded-lg",
-                  "text-[#4F5050] transition-colors duration-150",
-                  "hover:bg-[#EFF6FF] hover:text-[#1E3A8A]",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1D4ED8]/30"
+                  "text-[#64748B] transition-colors duration-150",
+                  "hover:bg-[#E7F2FF] hover:text-[#163D64]",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0876CD]/30"
                 )}
                 aria-label={isMobile ? "Tutup panel kanan" : "Sembunyikan panel kanan"}
                 title={isMobile ? "Tutup panel kanan" : "Sembunyikan panel kanan"}
@@ -203,13 +203,13 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
             >
               {loading ? [1, 2, 3, 4, 5].map((item) => (
                 <div key={item} className="h-[70px] animate-pulse rounded-md border border-[#E5E5E5] bg-white p-3">
-                  <div className="h-2.5 w-2/5 rounded bg-[#EFF6FF]" />
+                  <div className="h-2.5 w-2/5 rounded bg-[#E7F2FF]" />
                   <div className="mt-3 h-2.5 w-4/5 rounded bg-[#EFEFEF]" />
                   <div className="mt-2 h-2 w-3/5 rounded bg-[#EFEFEF]" />
                 </div>
               )) : alerts.length === 0 ? (
                 <div
-                  className="flex min-h-[80px] items-center justify-center rounded-[11px] border border-[#D9D9D9] bg-white px-4 py-4 text-center text-xs font-medium text-[#4F5050]"
+                  className="flex min-h-[80px] items-center justify-center rounded-[11px] border border-[#E2E8F0] bg-white px-4 py-4 text-center text-xs font-medium text-[#64748B]"
                   role="status"
                   aria-live="polite"
                 >
@@ -223,13 +223,13 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
                     type="button"
                     onClick={() => void openAlert(item)}
                     className={cn(
-                      "flex min-h-[72px] w-full flex-col justify-center rounded-[10px] border px-3.5 py-2.5 text-left transition-all hover:-translate-y-0.5 hover:border-[#BFDBFE] hover:shadow-xs",
-                      item.isHighlighted ? "border-blue-200 border-l-4 border-l-[#1E3A8A] bg-blue-50/70" : "border-[#E5E7EB] border-l-4 border-l-transparent bg-white"
+                      "flex min-h-[72px] w-full flex-col justify-center rounded-[10px] border px-3.5 py-2.5 text-left transition-all hover:-translate-y-0.5 hover:border-[#BAE6FD] hover:shadow-xs",
+                      item.isHighlighted ? "border-blue-200 border-l-4 border-l-[#163D64] bg-blue-50/70" : "border-[#E5E7EB] border-l-4 border-l-transparent bg-white"
                     )}
                     title={item.title}
                   >
                     <span className="flex w-full items-center justify-between gap-2">
-                      <span className="flex min-w-0 items-center gap-1.5 truncate text-[10px] font-bold text-[#090909]">
+                      <span className="flex min-w-0 items-center gap-1.5 truncate text-[10px] font-bold text-[#0F172A]">
                         <span className={cn("h-2 w-2 shrink-0 rounded-full", item.isHighlighted ? "bg-blue-600 ring-2 ring-blue-200" : "bg-[#66D575]")} />
                         <span className="truncate">{item.category}</span>
                         {isMention && (
@@ -238,16 +238,16 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
                           </span>
                         )}
                       </span>
-                      <span className="shrink-0 text-[10px] font-medium text-[#4F5050] whitespace-nowrap">{item.time}</span>
+                      <span className="shrink-0 text-[10px] font-medium text-[#64748B] whitespace-nowrap">{item.time}</span>
                     </span>
-                    <strong className={cn("mt-1 truncate text-xs leading-tight font-bold", item.isHighlighted ? "text-slate-900" : "text-[#4F5050]")}>{item.title}</strong>
-                    <span className="mt-1 truncate text-[10px] leading-relaxed text-[#4F5050]">{item.snippet}</span>
+                    <strong className={cn("mt-1 truncate text-xs leading-tight font-bold", item.isHighlighted ? "text-slate-900" : "text-[#64748B]")}>{item.title}</strong>
+                    <span className="mt-1 truncate text-[10px] leading-relaxed text-[#64748B]">{item.snippet}</span>
                   </button>
                 );
               })}
             </div>
           </div>
-          <button type="button" onClick={() => setShowNotifications(true)} className="mt-3 w-full rounded-lg border border-[#D9E5FF] px-3 py-2 text-xs font-bold text-[#1D4ED8] hover:bg-[#EFF6FF]">
+          <button type="button" onClick={() => setShowNotifications(true)} className="mt-3 w-full rounded-lg border border-[#D9E5FF] px-3 py-2 text-xs font-bold text-[#0876CD] hover:bg-[#E7F2FF]">
             Lihat semua notifikasi
           </button>
           <p className="mt-2 text-center text-[10px] text-[#6B7280]">Notifikasi tersimpan selama 3 hari.</p>
@@ -255,26 +255,26 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
 
         <section className="mt-8" aria-labelledby="right-panel-contacts-title">
           <div className="flex items-center justify-between border-b border-[#EFEFEF] pb-2">
-            <h2 id="right-panel-contacts-title" className="text-sm font-extrabold uppercase tracking-[0.02em] text-[#1D4ED8]">Contacts</h2>
-            <Users size={15} className="text-[#1D4ED8]" aria-hidden="true" />
+            <h2 id="right-panel-contacts-title" className="text-sm font-extrabold uppercase tracking-[0.02em] text-[#0876CD]">Contacts</h2>
+            <Users size={15} className="text-[#0876CD]" aria-hidden="true" />
           </div>
           <div className="mt-4 flex flex-col gap-3">
             {loading ? [1, 2, 3, 4].map((item) => (
               <div key={item} className="flex h-8 animate-pulse items-center gap-2.5">
-                <div className="h-8 w-8 rounded-full bg-[#EFF6FF]" />
+                <div className="h-8 w-8 rounded-full bg-[#E7F2FF]" />
                 <div className="flex-1"><div className="h-2.5 w-4/5 rounded bg-[#EFEFEF]" /><div className="mt-1.5 h-2 w-1/2 rounded bg-[#EFEFEF]" /></div>
               </div>
             )) : visibleContacts.length === 0 ? (
-              <p className="text-[10px] text-[#4F5050]">Belum ada anggota tim aktif.</p>
+              <p className="text-[10px] text-[#64748B]">Belum ada anggota tim aktif.</p>
             ) : visibleContacts.map((contact) => (
-              <button key={contact.id} type="button" onClick={() => setSelectedContact(contact)} className="group flex w-full items-center gap-2.5 rounded-lg text-left transition-colors hover:bg-[#EFF6FF]" title={`${contact.name} · ${contact.role}`}>
-                <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-[#1E3A8A]" style={{ background: contact.color }}>
+              <button key={contact.id} type="button" onClick={() => setSelectedContact(contact)} className="group flex w-full items-center gap-2.5 rounded-lg text-left transition-colors hover:bg-[#E7F2FF]" title={`${contact.name} · ${contact.role}`}>
+                <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-[#163D64]" style={{ background: contact.color }}>
                   {contact.initials}
-                  <span className={cn("absolute bottom-0 right-0 h-2 w-2 rounded-full ring-1 ring-white", contact.status === "online" ? "bg-[#66D575]" : contact.status === "away" ? "bg-amber-400" : "bg-[#D9D9D9]")} />
+                  <span className={cn("absolute bottom-0 right-0 h-2 w-2 rounded-full ring-1 ring-white", contact.status === "online" ? "bg-[#66D575]" : contact.status === "away" ? "bg-amber-400" : "bg-[#E2E8F0]")} />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <strong className="block truncate text-[11px] leading-tight text-[#090909] group-hover:text-[#1E3A8A]">{contact.name}</strong>
-                  <span className="mt-0.5 block truncate text-[10px] leading-tight text-[#4F5050]">{contact.role}</span>
+                  <strong className="block truncate text-[11px] leading-tight text-[#0F172A] group-hover:text-[#163D64]">{contact.name}</strong>
+                  <span className="mt-0.5 block truncate text-[10px] leading-tight text-[#64748B]">{contact.role}</span>
                 </span>
               </button>
             ))}
@@ -285,7 +285,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
           type="button"
           onClick={() => contacts.length > 4 && setShowAllContacts((current) => !current)}
           disabled={contacts.length <= 4}
-          className="mt-auto min-h-10 w-full rounded-xl bg-[#EFF6FF] px-4 text-[11px] font-bold text-[#1E3A8A] transition-colors hover:bg-[#DCEEFF] disabled:cursor-default disabled:hover:bg-[#EFF6FF]"
+          className="mt-auto min-h-10 w-full rounded-xl bg-[#E7F2FF] px-4 text-[11px] font-bold text-[#163D64] transition-colors hover:bg-[#DCEEFF] disabled:cursor-default disabled:hover:bg-[#E7F2FF]"
         >
           {contacts.length > 4
             ? showAllContacts ? "Tampilkan lebih sedikit" : `Lihat semua kontak (${contacts.length})`
@@ -301,12 +301,12 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
       {selectedContact && (
         <Modal isOpen onClose={() => setSelectedContact(null)} title="Detail Anggota Tim" size="sm">
           <div className="flex flex-col items-center gap-4 p-4 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full text-xl font-bold text-[#1E3A8A] shadow-sm" style={{ background: selectedContact.color }}>{selectedContact.initials}</div>
-            <div><h3 className="text-base font-bold text-[#090909]">{selectedContact.name}</h3><p className="mt-0.5 text-xs text-[#4F5050]">{selectedContact.role}</p></div>
+            <div className="flex h-16 w-16 items-center justify-center rounded-full text-xl font-bold text-[#163D64] shadow-sm" style={{ background: selectedContact.color }}>{selectedContact.initials}</div>
+            <div><h3 className="text-base font-bold text-[#0F172A]">{selectedContact.name}</h3><p className="mt-0.5 text-xs text-[#64748B]">{selectedContact.role}</p></div>
             {selectedContact.email && (
-              <div className="flex w-full items-center justify-between gap-2 rounded-[11px] border border-[#D9D9D9] bg-[#FDFDFD] p-3 text-xs">
-                <div className="flex min-w-0 items-center gap-2 text-[#090909]"><Mail size={14} className="shrink-0 text-[#1E3A8A]" /><span className="truncate">{selectedContact.email}</span></div>
-                <button type="button" onClick={() => copyContactEmail(selectedContact.email)} className="shrink-0 rounded-lg p-1.5 text-[#4F5050] hover:bg-white hover:text-[#1E3A8A]" title="Salin email">{copiedEmail ? <Check size={14} /> : <Copy size={14} />}</button>
+              <div className="flex w-full items-center justify-between gap-2 rounded-[11px] border border-[#E2E8F0] bg-[#FDFDFD] p-3 text-xs">
+                <div className="flex min-w-0 items-center gap-2 text-[#0F172A]"><Mail size={14} className="shrink-0 text-[#163D64]" /><span className="truncate">{selectedContact.email}</span></div>
+                <button type="button" onClick={() => copyContactEmail(selectedContact.email)} className="shrink-0 rounded-lg p-1.5 text-[#64748B] hover:bg-white hover:text-[#163D64]" title="Salin email">{copiedEmail ? <Check size={14} /> : <Copy size={14} />}</button>
               </div>
             )}
             <div className="flex w-full gap-2 pt-2">

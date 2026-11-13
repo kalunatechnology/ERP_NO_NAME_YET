@@ -117,19 +117,19 @@ export function InventoryCheckingCard({
       )}
     >
       {/* Header Banner */}
-      <div className="bg-[#EFF6FF] rounded-xl px-3.5 py-2 flex items-center justify-between">
+      <div className="bg-[#E7F2FF] rounded-xl px-3.5 py-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <PackageCheck size={16} className="text-[#1E3A8A]" />
-          <span className="text-xs font-bold text-[#090909]">Inventory Checking</span>
+          <PackageCheck size={16} className="text-[#163D64]" />
+          <span className="text-xs font-bold text-[#0F172A]">Inventory Checking</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-bold text-[#1D4ED8] tracking-wider">REAL TIME</span>
+          <span className="text-[10px] font-bold text-[#0876CD] tracking-wider">REAL TIME</span>
           <button
             type="button"
             onClick={loadData}
             title="Muat ulang stok"
             className={cn(
-              "p-0.5 text-[#1D4ED8] hover:text-[#1E3A8A] transition-colors cursor-pointer",
+              "p-0.5 text-[#0876CD] hover:text-[#163D64] transition-colors cursor-pointer",
               loading && "animate-spin"
             )}
           >
@@ -140,10 +140,10 @@ export function InventoryCheckingCard({
 
       {/* Item & Warehouse Header */}
       <div className="flex justify-between items-center pt-3 pb-1 border-b border-gray-100/80 gap-2">
-        <span className="text-xs font-bold text-[#090909] truncate" title={data.itemName}>
+        <span className="text-xs font-bold text-[#0F172A] truncate" title={data.itemName}>
           {data.itemName}
         </span>
-        <span className="text-xs font-bold text-[#1D4ED8] flex-shrink-0 font-mono">
+        <span className="text-xs font-bold text-[#0876CD] flex-shrink-0 font-mono">
           {data.warehouseCode}
         </span>
       </div>
@@ -151,15 +151,15 @@ export function InventoryCheckingCard({
       {/* Stock Metrics Breakdown */}
       <div className="flex flex-col gap-2.5 text-xs py-2 my-auto">
         <div className="flex justify-between items-center gap-2">
-          <span className="text-[#4F5050] font-medium truncate">Sufficient stock available</span>
-          <span className="font-bold text-[#090909] flex-shrink-0">
+          <span className="text-[#64748B] font-medium truncate">Sufficient stock available</span>
+          <span className="font-bold text-[#0F172A] flex-shrink-0">
             {data.stockAvailable.toLocaleString("id-ID")} {data.unit}
           </span>
         </div>
 
         <div className="flex justify-between items-center gap-2">
-          <span className="text-[#4F5050] font-medium truncate">Stocks needed</span>
-          <span className="font-bold text-[#090909] flex-shrink-0">
+          <span className="text-[#64748B] font-medium truncate">Stocks needed</span>
+          <span className="font-bold text-[#0F172A] flex-shrink-0">
             {data.stockNeeded.toLocaleString("id-ID")} {data.unit}
           </span>
         </div>
@@ -168,15 +168,15 @@ export function InventoryCheckingCard({
 
         {/* Status Badge Row */}
         <div className="flex justify-between items-center pt-0.5 gap-2">
-          <span className="text-xs text-[#4F5050] font-medium">Stock status</span>
+          <span className="text-xs text-[#64748B] font-medium">Stock status</span>
           <div
             className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold flex-shrink-0 ${
-              isAvailable ? "bg-[#BFDBFE] text-[#1E3A8A]" : "bg-red-100 text-red-700"
+              isAvailable ? "bg-[#BAE6FD] text-[#163D64]" : "bg-red-100 text-red-700"
             }`}
           >
             <span>{isAvailable ? "Available" : "Shortage / PO Req"}</span>
             {isAvailable ? (
-              <CheckCircle2 size={13} className="text-[#1E3A8A]" />
+              <CheckCircle2 size={13} className="text-[#163D64]" />
             ) : (
               <AlertTriangle size={13} className="text-red-700" />
             )}

@@ -24,11 +24,11 @@ interface GanttChartProps {
 }
 
 const COLORS = {
-  deepGreen:    "#1E3A8A",
-  lighterGreen: "#EFF6FF",
-  green:        "#1D4ED8",
-  textPrimary:  "#090909",
-  textSecondary:"#4F5050",
+  deepGreen:    "#163D64",
+  lighterGreen: "#E7F2FF",
+  green:        "#0876CD",
+  textPrimary:  "#0F172A",
+  textSecondary:"#64748B",
   border:       "#E8E8E8",
   colShade:     "rgba(0,0,0,0.02)",
 };

@@ -218,7 +218,7 @@ function ActionBtn({ onClick, label, variant = "primary", icon: Icon, small, dis
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function KpiCard({ label, value, icon: Icon, iconBg = "#EFF6FF", iconColor = "#1D4ED8" }: {
+function KpiCard({ label, value, icon: Icon, iconBg = "#E7F2FF", iconColor = "#0876CD" }: {
   label: string; value: string | number;
   icon: React.ElementType; iconBg?: string; iconColor?: string;
 }) {
@@ -463,15 +463,15 @@ function TabDashboard({ data, dash }: { data: CRMData; dash: CRMDashboard }) {
           label="Bobot Pipeline" 
           value={formatMoney(dash?.weighted_project_value)} 
           icon={DollarSign} 
-          iconBg="#EFF6FF"
-          iconColor="#1D4ED8"
+          iconBg="#E7F2FF"
+          iconColor="#0876CD"
         />
         <KpiCard 
           label="Win Rate" 
           value={`${Number(dash?.win_rate_percent || 0).toFixed(1)}%`} 
           icon={Award} 
-          iconBg="#EFF6FF" 
-          iconColor="#1D4ED8" 
+          iconBg="#E7F2FF" 
+          iconColor="#0876CD" 
         />
         <KpiCard 
           label="Avg Sales Cycle" 
@@ -830,19 +830,28 @@ function TabDeals({
     }
   };
 
-  const handleOpportunityStageChange = async (opportunity: any, stage: string) => {
+  const handleOpportunityStageChange = async (opportunity: any, stage: string): Promise<boolean> => {
     if (stage === "FOLLOW_UP") {
       setFollowUpOpp(opportunity);
       setFollowUpDraft({ date: "", reason: "" });
-      return;
+      return false;
     }
-    setSavingStage(true);
     try {
       await moveCRMOpportunityStage(opportunity.id, stage, { reason: "Tahap diperbarui dari CRM" });
+      setData((prev) => ({
+        ...prev,
+        opportunities: (prev.opportunities || []).map((item: any) =>
+          String(item.id) === String(opportunity.id)
+            ? { ...item, pipeline_stage: stage }
+            : item
+        ),
+      }));
       toast.success(`Tahap deal diperbarui ke ${CRM_PIPELINE_STAGE_LABELS[stage] || stage}.`);
-      onRefresh();
-    } catch (error: any) { toast.error(error?.response?.data?.detail || "Tahap Opportunity gagal diperbarui."); }
-    finally { setSavingStage(false); }
+      return true;
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Tahap Opportunity gagal diperbarui. Posisi dikembalikan.");
+      return false;
+    }
   };
 
   const submitOpportunityFollowUp = async () => {
@@ -3301,7 +3310,7 @@ function TabContracts({ data, onNavigate, onRefresh, readOnly = false }: { data:
             <button type="button" onClick={() => onNavigate("estimate")} className="btn-ghost text-xs py-1.5 px-3 gap-1"><FileText size={12} /> Buka Quotation</button>
             <button type="button" onClick={() => onNavigate("deals")} className="btn-ghost text-xs py-1.5 px-3 gap-1"><ArrowRight size={12} /> Buka Pipeline</button>
             {!readOnly && (
-              <button type="button" onClick={() => setIsNewContractOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#1E40AF] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1E3A8A]">
+              <button type="button" onClick={() => setIsNewContractOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#0868B5] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#163D64]">
                 <Plus size={13} /> Add Contract
               </button>
             )}
@@ -3419,7 +3428,7 @@ function TabContracts({ data, onNavigate, onRefresh, readOnly = false }: { data:
           </label>
           <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
             <button type="button" onClick={() => setIsNewContractOpen(false)} disabled={savingContract} className="btn-ghost">Batal</button>
-            <button type="button" onClick={() => void handleCreateContract()} disabled={savingContract} className="rounded-lg bg-[#1E40AF] px-4 py-2 text-xs font-semibold text-white hover:bg-[#1E3A8A]">
+            <button type="button" onClick={() => void handleCreateContract()} disabled={savingContract} className="rounded-lg bg-[#0868B5] px-4 py-2 text-xs font-semibold text-white hover:bg-[#163D64]">
               {savingContract ? "Menyimpan..." : "Simpan Contract"}
             </button>
           </div>

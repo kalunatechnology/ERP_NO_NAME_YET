@@ -128,17 +128,17 @@ export function ProjectMilestoneCard({
       )}
     >
       {/* Left Sidebar: Project Lists */}
-      <div className="bg-[#EFF6FF]/50 p-3 sm:p-4 flex flex-col gap-2 border-b md:border-b-0 md:border-r border-[#EFF6FF]">
+      <div className="bg-[#E7F2FF]/50 p-3 sm:p-4 flex flex-col gap-2 border-b md:border-b-0 md:border-r border-[#E7F2FF]">
         <div className="flex items-center gap-2">
-          <FolderKanban size={17} className="text-[#1D4ED8]" />
-          <h4 className="text-sm font-bold text-[#090909]">Daftar Proyek</h4>
+          <FolderKanban size={17} className="text-[#0876CD]" />
+          <h4 className="text-sm font-bold text-[#0F172A]">Daftar Proyek</h4>
         </div>
         <label className="sr-only" htmlFor="project-milestone-status-filter">Filter status proyek</label>
         <select
           id="project-milestone-status-filter"
           value={pipelineView}
           onChange={(event) => changePipelineView(event.target.value as typeof pipelineView)}
-          className="h-9 w-full rounded-lg border border-[#D5E3F2] bg-white px-2.5 text-xs font-semibold text-[#1E3A8A] outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]/60"
+          className="h-9 w-full rounded-lg border border-[#D5E3F2] bg-white px-2.5 text-xs font-semibold text-[#163D64] outline-none focus:border-[#0876CD] focus:ring-2 focus:ring-[#BAE6FD]/60"
         >
           {pipelineOptions.map((view) => {
             const count = view.key === "ALL"
@@ -165,8 +165,8 @@ export function ProjectMilestoneCard({
                   className={cn(
                     "group flex w-full cursor-pointer items-center justify-between rounded-xl px-2.5 py-1.5 text-left text-xs transition-all",
                     isSelected
-                      ? "bg-white text-[#090909] shadow-xs font-bold border border-[#BFDBFE]"
-                      : "text-[#4F5050] hover:bg-white/60 hover:text-[#090909]"
+                      ? "bg-white text-[#0F172A] shadow-xs font-bold border border-[#BAE6FD]"
+                      : "text-[#64748B] hover:bg-white/60 hover:text-[#0F172A]"
                   )}
                 >
                   <div className="flex min-w-0 flex-1 flex-col pr-1.5">
@@ -174,7 +174,7 @@ export function ProjectMilestoneCard({
                     {prj.code && (
                       <span className="text-[10px] font-mono text-neutral-400">{prj.code}</span>
                     )}
-                    <span className="mt-0.5 w-fit rounded-full bg-[#EFF6FF] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#1E3A8A]">
+                    <span className="mt-0.5 w-fit rounded-full bg-[#E7F2FF] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#163D64]">
                       {getProjectLifecycleLabel(prj.lifecycle_status)}
                     </span>
                   </div>
@@ -182,7 +182,7 @@ export function ProjectMilestoneCard({
                     size={14}
                     className={cn(
                       "flex-shrink-0 transition-transform",
-                      isSelected ? "text-[#1D4ED8] translate-x-0.5" : "opacity-0 group-hover:opacity-100"
+                      isSelected ? "text-[#0876CD] translate-x-0.5" : "opacity-0 group-hover:opacity-100"
                     )}
                   />
                 </button>
@@ -191,13 +191,13 @@ export function ProjectMilestoneCard({
           )}
         </div>
         {projects.length > 0 && (
-          <div className="mt-auto flex flex-col gap-1.5 border-t border-[#DCEBFA] pt-2.5 text-2xs text-[#4F5050]">
+          <div className="mt-auto flex flex-col gap-1.5 border-t border-[#DCEBFA] pt-2.5 text-2xs text-[#64748B]">
             <label className="flex items-center justify-between gap-2">
               <span>Per halaman</span>
               <select
                 value={projectPageSize}
                 onChange={(event) => { setProjectPageSize(Number(event.target.value)); setProjectPage(1); }}
-                className="h-7 rounded-lg border border-[#D9D9D9] bg-white px-2 py-0.5 text-2xs font-semibold text-[#090909] outline-none focus:border-[#1E3A8A]"
+                className="h-7 rounded-lg border border-[#E2E8F0] bg-white px-2 py-0.5 text-2xs font-semibold text-[#0F172A] outline-none focus:border-[#163D64]"
               >
                 {[5, 10, 20].map((size) => <option key={size} value={size}>{size}</option>)}
               </select>
@@ -207,7 +207,7 @@ export function ProjectMilestoneCard({
                 type="button"
                 onClick={() => setProjectPage((value) => Math.max(1, value - 1))}
                 disabled={projectPage === 1}
-                className="rounded-lg border border-[#D9D9D9] bg-white p-1 text-[#4F5050] transition-colors hover:bg-gray-50 disabled:opacity-40"
+                className="rounded-lg border border-[#E2E8F0] bg-white p-1 text-[#64748B] transition-colors hover:bg-gray-50 disabled:opacity-40"
                 aria-label="Halaman proyek sebelumnya"
               >
                 <ChevronLeft size={13} />
@@ -217,7 +217,7 @@ export function ProjectMilestoneCard({
                 type="button"
                 onClick={() => setProjectPage((value) => Math.min(projectPageCount, value + 1))}
                 disabled={projectPage === projectPageCount}
-                className="rounded-lg border border-[#D9D9D9] bg-white p-1 text-[#4F5050] transition-colors hover:bg-gray-50 disabled:opacity-40"
+                className="rounded-lg border border-[#E2E8F0] bg-white p-1 text-[#64748B] transition-colors hover:bg-gray-50 disabled:opacity-40"
                 aria-label="Halaman proyek berikutnya"
               >
                 <ChevronRight size={13} />
@@ -232,13 +232,13 @@ export function ProjectMilestoneCard({
         <div>
           <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100/80 gap-2">
             <div className="flex items-center gap-2 min-w-0">
-              <MilestoneIcon size={18} className="text-[#1D4ED8] flex-shrink-0" />
-              <h4 className="text-sm sm:text-base font-bold text-[#090909] truncate">
+              <MilestoneIcon size={18} className="text-[#0876CD] flex-shrink-0" />
+              <h4 className="text-sm sm:text-base font-bold text-[#0F172A] truncate">
                 Milestones &amp; Gates Proyek
               </h4>
             </div>
             {currentMilestones.length > 0 && (
-              <span className="text-2xs font-bold text-[#1E3A8A] bg-[#EFF6FF] px-2.5 py-0.5 rounded-full flex-shrink-0">
+              <span className="text-2xs font-bold text-[#163D64] bg-[#E7F2FF] px-2.5 py-0.5 rounded-full flex-shrink-0">
                 {activeCount} / {currentMilestones.length} Tahap ({progressPercent}%)
               </span>
             )}
@@ -263,7 +263,7 @@ export function ProjectMilestoneCard({
                   className={cn(
                     "w-[240px] sm:w-[270px] rounded-[14px] p-3.5 flex flex-col gap-2.5 transition-all flex-shrink-0 shadow-2xs",
                     m.isActive
-                      ? "bg-[#EFF6FF] border border-[#BFDBFE]"
+                      ? "bg-[#E7F2FF] border border-[#BAE6FD]"
                       : "bg-white border border-[#EFEFEF] hover:border-neutral-300"
                   )}
                 >
@@ -273,14 +273,14 @@ export function ProjectMilestoneCard({
                       className={cn(
                         "w-5 h-5 rounded-[6px] flex items-center justify-center text-xs font-black flex-shrink-0 mt-0.5 shadow-2xs",
                         m.isActive || m.status === "COMPLETED"
-                          ? "bg-[#1E3A8A] text-white"
+                          ? "bg-[#163D64] text-white"
                           : "bg-neutral-100 text-neutral-600"
                       )}
                     >
                       {m.stepNumber}
                     </div>
                     <div className="min-w-0">
-                      <h5 className="text-xs font-bold text-[#090909] leading-snug line-clamp-2">
+                      <h5 className="text-xs font-bold text-[#0F172A] leading-snug line-clamp-2">
                         {m.title}
                       </h5>
                       <span className="text-[10px] font-semibold text-neutral-400 uppercase mt-0.5 block">
@@ -290,7 +290,7 @@ export function ProjectMilestoneCard({
                   </div>
 
                   {/* Sub Points */}
-                  <ol className="text-[11px] text-[#4F5050] flex flex-col gap-1 list-decimal pl-4 leading-relaxed font-medium">
+                  <ol className="text-[11px] text-[#64748B] flex flex-col gap-1 list-decimal pl-4 leading-relaxed font-medium">
                     {m.points.map((pt, idx) => (
                       <li key={idx} className="line-clamp-2">{pt}</li>
                     ))}
@@ -305,7 +305,7 @@ export function ProjectMilestoneCard({
         {currentMilestones.length > 0 && (
           <div className="w-full bg-[#E5E5E5] h-1.5 rounded-full mt-3 overflow-hidden">
             <div
-              className="bg-[#1E3A8A] h-full rounded-full transition-all duration-500"
+              className="bg-[#163D64] h-full rounded-full transition-all duration-500"
               style={{ width: `${progressPercent}%` }}
             />
           </div>

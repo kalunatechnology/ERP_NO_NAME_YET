@@ -22,16 +22,16 @@ const config: Config = {
         brand: {
           // Legacy keys are intentionally retained while the application
           // migrates from the old green identity to the approved blue scale.
-          "deep-green":    "#1E3A8A",
-          "green":         "#1D4ED8",
-          "light-green":   "#EFF6FF",
-          "gradient-from": "#1E40AF",
-          "gradient-to":   "#1E3A8A",
-          primary:          "#1D4ED8",
-          "primary-dark":  "#1E3A8A",
-          "primary-soft":  "#93C5FD",
-          "primary-pale":  "#EFF6FF",
-          muted:            "#475569",
+          "deep-green":    "#163D64",
+          "green":         "#0876CD",
+          "light-green":   "#E7F2FF",
+          "gradient-from": "#0876CD",
+          "gradient-to":   "#163D64",
+          primary:          "#0876CD",
+          "primary-dark":  "#163D64",
+          "primary-soft":  "#BAE6FD",
+          "primary-pale":  "#E7F2FF",
+          muted:            "#64748B",
         },
         text: {
           primary:   "#0F172A",
@@ -47,7 +47,7 @@ const config: Config = {
           offline: "#CACACA",
           warning: "#D97706",
           danger:  "#DC2626",
-          info:    "#1D4ED8",
+          info:    "#0876CD",
         },
       },
 
@@ -100,8 +100,8 @@ const config: Config = {
 
       /* ── Gradients ───────────────────────────────────── */
       backgroundImage: {
-        "brand-gradient": "linear-gradient(180deg, #1E40AF 0%, #1E3A8A 100%)",
-        "brand-gradient-h": "linear-gradient(90deg, #1E40AF 0%, #1E3A8A 100%)",
+        "brand-gradient": "linear-gradient(180deg, #0876CD 0%, #163D64 100%)",
+        "brand-gradient-h": "linear-gradient(90deg, #0876CD 0%, #163D64 100%)",
       },
 
       /* ── Transitions ─────────────────────────────────── */

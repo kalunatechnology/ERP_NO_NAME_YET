@@ -301,7 +301,7 @@ export function ModuleEntitlements({
               value={activeCompany?.id || ""}
               onChange={(e) => onSelectCompany(e.target.value)}
               disabled={loadingModules || batchLoading}
-              className="h-11 min-w-[280px] rounded-xl border border-[#CBD5E1] bg-white px-3.5 text-sm font-semibold text-[#0F172A] shadow-sm outline-none transition focus:border-[#1E3A8A]"
+              className="h-11 min-w-[280px] rounded-xl border border-[#CBD5E1] bg-white px-3.5 text-sm font-semibold text-[#0F172A] shadow-sm outline-none transition focus:border-[#163D64]"
             >
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -311,7 +311,7 @@ export function ModuleEntitlements({
             </select>
 
             {activeTenant && (
-              <span className="inline-flex items-center gap-1.5 rounded-xl bg-[#EEF2FF] px-3 py-2 text-xs font-semibold text-[#1E3A8A]">
+              <span className="inline-flex items-center gap-1.5 rounded-xl bg-[#EEF2FF] px-3 py-2 text-xs font-semibold text-[#163D64]">
                 <Building2 size={14} />
                 Tenant: {activeTenant.name} ({activeTenant.code})
               </span>
@@ -323,7 +323,7 @@ export function ModuleEntitlements({
         <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3.5 text-right">
           <p className="text-xs font-medium text-[#64748B]">Lisensi Modul Aktif</p>
           <div className="mt-1 flex items-baseline justify-end gap-1.5">
-            <span className="text-2xl font-black text-[#1E3A8A]">
+            <span className="text-2xl font-black text-[#163D64]">
               {enabledCount}
             </span>
             <span className="text-sm font-bold text-[#64748B]">
@@ -341,7 +341,7 @@ export function ModuleEntitlements({
           <button
             onClick={() => handleBatchPreset("STANDARD")}
             disabled={batchLoading || loadingModules}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-[#1E3A8A] bg-[#EEF2FF] px-3.5 py-2 text-xs font-semibold text-[#1E3A8A] transition hover:bg-[#1E3A8A] hover:text-white disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-[#163D64] bg-[#EEF2FF] px-3.5 py-2 text-xs font-semibold text-[#163D64] transition hover:bg-[#163D64] hover:text-white disabled:opacity-50"
           >
             <Sparkles size={14} /> Paket Standar ERP
           </button>
@@ -349,7 +349,7 @@ export function ModuleEntitlements({
           <button
             onClick={() => handleBatchPreset("ALL")}
             disabled={batchLoading || loadingModules}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-[#1E3A8A] px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-[#1D3A96] disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#163D64] px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-[#1D3A96] disabled:opacity-50"
           >
             <Zap size={14} /> Aktifkan Semua Modul
           </button>
@@ -373,7 +373,7 @@ export function ModuleEntitlements({
             placeholder="Cari modul..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-10 w-full rounded-[11px] border border-[#E2E8F0] bg-[#F8FAFC] pl-10 pr-4 text-sm text-[#0F172A] placeholder-gray-400 outline-none transition focus:border-[#1E3A8A] focus:bg-white"
+            className="h-10 w-full rounded-[11px] border border-[#E2E8F0] bg-[#F8FAFC] pl-10 pr-4 text-sm text-[#0F172A] placeholder-gray-400 outline-none transition focus:border-[#163D64] focus:bg-white"
           />
         </div>
       </div>
@@ -396,7 +396,7 @@ export function ModuleEntitlements({
               key={item.module_code}
               className={`flex flex-col justify-between rounded-[14px] border p-5 transition shadow-sm ${
                 item.enabled
-                  ? "border-[#BFDBFE] bg-white"
+                  ? "border-[#BAE6FD] bg-white"
                   : "border-[#EFEFEF] bg-[#FDFDFD] opacity-80"
               }`}
             >
@@ -406,7 +406,7 @@ export function ModuleEntitlements({
                     <div
                       className={`flex h-10 w-10 items-center justify-center rounded-xl ${
                         item.enabled
-                          ? "bg-[#1E3A8A] text-white"
+                          ? "bg-[#163D64] text-white"
                           : "bg-[#F1F5F9] text-[#64748B]"
                       }`}
                     >
@@ -425,7 +425,7 @@ export function ModuleEntitlements({
                     disabled={isToggling || batchLoading}
                     onClick={() => handleToggleModule(item.module_code, item.enabled)}
                     className={`relative shrink-0 h-6 w-11 rounded-[10px] transition-colors duration-200 ease-in-out focus:outline-none ${
-                      item.enabled ? "bg-[#1E3A8A]" : "bg-[#CBD5E1]"
+                      item.enabled ? "bg-[#163D64]" : "bg-[#CBD5E1]"
                     }`}
                     aria-label={`Toggle ${meta.name}`}
                   >
@@ -442,7 +442,7 @@ export function ModuleEntitlements({
                 </p>
 
                 {isMarbot && (
-                  <div className="mt-2.5 rounded-lg bg-[#EFF6FF] p-2 text-[11px] text-[#1E40AF]">
+                  <div className="mt-2.5 rounded-lg bg-[#E7F2FF] p-2 text-[11px] text-[#0868B5]">
                     💡 Asisten AI membaca data sesuai modul aktif dan hak akses data user.
                   </div>
                 )}

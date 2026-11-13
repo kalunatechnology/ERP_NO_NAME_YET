@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   TrendingUp, DollarSign, Clock, Award, XCircle,
   Kanban, Table2, Calculator, ShieldAlert, Plus,
@@ -70,7 +70,7 @@ export function CrmSalesPipelineShell({
   viewMode: PipelineViewMode;
   onViewModeChange: (mode: PipelineViewMode) => void;
   onOpenNewOpp: () => void;
-  onMoveStage: (opp: any, targetStage: string) => void;
+  onMoveStage: (opp: any, targetStage: string) => void | Promise<boolean | void>;
   onDealWon: (opp: any) => void;
   onMarkLost: (opp: any) => void;
   onOpenActivity: (opp: any) => void;
@@ -88,6 +88,9 @@ export function CrmSalesPipelineShell({
   const [search, setSearch] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("ALL");
   const [stageFilter, setStageFilter] = useState("ALL");
+  const [optimisticBuckets, setOptimisticBuckets] = useState<Record<string, string>>({});
+  const [pendingOppIds, setPendingOppIds] = useState<Set<string>>(() => new Set());
+  const latestMoveSeqRef = useRef<Record<string, number>>({});
 
   // Drawer
   const [drawerOpp, setDrawerOpp] = useState<any | null>(null);
@@ -104,7 +107,8 @@ export function CrmSalesPipelineShell({
 
   const enrichedOpps = useMemo(() => {
     return (data.opportunities || []).map((o: any) => {
-      const bucket = normalizePipelineBucket(o);
+      const serverBucket = normalizePipelineBucket(o);
+      const bucket = optimisticBuckets[String(o.id)] || serverBucket;
       const pid = o.customer_party_id ?? o.customer_party ?? o.customer;
       const party = pid ? partyById.get(String(pid)) : null;
       const ownerId = String(o.owner_user_id || o.created_by_id || "");
@@ -120,7 +124,7 @@ export function CrmSalesPipelineShell({
         _prob: Math.max(0, Math.min(100, Number(o.probability_percent || 0))),
       };
     });
-  }, [data.opportunities, partyById, userById]);
+  }, [data.opportunities, partyById, userById, optimisticBuckets]);
 
   const kpiItems: CRMKpiItem[] = useMemo(() => {
     const total = enrichedOpps.length;
@@ -214,7 +218,8 @@ export function CrmSalesPipelineShell({
   }, [filteredOpps]);
 
   const handleCardDrop = (oppId: string, targetCol: string) => {
-    const opp = enrichedOpps.find((o) => String(o.id) === String(oppId));
+    const idKey = String(oppId);
+    const opp = enrichedOpps.find((o) => String(o.id) === idKey);
     if (!opp || opp._bucket === targetCol) return;
     if (["WON", "LOST"].includes(opp._bucket)) return;
     if (targetCol === "WON") {
@@ -225,7 +230,39 @@ export function CrmSalesPipelineShell({
       onMarkLost(opp);
       return;
     }
-    onMoveStage(opp, targetCol);
+
+    const prevBucket = opp._bucket;
+    const seq = (latestMoveSeqRef.current[idKey] || 0) + 1;
+    latestMoveSeqRef.current[idKey] = seq;
+
+    // 1. Immediate Optimistic UI update
+    setOptimisticBuckets((prev) => ({ ...prev, [idKey]: targetCol }));
+    setPendingOppIds((prev) => {
+      const next = new Set(prev);
+      next.add(idKey);
+      return next;
+    });
+
+    // 2. Background API sync without blocking other cards
+    Promise.resolve(onMoveStage(opp, targetCol))
+      .then((ok) => {
+        if (latestMoveSeqRef.current[idKey] !== seq) return;
+        if (ok === false) {
+          setOptimisticBuckets((prev) => ({ ...prev, [idKey]: prevBucket }));
+        }
+      })
+      .catch(() => {
+        if (latestMoveSeqRef.current[idKey] !== seq) return;
+        setOptimisticBuckets((prev) => ({ ...prev, [idKey]: prevBucket }));
+      })
+      .finally(() => {
+        if (latestMoveSeqRef.current[idKey] !== seq) return;
+        setPendingOppIds((prev) => {
+          const next = new Set(prev);
+          next.delete(idKey);
+          return next;
+        });
+      });
   };
 
   const drawerActivities = useMemo(() => {
@@ -296,7 +333,7 @@ export function CrmSalesPipelineShell({
             <button
               type="button"
               onClick={onOpenNewOpp}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-[#1E3A8A] px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#1E3A8A] transition-all active:scale-98"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[#163D64] px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#163D64] transition-all active:scale-98"
             >
               <Plus size={14} /> Add Opportunity
             </button>
@@ -309,6 +346,7 @@ export function CrmSalesPipelineShell({
           columns={kanbanColumns}
           canDrag={!readOnly}
           onMoveCard={handleCardDrop}
+          pendingIds={pendingOppIds}
           emptyColumnText="Belum ada Opportunity"
           renderCard={(opp) => (
             <div
@@ -319,17 +357,17 @@ export function CrmSalesPipelineShell({
               className="cursor-pointer space-y-2.5"
             >
               <div className="pr-4">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-[#090909]">
-                  <Building2 size={13} className="shrink-0 text-[#1D4ED8]" />
+                <div className="flex items-center gap-1.5 text-xs font-bold text-[#0F172A]">
+                  <Building2 size={13} className="shrink-0 text-[#0876CD]" />
                   <span className="truncate">{opp._customerName}</span>
                 </div>
-                <div className="mt-0.5 text-[11px] font-medium text-[#353535] line-clamp-2">
+                <div className="mt-0.5 text-[11px] font-medium text-[#334155] line-clamp-2">
                   {opp.opportunity_name}
                 </div>
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-extrabold text-[#1D4ED8]">
+                <span className="text-xs font-extrabold text-[#0876CD]">
                   {formatMoney(opp._amount)}
                 </span>
                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700">
@@ -372,7 +410,7 @@ export function CrmSalesPipelineShell({
               drawerOpp._bucket === "NEGOTIATION" ? "border-[#BAE6FD] bg-[#E0F2FE] text-[#0369A1]" :
               drawerOpp._bucket === "CLOSING" || drawerOpp._bucket === "WON" ? "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]" :
               drawerOpp._bucket === "LOST" ? "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]" :
-              "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]"
+              "border-[#BAE6FD] bg-[#E7F2FF] text-[#0876CD]"
             )}>
               {PIPELINE_COLUMNS.find((c) => c.id === drawerOpp._bucket)?.title || drawerOpp.pipeline_stage}
             </span>
@@ -410,7 +448,7 @@ export function CrmSalesPipelineShell({
                     setDrawerOpp(null);
                     onOpenCustomer360(id);
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#D9D9D9] bg-white px-3.5 py-2 text-xs font-semibold text-[#353535] hover:bg-[#F8FAFC] transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#E2E8F0] bg-white px-3.5 py-2 text-xs font-semibold text-[#334155] hover:bg-[#F8FAFC] transition-colors"
                 >
                   Customer 360
                 </button>
@@ -434,28 +472,28 @@ export function CrmSalesPipelineShell({
       >
         {drawerOpp && drawerTab === "overview" && (
           <div className="space-y-4 text-xs">
-            <div className="grid grid-cols-2 gap-3.5 rounded-2xl border border-[#D9D9D9] bg-[#F8FAFC] p-4 shadow-2xs">
+            <div className="grid grid-cols-2 gap-3.5 rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4 shadow-2xs">
               <div>
-                <div className="text-[11px] font-medium text-[#7D7D7D]">Expected Amount</div>
-                <div className="mt-1 text-base font-black text-[#1D4ED8]">{formatMoney(drawerOpp._amount)}</div>
+                <div className="text-[11px] font-medium text-[#64748B]">Expected Amount</div>
+                <div className="mt-1 text-base font-black text-[#0876CD]">{formatMoney(drawerOpp._amount)}</div>
               </div>
               <div>
-                <div className="text-[11px] font-medium text-[#7D7D7D]">Probability</div>
+                <div className="text-[11px] font-medium text-[#64748B]">Probability</div>
                 <div className="mt-1 text-base font-bold text-[#059669]">{drawerOpp._prob}%</div>
               </div>
               <div>
-                <div className="text-[11px] font-medium text-[#7D7D7D]">Customer</div>
-                <div className="mt-1 font-bold text-[#090909]">{drawerOpp._customerName}</div>
+                <div className="text-[11px] font-medium text-[#64748B]">Customer</div>
+                <div className="mt-1 font-bold text-[#0F172A]">{drawerOpp._customerName}</div>
               </div>
               <div>
-                <div className="text-[11px] font-medium text-[#7D7D7D]">Sales Owner</div>
+                <div className="text-[11px] font-medium text-[#64748B]">Sales Owner</div>
                 <div className="mt-1.5"><CRMAvatarBadge name={drawerOpp._ownerName} size="xs" /></div>
               </div>
             </div>
 
             {canManageDrawer && !isDrawerClosed && (
-              <div className="rounded-2xl border border-[#D9D9D9] p-4 bg-white shadow-2xs">
-                <div className="mb-2.5 font-bold text-[#090909]">Pindahkan Tahap Pipeline</div>
+              <div className="rounded-2xl border border-[#E2E8F0] p-4 bg-white shadow-2xs">
+                <div className="mb-2.5 font-bold text-[#0F172A]">Pindahkan Tahap Pipeline</div>
                 <div className="flex flex-wrap gap-1.5">
                   {PIPELINE_COLUMNS.filter((c) => !["WON", "LOST"].includes(c.id)).map((col) => (
                     <button
@@ -468,8 +506,8 @@ export function CrmSalesPipelineShell({
                       className={cn(
                         "rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all",
                         drawerOpp._bucket === col.id
-                          ? "border-[#1E3A8A] bg-[#1E3A8A] text-white shadow-2xs font-bold"
-                          : "border-[#D9D9D9] bg-white text-[#353535] hover:bg-[#F6FBFF] hover:border-[#BFDBFE]"
+                          ? "border-[#163D64] bg-[#163D64] text-white shadow-2xs font-bold"
+                          : "border-[#E2E8F0] bg-white text-[#334155] hover:bg-[#F6FBFF] hover:border-[#BAE6FD]"
                       )}
                     >
                       {col.title}
@@ -487,7 +525,7 @@ export function CrmSalesPipelineShell({
                   setDrawerOpp(null);
                   onOpenDelegate(target);
                 }}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#BFDBFE] bg-[#EDF6FF] py-2.5 text-xs font-bold text-[#1E3A8A] hover:bg-[#EFF6FF] transition-colors shadow-2xs"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#BAE6FD] bg-[#EDF6FF] py-2.5 text-xs font-bold text-[#163D64] hover:bg-[#E7F2FF] transition-colors shadow-2xs"
               >
                 <UserPlus size={14} /> Delegasikan PIC Sales / Departemen
               </button>
@@ -506,7 +544,7 @@ export function CrmSalesPipelineShell({
                     setDrawerOpp(null);
                     onOpenActivity(target);
                   }}
-                  className="flex-1 rounded-xl bg-[#1E3A8A] px-3.5 py-2 font-bold text-white hover:bg-[#1E3A8A] transition-colors shadow-xs"
+                  className="flex-1 rounded-xl bg-[#163D64] px-3.5 py-2 font-bold text-white hover:bg-[#163D64] transition-colors shadow-xs"
                 >
                   + Catat Aktivitas
                 </button>
@@ -517,7 +555,7 @@ export function CrmSalesPipelineShell({
                     setDrawerOpp(null);
                     onOpenMeeting(target);
                   }}
-                  className="flex-1 rounded-xl border border-[#D9D9D9] bg-white px-3.5 py-2 font-semibold text-[#353535] hover:bg-[#F8FAFC] transition-colors"
+                  className="flex-1 rounded-xl border border-[#E2E8F0] bg-white px-3.5 py-2 font-semibold text-[#334155] hover:bg-[#F8FAFC] transition-colors"
                 >
                   Jadwalkan Meeting
                 </button>
@@ -561,17 +599,17 @@ export function CrmSalesPipelineShell({
                 setDrawerOpp(null);
                 onViewModeChange("ESTIMATE");
               }}
-              className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#1E3A8A] px-3.5 py-2.5 font-bold text-white hover:bg-[#1E3A8A] transition-colors shadow-xs"
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#163D64] px-3.5 py-2.5 font-bold text-white hover:bg-[#163D64] transition-colors shadow-xs"
             >
               <Calculator size={14} /> Kelola di Estimating &amp; Quotations
             </button>
             {drawerEstimates.map((e: any) => (
-              <div key={e.id} className="flex items-center justify-between rounded-xl border border-[#D9D9D9] p-3 bg-white">
+              <div key={e.id} className="flex items-center justify-between rounded-xl border border-[#E2E8F0] p-3 bg-white">
                 <div>
-                  <div className="font-bold text-[#090909]">{e.estimate_number || `EST-${String(e.id).slice(0, 8)}`}</div>
-                  <div className="text-[11px] text-[#626262]">Status: {e.status}</div>
+                  <div className="font-bold text-[#0F172A]">{e.estimate_number || `EST-${String(e.id).slice(0, 8)}`}</div>
+                  <div className="text-[11px] text-[#64748B]">Status: {e.status}</div>
                 </div>
-                <div className="font-bold text-[#1D4ED8]">{formatMoney(e.offered_amount || e.total_cost)}</div>
+                <div className="font-bold text-[#0876CD]">{formatMoney(e.offered_amount || e.total_cost)}</div>
               </div>
             ))}
             {drawerQuotations.map((q: any) => (

@@ -132,10 +132,10 @@ export function AlertTimelineCard({
       {/* Card Header */}
       <div className="flex items-center justify-between pb-3 border-b border-gray-100/80 mb-4">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-[#EFF6FF] flex items-center justify-center text-[#1E3A8A]">
+          <div className="w-7 h-7 rounded-lg bg-[#E7F2FF] flex items-center justify-center text-[#163D64]">
             <Bell size={15} />
           </div>
-          <h3 className="text-base sm:text-lg font-bold text-[#090909] tracking-tight">{title}</h3>
+          <h3 className="text-base sm:text-lg font-bold text-[#0F172A] tracking-tight">{title}</h3>
         </div>
 
         <div className="flex items-center gap-2">
@@ -144,8 +144,8 @@ export function AlertTimelineCard({
             onClick={loadAlerts}
             title="Muat ulang alert"
             className={cn(
-              "p-1 rounded-md text-gray-400 hover:text-[#1D4ED8] hover:bg-[#EFF6FF] transition-colors cursor-pointer",
-              loading && "animate-spin text-[#1D4ED8]"
+              "p-1 rounded-md text-gray-400 hover:text-[#0876CD] hover:bg-[#E7F2FF] transition-colors cursor-pointer",
+              loading && "animate-spin text-[#0876CD]"
             )}
           >
             <RefreshCw size={13} />
@@ -153,7 +153,7 @@ export function AlertTimelineCard({
           {onViewAll && (
             <button
               onClick={onViewAll}
-              className="text-xs font-semibold text-[#1D4ED8] hover:underline flex items-center gap-0.5 cursor-pointer"
+              className="text-xs font-semibold text-[#0876CD] hover:underline flex items-center gap-0.5 cursor-pointer"
             >
               <span>Semua</span>
               <ChevronRight size={13} />
@@ -168,7 +168,7 @@ export function AlertTimelineCard({
       <div className="relative pl-5 flex flex-col gap-3 max-h-[460px] overflow-y-auto no-scrollbar">
         {/* Left Continuous Timeline Bar */}
         <div className="absolute left-1.5 top-2 bottom-2 w-1 bg-[#EFEFEF] rounded-full overflow-hidden">
-          <div className="w-full bg-[#1D4ED8] h-1/3 rounded-full" />
+          <div className="w-full bg-[#0876CD] h-1/3 rounded-full" />
         </div>
 
         {liveAlerts.map((item) => (
@@ -178,7 +178,7 @@ export function AlertTimelineCard({
             className={cn(
               "p-3.5 rounded-[14px] transition-all flex flex-col gap-1 relative cursor-pointer group",
               item.isHighlighted
-                ? "bg-[#EFF6FF] border border-[#BFDBFE] shadow-2xs"
+                ? "bg-[#E7F2FF] border border-[#BAE6FD] shadow-2xs"
                 : "bg-white hover:bg-neutral-50 border border-transparent hover:border-gray-200"
             )}
           >
@@ -189,25 +189,25 @@ export function AlertTimelineCard({
                   className="w-2 h-2 rounded-full flex-shrink-0"
                   style={{
                     backgroundColor:
-                      item.categoryColor || (item.isHighlighted ? "#1D4ED8" : "#9CA3AF"),
+                      item.categoryColor || (item.isHighlighted ? "#0876CD" : "#9CA3AF"),
                   }}
                 />
-                <span className="font-bold text-[#090909] truncate text-xs">
+                <span className="font-bold text-[#0F172A] truncate text-xs">
                   {item.category}
                 </span>
               </div>
-              <span className="text-[10px] text-[#4F5050] font-medium flex-shrink-0">
+              <span className="text-[10px] text-[#64748B] font-medium flex-shrink-0">
                 {item.time}
               </span>
             </div>
 
             {/* Subject / Title */}
-            <h5 className="text-xs font-bold text-[#090909] mt-0.5 leading-snug group-hover:text-[#1E3A8A] transition-colors">
+            <h5 className="text-xs font-bold text-[#0F172A] mt-0.5 leading-snug group-hover:text-[#163D64] transition-colors">
               {item.title}
             </h5>
 
             {/* Snippet / Message */}
-            <p className="text-[11px] text-[#4F5050] leading-relaxed line-clamp-2">
+            <p className="text-[11px] text-[#64748B] leading-relaxed line-clamp-2">
               {item.snippet}
             </p>
           </div>

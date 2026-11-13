@@ -52,16 +52,16 @@ export function ExecutiveAuditReportWorkspace({ startDate, endDate }: { startDat
       {loadError && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{loadError}</div>}
 
       {/* Header & Controls */}
-      <div className="flex flex-col gap-4 p-4 sm:p-5 rounded-[22px] bg-white border border-[#D9D9D9] shadow-2xs">
+      <div className="flex flex-col gap-4 p-4 sm:p-5 rounded-[22px] bg-white border border-[#E2E8F0] shadow-2xs">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="w-10 h-10 shrink-0 rounded-2xl bg-[#1E3A8A] flex items-center justify-center text-white shadow-xs">
+          <div className="w-10 h-10 shrink-0 rounded-2xl bg-[#163D64] flex items-center justify-center text-white shadow-xs">
             <ShieldCheck size={20} />
           </div>
           <div>
-            <h2 className="text-base font-extrabold text-[#090909] tracking-tight">
+            <h2 className="text-base font-extrabold text-[#0F172A] tracking-tight">
               Executive Financial & Governance Audit Report
             </h2>
-            <p className="text-2xs text-[#4F5050]">
+            <p className="text-2xs text-[#64748B]">
               Laporan ringkasan kepatuhan dana, varians anggaran, dan audit transaksi untuk Direksi
             </p>
           </div>
@@ -69,11 +69,11 @@ export function ExecutiveAuditReportWorkspace({ startDate, endDate }: { startDat
 
         <div className="workspace-actions flex items-center gap-2.5 flex-wrap">
           {/* Year Selector */}
-          {startDate && endDate ? <span className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-bold text-[#1E3A8A]">Periode {formatDate(startDate)} – {formatDate(endDate)}</span> : <select
+          {startDate && endDate ? <span className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-bold text-[#163D64]">Periode {formatDate(startDate)} – {formatDate(endDate)}</span> : <select
             value={selectedYear}
             onChange={e => setSelectedYear(Number(e.target.value))}
             aria-label="Tahun buku laporan audit"
-            className="px-3 py-2 rounded-xl bg-[#EFF6FF] border border-[#D9D9D9] text-xs font-bold text-[#1E3A8A] focus:outline-none"
+            className="px-3 py-2 rounded-xl bg-[#E7F2FF] border border-[#E2E8F0] text-xs font-bold text-[#163D64] focus:outline-none"
           >
             {[2024, 2025, 2026, 2027].map(y => (
               <option key={y} value={y}>Tahun Buku {y}</option>
@@ -84,7 +84,7 @@ export function ExecutiveAuditReportWorkspace({ startDate, endDate }: { startDat
             onClick={fetchReport}
             disabled={loading}
             aria-label="Segarkan laporan audit"
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white border border-[#D9D9D9] text-[#4F5050] hover:bg-[#EFF6FF] transition-colors disabled:opacity-50"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white border border-[#E2E8F0] text-[#64748B] hover:bg-[#E7F2FF] transition-colors disabled:opacity-50"
             title="Refresh Data"
           >
             <RefreshCw size={15} className={cn(loading && "animate-spin")} />
@@ -92,7 +92,7 @@ export function ExecutiveAuditReportWorkspace({ startDate, endDate }: { startDat
 
           <button
             onClick={handlePrint}
-            className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap px-4 py-2 rounded-xl bg-[#1E3A8A] hover:bg-[#203D91] text-white text-xs font-bold shadow-xs transition-all"
+            className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap px-4 py-2 rounded-xl bg-[#163D64] hover:bg-[#203D91] text-white text-xs font-bold shadow-xs transition-all"
           >
             <Printer size={15} />
             <span>Cetak / PDF Report</span>
@@ -101,7 +101,7 @@ export function ExecutiveAuditReportWorkspace({ startDate, endDate }: { startDat
       </div>
 
       {loading ? (
-        <div className="p-12 text-center text-xs text-[#4F5050] animate-pulse">
+        <div className="p-12 text-center text-xs text-[#64748B] animate-pulse">
           Memuat ringkasan audit eksekutif...
         </div>
       ) : !reportData ? (
@@ -112,14 +112,14 @@ export function ExecutiveAuditReportWorkspace({ startDate, endDate }: { startDat
         <div className="space-y-6 printable-report">
 
           {/* Executive summary */}
-          <section className="space-y-3 rounded-[22px] border border-[#D9D9D9] bg-[#F8FAFF] p-4 sm:p-5">
+          <section className="space-y-3 rounded-[22px] border border-[#E2E8F0] bg-[#F8FAFF] p-4 sm:p-5">
             <div className="flex items-center gap-2.5">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#EFF6FF] text-[#1E3A8A]">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#E7F2FF] text-[#163D64]">
                 <TrendingUp size={16} aria-hidden="true" />
               </span>
               <div>
-                <h3 className="text-sm font-extrabold tracking-tight text-[#090909]">Ringkasan Eksekutif</h3>
-                <p className="text-2xs text-[#4F5050]">Ikhtisar dana dan kepatuhan LPJ untuk tahun buku terpilih.</p>
+                <h3 className="text-sm font-extrabold tracking-tight text-[#0F172A]">Ringkasan Eksekutif</h3>
+                <p className="text-2xs text-[#64748B]">Ikhtisar dana dan kepatuhan LPJ untuk tahun buku terpilih.</p>
               </div>
             </div>
 
@@ -127,21 +127,21 @@ export function ExecutiveAuditReportWorkspace({ startDate, endDate }: { startDat
             <div className="workspace-kpis grid gap-4">
             
             {/* Total Dana Diajukan */}
-            <div className="p-4 rounded-[20px] bg-white border border-[#D9D9D9] shadow-2xs flex flex-col justify-between">
-              <span className="text-3xs font-bold text-[#4F5050] uppercase tracking-wider block mb-1">
+            <div className="p-4 rounded-[20px] bg-white border border-[#E2E8F0] shadow-2xs flex flex-col justify-between">
+              <span className="text-3xs font-bold text-[#64748B] uppercase tracking-wider block mb-1">
                 Total Dana Diajukan
               </span>
-              <span className="text-lg font-black text-[#090909]">
+              <span className="text-lg font-black text-[#0F172A]">
                 {formatRupiah(reportData.fund_summary?.total_requested || 0)}
               </span>
-              <span className="text-3xs text-[#4F5050] mt-2 font-medium">
+              <span className="text-3xs text-[#64748B] mt-2 font-medium">
                 Dari {reportData.fund_summary?.total_requests || 0} permohonan masuk
               </span>
             </div>
 
             {/* Total Dana Dicairkan */}
-            <div className="p-4 rounded-[20px] bg-white border border-[#D9D9D9] shadow-2xs flex flex-col justify-between">
-              <span className="text-3xs font-bold text-[#4F5050] uppercase tracking-wider block mb-1">
+            <div className="p-4 rounded-[20px] bg-white border border-[#E2E8F0] shadow-2xs flex flex-col justify-between">
+              <span className="text-3xs font-bold text-[#64748B] uppercase tracking-wider block mb-1">
                 Dana Dicairkan (Disbursed)
               </span>
               <span className="text-lg font-black text-cyan-800">
@@ -153,33 +153,33 @@ export function ExecutiveAuditReportWorkspace({ startDate, endDate }: { startDat
             </div>
 
             {/* Total LPJ Selesai (Closed) */}
-            <div className="p-4 rounded-[20px] bg-white border border-[#D9D9D9] shadow-2xs flex flex-col justify-between">
-              <span className="text-3xs font-bold text-[#4F5050] uppercase tracking-wider block mb-1">
+            <div className="p-4 rounded-[20px] bg-white border border-[#E2E8F0] shadow-2xs flex flex-col justify-between">
+              <span className="text-3xs font-bold text-[#64748B] uppercase tracking-wider block mb-1">
                 LPJ Terverifikasi (Closed)
               </span>
-              <span className="text-lg font-black text-[#1E3A8A]">
+              <span className="text-lg font-black text-[#163D64]">
                 {formatRupiah(reportData.fund_summary?.total_realization || 0)}
               </span>
-              <span className="text-3xs text-[#1E3A8A] mt-2 font-semibold flex items-center gap-1">
+              <span className="text-3xs text-[#163D64] mt-2 font-semibold flex items-center gap-1">
                 <CheckCircle2 size={12} />
                 <span>{reportData.fund_summary?.lpj_closed_count || 0} tiket tuntas LPJ</span>
               </span>
             </div>
 
             {/* Compliance Rate % */}
-            <div className="p-4 rounded-[20px] bg-[#EFF6FF] border border-[#BFDBFE] shadow-2xs flex flex-col justify-between">
-              <span className="text-3xs font-bold text-[#1E3A8A] uppercase tracking-wider block mb-1">
+            <div className="p-4 rounded-[20px] bg-[#E7F2FF] border border-[#BAE6FD] shadow-2xs flex flex-col justify-between">
+              <span className="text-3xs font-bold text-[#163D64] uppercase tracking-wider block mb-1">
                 Tingkat Kepatuhan LPJ
               </span>
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <span className="text-2xl font-black text-[#1E3A8A]">
+                <span className="text-2xl font-black text-[#163D64]">
                   {reportData.fund_summary?.lpj_compliance_rate ?? 100}%
                 </span>
-                <span className="text-3xs text-[#1E3A8A] font-bold">Tuntas</span>
+                <span className="text-3xs text-[#163D64] font-bold">Tuntas</span>
               </div>
-              <div className="w-full bg-[#D9D9D9] h-1.5 rounded-full overflow-hidden mt-2">
+              <div className="w-full bg-[#E2E8F0] h-1.5 rounded-full overflow-hidden mt-2">
                 <div
-                  className="bg-[#1E3A8A] h-full rounded-full transition-all"
+                  className="bg-[#163D64] h-full rounded-full transition-all"
                   style={{ width: `${Math.min(100, Math.max(0, reportData.fund_summary?.lpj_compliance_rate ?? 100))}%` }}
                 />
               </div>
@@ -194,8 +194,8 @@ export function ExecutiveAuditReportWorkspace({ startDate, endDate }: { startDat
                 <FileText size={16} aria-hidden="true" />
               </span>
               <div>
-                <h3 className="text-sm font-extrabold tracking-tight text-[#090909]">Aktivitas & Pemeriksaan Audit</h3>
-                <p className="text-2xs text-[#4F5050]">Rincian transaksi dan jurnal koreksi yang perlu ditinjau.</p>
+                <h3 className="text-sm font-extrabold tracking-tight text-[#0F172A]">Aktivitas & Pemeriksaan Audit</h3>
+                <p className="text-2xs text-[#64748B]">Rincian transaksi dan jurnal koreksi yang perlu ditinjau.</p>
               </div>
             </div>
 
@@ -203,30 +203,30 @@ export function ExecutiveAuditReportWorkspace({ startDate, endDate }: { startDat
             <div className="workspace-columns grid gap-5">
             
             {/* Jurnal Transaksi Signifikan */}
-            <div className="p-5 rounded-[22px] bg-white border border-[#D9D9D9] shadow-2xs flex flex-col justify-between gap-4">
+            <div className="p-5 rounded-[22px] bg-white border border-[#E2E8F0] shadow-2xs flex flex-col justify-between gap-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="flex min-w-0 flex-1 items-start gap-2">
-                  <Coins size={16} className="mt-0.5 shrink-0 text-[#1D4ED8]" />
-                  <h3 className="text-xs font-extrabold text-[#090909] tracking-tight">
+                  <Coins size={16} className="mt-0.5 shrink-0 text-[#0876CD]" />
+                  <h3 className="text-xs font-extrabold text-[#0F172A] tracking-tight">
                     Jurnal Buku Besar Terposting
                   </h3>
                 </div>
-                <span className="shrink-0 whitespace-nowrap text-3xs font-mono text-[#4F5050]">
+                <span className="shrink-0 whitespace-nowrap text-3xs font-mono text-[#64748B]">
                   {reportData.critical_transactions?.length || 0} entri
                 </span>
               </div>
 
               <div className="divide-y divide-[#EFEFEF] max-h-64 overflow-y-auto">
                 {(!reportData.critical_transactions || reportData.critical_transactions.length === 0) ? (
-                  <div className="py-6 text-center text-xs text-[#4F5050]">
+                  <div className="py-6 text-center text-xs text-[#64748B]">
                     Tidak ada jurnal transaksi pada periode ini.
                   </div>
                 ) : (
                   reportData.critical_transactions.map((tx: any) => (
                     <div key={tx.id} className="py-2.5 flex items-center justify-between text-xs">
                       <div className="min-w-0 pr-2">
-                        <span className="font-bold text-[#090909] block truncate">{tx.description}</span>
-                        <span className="text-3xs font-mono text-[#4F5050] block">
+                        <span className="font-bold text-[#0F172A] block truncate">{tx.description}</span>
+                        <span className="text-3xs font-mono text-[#64748B] block">
                           {tx.entry_number} • {tx.date ? formatDate(tx.date) : "—"}
                         </span>
                       </div>
@@ -244,11 +244,11 @@ export function ExecutiveAuditReportWorkspace({ startDate, endDate }: { startDat
             </div>
 
             {/* Jurnal Koreksi / Adjustment */}
-            <div className="p-5 rounded-[22px] bg-white border border-[#D9D9D9] shadow-2xs flex flex-col justify-between gap-4">
+            <div className="p-5 rounded-[22px] bg-white border border-[#E2E8F0] shadow-2xs flex flex-col justify-between gap-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="flex min-w-0 flex-1 items-start gap-2">
                   <Scale size={16} className="mt-0.5 shrink-0 text-orange-600" />
-                  <h3 className="text-xs font-extrabold text-[#090909] tracking-tight">
+                  <h3 className="text-xs font-extrabold text-[#0F172A] tracking-tight">
                     Audit Penyesuaian Kas & Koreksi (Adjustment)
                   </h3>
                 </div>
@@ -259,7 +259,7 @@ export function ExecutiveAuditReportWorkspace({ startDate, endDate }: { startDat
 
               <div className="divide-y divide-[#EFEFEF] max-h-64 overflow-y-auto">
                 {(!reportData.adjustments || reportData.adjustments.length === 0) ? (
-                  <div className="py-6 text-center text-xs text-[#4F5050]">
+                  <div className="py-6 text-center text-xs text-[#64748B]">
                     Tidak ada jurnal penyesuaian/koreksi pada periode ini (Integritas Baik).
                   </div>
                 ) : (
@@ -267,7 +267,7 @@ export function ExecutiveAuditReportWorkspace({ startDate, endDate }: { startDat
                     <div key={adj.id} className="py-2.5 flex items-center justify-between text-xs">
                       <div className="min-w-0 pr-2">
                         <span className="font-bold text-orange-950 block truncate">{adj.description}</span>
-                        <span className="text-3xs font-mono text-[#4F5050] block">
+                        <span className="text-3xs font-mono text-[#64748B] block">
                           {adj.entry_number} • {adj.date ? formatDate(adj.date) : "—"}
                         </span>
                       </div>
@@ -283,24 +283,24 @@ export function ExecutiveAuditReportWorkspace({ startDate, endDate }: { startDat
             </div>
 
             {/* 3. STATUS TATA KELOLA & TUTUP BUKU */}
-            <div className="p-5 rounded-[22px] bg-[#FDFDFD] border border-[#D9D9D9] flex items-center justify-between flex-wrap gap-4">
+            <div className="p-5 rounded-[22px] bg-[#FDFDFD] border border-[#E2E8F0] flex items-center justify-between flex-wrap gap-4">
             <div className="flex min-w-0 items-start gap-3">
-              <div className="w-9 h-9 shrink-0 rounded-xl bg-[#EFF6FF] text-[#1E3A8A] flex items-center justify-center font-black">
+              <div className="w-9 h-9 shrink-0 rounded-xl bg-[#E7F2FF] text-[#163D64] flex items-center justify-center font-black">
                 ✓
               </div>
               <div>
-                <span className="text-xs font-extrabold text-[#090909] block">
+                <span className="text-xs font-extrabold text-[#0F172A] block">
                   Status Kepatuhan Tutup Buku & Periode Fiskal
                 </span>
-                <span className="text-2xs text-[#4F5050]">
+                <span className="text-2xs text-[#64748B]">
                   {reportData.closed_periods_count || 0} Periode telah resmi dikunci dan memiliki financial snapshot.
                 </span>
               </div>
             </div>
 
             <div className="text-right">
-              <span className="text-3xs font-bold text-[#4F5050] uppercase block">Pemeriksaan Sistem</span>
-              <span className="text-xs font-extrabold text-[#1E3A8A]">
+              <span className="text-3xs font-bold text-[#64748B] uppercase block">Pemeriksaan Sistem</span>
+              <span className="text-xs font-extrabold text-[#163D64]">
                 100% Immutable Ledger Compliant
               </span>
             </div>

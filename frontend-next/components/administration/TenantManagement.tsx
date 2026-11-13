@@ -208,7 +208,7 @@ export function TenantManagement({
             <span className="text-xs font-semibold uppercase tracking-wider text-[#64748B]">
               Total Tenant
             </span>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#EEF2FF] text-[#1E3A8A]">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#EEF2FF] text-[#163D64]">
               <Building size={18} />
             </div>
           </div>
@@ -262,14 +262,14 @@ export function TenantManagement({
               placeholder="Cari tenant berdasarkan nama atau kode..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-10 w-full rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] pl-10 pr-4 text-sm text-[#0F172A] placeholder-[#94A3B8] outline-none transition focus:border-[#1E3A8A] focus:bg-white"
+              className="h-10 w-full rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] pl-10 pr-4 text-sm text-[#0F172A] placeholder-[#94A3B8] outline-none transition focus:border-[#163D64] focus:bg-white"
             />
           </div>
 
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-10 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3.5 text-sm font-medium text-[#475569] outline-none transition focus:border-[#1E3A8A] focus:bg-white"
+            className="h-10 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3.5 text-sm font-medium text-[#475569] outline-none transition focus:border-[#163D64] focus:bg-white"
           >
             <option value="ALL">Semua Status</option>
             <option value="ACTIVE">Aktif</option>
@@ -279,7 +279,7 @@ export function TenantManagement({
 
         <button
           onClick={handleOpenCreate}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#1E3A8A] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1D3A96]"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#163D64] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1D3A96]"
         >
           <Plus size={16} /> Tambah Tenant Baru
         </button>
@@ -319,7 +319,7 @@ export function TenantManagement({
                   return (
                     <tr key={tenant.id} className="transition hover:bg-[#F8FAFC]">
                       <td className="px-6 py-4 font-mono font-semibold text-[#0F172A]">
-                        <span className="inline-flex items-center rounded-lg bg-[#F1F5F9] px-2.5 py-1 text-xs font-bold text-[#1E3A8A]">
+                        <span className="inline-flex items-center rounded-lg bg-[#F1F5F9] px-2.5 py-1 text-xs font-bold text-[#163D64]">
                           {tenant.code}
                         </span>
                       </td>
@@ -344,7 +344,7 @@ export function TenantManagement({
                       </td>
                       <td className="px-6 py-4">
                         <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#475569]">
-                          <span className="rounded-md bg-[#EEF2FF] px-2 py-0.5 font-bold text-[#1E3A8A]">
+                          <span className="rounded-md bg-[#EEF2FF] px-2 py-0.5 font-bold text-[#163D64]">
                             {compCount}
                           </span>{" "}
                           Company
@@ -364,7 +364,7 @@ export function TenantManagement({
                           </button>
                           <button
                             onClick={() => onSelectTenantForCompany(tenant.id)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-1 text-xs font-medium text-[#1E3A8A] transition hover:bg-[#F8FAFC]"
+                            className="inline-flex items-center gap-1 rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-1 text-xs font-medium text-[#163D64] transition hover:bg-[#F8FAFC]"
                             title="Tambah company di tenant ini"
                           >
                             <Plus size={13} /> Company
@@ -405,7 +405,7 @@ export function TenantManagement({
               placeholder="Contoh: SMA, ARSALYNK, GHOST"
               value={tenantCode}
               onChange={(e) => setTenantCode(e.target.value.toUpperCase())}
-              className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3.5 text-sm font-mono uppercase text-[#0F172A] outline-none transition focus:border-[#1E3A8A]"
+              className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3.5 text-sm font-mono uppercase text-[#0F172A] outline-none transition focus:border-[#163D64]"
               required
             />
             <p className="mt-1 text-[11px] text-[#64748B]">
@@ -422,7 +422,7 @@ export function TenantManagement({
               placeholder="Contoh: PT Sinergi Muda Arsa"
               value={tenantName}
               onChange={(e) => setTenantName(e.target.value)}
-              className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3.5 text-sm text-[#0F172A] outline-none transition focus:border-[#1E3A8A]"
+              className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3.5 text-sm text-[#0F172A] outline-none transition focus:border-[#163D64]"
               required
             />
           </div>
@@ -434,7 +434,7 @@ export function TenantManagement({
             <select
               value={tenantStatus}
               onChange={(e) => setTenantStatus(e.target.value)}
-              className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3.5 text-sm font-medium text-[#0F172A] outline-none transition focus:border-[#1E3A8A]"
+              className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3.5 text-sm font-medium text-[#0F172A] outline-none transition focus:border-[#163D64]"
             >
               <option value="ACTIVE">Aktif (Operasional Terbuka)</option>
               <option value="INACTIVE">Nonaktif (Akses Ditutup)</option>
@@ -452,7 +452,7 @@ export function TenantManagement({
             <button
               type="submit"
               disabled={submitting}
-              className="rounded-xl bg-[#1E3A8A] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#1D3A96] disabled:opacity-50"
+              className="rounded-xl bg-[#163D64] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#1D3A96] disabled:opacity-50"
             >
               {submitting ? "Menyimpan..." : "Simpan Tenant"}
             </button>
@@ -489,7 +489,7 @@ export function TenantManagement({
               type="text"
               value={tenantName}
               onChange={(e) => setTenantName(e.target.value)}
-              className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3.5 text-sm text-[#0F172A] outline-none transition focus:border-[#1E3A8A]"
+              className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3.5 text-sm text-[#0F172A] outline-none transition focus:border-[#163D64]"
               required
             />
           </div>
@@ -501,7 +501,7 @@ export function TenantManagement({
             <select
               value={tenantStatus}
               onChange={(e) => setTenantStatus(e.target.value)}
-              className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3.5 text-sm font-medium text-[#0F172A] outline-none transition focus:border-[#1E3A8A]"
+              className="mt-1.5 h-10 w-full rounded-xl border border-[#E2E8F0] px-3.5 text-sm font-medium text-[#0F172A] outline-none transition focus:border-[#163D64]"
             >
               <option value="ACTIVE">Aktif (Operasional Terbuka)</option>
               <option value="INACTIVE">Nonaktif (Akses Ditutup)</option>
@@ -519,7 +519,7 @@ export function TenantManagement({
             <button
               type="submit"
               disabled={submitting}
-              className="rounded-xl bg-[#1E3A8A] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#1D3A96] disabled:opacity-50"
+              className="rounded-xl bg-[#163D64] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#1D3A96] disabled:opacity-50"
             >
               {submitting ? "Menyimpan..." : "Perbarui Tenant"}
             </button>

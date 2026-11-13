@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { Search, X, GripVertical } from "lucide-react";
+import { Search, GripVertical, Loader2 } from "lucide-react";
+import { POPDrawer } from "@/components/ui/POPDrawer";
 import { cn } from "@/lib/utils";
 
 export type CRMTone = "blue" | "purple" | "amber" | "pink" | "green" | "red" | "slate";
@@ -23,13 +24,13 @@ export const CRM_TONE_STYLES: Record<
   blue: {
     cardBg: "bg-white",
     cardBorder: "border-[#E2E8F0]",
-    iconBg: "bg-[#EFF6FF]",
-    text: "text-[#1D4ED8]",
+    iconBg: "bg-[#E7F2FF]",
+    text: "text-[#0876CD]",
     colBg: "bg-[#F8FAFC]",
     colHeaderBg: "bg-[#F1F5F9]",
     colBorder: "border-[#E2E8F0]",
-    badgeBg: "bg-[#DBEAFE] text-[#1E40AF]",
-    dot: "bg-[#1D4ED8]",
+    badgeBg: "bg-[#DBEAFE] text-[#0868B5]",
+    dot: "bg-[#0876CD]",
   },
   purple: {
     cardBg: "bg-white",
@@ -140,7 +141,7 @@ export function CRMKpiRow({
               tone.cardBg,
               tone.cardBorder,
               item.onClick && "cursor-pointer hover:shadow-sm hover:-translate-y-0.5",
-              item.active && "border-[#1D4ED8] shadow-xs"
+              item.active && "border-[#0876CD] shadow-xs"
             )}
           >
             <div className="flex items-start justify-between gap-2">
@@ -149,13 +150,13 @@ export function CRMKpiRow({
                   {item.label}
                 </div>
                 <div
-                  className="mt-1 text-lg sm:text-xl font-extrabold text-[#090909] truncate"
+                  className="mt-1 text-lg sm:text-xl font-extrabold text-[#0F172A] truncate"
                   title={String(item.value)}
                 >
                   {item.value}
                 </div>
                 {item.subtitle && (
-                  <div className="mt-0.5 text-[11px] text-[#626262] truncate">
+                  <div className="mt-0.5 text-[11px] text-[#64748B] truncate">
                     {item.subtitle}
                   </div>
                 )}
@@ -261,20 +262,20 @@ export function CRMFilterBar({
   rightActions?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border border-[#D9D9D9] bg-white p-3 shadow-2xs">
+    <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border border-[#E2E8F0] bg-white p-3 shadow-2xs">
       <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[240px]">
         <label className="relative min-w-[200px] flex-1 max-w-xs">
           <span className="sr-only">{searchPlaceholder}</span>
           <Search
             size={14}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#7D7D7D]"
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]"
           />
           <input
             type="search"
             value={searchValue}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={searchPlaceholder}
-            className="w-full rounded-xl border border-[#D9D9D9] bg-[#F8FAFC] py-2 pl-8.5 pr-3 text-xs text-[#090909] placeholder:text-[#7D7D7D] focus:border-[#1D4ED8] focus:bg-white focus:outline-none transition-colors"
+            className="w-full rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] py-2 pl-9 pr-3 text-xs text-[#0F172A] placeholder:text-[#64748B] focus:border-[#0876CD] focus:bg-white focus:outline-none transition-colors"
           />
         </label>
 
@@ -284,7 +285,7 @@ export function CRMFilterBar({
             aria-label={filter.ariaLabel || filter.id}
             value={filter.value}
             onChange={(e) => filter.onChange(e.target.value)}
-            className="rounded-xl border border-[#D9D9D9] bg-white px-3 py-2 text-xs font-medium text-[#353535] focus:border-[#1D4ED8] focus:outline-none transition-colors"
+            className="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 text-xs font-medium text-[#334155] focus:border-[#0876CD] focus:outline-none transition-colors"
           >
             {filter.options.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -295,7 +296,7 @@ export function CRMFilterBar({
         ))}
 
         {viewOptions && viewOptions.length > 0 && onViewChange && (
-          <div className="inline-flex items-center rounded-xl border border-[#D9D9D9] bg-[#F1F5F9]/80 p-0.5">
+          <div className="inline-flex items-center rounded-xl border border-[#E2E8F0] bg-[#F1F5F9]/80 p-0.5">
             {viewOptions.map((opt) => {
               const Icon = opt.icon;
               const active = activeView === opt.id;
@@ -307,8 +308,8 @@ export function CRMFilterBar({
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all",
                     active
-                      ? "bg-white text-[#1E3A8A] shadow-2xs font-bold"
-                      : "text-[#626262] hover:text-[#090909]"
+                      ? "bg-white text-[#163D64] shadow-2xs font-bold"
+                      : "text-[#64748B] hover:text-[#0F172A]"
                   )}
                 >
                   {Icon && <Icon size={13} />}
@@ -317,7 +318,7 @@ export function CRMFilterBar({
                     <span
                       className={cn(
                         "rounded-full px-1.5 py-0.2 text-[10px] font-bold",
-                        active ? "bg-[#EFF6FF] text-[#1E3A8A]" : "bg-[#EDEDED] text-[#626262]"
+                        active ? "bg-[#E7F2FF] text-[#163D64]" : "bg-[#EDEDED] text-[#64748B]"
                       )}
                     >
                       {opt.badge}
@@ -351,12 +352,14 @@ export function CRMKanbanBoard<T extends { id: string | number }>({
   onMoveCard,
   canDrag = true,
   emptyColumnText = "Belum ada data",
+  pendingIds,
 }: {
   columns: CRMKanbanColumn<T>[];
   renderCard: (item: T, column: CRMKanbanColumn<T>) => React.ReactNode;
   onMoveCard?: (itemId: string, targetColumnId: string) => void;
   canDrag?: boolean;
   emptyColumnText?: string;
+  pendingIds?: Set<string>;
 }) {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
@@ -389,7 +392,7 @@ export function CRMKanbanBoard<T extends { id: string | number }>({
               "flex min-w-[268px] max-w-[320px] flex-1 flex-col rounded-xl border transition-all",
               tone.colBg,
               tone.colBorder,
-              isOver && "ring-2 ring-[#1E3A8A] ring-offset-1"
+              isOver && "ring-2 ring-[#0876CD]/50 bg-[#E7F2FF]/40"
             )}
           >
             <div
@@ -444,10 +447,15 @@ export function CRMKanbanBoard<T extends { id: string | number }>({
                     }}
                     className={cn(
                       "group relative rounded-xl border border-slate-200/90 bg-white p-3 shadow-2xs transition-all hover:border-blue-300 hover:shadow-sm",
-                      draggedId === String(item.id) && "opacity-50"
+                      draggedId === String(item.id) && "opacity-45 scale-[0.98]"
                     )}
                   >
-                    {canDrag && onMoveCard && (
+                    {pendingIds?.has(String(item.id)) && (
+                      <div className="pointer-events-none absolute right-2 top-2.5 inline-flex items-center gap-1 rounded-full bg-[#E7F2FF] px-1.5 py-0.5 text-[10px] font-medium text-[#0868B5]">
+                        <Loader2 size={10} className="animate-spin" />
+                      </div>
+                    )}
+                    {canDrag && onMoveCard && !pendingIds?.has(String(item.id)) && (
                       <div className="pointer-events-none absolute right-2 top-2.5 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100">
                         <GripVertical size={13} />
                       </div>
@@ -481,6 +489,7 @@ export function CRMRightDrawer({
   onTabChange,
   children,
   footer,
+  side = "left",
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -492,85 +501,22 @@ export function CRMRightDrawer({
   onTabChange?: (tabId: string) => void;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  side?: "left" | "right";
 }) {
-  if (!isOpen) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex justify-end bg-slate-900/35 backdrop-blur-[1px]"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
+    <POPDrawer
+      isOpen={isOpen}
+      onClose={onClose}
+      title={title}
+      subtitle={subtitle}
+      badge={badge}
+      tabs={tabs}
+      activeTab={activeTab}
+      onTabChange={onTabChange}
+      footer={footer}
+      side={side}
     >
-      <div
-        className="flex h-full w-full max-w-[500px] flex-col border-l border-[#D9D9D9] bg-white shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-start justify-between gap-3 border-b border-[#D9D9D9] px-6 py-4.5 bg-white">
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="truncate text-base font-extrabold text-[#090909]">{title}</h2>
-              {badge}
-            </div>
-            {subtitle && (
-              <p className="mt-0.5 truncate text-xs text-[#626262] font-medium">{subtitle}</p>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Tutup panel"
-            className="rounded-lg p-1.5 text-[#7D7D7D] transition-colors hover:bg-[#F1F5F9] hover:text-[#090909]"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* Tabs */}
-        {tabs && tabs.length > 0 && onTabChange && (
-          <div className="flex gap-1 border-b border-[#D9D9D9] px-6 pt-2 bg-white">
-            {tabs.map((tab) => {
-              const active = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => onTabChange(tab.id)}
-                  className={cn(
-                    "-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-semibold transition-colors",
-                    active
-                      ? "border-[#1D4ED8] text-[#1E3A8A] font-bold"
-                      : "border-transparent text-[#7D7D7D] hover:text-[#090909]"
-                  )}
-                >
-                  <span>{tab.label}</span>
-                  {tab.badge !== undefined && (
-                    <span className={cn(
-                      "rounded-full px-1.5 py-0.2 text-[10px] font-bold",
-                      active ? "bg-[#EFF6FF] text-[#1E3A8A]" : "bg-[#EDEDED] text-[#626262]"
-                    )}>
-                      {tab.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6">{children}</div>
-
-        {/* Footer */}
-        {footer && (
-          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[#D9D9D9] bg-[#F8FAFC] px-6 py-4">
-            {footer}
-          </div>
-        )}
-      </div>
-    </div>
+      {children}
+    </POPDrawer>
   );
 }
-

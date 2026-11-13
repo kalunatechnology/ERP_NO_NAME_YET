@@ -95,7 +95,7 @@ export function AccessDeniedView({
         <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
           <Link
             href={backHref}
-            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#1D4ED8] hover:bg-[#1E3A8A] active:scale-95 text-white text-sm font-semibold transition-all shadow-sm"
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#0876CD] hover:bg-[#163D64] active:scale-95 text-white text-sm font-semibold transition-all shadow-sm"
           >
             <Home size={15} />
             Kembali ke Dashboard

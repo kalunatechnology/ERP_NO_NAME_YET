@@ -300,29 +300,29 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="relative w-full max-w-[560px] bg-[#FDFDFD] border border-[#D9D9D9] rounded-[26px] shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+      <div className="relative w-full max-w-[560px] bg-[#FDFDFD] border border-[#E2E8F0] rounded-[26px] shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#D9D9D9] bg-[#EFF6FF]/40">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#E2E8F0] bg-[#E7F2FF]/40">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-[#1E3A8A] flex items-center justify-center text-white shadow-2xs">
+            <div className="w-8 h-8 rounded-full bg-[#163D64] flex items-center justify-center text-white shadow-2xs">
               <ShieldCheck size={16} />
             </div>
             <div>
-              <h2 className="text-base font-extrabold text-[#090909] tracking-tight">Review Card Request</h2>
-              <p className="text-2xs text-[#4F5050] font-mono">{request.request_number}</p>
+              <h2 className="text-base font-extrabold text-[#0F172A] tracking-tight">Review Card Request</h2>
+              <p className="text-2xs text-[#64748B] font-mono">{request.request_number}</p>
             </div>
           </div>
           <button
             onClick={onClose}
             disabled={isAnySaving}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-[#4F5050] hover:text-[#090909] hover:bg-[#D9D9D9]/50 disabled:opacity-40 transition-colors"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-[#64748B] hover:text-[#0F172A] hover:bg-[#E2E8F0]/50 disabled:opacity-40 transition-colors"
           >
             <X size={18} />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-4 overflow-y-auto flex-1 text-[#090909]">
+        <div className="p-6 space-y-4 overflow-y-auto flex-1 text-[#0F172A]">
           {error && (
             <div className="p-3 text-xs font-semibold rounded-xl bg-red-50 border border-red-200 text-red-700 flex items-start gap-2">
               <AlertCircle size={14} className="shrink-0 mt-0.5" />
@@ -332,7 +332,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
 
           {/* Status Badge & Type */}
           <div className="flex items-center justify-between">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#EFF6FF] border border-[#D9D9D9] text-xs font-extrabold text-[#1E3A8A]">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#E7F2FF] border border-[#E2E8F0] text-xs font-extrabold text-[#163D64]">
               {request.request_type === "FUND_REQUEST" ? <Coins size={13} /> : request.request_type === "MEETING" ? <Users size={13} /> : request.request_type === "LEAVE" ? <Coffee size={13} /> : <Briefcase size={13} />}
               <span>{request.request_type.replace("_", " ")}</span>
             </div>
@@ -346,48 +346,48 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
 
           {/* Fund Details (if Fund Request) */}
           {request.amount && (
-            <div className="p-4 rounded-[18px] bg-[#EFF6FF]/80 border border-[#BFDBFE] flex items-center justify-between">
+            <div className="p-4 rounded-[18px] bg-[#E7F2FF]/80 border border-[#BAE6FD] flex items-center justify-between">
               <div>
-                <span className="text-3xs font-bold text-[#1E3A8A] uppercase tracking-wider block">Nominal Diajukan</span>
-                <span className="text-lg font-black text-[#1E3A8A]">
+                <span className="text-3xs font-bold text-[#163D64] uppercase tracking-wider block">Nominal Diajukan</span>
+                <span className="text-lg font-black text-[#163D64]">
                   Rp {Number(request.amount).toLocaleString("id-ID")}
                 </span>
                 {request.budget_category && (
-                  <span className="text-3xs text-[#4F5050] block mt-0.5 font-medium">
+                  <span className="text-3xs text-[#64748B] block mt-0.5 font-medium">
                     Kategori: {request.budget_category}
                   </span>
                 )}
               </div>
               {request.bank_target && (
                 <div className="text-right max-w-[200px]">
-                  <span className="text-3xs font-bold text-[#1E3A8A] uppercase tracking-wider block">Rekening Target</span>
-                  <span className="text-2xs font-semibold text-[#090909] break-words">{request.bank_target}</span>
+                  <span className="text-3xs font-bold text-[#163D64] uppercase tracking-wider block">Rekening Target</span>
+                  <span className="text-2xs font-semibold text-[#0F172A] break-words">{request.bank_target}</span>
                 </div>
               )}
             </div>
           )}
 
           {/* Title & Description */}
-          <div className="p-4 rounded-[18px] bg-white border border-[#D9D9D9] shadow-2xs space-y-2">
-            <h3 className="text-sm font-extrabold text-[#090909]">{request.title}</h3>
+          <div className="p-4 rounded-[18px] bg-white border border-[#E2E8F0] shadow-2xs space-y-2">
+            <h3 className="text-sm font-extrabold text-[#0F172A]">{request.title}</h3>
             {request.description && (
-              <p className="text-xs text-[#4F5050] leading-relaxed whitespace-pre-wrap">{request.description}</p>
+              <p className="text-xs text-[#64748B] leading-relaxed whitespace-pre-wrap">{request.description}</p>
             )}
           </div>
 
           {/* Assigned Staff (PIC) Section */}
-          <div className="p-4 rounded-[18px] bg-white border border-[#D9D9D9] shadow-2xs space-y-2.5">
+          <div className="p-4 rounded-[18px] bg-white border border-[#E2E8F0] shadow-2xs space-y-2.5">
             <div className="flex items-center justify-between">
-              <span className="text-2xs font-bold text-[#4F5050] uppercase tracking-wider">
+              <span className="text-2xs font-bold text-[#64748B] uppercase tracking-wider">
                 Staff Penanggung Jawab (PIC)
               </span>
               {displayedAssignee ? (
-                <span className="text-2xs font-semibold px-2 py-0.5 rounded-full bg-[#EFF6FF] text-[#1E3A8A] flex items-center gap-1">
+                <span className="text-2xs font-semibold px-2 py-0.5 rounded-full bg-[#E7F2FF] text-[#163D64] flex items-center gap-1">
                   <Check size={11} />
                   {displayedAssignee.name}
                 </span>
               ) : (
-                <span className="text-2xs text-[#4F5050] italic">Belum di-assign</span>
+                <span className="text-2xs text-[#64748B] italic">Belum di-assign</span>
               )}
             </div>
 
@@ -396,7 +396,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                 value={selectedAssigneeId}
                 onChange={(e) => setSelectedAssigneeId(e.target.value)}
                 disabled={assigning}
-                className="flex-1 rounded-[12px] border border-[#D9D9D9] bg-white px-3 py-2 text-xs text-[#4F5050] focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30 focus:border-[#1D4ED8] disabled:opacity-60"
+                className="flex-1 rounded-[12px] border border-[#E2E8F0] bg-white px-3 py-2 text-xs text-[#64748B] focus:outline-none focus:ring-2 focus:ring-[#0876CD]/30 focus:border-[#0876CD] disabled:opacity-60"
               >
                 <option value="">-- Pilih Staff --</option>
                 {teamMembers.map((m) => (
@@ -409,7 +409,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                 type="button"
                 onClick={handleAssign}
                 disabled={assigning || !selectedAssigneeId || selectedAssigneeId === (localAssignee?.id ?? request.assignee_user_id)}
-                className="px-3.5 py-2 rounded-[12px] bg-[#1E3A8A] text-white text-xs font-bold transition-all disabled:opacity-40 shrink-0 flex items-center gap-1.5 min-w-[80px] justify-center"
+                className="px-3.5 py-2 rounded-[12px] bg-[#163D64] text-white text-xs font-bold transition-all disabled:opacity-40 shrink-0 flex items-center gap-1.5 min-w-[80px] justify-center"
               >
                 {assigning ? (
                   <>
@@ -426,12 +426,12 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
           {/* Tagged People */}
           {request.tagged_users && request.tagged_users.length > 0 && (
             <div>
-              <span className="text-2xs font-bold text-[#4F5050] uppercase tracking-wider block mb-1.5">
+              <span className="text-2xs font-bold text-[#64748B] uppercase tracking-wider block mb-1.5">
                 Who&apos;s inside ({request.tagged_users.length} Orang)
               </span>
               <div className="flex flex-wrap gap-1.5">
                 {request.tagged_users.map((u: any, i: number) => (
-                  <div key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#EFF6FF] border border-[#D9D9D9] text-2xs font-semibold text-[#090909]">
+                  <div key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#E7F2FF] border border-[#E2E8F0] text-2xs font-semibold text-[#0F172A]">
                     <Image
                       src={u.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(u.id || i)}`}
                       alt={u.name}
@@ -449,17 +449,17 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
 
           {/* LPJ SUBMISSION FORM (When Disbursed or Registered) */}
           {isDisbursedOrRegistered && request.request_type === "FUND_REQUEST" && (
-            <div className="p-4 rounded-[18px] bg-white border border-[#1D4ED8]/40 shadow-xs space-y-3">
+            <div className="p-4 rounded-[18px] bg-white border border-[#0876CD]/40 shadow-xs space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Receipt size={16} className="text-[#1D4ED8]" />
-                  <span className="text-xs font-extrabold text-[#090909]">Pertanggungjawaban Dana (LPJ)</span>
+                  <Receipt size={16} className="text-[#0876CD]" />
+                  <span className="text-xs font-extrabold text-[#0F172A]">Pertanggungjawaban Dana (LPJ)</span>
                 </div>
                 {!showLPJForm && (
                   <button
                     type="button"
                     onClick={() => setShowLPJForm(true)}
-                    className="px-3 py-1 rounded-lg bg-[#EFF6FF] text-[#1E3A8A] text-2xs font-bold hover:bg-[#BFDBFE] transition-colors"
+                    className="px-3 py-1 rounded-lg bg-[#E7F2FF] text-[#163D64] text-2xs font-bold hover:bg-[#BAE6FD] transition-colors"
                   >
                     + Input LPJ &amp; Nota
                   </button>
@@ -469,7 +469,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
               {showLPJForm && (
                 <div className="space-y-3 pt-2 border-t border-[#EFEFEF] animate-in fade-in duration-150">
                   <div>
-                    <label className="block text-2xs font-bold text-[#4F5050] mb-1">
+                    <label className="block text-2xs font-bold text-[#64748B] mb-1">
                       Total Realisasi Belanja Riil (Rp)
                     </label>
                     <IDRInput
@@ -477,12 +477,12 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                       onChange={setLpjRealization}
                       placeholder="Contoh: 4.850.000"
                       disabled={editSaving}
-                      className="text-xs font-bold text-[#4F5050] focus:border-[#1D4ED8] disabled:opacity-60"
+                      className="text-xs font-bold text-[#64748B] focus:border-[#0876CD] disabled:opacity-60"
                       showPrefix={false}
                     />
                   </div>
                   <div>
-                    <label className="block text-2xs font-bold text-[#4F5050] mb-1">
+                    <label className="block text-2xs font-bold text-[#64748B] mb-1">
                       Catatan Penggunaan &amp; Selisih
                     </label>
                     <textarea
@@ -491,14 +491,14 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                       placeholder="Keterangan pengeluaran dan informasi sisa dana..."
                       rows={2}
                       disabled={editSaving}
-                      className="w-full px-3 py-2 rounded-xl border border-[#D9D9D9] text-xs text-[#4F5050] focus:outline-none focus:border-[#1D4ED8] resize-none disabled:opacity-60"
+                      className="w-full px-3 py-2 rounded-xl border border-[#E2E8F0] text-xs text-[#64748B] focus:outline-none focus:border-[#0876CD] resize-none disabled:opacity-60"
                     />
                   </div>
                   <button
                     type="button"
                     onClick={handleSubmitLPJ}
                     disabled={editSaving}
-                    className="w-full py-2.5 rounded-xl bg-[#1D4ED8] hover:bg-[#1E3A8A] text-white text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                    className="w-full py-2.5 rounded-xl bg-[#0876CD] hover:bg-[#163D64] text-white text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
                   >
                     {editSaving ? (
                       <>
@@ -517,7 +517,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
           {/* Re-checking Notes Input */}
           {isOMLPJStage && (
             <div className="space-y-1.5 animate-in fade-in duration-150">
-              <label className="text-2xs font-bold text-[#4F5050] uppercase tracking-wider block">
+              <label className="text-2xs font-bold text-[#64748B] uppercase tracking-wider block">
                 Catatan Verifikasi LPJ oleh OM:
               </label>
               <textarea
@@ -526,19 +526,19 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                 placeholder="Tuliskan catatan evaluasi atau alasan revisi..."
                 rows={2}
                 disabled={loading}
-                className="w-full px-3.5 py-2 rounded-[14px] bg-white border border-[#D9D9D9] text-xs font-medium text-[#090909] focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/40 resize-none disabled:opacity-60"
+                className="w-full px-3.5 py-2 rounded-[14px] bg-white border border-[#E2E8F0] text-xs font-medium text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#0876CD]/40 resize-none disabled:opacity-60"
               />
             </div>
           )}
         </div>
 
         {/* Action Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-[#D9D9D9] bg-white">
+        <div className="flex items-center justify-between px-6 py-4 border-t border-[#E2E8F0] bg-white">
           <button
             type="button"
             onClick={onClose}
             disabled={isAnySaving}
-            className="px-4 py-2.5 rounded-[14px] text-xs font-bold text-[#4F5050] hover:bg-[#EFF6FF] disabled:opacity-40 transition-colors"
+            className="px-4 py-2.5 rounded-[14px] text-xs font-bold text-[#64748B] hover:bg-[#E7F2FF] disabled:opacity-40 transition-colors"
           >
             Tutup
           </button>
@@ -554,11 +554,11 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
             {/* Stage 3: Finance Disburse */}
             {request.status === "REGISTERED" && request.request_type === "FUND_REQUEST" && isFinanceRole && (
               <div className="flex flex-col gap-2 w-full">
-                <label className="text-2xs font-bold text-[#4F5050]">
+                <label className="text-2xs font-bold text-[#64748B]">
                   Rekening sumber pencairan
                 </label>
                 <select
-                  className="w-full rounded-[12px] border border-[#D9D9D9] bg-white px-3 py-2 text-xs text-[#4F5050] focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30 focus:border-[#1D4ED8] disabled:opacity-60"
+                  className="w-full rounded-[12px] border border-[#E2E8F0] bg-white px-3 py-2 text-xs text-[#64748B] focus:outline-none focus:ring-2 focus:ring-[#0876CD]/30 focus:border-[#0876CD] disabled:opacity-60"
                   value={bankId}
                   onChange={e => setBankId(e.target.value)}
                   disabled={loading}
@@ -570,24 +570,24 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                     </option>
                   ))}
                 </select>
-                <label className="text-2xs font-bold text-[#4F5050]">
+                <label className="text-2xs font-bold text-[#64748B]">
                   Referensi transfer aktual
                 </label>
                 <input
-                  className="w-full rounded-[12px] border border-[#D9D9D9] bg-white px-3 py-2 text-xs text-[#4F5050] focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30 focus:border-[#1D4ED8] disabled:opacity-60"
+                  className="w-full rounded-[12px] border border-[#E2E8F0] bg-white px-3 py-2 text-xs text-[#64748B] focus:outline-none focus:ring-2 focus:ring-[#0876CD]/30 focus:border-[#0876CD] disabled:opacity-60"
                   value={bankReference}
                   onChange={e => setBankReference(e.target.value)}
                   placeholder="Nomor referensi transfer bank"
                   disabled={loading}
                 />
-                <p className="text-2xs text-[#4F5050]">
+                <p className="text-2xs text-[#64748B]">
                   Catat setelah transfer dilakukan. Pencatatan ini tidak mengirim uang melalui bank.
                 </p>
                 <button
                   type="button"
                   onClick={handleDisburseAction}
                   disabled={loading || !bankId || !bankReference.trim()}
-                  className="px-4 py-2.5 rounded-[14px] bg-[#1E3A8A] text-white text-xs font-extrabold shadow-md transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  className="px-4 py-2.5 rounded-[14px] bg-[#163D64] text-white text-xs font-extrabold shadow-md transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
                   {loading ? <Loader2 size={13} className="animate-spin" /> : null}
                   <span>Catat Pencairan Dana</span>
@@ -610,7 +610,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                   type="button"
                   onClick={() => handleVerifyLPJByOM("APPROVE")}
                   disabled={loading}
-                  className="px-5 py-2.5 rounded-[14px] bg-[#1E3A8A] text-white text-xs font-extrabold shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50"
+                  className="px-5 py-2.5 rounded-[14px] bg-[#163D64] text-white text-xs font-extrabold shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50"
                 >
                   {loading ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={15} />}
                   <span>✓ Verifikasi LPJ &amp; Tutup Tiket (Closed)</span>

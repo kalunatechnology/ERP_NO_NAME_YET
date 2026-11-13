@@ -71,8 +71,8 @@ function KpiCard({
   value,
   subLabel,
   icon: Icon,
-  iconBg = "#EFF6FF",
-  iconColor = "#1E3A8A",
+  iconBg = "#E7F2FF",
+  iconColor = "#163D64",
   trend,
   onClick,
   largeValue = false,
@@ -80,16 +80,16 @@ function KpiCard({
   return (
     <div
       className={cn(
-        "flex flex-col justify-between gap-3 p-4 sm:p-5 rounded-[18px] min-w-0 bg-[#EFF6FF] border border-[#D9D9D9] transition-all duration-150 select-none shadow-xs",
-        onClick && "cursor-pointer hover:shadow-card-md hover:border-[#1D4ED8]/50 hover:-translate-y-0.5"
+        "flex flex-col justify-between gap-3 p-4 sm:p-5 rounded-[18px] min-w-0 bg-[#E7F2FF] border border-[#E2E8F0] transition-all duration-150 select-none shadow-xs",
+        onClick && "cursor-pointer hover:shadow-card-md hover:border-[#0876CD]/50 hover:-translate-y-0.5"
       )}
       onClick={onClick}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-          <span className="text-xs font-semibold text-[#4F5050] tracking-tight truncate">{label}</span>
-          <span className={cn("font-extrabold text-[#090909] tracking-tight leading-tight mt-1", largeValue ? "text-3xl sm:text-[32px]" : "text-2xl sm:text-[26px]")}>{value}</span>
-          {subLabel && <span className={cn("text-[#4F5050] font-medium mt-0.5", largeValue ? "text-xs" : "text-2xs")}>{subLabel}</span>}
+          <span className="text-xs font-semibold text-[#64748B] tracking-tight truncate">{label}</span>
+          <span className={cn("font-extrabold text-[#0F172A] tracking-tight leading-tight mt-1", largeValue ? "text-3xl sm:text-[32px]" : "text-2xl sm:text-[26px]")}>{value}</span>
+          {subLabel && <span className={cn("text-[#64748B] font-medium mt-0.5", largeValue ? "text-xs" : "text-2xs")}>{subLabel}</span>}
         </div>
         <div
           className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-2xs"
@@ -99,15 +99,15 @@ function KpiCard({
         </div>
       </div>
       {trend && (
-        <div className="flex items-center gap-1.5 pt-1 border-t border-[#D9D9D9]/60">
+        <div className="flex items-center gap-1.5 pt-1 border-t border-[#E2E8F0]/60">
           <div className={cn(
             "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-bold",
-            trend.up ? "bg-[#BFDBFE] text-[#1E3A8A]" : "bg-[#FEE2E2] text-[#991B1B]"
+            trend.up ? "bg-[#BAE6FD] text-[#163D64]" : "bg-[#FEE2E2] text-[#991B1B]"
           )}>
             {trend.up ? <ChevronUp size={12} strokeWidth={2.5} /> : <ChevronDown size={12} strokeWidth={2.5} />}
             <span>{trend.value}</span>
           </div>
-          <span className="text-3xs text-[#4F5050] font-medium">vs periode lalu</span>
+          <span className="text-3xs text-[#64748B] font-medium">vs periode lalu</span>
         </div>
       )}
     </div>
@@ -124,9 +124,9 @@ function KpiCard({
 function SectionHeader({ title, actionLabel, actionHref }: { title: string; actionLabel?: string; actionHref?: string }) {
   return (
     <div className="flex items-center justify-between mb-3.5">
-      <h2 className="text-sm sm:text-base font-extrabold text-[#090909] tracking-tight">{title}</h2>
+      <h2 className="text-sm sm:text-base font-extrabold text-[#0F172A] tracking-tight">{title}</h2>
       {actionLabel && actionHref && (
-        <Link href={actionHref} className="flex items-center gap-1 text-xs font-bold text-[#1D4ED8] hover:text-[#1E3A8A] transition-colors">
+        <Link href={actionHref} className="flex items-center gap-1 text-xs font-bold text-[#0876CD] hover:text-[#163D64] transition-colors">
           <span>{actionLabel}</span>
           <ArrowRight size={13} strokeWidth={2.2} />
         </Link>
@@ -157,7 +157,7 @@ function StatusBadge({ status }: { status: string }) {
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function ProgressBar({ value, color = "#1D4ED8", height = 7 }: { value: number; color?: string; height?: number }) {
+function ProgressBar({ value, color = "#0876CD", height = 7 }: { value: number; color?: string; height?: number }) {
   return (
     <div className="w-full bg-[#EFEFEF] rounded-full overflow-hidden p-0.5 shadow-2xs" style={{ height }}>
       <div
@@ -276,18 +276,18 @@ function PMDashboard({ projects, loading, userId }: { projects: Project[]; loadi
       <section aria-labelledby="pm-dashboard-summary" className="rounded-2xl border border-[#CBD5E1] bg-[#F4F8FD] p-4 sm:p-5 flex flex-col gap-4 shadow-xs">
         <div className="flex items-center justify-between gap-3 border-b border-[#D5DCE8] pb-3">
           <div>
-            <h2 id="pm-dashboard-summary" className="text-base sm:text-lg font-extrabold tracking-tight text-[#090909]">Summary</h2>
-            <p className="mt-0.5 text-xs text-[#4F5050]">Ringkasan proyek, kesehatan portofolio, dan tugas hari ini.</p>
+            <h2 id="pm-dashboard-summary" className="text-base sm:text-lg font-extrabold tracking-tight text-[#0F172A]">Summary</h2>
+            <p className="mt-0.5 text-xs text-[#64748B]">Ringkasan proyek, kesehatan portofolio, dan tugas hari ini.</p>
           </div>
-          <Link href="/projects" className="flex shrink-0 items-center gap-1 text-xs font-bold text-[#1D4ED8] hover:text-[#1E3A8A] transition-colors">
+          <Link href="/projects" className="flex shrink-0 items-center gap-1 text-xs font-bold text-[#0876CD] hover:text-[#163D64] transition-colors">
             Lihat semua <ArrowRight size={13} strokeWidth={2.2} />
           </Link>
         </div>
 
         {/* ── Project Metrics ───────────────── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <KpiCard label="Total Proyek" value={total} subLabel="semua status" icon={FolderKanban} iconBg="#EFF6FF" iconColor="#1D4ED8" largeValue />
-          <KpiCard label="Aktif Berjalan" value={active} subLabel="in progress" icon={Activity} iconBg="#EFF6FF" iconColor="#1D4ED8" trend={active > 0 ? { value: `${active} proyek aktif`, up: true } : null} largeValue />
+          <KpiCard label="Total Proyek" value={total} subLabel="semua status" icon={FolderKanban} iconBg="#E7F2FF" iconColor="#0876CD" largeValue />
+          <KpiCard label="Aktif Berjalan" value={active} subLabel="in progress" icon={Activity} iconBg="#E7F2FF" iconColor="#0876CD" trend={active > 0 ? { value: `${active} proyek aktif`, up: true } : null} largeValue />
           <KpiCard label="Terlambat" value={delayed} subLabel="melewati deadline" icon={AlertTriangle} iconBg="#FEF2F2" iconColor="#DC2626" trend={delayed > 0 ? { value: `${delayed} perlu perhatian`, up: false } : null} largeValue />
           <KpiCard label="Rata-rata Progress" value={`${avgProgress}%`} subLabel="seluruh proyek" icon={Target} iconBg="#FAF5FF" iconColor="#7E22CE" largeValue />
         </div>
@@ -308,34 +308,34 @@ function PMDashboard({ projects, loading, userId }: { projects: Project[]; loadi
         <div className="bg-white border border-[#D5DCE8] rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3 pb-3 border-b border-[#E2E8F0]">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-[#EFF6FF] flex items-center justify-center text-[#1E3A8A]">
+              <div className="w-8 h-8 rounded-lg bg-[#E7F2FF] flex items-center justify-center text-[#163D64]">
                 <Clock size={17} />
               </div>
-              <h3 className="text-sm font-bold text-[#090909]">Tugas Operasional Hari Ini</h3>
+              <h3 className="text-sm font-bold text-[#0F172A]">Tugas Operasional Hari Ini</h3>
             </div>
             <Link href="/tasks" className="flex items-center gap-1 text-xs font-semibold text-brand-green hover:text-brand-deep-green transition-colors">
               Buka task harian <ArrowRight size={12} />
             </Link>
           </div>
 
-          <p className="text-xs leading-5 text-[#4F5050]">Task milik Anda di perusahaan aktif, sesuai halaman Tugas Harian.</p>
+          <p className="text-xs leading-5 text-[#64748B]">Task milik Anda di perusahaan aktif, sesuai halaman Tugas Harian.</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="min-h-24 p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-center flex flex-col justify-center">
-              <span className="text-3xl font-extrabold leading-none text-[#090909]">{todayCount}</span>
-              <span className="text-xs text-[#4F5050] mt-2 font-medium">Total Task Hari Ini</span>
+              <span className="text-3xl font-extrabold leading-none text-[#0F172A]">{todayCount}</span>
+              <span className="text-xs text-[#64748B] mt-2 font-medium">Total Task Hari Ini</span>
             </div>
-            <div className="min-h-24 p-4 rounded-xl bg-[#EFF7FF] border border-[#BFDBFE] text-center flex flex-col justify-center">
-              <span className="text-3xl font-extrabold leading-none text-[#1E3A8A]">{doneToday}</span>
-              <span className="text-xs text-[#1E3A8A] mt-2 font-semibold">Selesai Hari Ini</span>
+            <div className="min-h-24 p-4 rounded-xl bg-[#EFF7FF] border border-[#BAE6FD] text-center flex flex-col justify-center">
+              <span className="text-3xl font-extrabold leading-none text-[#163D64]">{doneToday}</span>
+              <span className="text-xs text-[#163D64] mt-2 font-semibold">Selesai Hari Ini</span>
             </div>
             <div className={cn(
               "min-h-24 p-4 rounded-xl text-center flex flex-col justify-center border",
               overdueTasks.length > 0 ? "bg-red-50 border-red-200 text-red-700" : "bg-[#F8FAFC] border-[#E2E8F0]"
             )}>
-              <span className={cn("text-3xl font-extrabold leading-none", overdueTasks.length > 0 ? "text-red-600" : "text-[#090909]")}>
+              <span className={cn("text-3xl font-extrabold leading-none", overdueTasks.length > 0 ? "text-red-600" : "text-[#0F172A]")}>
                 {overdueTasks.length}
               </span>
-              <span className={cn("text-xs mt-2", overdueTasks.length > 0 ? "text-red-600 font-semibold" : "text-[#4F5050] font-medium")}>
+              <span className={cn("text-xs mt-2", overdueTasks.length > 0 ? "text-red-600 font-semibold" : "text-[#64748B] font-medium")}>
                 Terlambat / Carry-over
               </span>
             </div>
@@ -412,11 +412,11 @@ function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <KpiCard
             label="Total Anggaran" value={formatMoney(kpis.totalBudget)}
-            subLabel="budget proyek" icon={DollarSign} iconBg="#EFF6FF" iconColor="#1D4ED8"
+            subLabel="budget proyek" icon={DollarSign} iconBg="#E7F2FF" iconColor="#0876CD"
           />
           <KpiCard
             label="Terpakai" value={formatMoney(kpis.usedBudget)}
-            subLabel={`${kpis.budgetUtilization}% utilisasi`} icon={TrendingUp} iconBg="#EFF6FF" iconColor="#1D4ED8"
+            subLabel={`${kpis.budgetUtilization}% utilisasi`} icon={TrendingUp} iconBg="#E7F2FF" iconColor="#0876CD"
           />
           <KpiCard
             label="Sisa Anggaran" value={formatMoney(kpis.remainingBudget)}
@@ -525,7 +525,7 @@ function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData 
                   </div>
                   <ProgressBar
                     value={ps.utilization}
-                    color={ps.utilization > 90 ? "#DC2626" : ps.utilization > 70 ? "#D97706" : "#1D4ED8"}
+                    color={ps.utilization > 90 ? "#DC2626" : ps.utilization > 70 ? "#D97706" : "#0876CD"}
                     height={5}
                   />
                 </div>
@@ -675,15 +675,15 @@ function ExecutiveDashboard({ projects, finData, loading }: {
   const onTrackCount = Math.max(0, active - delayed);
 
   const executiveTabs = (
-    <div className="inline-flex w-full items-center gap-1 rounded-[18px] border border-[#D9D9D9] bg-white p-1.5 shadow-xs">
+    <div className="inline-flex w-full items-center gap-1 rounded-[18px] border border-[#E2E8F0] bg-white p-1.5 shadow-xs">
       <button
         type="button"
         onClick={() => setActiveTab("overview")}
         className={cn(
           "flex-1 sm:flex-none rounded-[14px] px-5 py-2.5 text-sm font-bold transition-colors",
           activeTab === "overview"
-            ? "bg-[#1D4ED8] text-white shadow-sm"
-            : "text-[#4F5050] hover:bg-[#F4F7FF] hover:text-[#1D4ED8]"
+            ? "bg-[#0876CD] text-white shadow-sm"
+            : "text-[#64748B] hover:bg-[#F4F7FF] hover:text-[#0876CD]"
         )}
       >
         Overview
@@ -694,8 +694,8 @@ function ExecutiveDashboard({ projects, finData, loading }: {
         className={cn(
           "flex-1 sm:flex-none rounded-[14px] px-5 py-2.5 text-sm font-bold transition-colors",
           activeTab === "daily_tasks"
-            ? "bg-[#1D4ED8] text-white shadow-sm"
-            : "text-[#4F5050] hover:bg-[#F4F7FF] hover:text-[#1D4ED8]"
+            ? "bg-[#0876CD] text-white shadow-sm"
+            : "text-[#64748B] hover:bg-[#F4F7FF] hover:text-[#0876CD]"
         )}
       >
         Daily Task Staff
@@ -706,8 +706,8 @@ function ExecutiveDashboard({ projects, finData, loading }: {
         className={cn(
           "flex-1 sm:flex-none rounded-[14px] px-5 py-2.5 text-sm font-bold transition-colors",
           activeTab === "weekly_targets"
-            ? "bg-[#1D4ED8] text-white shadow-sm"
-            : "text-[#4F5050] hover:bg-[#F4F7FF] hover:text-[#1D4ED8]"
+            ? "bg-[#0876CD] text-white shadow-sm"
+            : "text-[#64748B] hover:bg-[#F4F7FF] hover:text-[#0876CD]"
         )}
       >
         Weekly Target Staff
@@ -740,12 +740,12 @@ function ExecutiveDashboard({ projects, finData, loading }: {
       <section>
         <SectionHeader title="Company Overview" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <KpiCard label="Total Proyek" value={total} subLabel={`${active} aktif`} icon={FolderKanban} iconBg="#EFF6FF" iconColor="#1D4ED8" />
-          <KpiCard label="Overall Progress" value={`${avgProgress}%`} subLabel="rata-rata" icon={Activity} iconBg="#EFF6FF" iconColor="#1D4ED8" />
+          <KpiCard label="Total Proyek" value={total} subLabel={`${active} aktif`} icon={FolderKanban} iconBg="#E7F2FF" iconColor="#0876CD" />
+          <KpiCard label="Overall Progress" value={`${avgProgress}%`} subLabel="rata-rata" icon={Activity} iconBg="#E7F2FF" iconColor="#0876CD" />
           <KpiCard label="Total Anggaran" value={kpis ? formatMoney(kpis.totalBudget) : "-"}
-            subLabel={kpis ? `${kpis.budgetUtilization}% digunakan` : ""} icon={DollarSign} iconBg="#EFF6FF" iconColor="#1D4ED8" />
+            subLabel={kpis ? `${kpis.budgetUtilization}% digunakan` : ""} icon={DollarSign} iconBg="#E7F2FF" iconColor="#0876CD" />
           <KpiCard label="Perlu Keputusan" value={pendingCount}
-            subLabel={urgentPending > 0 ? `${urgentPending} URGENT` : "pending approval"} icon={CheckSquare} iconBg="#EFF6FF" iconColor="#1D4ED8"
+            subLabel={urgentPending > 0 ? `${urgentPending} URGENT` : "pending approval"} icon={CheckSquare} iconBg="#E7F2FF" iconColor="#0876CD"
             trend={urgentPending > 0 ? { value: `${urgentPending} butuh perhatian`, up: false } : null} />
         </div>
       </section>
@@ -800,7 +800,7 @@ function ExecutiveDashboard({ projects, finData, loading }: {
             subLabel="proyek sedang aktif"
             icon={Activity}
             iconBg="#DCEEFF"
-            iconColor="#1E3A8A"
+            iconColor="#163D64"
           />
           <KpiCard
             label="Terlambat"
@@ -816,7 +816,7 @@ function ExecutiveDashboard({ projects, finData, loading }: {
             subLabel="draft atau belum dimulai"
             icon={Layers}
             iconBg="#FFFFFF"
-            iconColor="#4F5050"
+            iconColor="#64748B"
           />
         </div>
       </section>
@@ -859,7 +859,7 @@ function ExecutiveDashboard({ projects, finData, loading }: {
           title="Timeline Eksekusi Proyek"
           tasks={timelineTasks}
           totalWeeks={8}
-          className="border-[#D9D9D9] rounded-2xl sm:rounded-[24px]"
+          className="border-[#E2E8F0] rounded-2xl sm:rounded-[24px]"
         />
       </section>
 
@@ -885,7 +885,7 @@ function ExecutiveDashboard({ projects, finData, loading }: {
                 </div>
                 <ProgressBar
                   value={kpis.budgetUtilization}
-                  color={kpis.budgetUtilization > 90 ? "#DC2626" : kpis.budgetUtilization > 70 ? "#D97706" : "#1D4ED8"}
+                  color={kpis.budgetUtilization > 90 ? "#DC2626" : kpis.budgetUtilization > 70 ? "#D97706" : "#0876CD"}
                   height={8}
                 />
               </div>
@@ -946,16 +946,16 @@ function CRMDashboard({
             value={formatMoney(totalPipeline)}
             subLabel={`${activeOpportunityCount} deal aktif`}
             icon={DollarSign}
-            iconBg="#EFF6FF"
-            iconColor="#1D4ED8"
+            iconBg="#E7F2FF"
+            iconColor="#0876CD"
           />
           <KpiCard
             label="Win Rate"
             value={`${winRate}%`}
             subLabel="peluang konversi"
             icon={TrendingUp}
-            iconBg="#EFF6FF"
-            iconColor="#1D4ED8"
+            iconBg="#E7F2FF"
+            iconColor="#0876CD"
           />
           <KpiCard
             label="Inquiry Masuk"
@@ -1110,16 +1110,16 @@ function StaffDashboard({ projects, loading, overtimeSummary }: { projects: Proj
             value={todayTasks.length}
             subLabel="sesi kerja terjadwal"
             icon={CheckSquare}
-            iconBg="#EFF6FF"
-            iconColor="#1D4ED8"
+            iconBg="#E7F2FF"
+            iconColor="#0876CD"
           />
           <KpiCard
             label="Selesai Hari Ini"
             value={completedToday}
             subLabel={`${todayTasks.length > 0 ? Math.round((completedToday / todayTasks.length) * 100) : 0}% tuntas`}
             icon={CheckCircle2}
-            iconBg="#EFF6FF"
-            iconColor="#1D4ED8"
+            iconBg="#E7F2FF"
+            iconColor="#0876CD"
           />
           <KpiCard
             label="Perlu Perhatian"
@@ -1147,7 +1147,7 @@ function StaffDashboard({ projects, loading, overtimeSummary }: { projects: Proj
       </section>
 
       {/* ── Today's Tasks List ── */}
-      <section className="card rounded-[24px] p-4 flex flex-col gap-3 border border-[#D9D9D9]">
+      <section className="card rounded-[24px] p-4 flex flex-col gap-3 border border-[#E2E8F0]">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <h3 className="text-sm font-bold text-text-primary">Daftar Aktivitas Terjadwal Hari Ini</h3>
           <div className="flex items-center gap-2">
@@ -1219,10 +1219,10 @@ function StaffDashboard({ projects, loading, overtimeSummary }: { projects: Proj
             </table>
           </div>
         )}
-        <div className="flex items-center justify-between gap-4 flex-wrap border-t border-[#D9D9D9] pt-3">
+        <div className="flex items-center justify-between gap-4 flex-wrap border-t border-[#E2E8F0] pt-3">
           <Link
             href="/tasks#task-submission"
-            className="inline-flex min-h-9 items-center gap-2 rounded-full border border-[#D9E5FF] bg-[#F3F8FF] px-3 text-xs font-semibold text-[#1D4ED8] transition-colors hover:bg-[#EFF6FF]"
+            className="inline-flex min-h-9 items-center gap-2 rounded-full border border-[#D9E5FF] bg-[#F3F8FF] px-3 text-xs font-semibold text-[#0876CD] transition-colors hover:bg-[#E7F2FF]"
             aria-label={`Pengajuan tugas, ${pendingSubmissions.length} perlu dilengkapi`}
             title="Pengajuan tugas"
           >
@@ -1378,9 +1378,9 @@ export default function DashboardClient() {
         <div className="flex items-center gap-2">
           {canUseRequests && userRole !== "super_admin" && <button
             onClick={() => setIsNewRequestModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[14px] bg-[#1E3A8A] hover:bg-[#1E3A8A] text-white text-xs font-extrabold shadow-sm hover:shadow-md transition-all select-none"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[14px] bg-[#163D64] hover:bg-[#163D64] text-white text-xs font-extrabold shadow-sm hover:shadow-md transition-all select-none"
           >
-            <Sparkles size={14} className="text-[#EFF6FF]" />
+            <Sparkles size={14} className="text-[#E7F2FF]" />
             <span>Request Card</span>
           </button>}
           <button
@@ -1432,7 +1432,7 @@ export default function DashboardClient() {
       )}
 
       {/* ── Marka+ Active Request Cards Feed ── */}
-      {canUseRequests && userRole !== "super_admin" && <section className="mt-2 pt-5 border-t border-[#D9D9D9]">
+      {canUseRequests && userRole !== "super_admin" && <section className="mt-2 pt-5 border-t border-[#E2E8F0]">
         <RequestCardFeed
           onRequestClick={(req) => setSelectedReviewRequest(req)}
           refreshTrigger={refreshTrigger}

@@ -161,12 +161,12 @@ export function ProjectWbsNode({
             <ChevronRight
               size={18}
               className={cn(
-                "transform transition-transform duration-200 ease-out text-[#1E3A8A]",
+                "transform transition-transform duration-200 ease-out text-[#163D64]",
                 isExpanded ? "rotate-90" : "rotate-0"
               )}
             />
           </button>
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[#1D4ED8] text-xs font-black text-white shadow-2xs">
+          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[#0876CD] text-xs font-black text-white shadow-2xs">
             {main.weight || 10}%
           </div>
           <div className="min-w-0 flex-1">
@@ -240,7 +240,7 @@ export function ProjectWbsNode({
           {canCreateWeekly && (
             <button
               onClick={() => onCreateWeeklyClick(main)}
-              className="btn-outline gap-1 border-[#B8C8F5] px-2.5 py-1 text-2xs text-[#1D4ED8] hover:bg-[#EEF3FF]"
+              className="btn-outline gap-1 border-[#B8C8F5] px-2.5 py-1 text-2xs text-[#0876CD] hover:bg-[#EEF3FF]"
             >
               <Plus size={12} /> {canManageWeeklyTasks ? "+ Target Mingguan" : "Ajukan Target Mingguan"}
             </button>
@@ -284,7 +284,7 @@ export function ProjectWbsNode({
                 const isReviewing = reviewingWeeklyId === String(weekly.id);
 
                 return (
-                  <div key={weekly.id} id={`weekly-target-${weekly.id}`} tabIndex={-1} className={cn("scroll-mt-24 rounded-xl border border-indigo-100 overflow-hidden bg-white shadow-xs transition-all duration-200 focus:outline-none", String(weekly.id) === focusWeeklyId && "ring-2 ring-[#1D4ED8] ring-offset-2")}>
+                  <div key={weekly.id} id={`weekly-target-${weekly.id}`} tabIndex={-1} className={cn("scroll-mt-24 rounded-xl border border-indigo-100 overflow-hidden bg-white shadow-xs transition-all duration-200 focus:outline-none", String(weekly.id) === focusWeeklyId && "ring-2 ring-[#0876CD] ring-offset-2")}>
                     {/* Level 2 Header: Weekly Target */}
                     <div className="p-2.5 sm:p-3 bg-indigo-50/60 border-b border-indigo-100 flex items-center justify-between flex-wrap gap-2">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -325,7 +325,7 @@ export function ProjectWbsNode({
                         {canCreateDaily && (
                           <button
                             onClick={() => onCreateDailyClick(weekly)}
-                            className="btn-primary gap-1 bg-[#1D4ED8] px-2.5 py-0.5 text-2xs hover:bg-[#203F9C]"
+                            className="btn-primary gap-1 bg-[#0876CD] px-2.5 py-0.5 text-2xs hover:bg-[#203F9C]"
                           >
                             <Plus size={11} /> Daily Task
                           </button>
@@ -453,7 +453,7 @@ export function ProjectWbsNode({
                                         </td>
 
                                         <td className="px-4 py-4 align-top">
-                                          <div className="break-words text-[13px] leading-5 text-[#1D4ED8]">
+                                          <div className="break-words text-[13px] leading-5 text-[#0876CD]">
                                             <MarkdownText value={daily.output_result} fallback="Belum ada output" />
                                           </div>
                                           {isBlocked && (
@@ -474,7 +474,7 @@ export function ProjectWbsNode({
                                             className={cn(
                                               "inline-flex max-w-full items-center rounded-full px-3 py-1 text-[11px] font-bold whitespace-nowrap",
                                               isDone
-                                                ? "bg-[#EFF6FF] text-[#3157C8]"
+                                                ? "bg-[#E7F2FF] text-[#3157C8]"
                                                 : isBlocked
                                                   ? "bg-red-100 text-red-700"
                                                   : "bg-[#DCEEFF] text-[#2854BF]"
@@ -490,7 +490,7 @@ export function ProjectWbsNode({
                                               <button
                                                 type="button"
                                                 onClick={() => onEditDailyClick(daily)}
-                                                className="flex h-8 w-8 items-center justify-center rounded-lg text-[#4F5050] transition-colors hover:bg-[#EFF6FF] hover:text-[#1D4ED8]"
+                                                className="flex h-8 w-8 items-center justify-center rounded-lg text-[#64748B] transition-colors hover:bg-[#E7F2FF] hover:text-[#0876CD]"
                                                 title="Update Daily Task"
                                               >
                                                 <Edit size={15} />

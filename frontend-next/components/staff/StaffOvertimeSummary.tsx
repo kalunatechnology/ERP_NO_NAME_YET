@@ -31,7 +31,7 @@ export function StaffOvertimeSummary({ refreshKey = 0, initialSummary }: StaffOv
 
   const values = summary || { thisWeekHours: 0, thisMonthHours: 0, pendingHours: 0, approvedHours: 0, lastOvertimeDate: null };
   const cards = [
-    { label: "Lembur Minggu Ini", value: values.thisWeekHours, icon: Clock3, iconBg: "#EFF6FF", iconColor: "#1E3A8A" },
+    { label: "Lembur Minggu Ini", value: values.thisWeekHours, icon: Clock3, iconBg: "#E7F2FF", iconColor: "#163D64" },
     { label: "Lembur Bulan Ini", value: values.thisMonthHours, icon: CalendarClock, iconBg: "#F3E8FF", iconColor: "#7E22CE" },
     { label: "Menunggu Persetujuan", value: values.pendingHours, icon: Hourglass, iconBg: "#FFF7D6", iconColor: "#B45309" },
     { label: "Lembur Disetujui", value: values.approvedHours, icon: CheckCircle2, iconBg: "#DCFCE7", iconColor: "#15803D" },

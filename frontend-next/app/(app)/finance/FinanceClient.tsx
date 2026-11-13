@@ -1596,7 +1596,7 @@ export default function FinanceClient() {
             subtitle="Ringkasan nilai termin, pajak, dan tagihan klien."
           >
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="card rounded-xl border border-blue-100 border-l-4 border-l-[#1E3A8A] bg-white p-4 shadow-xs">
+              <div className="card rounded-xl border border-blue-100 border-l-4 border-l-[#163D64] bg-white p-4 shadow-xs">
                 <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Total DPP Termin</span>
                 <div className="mt-1 font-sans text-lg font-bold tabular-nums text-text-primary">
                   {formatMoney(proposals.reduce((sum, p) => sum + Number(p.subtotal || 0), 0))}
@@ -1911,7 +1911,7 @@ export default function FinanceClient() {
           >
           <div className="workspace-kpis grid gap-3">
             {bankAccounts.map((b) => (
-              <div key={b.id} className="card p-4 rounded-xl border border-blue-200 border-l-4 border-l-[#1E3A8A] bg-white flex flex-col justify-between min-h-[120px] shadow-sm">
+              <div key={b.id} className="card p-4 rounded-xl border border-blue-200 border-l-4 border-l-[#163D64] bg-white flex flex-col justify-between min-h-[120px] shadow-sm">
                 <div>
                   <div className="flex items-center justify-between text-xs font-bold text-text-secondary uppercase tracking-wide">
                     <span>{b.type.replace("_", " ")}</span>

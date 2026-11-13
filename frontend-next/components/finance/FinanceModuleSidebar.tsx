@@ -63,8 +63,8 @@ export function FinanceModuleSidebar({ items, activeId, onSelect }: FinanceModul
                 onClick={() => setOpenGroups((current) => ({ ...current, [group.id]: !isOpen }))}
                 className={cn(
                   "flex w-full items-center justify-between rounded-lg px-2 py-2 text-[10px] font-extrabold uppercase tracking-[0.08em] transition-colors",
-                  containsActive ? "text-[#1E3A8A]" : "text-[#6B7280]",
-                  "hover:bg-[#EFF6FF]"
+                  containsActive ? "text-[#163D64]" : "text-[#6B7280]",
+                  "hover:bg-[#E7F2FF]"
                 )}
                 aria-expanded={isOpen}
               >
@@ -90,13 +90,13 @@ export function FinanceModuleSidebar({ items, activeId, onSelect }: FinanceModul
                         "group relative flex min-h-10 w-full items-center rounded-xl text-left text-xs font-semibold transition-all",
                         collapsed && !mobile ? "justify-center px-2" : "gap-2.5 px-3",
                         active
-                          ? "bg-[#EFF6FF] text-[#1E3A8A] shadow-2xs"
-                          : "text-[#4F5050] hover:bg-[#F7FBFF] hover:text-[#1E3A8A]"
+                          ? "bg-[#E7F2FF] text-[#163D64] shadow-2xs"
+                          : "text-[#64748B] hover:bg-[#F7FBFF] hover:text-[#163D64]"
                       )}
                       aria-current={active ? "page" : undefined}
                       title={collapsed && !mobile ? item.label : undefined}
                     >
-                      {active && <span className="absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-r-full bg-[#1E3A8A]" />}
+                      {active && <span className="absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-r-full bg-[#163D64]" />}
                       <Icon size={16} strokeWidth={active ? 2.3 : 1.8} className="shrink-0" />
                       {(!collapsed || mobile) && <span className="truncate">{item.label}</span>}
                     </button>
@@ -112,17 +112,17 @@ export function FinanceModuleSidebar({ items, activeId, onSelect }: FinanceModul
 
   return (
     <>
-      <div className="flex w-full items-center justify-between rounded-xl border border-[#D9D9D9] bg-white p-2 xl:hidden">
-        <div className="flex items-center gap-2 text-xs font-bold text-[#1E3A8A]">
+      <div className="flex w-full items-center justify-between rounded-xl border border-[#E2E8F0] bg-white p-2 xl:hidden">
+        <div className="flex items-center gap-2 text-xs font-bold text-[#163D64]">
           <Menu size={16} /> Menu Finance
         </div>
-        <button type="button" onClick={() => setMobileOpen(true)} className="rounded-lg bg-[#EFF6FF] px-3 py-1.5 text-xs font-bold text-[#1E3A8A]">Buka Menu</button>
+        <button type="button" onClick={() => setMobileOpen(true)} className="rounded-lg bg-[#E7F2FF] px-3 py-1.5 text-xs font-bold text-[#163D64]">Buka Menu</button>
       </div>
 
-      <aside className={cn("sticky top-3 hidden max-h-[calc(100dvh-100px)] shrink-0 flex-col rounded-2xl border border-[#D9D9D9] bg-white py-3 shadow-2xs transition-[width] duration-200 xl:flex", collapsed ? "w-[64px]" : "w-[200px]")}>
+      <aside className={cn("sticky top-3 hidden max-h-[calc(100dvh-100px)] shrink-0 flex-col rounded-2xl border border-[#E2E8F0] bg-white py-3 shadow-2xs transition-[width] duration-200 xl:flex", collapsed ? "w-[64px]" : "w-[200px]")}>
         <div className={cn("mb-2 flex items-center border-b border-[#EFEFEF] px-3 pb-3", collapsed ? "justify-center" : "justify-between")}>
-          {!collapsed && <div><div className="text-xs font-extrabold text-[#090909]">Finance</div><div className="text-[9px] text-[#6B7280]">Menu Modul</div></div>}
-          <button type="button" onClick={() => setCollapsed((current) => !current)} className="rounded-lg p-1.5 text-[#4F5050] hover:bg-[#EFF6FF] hover:text-[#1E3A8A]" aria-label={collapsed ? "Perluas sidebar Finance" : "Ciutkan sidebar Finance"} title={collapsed ? "Perluas sidebar" : "Ciutkan sidebar"}>
+          {!collapsed && <div><div className="text-xs font-extrabold text-[#0F172A]">Finance</div><div className="text-[9px] text-[#6B7280]">Menu Modul</div></div>}
+          <button type="button" onClick={() => setCollapsed((current) => !current)} className="rounded-lg p-1.5 text-[#64748B] hover:bg-[#E7F2FF] hover:text-[#163D64]" aria-label={collapsed ? "Perluas sidebar Finance" : "Ciutkan sidebar Finance"} title={collapsed ? "Perluas sidebar" : "Ciutkan sidebar"}>
             {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
           </button>
         </div>
@@ -134,8 +134,8 @@ export function FinanceModuleSidebar({ items, activeId, onSelect }: FinanceModul
           <button type="button" className="absolute inset-0 bg-black/40 backdrop-blur-xs" onClick={() => setMobileOpen(false)} aria-label="Tutup menu Finance" />
           <aside className="relative z-10 flex h-full w-[min(280px,100vw)] flex-col bg-white py-4 shadow-2xl">
             <div className="mb-3 flex items-center justify-between border-b border-[#EFEFEF] px-4 pb-3">
-              <div><div className="text-sm font-extrabold text-[#090909]">Finance</div><div className="text-[10px] text-[#6B7280]">Menu Modul</div></div>
-              <button type="button" onClick={() => setMobileOpen(false)} className="rounded-lg p-2 text-[#4F5050] hover:bg-[#EFF6FF]" aria-label="Tutup menu Finance"><X size={18} /></button>
+              <div><div className="text-sm font-extrabold text-[#0F172A]">Finance</div><div className="text-[10px] text-[#6B7280]">Menu Modul</div></div>
+              <button type="button" onClick={() => setMobileOpen(false)} className="rounded-lg p-2 text-[#64748B] hover:bg-[#E7F2FF]" aria-label="Tutup menu Finance"><X size={18} /></button>
             </div>
             {navigation(true)}
           </aside>

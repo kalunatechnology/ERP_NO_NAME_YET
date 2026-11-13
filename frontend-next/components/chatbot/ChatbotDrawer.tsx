@@ -79,7 +79,7 @@ function MarBotIcon({ size = 32, className = "" }: { size?: number; className?: 
       style={{
         width: size,
         height: size,
-        backgroundColor: "#1D4ED8",
+        backgroundColor: "#0876CD",
       }}
     >
       <svg
@@ -370,7 +370,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
               <span className="font-bold text-[15px] text-[#1E293B] leading-snug">
                 <MarkaPlusName />
               </span>
-              <span className="flex items-center gap-1.5 text-[11px] text-[#4F5050] font-medium leading-tight">
+              <span className="flex items-center gap-1.5 text-[11px] text-[#64748B] font-medium leading-tight">
                 <span className={`w-1.5 h-1.5 rounded-full ${
                   connectionState === "database"
                     ? "bg-emerald-500"
@@ -393,7 +393,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
 
           <button
             onClick={onClose}
-            className="p-1 rounded-md text-[#4F5050] hover:text-black hover:bg-gray-100 transition-colors"
+            className="p-1 rounded-md text-[#64748B] hover:text-black hover:bg-gray-100 transition-colors"
             aria-label="Close"
           >
             <X size={18} />
@@ -440,7 +440,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
 
               {/* ── Quick Actions Section (Initial Screen Only) ── */}
               <div className="pt-2 flex flex-col space-y-2">
-                <span className="text-[13px] font-semibold text-[#4F5050]">
+                <span className="text-[13px] font-semibold text-[#64748B]">
                   Coba tanyakan
                 </span>
 
@@ -454,7 +454,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
                       key={idx}
                       onClick={() => handleSendMessage(item.prompt)}
                       disabled={isStreaming}
-                      className="w-full text-left px-4 py-2.5 rounded-xl bg-[#EFF6FF] hover:bg-[#EFF6FF] active:scale-98 transition-all text-[12.5px] font-medium text-[#1E3A8A] disabled:opacity-50 cursor-pointer shadow-2xs"
+                      className="w-full text-left px-4 py-2.5 rounded-xl bg-[#E7F2FF] hover:bg-[#E7F2FF] active:scale-98 transition-all text-[12.5px] font-medium text-[#163D64] disabled:opacity-50 cursor-pointer shadow-2xs"
                     >
                       {item.label}
                     </button>
@@ -480,7 +480,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
                 <div
                   className={`min-w-0 overflow-hidden rounded-2xl p-3.5 text-[13px] leading-relaxed max-w-[92%] ${
                     isUser
-                      ? "ml-auto bg-[#1D4ED8] text-white rounded-br-xs"
+                      ? "ml-auto bg-[#0876CD] text-white rounded-br-xs"
                       : "bg-[#F6F7F9] text-[#334155] rounded-bl-xs"
                   }`}
                 >
@@ -534,7 +534,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
                             ),
                             em: ({ children }) => <em className="italic">{children}</em>,
                             blockquote: ({ children }) => (
-                              <blockquote className="border-l-3 border-[#1D4ED8] pl-3 py-1 text-[#4F5050] italic my-2 bg-[#FDFDFD] rounded-r text-[12.5px]">
+                              <blockquote className="border-l-3 border-[#0876CD] pl-3 py-1 text-[#64748B] italic my-2 bg-[#FDFDFD] rounded-r text-[12.5px]">
                                 {children}
                               </blockquote>
                             ),
@@ -564,7 +564,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
                               </div>
                             ),
                             thead: ({ children }) => (
-                              <thead className="bg-[#EFF6FF]/80 text-[#1E3A8A] font-semibold border-b border-gray-200">
+                              <thead className="bg-[#E7F2FF]/80 text-[#163D64] font-semibold border-b border-gray-200">
                                 {children}
                               </thead>
                             ),
@@ -583,7 +583,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
                                 href={href}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-[#1D4ED8] underline font-medium hover:text-[#1E3A8A] transition-colors"
+                                className="text-[#0876CD] underline font-medium hover:text-[#163D64] transition-colors"
                               >
                                 {children}
                               </a>
@@ -597,13 +597,13 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
                         msg.isStreaming && "Sedang memproses..."
                       )}
                       {msg.isStreaming && (
-                        <span className="inline-block w-1.5 h-3 bg-[#1D4ED8] ml-1 animate-pulse align-middle" />
+                        <span className="inline-block w-1.5 h-3 bg-[#0876CD] ml-1 animate-pulse align-middle" />
                       )}
                     </div>
                   )}
                 </div>
                 {msg.action && !msg.actionState && (
-                  <button type="button" disabled={isStreaming || loadingHistory} className="self-start rounded-lg bg-[#1D4ED8] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                  <button type="button" disabled={isStreaming || loadingHistory} className="self-start rounded-lg bg-[#0876CD] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
                     onClick={async () => {
                       if (!window.confirm('Simpan usulan ini ke ERP sesuai field yang ditampilkan?')) return;
                       setMessages(prev => prev.map(item => item.id === msg.id ? { ...item, actionState: 'running' } : item));
@@ -616,7 +616,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
                       }
                     }}>Konfirmasi dan simpan</button>
                 )}
-                {msg.actionState === 'running' && <p role="status" className="text-xs text-[#1D4ED8]">Menyimpan dan memverifikasi data ERP…</p>}
+                {msg.actionState === 'running' && <p role="status" className="text-xs text-[#0876CD]">Menyimpan dan memverifikasi data ERP…</p>}
               </div>
             );
           })}
@@ -639,7 +639,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
 
         {/* ── Input Box & Disclaimer Footer Matching Screenshot ── */}
         <div className="px-5 pb-5 pt-1 flex flex-col space-y-2 flex-shrink-0">
-          <div className="flex items-center rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3.5 py-2.5 focus-within:border-[#1D4ED8] focus-within:bg-white focus-within:ring-1 focus-within:ring-[#1D4ED8] transition-all">
+          <div className="flex items-center rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3.5 py-2.5 focus-within:border-[#0876CD] focus-within:bg-white focus-within:ring-1 focus-within:ring-[#0876CD] transition-all">
             <input
               ref={inputRef}
               type="text"
@@ -655,7 +655,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
             <button
               onClick={() => handleSendMessage()}
               disabled={!inputMessage.trim() || isStreaming}
-              className="p-1 rounded-lg text-[#1D4ED8] hover:bg-[#EFF6FF] disabled:opacity-40 disabled:hover:bg-transparent transition-colors ml-1 cursor-pointer"
+              className="p-1 rounded-lg text-[#0876CD] hover:bg-[#E7F2FF] disabled:opacity-40 disabled:hover:bg-transparent transition-colors ml-1 cursor-pointer"
               title="Send"
             >
               <ArrowRight size={18} strokeWidth={2.5} />

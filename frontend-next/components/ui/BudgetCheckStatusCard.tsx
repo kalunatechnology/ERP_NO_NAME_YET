@@ -74,13 +74,13 @@ export function BudgetCheckStatusCard({
       )}
     >
       {/* Header Banner */}
-      <div className="bg-[#EFF6FF] rounded-xl px-3.5 py-2 flex items-center justify-between">
-        <span className="text-xs font-bold text-[#090909]">{title}</span>
-        <span className="text-[10px] font-bold text-[#1D4ED8] tracking-wider">{statusLabel}</span>
+      <div className="bg-[#E7F2FF] rounded-xl px-3.5 py-2 flex items-center justify-between">
+        <span className="text-xs font-bold text-[#0F172A]">{title}</span>
+        <span className="text-[10px] font-bold text-[#0876CD] tracking-wider">{statusLabel}</span>
       </div>
 
       {projects.length > 0 && (
-        <label className="mt-3 block text-[10px] font-bold uppercase tracking-wide text-[#4F5050]">
+        <label className="mt-3 block text-[10px] font-bold uppercase tracking-wide text-[#64748B]">
           Proyek yang diperiksa
           <select
             value={selectedProjectId || String(projects[0]?.id ?? "")}
@@ -100,39 +100,39 @@ export function BudgetCheckStatusCard({
       {/* Metric Breakdown */}
       <div className="flex flex-col gap-2.5 text-xs py-2 my-auto">
         <div className="flex justify-between items-center gap-2">
-          <span className="text-[#4F5050] font-medium truncate">{budgetLabel}</span>
-          <span className="font-bold text-[#090909] flex-shrink-0">{formatVal(materialBudget)}</span>
+          <span className="text-[#64748B] font-medium truncate">{budgetLabel}</span>
+          <span className="font-bold text-[#0F172A] flex-shrink-0">{formatVal(materialBudget)}</span>
         </div>
 
         <div className="flex justify-between items-start gap-2">
           <div className="flex flex-col min-w-0 pr-1">
-            <span className="text-[#4F5050] font-medium truncate">{allocationLabel}</span>
-            <span className="text-[10px] text-[#4F5050] truncate">{allocationFormula}</span>
+            <span className="text-[#64748B] font-medium truncate">{allocationLabel}</span>
+            <span className="text-[10px] text-[#64748B] truncate">{allocationFormula}</span>
           </div>
-          <span className="font-bold text-[#090909] flex-shrink-0">{formatVal(allocationCost)}</span>
+          <span className="font-bold text-[#0F172A] flex-shrink-0">{formatVal(allocationCost)}</span>
         </div>
 
         <hr className="border-gray-100 my-0.5" />
 
         <div className="flex justify-between items-center gap-2">
-          <span className="text-[#4F5050] font-medium truncate">{remainingLabel}</span>
-          <span className="font-bold text-[#090909] flex-shrink-0">{formatVal(remainingBudget)}</span>
+          <span className="text-[#64748B] font-medium truncate">{remainingLabel}</span>
+          <span className="font-bold text-[#0F172A] flex-shrink-0">{formatVal(remainingBudget)}</span>
         </div>
 
         <hr className="border-gray-100 my-0.5" />
 
         <div className="flex justify-between items-center pt-0.5 gap-2">
-          <span className="text-xs text-[#4F5050] font-medium">{isValid ? validLabel : invalidLabel}</span>
+          <span className="text-xs text-[#64748B] font-medium">{isValid ? validLabel : invalidLabel}</span>
           <div
             className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold flex-shrink-0 ${
               isValid
-                ? "bg-[#BFDBFE] text-[#1E3A8A]"
+                ? "bg-[#BAE6FD] text-[#163D64]"
                 : "bg-red-100 text-red-700"
             }`}
           >
             <span>{isValid ? "Valid" : "Overbudget"}</span>
             {isValid ? (
-              <CheckCircle2 size={13} className="text-[#1E3A8A]" />
+              <CheckCircle2 size={13} className="text-[#163D64]" />
             ) : (
               <AlertTriangle size={13} className="text-red-700" />
             )}

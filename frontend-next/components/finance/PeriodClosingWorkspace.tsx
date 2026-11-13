@@ -505,7 +505,7 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
                             onClick={() => closePeriod(p.id)}
                             disabled={!hasEnded(p.end_date) || (closingLoading && closingPeriodId === p.id)}
                             title={!hasEnded(p.end_date) ? 'Penutupan tersedia setelah periode berakhir.' : undefined}
-                            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#EFF6FF] text-[#203D91] border border-[#BFDBFE] hover:bg-[#203D91] hover:text-white transition-all shadow-2xs disabled:opacity-50"
+                            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#E7F2FF] text-[#203D91] border border-[#BAE6FD] hover:bg-[#203D91] hover:text-white transition-all shadow-2xs disabled:opacity-50"
                           >
                             {closingLoading && closingPeriodId === p.id ? 'Memproses…' : hasEnded(p.end_date) ? 'Ajukan Penutupan' : 'Menunggu Akhir Periode'}
                           </button>
@@ -550,7 +550,7 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
                     <td className="py-2.5 px-3"><span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${statusColor(request.status)}`}>{request.status}</span></td>
                     <td className="py-2.5 px-3"><div className="flex gap-1.5">
                       {request.status === 'PENDING_APPROVAL' && canOperateFinance && (
-                        <button onClick={() => approveClosing(request.id)} disabled={request.requested_by === user?.id} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#EFF6FF] text-[#203D91] border border-[#BFDBFE] disabled:opacity-50" title={request.requested_by === user?.id ? 'Pemohon tidak dapat menyetujui permintaannya sendiri.' : undefined}>Setujui</button>
+                        <button onClick={() => approveClosing(request.id)} disabled={request.requested_by === user?.id} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#E7F2FF] text-[#203D91] border border-[#BAE6FD] disabled:opacity-50" title={request.requested_by === user?.id ? 'Pemohon tidak dapat menyetujui permintaannya sendiri.' : undefined}>Setujui</button>
                       )}
                       {request.status === 'APPROVED' && canOperateFinance && (
                         <button onClick={() => executeClosing(request.id)} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#203D91] text-white">Jalankan Penutupan</button>

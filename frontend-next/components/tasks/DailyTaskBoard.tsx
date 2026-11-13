@@ -7,7 +7,7 @@ import { formatDate } from "@/lib/utils";
 
 const groups: { id: DailyTaskStatus; label: string; color: string }[] = [
   { id: "NOT_STARTED", label: "Belum mulai", color: "#64748B" },
-  { id: "IN_PROGRESS", label: "Sedang berjalan", color: "#1D4ED8" },
+  { id: "IN_PROGRESS", label: "Sedang berjalan", color: "#0876CD" },
   { id: "BLOCKED", label: "Terkendala", color: "#D34848" },
   { id: "COMPLETED", label: "Selesai", color: "#6366C4" },
 ];

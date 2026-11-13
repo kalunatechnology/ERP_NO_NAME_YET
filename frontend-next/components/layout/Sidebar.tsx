@@ -96,7 +96,7 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
   return (
     <aside
       className={cn(
-        "flex flex-col bg-gradient-to-b from-[#4674FF] to-[#0092FF] border-r border-[#D9D9D9]/30 flex-shrink-0 z-40 select-none text-white",
+        "flex flex-col bg-gradient-to-b from-[#163D64] to-[#0868B5] border-r border-slate-200/20 flex-shrink-0 z-40 select-none text-white",
         isMobile ? "w-[280px] h-full shadow-2xl" : "w-[280px] h-screen"
       )}
     >
@@ -116,7 +116,7 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
           <div
             className="w-9 h-9 rounded-full bg-white flex items-center justify-center flex-shrink-0 shadow-sm"
           >
-            <span className="text-xs font-black text-[#2649B3] leading-none">{initial}</span>
+            <span className="text-xs font-black text-[#163D64] leading-none">{initial}</span>
           </div>
           <div className="flex flex-col min-w-0 flex-1">
             <span className="text-xs font-extrabold text-white truncate leading-tight">{displayName}</span>
@@ -149,7 +149,7 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
                   className={cn(
                     "flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs transition-all duration-150 h-10",
                     isActive
-                      ? "bg-white text-[#2649B3] font-bold shadow-sm"
+                      ? "bg-white text-[#163D64] font-bold shadow-sm"
                       : "text-white/90 hover:bg-white/15 hover:text-white font-semibold"
                   )}
                   aria-current={isActive ? "page" : undefined}
@@ -158,13 +158,13 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
                     size={16}
                     className={cn(
                       "flex-shrink-0 transition-colors",
-                      isActive ? "text-[#2649B3]" : "text-white/90"
+                      isActive ? "text-[#163D64]" : "text-white/90"
                     )}
                     aria-hidden="true"
                   />
                   <span className="flex-1 truncate text-xs">{t(label)}</span>
                   {isActive && (
-                    <ChevronRight size={13} className="text-[#2649B3] opacity-70 flex-shrink-0 ml-auto" />
+                    <ChevronRight size={13} className="text-[#163D64] opacity-70 flex-shrink-0 ml-auto" />
                   )}
                 </Link>
               );
@@ -201,7 +201,7 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
         {user?.enabled_modules?.includes('MARBOT') && userRole !== 'super_admin' && <button
           type="button"
           onClick={onChatbotOpen}
-          className="flex items-center justify-center gap-2.5 px-3 py-2.5 rounded-xl bg-[#2649B3] hover:bg-[#1E3A8A] text-white font-bold text-xs transition-all shadow-xs cursor-pointer active:scale-98 border border-white/20"
+          className="flex items-center justify-center gap-2.5 px-3 py-2.5 rounded-xl bg-[#172554] hover:bg-[#163D64] text-white font-bold text-xs transition-all shadow-xs cursor-pointer active:scale-98 border border-white/20"
           id="sidebar-marbot-btn"
           title="Chat with Marka Plus"
         >

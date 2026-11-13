@@ -80,7 +80,7 @@ const ANIM_STYLES = `
   }
   .mk-input:focus {
     box-shadow: 0 0 0 3px rgba(41,75,178,0.12);
-    border-color: #1E3A8A;
+    border-color: #163D64;
   }
   .mk-ghost-card {
     transition: transform 0.15s ease, box-shadow 0.15s ease;
@@ -166,7 +166,7 @@ const GHOST_CATEGORIES = [
 ];
 
 const CAT_COLOR: Record<string, string> = {
-  sma: "#1E3A8A",
+  sma: "#163D64",
   exec: "#7C3AED",
   pm: "#0EA5E9",
   fin: "#F59E0B",
@@ -305,7 +305,7 @@ function LoginFormContent() {
       {/* ── TOP SLIM PROGRESS BAR (Minimalist Transition Progress) ── */}
       {(submitting || isTransitioning) && (
         <div className="fixed top-0 left-0 right-0 z-[9999] h-[3px] bg-transparent overflow-hidden">
-          <div className="mk-top-bar-anim h-full bg-[#1D4ED8] shadow-[0_0_8px_#1D4ED8]" />
+          <div className="mk-top-bar-anim h-full bg-[#0876CD] shadow-[0_0_8px_#0876CD]" />
         </div>
       )}
 
@@ -313,7 +313,7 @@ function LoginFormContent() {
         {/* ── CARD UTAMA LOGIN ── */}
         <div
           className={cn(
-            "mk-card w-full max-w-[1380px] h-auto lg:h-[calc(100vh-4rem)] lg:min-h-[680px] lg:max-h-[820px] bg-white rounded-[24px] border border-[#D9D9D9] flex flex-col lg:flex-row overflow-hidden shadow-[0_8px_32px_rgba(15,23,42,0.04)] transition-all duration-300",
+            "mk-card w-full max-w-[1380px] h-auto lg:h-[calc(100vh-4rem)] lg:min-h-[680px] lg:max-h-[820px] bg-white rounded-[24px] border border-[#E2E8F0] flex flex-col lg:flex-row overflow-hidden shadow-[0_8px_32px_rgba(15,23,42,0.04)] transition-all duration-300",
             isTransitioning && "opacity-40 scale-[0.99] pointer-events-none"
           )}
         >
@@ -322,7 +322,7 @@ function LoginFormContent() {
             className="w-full lg:w-[420px] shrink-0 text-white relative overflow-hidden min-h-[320px] sm:min-h-[400px] lg:min-h-0 lg:h-full"
             style={{
               background:
-                "linear-gradient(180deg, #1E3A8A 0%, #1D4ED8 48%, #8BCBFB 100%)",
+                "linear-gradient(180deg, #163D64 0%, #0876CD 48%, #8BCBFB 100%)",
             }}
           >
             <div className="absolute inset-0" aria-hidden="true">
@@ -382,7 +382,7 @@ function LoginFormContent() {
 
             {/* Bottom Area: Full Width Form */}
             <div className="w-full flex flex-col gap-5 mt-auto pb-1 lg:pb-0">
-              <h2 className="mk-fade-up-2 text-2xl sm:text-[32px] leading-none font-bold text-[#1D4ED8] tracking-tight">
+              <h2 className="mk-fade-up-2 text-2xl sm:text-[32px] leading-none font-bold text-[#0876CD] tracking-tight">
                 Log In
               </h2>
 
@@ -393,7 +393,7 @@ function LoginFormContent() {
               >
                 {/* Field 1: Your Email */}
                 <div className="mk-fade-up-3 flex flex-col gap-3">
-                  <label className="text-xs font-medium text-[#1E3A8A]">
+                  <label className="text-xs font-medium text-[#163D64]">
                     Your Email
                   </label>
                   <input
@@ -401,7 +401,7 @@ function LoginFormContent() {
                     {...register("email", { required: "Email wajib diisi" })}
                     placeholder="Email"
                     autoComplete="username"
-                    className="mk-input w-full h-[44px] rounded-[12px] bg-[#F5F5F5] border border-[#D9D9D9] px-4 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none"
+                    className="mk-input w-full h-[44px] rounded-[12px] bg-[#F5F5F5] border border-[#E2E8F0] px-4 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none"
                   />
                   {errors.email && (
                     <span className="text-[11px] text-red-500">
@@ -412,7 +412,7 @@ function LoginFormContent() {
 
                 {/* Field 2: Password */}
                 <div className="mk-fade-up-4 flex flex-col gap-3">
-                  <label className="text-xs font-medium text-[#1E3A8A]">
+                  <label className="text-xs font-medium text-[#163D64]">
                     Password
                   </label>
                   <div className="relative flex items-center">
@@ -423,7 +423,7 @@ function LoginFormContent() {
                       })}
                       autoComplete="current-password"
                       placeholder="Password"
-                      className="mk-input w-full h-[44px] rounded-[12px] bg-[#F5F5F5] border border-[#D9D9D9] px-4 pr-11 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none"
+                      className="mk-input w-full h-[44px] rounded-[12px] bg-[#F5F5F5] border border-[#E2E8F0] px-4 pr-11 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none"
                     />
                     <button
                       type="button"
@@ -451,7 +451,7 @@ function LoginFormContent() {
                       "w-full h-[46px] lg:h-[50px] mt-0.5 rounded-[12px] text-white font-medium text-xs sm:text-sm transition-all duration-200 flex items-center justify-center cursor-pointer shadow-xs",
                       (submitting || isTransitioning)
                         ? "bg-[#1E293B] shadow-inner"
-                        : "bg-[#1D4ED8] hover:bg-[#1E3A8A] active:scale-[0.995]"
+                        : "bg-[#0876CD] hover:bg-[#163D64] active:scale-[0.995]"
                     )}
                   >
                     {(submitting || isTransitioning) ? (
@@ -465,7 +465,7 @@ function LoginFormContent() {
                   </button>
 
                   {/* Divider */}
-                  <div className="text-center text-xs text-[#1E3A8A] font-medium my-0">
+                  <div className="text-center text-xs text-[#163D64] font-medium my-0">
                     or
                   </div>
 
@@ -478,7 +478,7 @@ function LoginFormContent() {
                         { icon: "🌐" }
                       )
                     }
-                    className="w-full h-[46px] lg:h-[50px] rounded-[12px] border border-[#4F5050] bg-white hover:bg-slate-50/80 active:scale-[0.995] text-xs sm:text-[13px] font-medium text-[#4F5050] flex items-center justify-center gap-2.5 transition-all shadow-[0_3px_10px_rgba(0,0,0,0.08)] cursor-pointer"
+                    className="w-full h-[46px] lg:h-[50px] rounded-[12px] border border-[#64748B] bg-white hover:bg-slate-50/80 active:scale-[0.995] text-xs sm:text-[13px] font-medium text-[#64748B] flex items-center justify-center gap-2.5 transition-all shadow-[0_3px_10px_rgba(0,0,0,0.08)] cursor-pointer"
                   >
                     <svg width="17" height="17" viewBox="0 0 24 24">
                       <path
@@ -512,9 +512,9 @@ function LoginFormContent() {
             <button
               type="button"
               onClick={() => setShowGhostPanel(!showGhostPanel)}
-              className="text-xs font-bold text-[#1E3A8A] hover:text-[#090909] flex items-center gap-2 px-5 py-2 rounded-full bg-[#EFF6FF] border border-[#BFDBFE] shadow-2xs transition-all cursor-pointer hover:bg-[#EFF6FF]"
+              className="text-xs font-bold text-[#163D64] hover:text-[#0F172A] flex items-center gap-2 px-5 py-2 rounded-full bg-[#E7F2FF] border border-[#BAE6FD] shadow-2xs transition-all cursor-pointer hover:bg-[#E7F2FF]"
             >
-              <Ghost size={15} className="text-[#1D4ED8]" />
+              <Ghost size={15} className="text-[#0876CD]" />
               <span>
                 {showGhostPanel
                   ? "Tutup Panel Akses Cepat"
@@ -524,7 +524,7 @@ function LoginFormContent() {
             </button>
 
             {showGhostPanel && (
-              <div className="mk-ghost-panel w-full bg-white border border-[#1D4ED8]/30 rounded-2xl p-4 mt-2 shadow-sm flex flex-col gap-3">
+              <div className="mk-ghost-panel w-full bg-white border border-[#0876CD]/30 rounded-2xl p-4 mt-2 shadow-sm flex flex-col gap-3">
                 {/* Filter Category Tabs */}
                 <div className="flex gap-1.5 overflow-x-auto pb-1 border-b border-slate-100 no-scrollbar">
                   {GHOST_CATEGORIES.map((c) => (
@@ -535,7 +535,7 @@ function LoginFormContent() {
                       className={cn(
                         "px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer",
                         filterCat === c.cat
-                          ? "bg-[#1D4ED8] text-white shadow-xs"
+                          ? "bg-[#0876CD] text-white shadow-xs"
                           : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                       )}
                     >
@@ -549,17 +549,17 @@ function LoginFormContent() {
                   {filteredLoginUsers.map((u) => {
                     const emailKey = `email-${u.email}`;
                     const pwKey = `pw-${u.email}`;
-                    const color = CAT_COLOR[u.cat] || "#1D4ED8";
+                    const color = CAT_COLOR[u.cat] || "#0876CD";
 
                     return (
                       <div
                         key={u.email}
-                        className="mk-ghost-card p-3 rounded-2xl border border-[#EFEFEF] bg-[#FDFDFD] hover:bg-[#EFF6FF]/30 flex flex-col justify-between gap-2 shadow-2xs"
+                        className="mk-ghost-card p-3 rounded-2xl border border-[#EFEFEF] bg-[#FDFDFD] hover:bg-[#E7F2FF]/30 flex flex-col justify-between gap-2 shadow-2xs"
                       >
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center justify-between gap-1">
                             <span
-                              className="text-[12px] font-extrabold text-[#090909] truncate"
+                              className="text-[12px] font-extrabold text-[#0F172A] truncate"
                               title={u.label}
                             >
                               {u.label}
@@ -652,7 +652,7 @@ export default function LoginPage() {
     <Suspense
       fallback={
         <div className="min-h-screen w-full flex items-center justify-center bg-white">
-          <div className="w-8 h-8 rounded-full border-2 border-[#1D4ED8] border-t-transparent animate-spin" />
+          <div className="w-8 h-8 rounded-full border-2 border-[#0876CD] border-t-transparent animate-spin" />
         </div>
       }
     >

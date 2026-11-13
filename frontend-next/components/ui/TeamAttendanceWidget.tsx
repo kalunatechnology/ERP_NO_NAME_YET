@@ -96,13 +96,13 @@ export function TeamAttendanceWidget({
             <Users size={18} strokeWidth={2.2} />
           </div>
           <div>
-            <h3 className="text-sm font-extrabold text-[#090909]">{title}</h3>
-            <p className="text-2xs text-[#4F5050] font-medium mt-0.5">{subtitle}</p>
+            <h3 className="text-sm font-extrabold text-[#0F172A]">{title}</h3>
+            <p className="text-2xs text-[#64748B] font-medium mt-0.5">{subtitle}</p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="px-2.5 py-1 rounded-full bg-[#EFF6FF] border border-[#BFDBFE] text-[#1D4ED8] text-2xs font-bold flex items-center gap-1">
+          <span className="px-2.5 py-1 rounded-full bg-[#E7F2FF] border border-[#BAE6FD] text-[#0876CD] text-2xs font-bold flex items-center gap-1">
             <CheckCircle2 size={12} /> Tim Terpantau
           </span>
           <button

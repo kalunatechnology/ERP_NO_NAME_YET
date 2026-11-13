@@ -49,7 +49,7 @@
   }
   button:focus-visible,
   [role="button"]:focus-visible {
-    outline: 2px solid #1E3A8A;
+    outline: 2px solid #0876CD;
     outline-offset: 2px;
   }
 
@@ -304,13 +304,13 @@
 
   .right-panel-alert-scroll {
     scrollbar-width: thin;
-    scrollbar-color: #C5D2ED transparent;
+    scrollbar-color: #CBD5E1 transparent;
   }
   .right-panel-alert-scroll::-webkit-scrollbar {
     width: 6px;
   }
   .right-panel-alert-scroll::-webkit-scrollbar-thumb {
-    background: #C5D2ED;
+    background: #CBD5E1;
     border-radius: 9999px;
   }
 

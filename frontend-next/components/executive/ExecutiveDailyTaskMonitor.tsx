@@ -50,7 +50,7 @@ function taskStatus(record: DailyTaskRecord) {
   const status = String(record.task.status || "IN_PROGRESS").toUpperCase();
   if (record.task.is_blocked || status === "BLOCKED") return { label: "Blocked", className: "bg-[#FFD9D9] text-[#A62121]" };
   if (status === "COMPLETED" || status === "DONE") return { label: "Finished", className: "bg-[#D9FFAE] text-[#19320D]" };
-  if (status === "NOT_STARTED") return { label: "Not Started", className: "bg-[#E9EAEC] text-[#4F5050]" };
+  if (status === "NOT_STARTED") return { label: "Not Started", className: "bg-[#E9EAEC] text-[#64748B]" };
   return { label: "On Progress", className: "bg-[#FFF98B] text-[#292B30]" };
 }
 
@@ -63,11 +63,11 @@ function FilterSelect({ icon, label, value, onChange, children }: {
 }) {
   return (
     <label className="block min-w-0">
-      <span className="mb-3 flex items-center gap-3 text-[15px] font-bold text-[#4F5050] sm:text-[17px]">
+      <span className="mb-3 flex items-center gap-3 text-[15px] font-bold text-[#64748B] sm:text-[17px]">
         <span className="text-[#2F80ED]">{icon}</span>{label}
       </span>
       <span className="relative block">
-        <select value={value} onChange={(event) => onChange(event.target.value)} className="h-[42px] w-full appearance-none rounded-[13px] border border-[#3157C8] bg-white px-5 pr-11 text-[13px] font-medium text-[#1D4ED8] outline-none transition focus:ring-2 focus:ring-[#DCEEFF] sm:text-[14px]">
+        <select value={value} onChange={(event) => onChange(event.target.value)} className="h-[42px] w-full appearance-none rounded-[13px] border border-[#3157C8] bg-white px-5 pr-11 text-[13px] font-medium text-[#0876CD] outline-none transition focus:ring-2 focus:ring-[#DCEEFF] sm:text-[14px]">
           {children}
         </select>
         <ChevronDown size={19} strokeWidth={2.2} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[#3157C8]" />
@@ -144,18 +144,18 @@ function DailyTaskDetail({ record, onClose }: { record: DailyTaskRecord; onClose
   return (
     <div data-no-translate className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-[#0D1733]/45 p-3 backdrop-blur-[2px] sm:p-6">
       <button className="fixed inset-0 cursor-default" onClick={onClose} aria-label="Tutup detail Daily Task" />
-      <section role="dialog" aria-modal="true" aria-labelledby="daily-task-detail-title" className="relative z-10 flex max-h-[calc(100dvh-24px)] w-full max-w-[760px] flex-col overflow-hidden rounded-[22px] border border-[#D9D9D9] bg-white shadow-[0_24px_80px_rgba(26,43,86,0.22)] sm:max-h-[calc(100dvh-48px)]">
+      <section role="dialog" aria-modal="true" aria-labelledby="daily-task-detail-title" className="relative z-10 flex max-h-[calc(100dvh-24px)] w-full max-w-[760px] flex-col overflow-hidden rounded-[22px] border border-[#E2E8F0] bg-white shadow-[0_24px_80px_rgba(26,43,86,0.22)] sm:max-h-[calc(100dvh-48px)]">
         <header className="flex shrink-0 items-start justify-between gap-4 border-b border-[#E3E3E3] px-5 py-5 sm:px-7 sm:py-6">
           <div className="min-w-0">
             <div className="mb-2 flex items-center gap-2 text-[#2F80ED]"><FileText size={21} /><span className="text-xs font-bold uppercase tracking-[0.08em]">Detail Daily Task</span></div>
             <h3 id="daily-task-detail-title" className="break-words text-[22px] font-bold leading-tight text-black sm:text-[26px]">{record.task.title || record.task.activity_input || "Aktivitas harian"}</h3>
           </div>
-          <button ref={closeButtonRef} type="button" onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#D9D9D9] text-[#4F5050] transition hover:border-[#3157C8] hover:bg-[#F4F7FF] hover:text-[#1D4ED8] focus:outline-none focus:ring-2 focus:ring-[#DCEEFF]" aria-label="Tutup"><X size={20} /></button>
+          <button ref={closeButtonRef} type="button" onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#E2E8F0] text-[#64748B] transition hover:border-[#3157C8] hover:bg-[#F4F7FF] hover:text-[#0876CD] focus:outline-none focus:ring-2 focus:ring-[#DCEEFF]" aria-label="Tutup"><X size={20} /></button>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-7 sm:py-6">
           <div className="mb-6 flex flex-wrap items-center gap-2">
             <span className={cn("inline-flex rounded-[9px] px-3 py-1.5 text-xs font-medium", status.className)}>{status.label}</span>
-            <span className="inline-flex rounded-[9px] bg-[#EFF6FF] px-3 py-1.5 text-xs font-semibold text-[#1D4ED8]">{Number(record.task.progress ?? (status.label === "Finished" ? 100 : 0))}% selesai</span>
+            <span className="inline-flex rounded-[9px] bg-[#E7F2FF] px-3 py-1.5 text-xs font-semibold text-[#0876CD]">{Number(record.task.progress ?? (status.label === "Finished" ? 100 : 0))}% selesai</span>
           </div>
           <dl className="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2">
             <DetailItem label="Project">{record.projectName}</DetailItem>
@@ -268,7 +268,7 @@ export function ExecutiveDailyTaskMonitor({ projects, loading = false }: { proje
 
   return (
     <>
-      <section data-no-translate className="rounded-[24px] border border-[#D9D9D9] bg-white px-4 py-6 sm:px-7 sm:py-8 lg:px-9">
+      <section data-no-translate className="rounded-[24px] border border-[#E2E8F0] bg-white px-4 py-6 sm:px-7 sm:py-8 lg:px-9">
         <div className="grid gap-7 lg:grid-cols-[minmax(250px,0.9fr)_minmax(0,2.1fr)] lg:items-start">
           <div className="min-w-0">
             <h2 className="text-[32px] font-bold leading-none tracking-[-0.025em] text-black sm:text-[36px]">Daily Task</h2>
@@ -288,7 +288,7 @@ export function ExecutiveDailyTaskMonitor({ projects, loading = false }: { proje
         </div>
 
         <div className="mt-8 grid grid-cols-2 gap-3 lg:mt-10 lg:grid-cols-4">
-          <div className="rounded-[16px] border border-[#D9D9D9] bg-[#FAFAFA] px-4 py-4 text-center">
+          <div className="rounded-[16px] border border-[#E2E8F0] bg-[#FAFAFA] px-4 py-4 text-center">
             <p className="text-[26px] font-extrabold leading-none text-[#111318]">{scopedRecords.length}</p>
             <p className="mt-2 text-xs font-medium text-[#5A5B5D]">Total Daily Task</p>
           </div>
@@ -318,7 +318,7 @@ export function ExecutiveDailyTaskMonitor({ projects, loading = false }: { proje
                   "shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-[#BDD7FF]",
                   selectedCategory === category.id
                     ? "bg-[#3157C8] text-white shadow-sm"
-                    : "bg-[#F1F2F4] text-[#4F5050] hover:bg-[#E4E8F0]"
+                    : "bg-[#F1F2F4] text-[#64748B] hover:bg-[#E4E8F0]"
                 )}
               >
                 {category.label} ({categoryCounts[category.id]})
@@ -332,11 +332,11 @@ export function ExecutiveDailyTaskMonitor({ projects, loading = false }: { proje
           </label>
         </div>
 
-        <div className="mt-7 overflow-hidden rounded-[14px] border border-[#D9D9D9]">
+        <div className="mt-7 overflow-hidden rounded-[14px] border border-[#E2E8F0]">
           <div className="max-h-[560px] overflow-auto overscroll-contain">
             <table className="w-full min-w-[980px] table-fixed text-left">
               <thead className="sticky top-0 z-10 bg-[#F5F5F5]">
-                <tr className="h-[42px] text-[13px] font-bold text-[#4F5050]">
+                <tr className="h-[42px] text-[13px] font-bold text-[#64748B]">
                   <th className="w-[54px] px-5">#</th><th className="w-[31%] px-3">Project Name</th><th className="w-[23%] px-4">Aktivitas</th><th className="w-[180px] px-3">Kesesuaian Output</th><th className="w-[120px] px-3 text-center">Status</th><th className="w-[125px] px-3">Action</th>
                 </tr>
               </thead>
@@ -344,17 +344,17 @@ export function ExecutiveDailyTaskMonitor({ projects, loading = false }: { proje
                 {loading ? Array.from({ length: 4 }).map((_, index) => (
                   <tr key={index} className="h-[116px] border-t border-[#F0F0F0]"><td className="px-5"><div className="h-4 w-4 animate-pulse rounded bg-[#E6E8EB]" /></td><td className="px-3"><div className="h-4 w-1/2 animate-pulse rounded bg-[#E6E8EB]" /><div className="mt-3 h-3 w-2/3 animate-pulse rounded bg-[#EEF0F2]" /></td><td className="px-4"><div className="h-4 w-4/5 animate-pulse rounded bg-[#E6E8EB]" /></td><td className="px-3"><div className="h-7 w-32 animate-pulse rounded bg-[#EEF0F2]" /></td><td className="px-3"><div className="mx-auto h-7 w-24 animate-pulse rounded-[9px] bg-[#EEF0F2]" /></td><td className="px-3"><div className="h-7 w-20 animate-pulse rounded-full bg-[#EEF0F2]" /></td></tr>
                 )) : filteredRecords.length === 0 ? (
-                  <tr><td colSpan={6} className="h-[220px] px-6 text-center"><CalendarDays size={30} className="mx-auto text-[#AEB2B8]" /><p className="mt-3 text-sm font-bold text-[#4F5050]">Tidak ada Daily Task untuk filter ini.</p><p className="mt-1 text-xs text-[#8A8E95]">Ubah filter atau kata pencarian untuk melihat aktivitas lain.</p></td></tr>
+                  <tr><td colSpan={6} className="h-[220px] px-6 text-center"><CalendarDays size={30} className="mx-auto text-[#AEB2B8]" /><p className="mt-3 text-sm font-bold text-[#64748B]">Tidak ada Daily Task untuk filter ini.</p><p className="mt-1 text-xs text-[#8A8E95]">Ubah filter atau kata pencarian untuk melihat aktivitas lain.</p></td></tr>
                 ) : filteredRecords.map((row, index) => {
                   const status = taskStatus(row);
                   return (
-                    <tr key={row.id} className={cn("h-[116px] border-t border-[#F0F0F0] align-middle transition-colors hover:bg-[#EFF6FF]", index === 0 && "bg-[#EFF6FF]")}>
-                      <td className="px-5 text-[12px] text-[#4F5050]">{index + 1}</td>
-                      <td className="min-w-0 px-3 py-5"><p className="break-words text-[14px] font-bold leading-5 text-[#111318]">{row.projectName}</p><p className="mt-2 break-words text-[12px] leading-5 text-[#17191C]">{row.mainTaskName}</p><p className="mt-1 flex flex-wrap items-center gap-x-2 text-[12px] text-[#4F5050]"><span>{formatDate(row.plannedDate)}</span><span aria-hidden="true">|</span><span className="font-medium text-[#1D4ED8]">{row.timeSlot || "-"}</span></p></td>
+                    <tr key={row.id} className={cn("h-[116px] border-t border-[#F0F0F0] align-middle transition-colors hover:bg-[#E7F2FF]", index === 0 && "bg-[#E7F2FF]")}>
+                      <td className="px-5 text-[12px] text-[#64748B]">{index + 1}</td>
+                      <td className="min-w-0 px-3 py-5"><p className="break-words text-[14px] font-bold leading-5 text-[#111318]">{row.projectName}</p><p className="mt-2 break-words text-[12px] leading-5 text-[#17191C]">{row.mainTaskName}</p><p className="mt-1 flex flex-wrap items-center gap-x-2 text-[12px] text-[#64748B]"><span>{formatDate(row.plannedDate)}</span><span aria-hidden="true">|</span><span className="font-medium text-[#0876CD]">{row.timeSlot || "-"}</span></p></td>
                       <td className="px-4 py-5 text-[13px] leading-5 text-[#17191C]"><p className="line-clamp-3 break-words">{row.task.activity_input || row.task.title || "Aktivitas harian"}</p></td>
                       <td className="px-3 py-5">{(() => { const comparison = row.task.output_review_category ? { score: Number(row.task.output_similarity_score || 0), category: row.task.output_review_category } : compareTaskOutput(row.task.output_target, row.task.output_result); return comparison.category === "NOT_EVALUATED" ? <span className="text-xs italic text-[#8A8E95]">Belum dinilai</span> : <span className={cn("inline-flex rounded-lg px-2.5 py-1.5 text-[11px] font-bold", comparison.category === "SUFFICIENTLY_ALIGNED" ? "bg-emerald-100 text-emerald-800" : comparison.category === "NEEDS_REVIEW" ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-800")}>{outputReviewLabel(comparison.category)} · {comparison.score}%</span>; })()}</td>
                       <td className="px-3 text-center"><span className={cn("inline-flex whitespace-nowrap rounded-[9px] px-3 py-1.5 text-[11px] font-medium", status.className)}>{status.label}</span></td>
-                      <td className="px-3"><button type="button" onClick={() => setSelectedRecord(row)} className="inline-flex items-center gap-2 rounded-full bg-[#EFF6FF] px-3 py-1.5 text-[12px] font-medium text-[#3157C8] transition hover:bg-[#DCEEFF] focus:outline-none focus:ring-2 focus:ring-[#BDD7FF]" aria-label={`Lihat detail ${row.task.title || row.task.activity_input || "Daily Task"}`}><FileText size={15} className="text-[#2F80ED]" /> Details</button></td>
+                      <td className="px-3"><button type="button" onClick={() => setSelectedRecord(row)} className="inline-flex items-center gap-2 rounded-full bg-[#E7F2FF] px-3 py-1.5 text-[12px] font-medium text-[#3157C8] transition hover:bg-[#DCEEFF] focus:outline-none focus:ring-2 focus:ring-[#BDD7FF]" aria-label={`Lihat detail ${row.task.title || row.task.activity_input || "Daily Task"}`}><FileText size={15} className="text-[#2F80ED]" /> Details</button></td>
                     </tr>
                   );
                 })}

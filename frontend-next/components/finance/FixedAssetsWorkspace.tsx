@@ -473,10 +473,10 @@ export default function FixedAssetsWorkspace() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold tracking-tight text-[#090909]">
+            <h2 className="text-xl font-bold tracking-tight text-[#0F172A]">
               Register & Penyusutan Aset Tetap
             </h2>
-            <span className="inline-flex items-center gap-1 rounded-md bg-[#EFF6FF] px-2 py-0.5 text-2xs font-extrabold uppercase text-[#1E3A8A]">
+            <span className="inline-flex items-center gap-1 rounded-md bg-[#E7F2FF] px-2 py-0.5 text-2xs font-extrabold uppercase text-[#163D64]">
               <Sparkles size={11} /> Auto Straight-Line
             </span>
           </div>
@@ -502,19 +502,19 @@ export default function FixedAssetsWorkspace() {
             <Plus size={15} /> Register Aset Baru
           </button>
 
-          <div className="flex items-center gap-1.5 rounded-xl border border-[#D9D9D9] bg-white p-1 shadow-2xs">
+          <div className="flex items-center gap-1.5 rounded-xl border border-[#E2E8F0] bg-white p-1 shadow-2xs">
             <span className="pl-2 text-2xs font-bold uppercase text-[#6B7280]">Periode:</span>
             <input
               type="date"
               value={depreciationPeriod}
               onChange={(e) => setDepreciationPeriod(e.target.value)}
-              className="rounded-lg border-0 bg-transparent px-2 py-1 text-xs font-semibold text-[#090909] focus:outline-none"
+              className="rounded-lg border-0 bg-transparent px-2 py-1 text-xs font-semibold text-[#0F172A] focus:outline-none"
             />
             <button
               type="button"
               onClick={handleRunBatchDepreciation}
               disabled={batchLoading}
-              className="flex items-center gap-1 rounded-lg bg-[#1E3A8A] px-3 py-1.5 text-xs font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+              className="flex items-center gap-1 rounded-lg bg-[#163D64] px-3 py-1.5 text-xs font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               <RefreshCw size={13} className={batchLoading ? "animate-spin" : ""} />
               {batchLoading ? "Memproses..." : "Batch Susutkan"}
@@ -631,7 +631,7 @@ export default function FixedAssetsWorkspace() {
 
       {/* ── TAB 1: ASSET REGISTER TABLE ──────────────── */}
       {activeTab === "register" && (
-        <div role="tabpanel" id="fixed-assets-panel-register" aria-labelledby="fixed-assets-tab-register" className="card rounded-2xl border border-[#D9D9D9] bg-white p-5 shadow-2xs">
+        <div role="tabpanel" id="fixed-assets-panel-register" aria-labelledby="fixed-assets-tab-register" className="card rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-2xs">
           {/* Search & Filter Toolbar */}
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative w-full sm:w-72">
@@ -698,11 +698,11 @@ export default function FixedAssetsWorkspace() {
 
                     return (
                       <tr key={asset.id} className="transition-colors hover:bg-slate-50/70">
-                        <td className="py-3 px-3 font-mono font-bold text-[#1E3A8A]">
+                        <td className="py-3 px-3 font-mono font-bold text-[#163D64]">
                           {asset.asset_code}
                         </td>
                         <td className="py-3 px-3">
-                          <div className="font-bold text-[#090909]">{asset.asset_name}</div>
+                          <div className="font-bold text-[#0F172A]">{asset.asset_name}</div>
                           <div className="text-2xs text-[#6B7280]">
                             {cat ? cat.category_name : "Peralatan Operasional"} · SN: {asset.serial_number || "—"}
                           </div>
@@ -710,7 +710,7 @@ export default function FixedAssetsWorkspace() {
                         <td className="py-3 px-3">
                           {renderStatusBadge(asset.status)}
                         </td>
-                        <td className="py-3 px-3 text-right font-bold text-[#090909]">
+                        <td className="py-3 px-3 text-right font-bold text-[#0F172A]">
                           {formatMoney(cost)}
                         </td>
                         <td className="py-3 px-3 text-right font-extrabold text-brand-deep-green">
@@ -719,7 +719,7 @@ export default function FixedAssetsWorkspace() {
                         <td className="py-3 px-3 text-right font-bold text-amber-600">
                           {formatMoney(akm)}
                         </td>
-                        <td className="py-3 px-3 text-center font-bold text-[#4F5050]">
+                        <td className="py-3 px-3 text-center font-bold text-[#64748B]">
                           {ue} bln
                         </td>
                         <td className="py-3 px-3 text-center">
@@ -727,7 +727,7 @@ export default function FixedAssetsWorkspace() {
                             <button
                               type="button"
                               onClick={() => handleOpenSchedule(asset.id)}
-                              className="rounded-lg border border-[#BCDFFF] bg-[#EFF6FF] px-2.5 py-1 text-2xs font-bold text-[#1E3A8A] hover:bg-[#d8edff] transition-colors"
+                              className="rounded-lg border border-[#BCDFFF] bg-[#E7F2FF] px-2.5 py-1 text-2xs font-bold text-[#163D64] hover:bg-[#d8edff] transition-colors"
                               title="Buka jadwal penyusutan"
                             >
                               Jadwal
@@ -771,7 +771,7 @@ export default function FixedAssetsWorkspace() {
 
       {/* ── TAB 2: DEPRECIATION SCHEDULE ─────────────── */}
       {activeTab === "schedule" && (
-        <div role="tabpanel" id="fixed-assets-panel-schedule" aria-labelledby="fixed-assets-tab-schedule" className="card rounded-2xl border border-[#D9D9D9] bg-white p-5 shadow-2xs">
+        <div role="tabpanel" id="fixed-assets-panel-schedule" aria-labelledby="fixed-assets-tab-schedule" className="card rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-2xs">
           {!scheduleAssetId ? (
             <div className="py-12 text-center text-xs text-[#6B7280]">
               Silakan pilih salah satu aset dari tab <b>Daftar Aset</b> dan klik tombol <b>Jadwal</b> untuk melihat simulasi penyusutan.
@@ -784,8 +784,8 @@ export default function FixedAssetsWorkspace() {
             <div>
               <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between border-b border-[#EFEFEF] pb-3">
                 <div>
-                  <h3 className="text-sm font-bold text-[#090909]">
-                    Jadwal Penyusutan Garis Lurus: <span className="text-[#1E3A8A]">{selectedScheduleAsset?.asset_name}</span>
+                  <h3 className="text-sm font-bold text-[#0F172A]">
+                    Jadwal Penyusutan Garis Lurus: <span className="text-[#163D64]">{selectedScheduleAsset?.asset_name}</span>
                   </h3>
                   <p className="text-2xs text-[#6B7280]">
                     Kode: <b>{selectedScheduleAsset?.asset_code}</b> · Total Periode: <b>{schedule.length} Bulan</b>
@@ -794,7 +794,7 @@ export default function FixedAssetsWorkspace() {
                 <button
                   type="button"
                   onClick={() => setActiveTab("register")}
-                  className="rounded-lg bg-slate-100 px-3 py-1.5 text-2xs font-bold text-[#4F5050] hover:bg-slate-200"
+                  className="rounded-lg bg-slate-100 px-3 py-1.5 text-2xs font-bold text-[#64748B] hover:bg-slate-200"
                 >
                   ← Kembali ke Daftar
                 </button>
@@ -809,7 +809,7 @@ export default function FixedAssetsWorkspace() {
               <div className="table-scroll-wrapper max-h-[500px] overflow-auto rounded-xl border border-gray-200">
                 <table className="w-full data-table min-w-[800px] text-left text-xs">
                   <thead className="sticky top-0 bg-white shadow-2xs">
-                    <tr className="border-b border-[#D9D9D9] text-[11px] font-extrabold uppercase tracking-wider text-[#6B7280]">
+                    <tr className="border-b border-[#E2E8F0] text-[11px] font-extrabold uppercase tracking-wider text-[#6B7280]">
                       <th className="py-2 px-3 text-center">Bulan Ke-</th>
                       <th className="py-2 px-3">Periode</th>
                       <th className="py-2 px-3 text-right">Nilai Buku Awal</th>
@@ -825,10 +825,10 @@ export default function FixedAssetsWorkspace() {
                         <td className="py-2 px-3 text-center font-mono font-bold text-[#6B7280]">
                           {row.period_number}
                         </td>
-                        <td className="py-2 px-3 font-semibold text-[#090909]">
+                        <td className="py-2 px-3 font-semibold text-[#0F172A]">
                           {new Date(row.period_date).toLocaleDateString("id-ID", { month: "short", year: "numeric" })}
                         </td>
-                        <td className="py-2 px-3 text-right font-medium text-[#4F5050]">
+                        <td className="py-2 px-3 text-right font-medium text-[#64748B]">
                           {formatMoney(row.opening_book_value)}
                         </td>
                         <td className="py-2 px-3 text-right font-bold text-amber-600">
@@ -865,7 +865,7 @@ export default function FixedAssetsWorkspace() {
 
       {/* ── TAB 3: BATCH RESULT ─────────────────────── */}
       {activeTab === "batch" && (
-        <div role="tabpanel" id="fixed-assets-panel-batch" aria-labelledby="fixed-assets-tab-batch" className="card rounded-2xl border border-[#D9D9D9] bg-white p-5 shadow-2xs">
+        <div role="tabpanel" id="fixed-assets-panel-batch" aria-labelledby="fixed-assets-tab-batch" className="card rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-2xs">
           {!batchResult ? (
             <div className="py-12 text-center text-xs text-[#6B7280]">
               Pilih periode di kanan atas dan klik <b>Batch Susutkan</b> untuk menjalankan eksekusi massal.
@@ -884,7 +884,7 @@ export default function FixedAssetsWorkspace() {
               <div className="table-scroll-wrapper max-h-72 overflow-auto rounded-xl border border-gray-200">
                 <table className="w-full data-table min-w-[580px] text-left text-xs">
                   <thead>
-                    <tr className="border-b border-[#D9D9D9] text-[11px] font-extrabold uppercase tracking-wider text-[#6B7280]">
+                    <tr className="border-b border-[#E2E8F0] text-[11px] font-extrabold uppercase tracking-wider text-[#6B7280]">
                       <th className="py-2 px-3">Nama Aset</th>
                       <th className="py-2 px-3">Status Batch</th>
                       <th className="py-2 px-3">Keterangan</th>
@@ -893,7 +893,7 @@ export default function FixedAssetsWorkspace() {
                   <tbody className="divide-y divide-[#EFEFEF]">
                     {batchResult.details.map((d, idx) => (
                       <tr key={idx} className="hover:bg-slate-50">
-                        <td className="py-2 px-3 font-semibold text-[#090909]">{d.asset_name}</td>
+                        <td className="py-2 px-3 font-semibold text-[#0F172A]">{d.asset_name}</td>
                         <td className="py-2 px-3">
                           <span
                             className={cn(
@@ -921,11 +921,11 @@ export default function FixedAssetsWorkspace() {
 
       {/* ── TAB 4: ASSET CATEGORIES ──────────────────── */}
       {activeTab === "categories" && (
-        <div role="tabpanel" id="fixed-assets-panel-categories" aria-labelledby="fixed-assets-tab-categories" className="card rounded-2xl border border-[#D9D9D9] bg-white p-5 shadow-2xs">
+        <div role="tabpanel" id="fixed-assets-panel-categories" aria-labelledby="fixed-assets-tab-categories" className="card rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-2xs">
           <div className="flex items-center justify-between flex-wrap gap-3 pb-4 border-b border-gray-100 mb-4">
             <div>
-              <h3 className="text-sm font-bold text-[#090909] flex items-center gap-2">
-                <Layers size={16} className="text-[#1E3A8A]" /> Master Kategori Aset Tetap
+              <h3 className="text-sm font-bold text-[#0F172A] flex items-center gap-2">
+                <Layers size={16} className="text-[#163D64]" /> Master Kategori Aset Tetap
               </h3>
               <p className="text-xs text-[#6B7280] mt-0.5">
                 Kategori aset mengelompokkan aktiva kapital dan menghubungkan akun buku besar aset tetap &amp; akumulasi depresiasi.
@@ -956,10 +956,10 @@ export default function FixedAssetsWorkspace() {
                   const count = assets.filter((a) => a.category_id === c.id || a.category_id === c.category_code).length;
                   return (
                     <tr key={c.id} className="hover:bg-slate-50/60">
-                      <td className="py-3 px-4 font-mono font-bold text-[#1E3A8A]">
+                      <td className="py-3 px-4 font-mono font-bold text-[#163D64]">
                         {c.category_code}
                       </td>
-                      <td className="py-3 px-4 font-semibold text-[#090909]">
+                      <td className="py-3 px-4 font-semibold text-[#0F172A]">
                         {c.category_name}
                       </td>
                       <td className="py-3 px-4 font-mono text-2xs text-[#6B7280]">
@@ -998,7 +998,7 @@ export default function FixedAssetsWorkspace() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-bold text-[#090909] block mb-1">
+              <label className="text-xs font-bold text-[#0F172A] block mb-1">
                 Kode Aset *
               </label>
               <input
@@ -1013,13 +1013,13 @@ export default function FixedAssetsWorkspace() {
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-bold text-[#090909]">
+                <label className="text-xs font-bold text-[#0F172A]">
                   Kategori Aset *
                 </label>
                 <button
                   type="button"
                   onClick={() => setIsAddCategoryModalOpen(true)}
-                  className="text-2xs font-bold text-[#1E3A8A] hover:underline flex items-center gap-1"
+                  className="text-2xs font-bold text-[#163D64] hover:underline flex items-center gap-1"
                 >
                   <Plus size={11} /> Tambah Kategori
                 </button>
@@ -1047,7 +1047,7 @@ export default function FixedAssetsWorkspace() {
           </div>
 
           <div>
-            <label className="text-xs font-bold text-[#090909] block mb-1">
+            <label className="text-xs font-bold text-[#0F172A] block mb-1">
               Nama Aset / Inventaris *
             </label>
             <input
@@ -1062,7 +1062,7 @@ export default function FixedAssetsWorkspace() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-bold text-[#090909] block mb-1">
+              <label className="text-xs font-bold text-[#0F172A] block mb-1">
                 Nomor Seri / Serial Number
               </label>
               <input
@@ -1075,7 +1075,7 @@ export default function FixedAssetsWorkspace() {
             </div>
 
             <div>
-              <label className="text-xs font-bold text-[#090909] block mb-1">
+              <label className="text-xs font-bold text-[#0F172A] block mb-1">
                 Tanggal Perolehan *
               </label>
               <input
@@ -1090,7 +1090,7 @@ export default function FixedAssetsWorkspace() {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="text-xs font-bold text-[#090909] block mb-1">
+              <label className="text-xs font-bold text-[#0F172A] block mb-1">
                 Harga Perolehan *
               </label>
               <IDRInput
@@ -1103,12 +1103,12 @@ export default function FixedAssetsWorkspace() {
                   })
                 }
                 placeholder="150.000.000"
-                className="input text-xs font-bold text-[#090909]"
+                className="input text-xs font-bold text-[#0F172A]"
               />
             </div>
 
             <div>
-              <label className="text-xs font-bold text-[#090909] block mb-1">
+              <label className="text-xs font-bold text-[#0F172A] block mb-1">
                 Nilai Residu / Salvage
               </label>
               <IDRInput
@@ -1120,12 +1120,12 @@ export default function FixedAssetsWorkspace() {
                   })
                 }
                 placeholder="0"
-                className="input text-xs font-bold text-[#090909]"
+                className="input text-xs font-bold text-[#0F172A]"
               />
             </div>
 
             <div>
-              <label className="text-xs font-bold text-[#090909] block mb-1">
+              <label className="text-xs font-bold text-[#0F172A] block mb-1">
                 Umur Ekonomis (Bulan) *
               </label>
               <select
@@ -1147,7 +1147,7 @@ export default function FixedAssetsWorkspace() {
             <button
               type="button"
               onClick={() => setIsRegisterModalOpen(false)}
-              className="rounded-xl border border-[#D9D9D9] px-4 py-2 text-xs font-semibold text-[#4F5050] hover:bg-slate-50"
+              className="rounded-xl border border-[#E2E8F0] px-4 py-2 text-xs font-semibold text-[#64748B] hover:bg-slate-50"
             >
               Batal
             </button>
@@ -1179,10 +1179,10 @@ export default function FixedAssetsWorkspace() {
             </span>
           </div>
 
-          <div className="rounded-xl border border-[#D9D9D9] bg-slate-50 p-3 grid grid-cols-2 gap-2 text-xs">
+          <div className="rounded-xl border border-[#E2E8F0] bg-slate-50 p-3 grid grid-cols-2 gap-2 text-xs">
             <div>
               <span className="text-2xs text-[#6B7280] block">Harga Perolehan Awal</span>
-              <strong className="text-[#090909]">
+              <strong className="text-[#0F172A]">
                 {formatMoney(Number(selectedDisposeAsset?.acquisition_cost || 0))}
               </strong>
             </div>
@@ -1196,7 +1196,7 @@ export default function FixedAssetsWorkspace() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-bold text-[#090909] block mb-1">
+              <label className="text-xs font-bold text-[#0F172A] block mb-1">
                 Tanggal Pelepasan *
               </label>
               <input
@@ -1209,7 +1209,7 @@ export default function FixedAssetsWorkspace() {
             </div>
 
             <div>
-              <label className="text-xs font-bold text-[#090909] block mb-1">
+              <label className="text-xs font-bold text-[#0F172A] block mb-1">
                 Hasil Penjualan / Proceeds *
               </label>
               <IDRInput
@@ -1217,13 +1217,13 @@ export default function FixedAssetsWorkspace() {
                 value={disposeProceeds === 0 ? "" : disposeProceeds}
                 onChange={(amount) => setDisposeProceeds(amount === "" ? 0 : Number(amount))}
                 placeholder="150.000.000"
-                className="input text-xs font-bold text-[#090909]"
+                className="input text-xs font-bold text-[#0F172A]"
               />
             </div>
           </div>
 
           {/* Real-time Gain/Loss Simulation */}
-          <div className="rounded-xl border border-[#D9D9D9] bg-white p-3 text-xs">
+          <div className="rounded-xl border border-[#E2E8F0] bg-white p-3 text-xs">
             <div className="text-2xs font-extrabold uppercase text-[#6B7280] mb-1">
               Proyeksi Pengakuan GL:
             </div>
@@ -1252,7 +1252,7 @@ export default function FixedAssetsWorkspace() {
             <button
               type="button"
               onClick={() => setDisposeAssetId(null)}
-              className="rounded-xl border border-[#D9D9D9] px-4 py-2 text-xs font-semibold text-[#4F5050] hover:bg-slate-50"
+              className="rounded-xl border border-[#E2E8F0] px-4 py-2 text-xs font-semibold text-[#64748B] hover:bg-slate-50"
             >
               Batal
             </button>
@@ -1283,7 +1283,7 @@ export default function FixedAssetsWorkspace() {
           </CollapsibleGuideline>
 
           <div>
-            <label className="text-xs font-bold text-[#090909] block mb-1">
+            <label className="text-xs font-bold text-[#0F172A] block mb-1">
               Kode Kategori *
             </label>
             <input
@@ -1297,7 +1297,7 @@ export default function FixedAssetsWorkspace() {
           </div>
 
           <div>
-            <label className="text-xs font-bold text-[#090909] block mb-1">
+            <label className="text-xs font-bold text-[#0F172A] block mb-1">
               Nama Kategori *
             </label>
             <input

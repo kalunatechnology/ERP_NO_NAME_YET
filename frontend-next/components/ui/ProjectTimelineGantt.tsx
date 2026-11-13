@@ -77,16 +77,16 @@ export function ProjectTimelineGantt({
       {/* ── Card Header ── */}
       <div className="flex items-center justify-between gap-4 mb-5 pb-2 border-b border-gray-100/80">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-[#EFF6FF] flex items-center justify-center text-[#1E3A8A] shadow-2xs flex-shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-[#E7F2FF] flex items-center justify-center text-[#163D64] shadow-2xs flex-shrink-0">
             <Calendar size={20} strokeWidth={2.2} />
           </div>
           <div className="min-w-0">
-            <h3 className="text-base sm:text-lg font-extrabold text-[#090909] tracking-tight truncate">
+            <h3 className="text-base sm:text-lg font-extrabold text-[#0F172A] tracking-tight truncate">
               {title}
             </h3>
             {projectName && (
-              <p className="text-2xs text-[#4F5050] font-medium mt-0.5 truncate">
-                Proyek: <strong className="text-[#090909]">{projectName}</strong> &bull; Jadwal WBS Mingguan (W1–W{totalWeeks})
+              <p className="text-2xs text-[#64748B] font-medium mt-0.5 truncate">
+                Proyek: <strong className="text-[#0F172A]">{projectName}</strong> &bull; Jadwal WBS Mingguan (W1–W{totalWeeks})
               </p>
             )}
           </div>
@@ -109,10 +109,10 @@ export function ProjectTimelineGantt({
           <div className="min-w-[620px] sm:min-w-[700px] flex flex-col">
             {/* Header Scale Grid */}
             <div className="grid grid-cols-[minmax(140px,220px)_1fr] gap-4 sm:gap-6 items-center pb-2.5 border-b border-[#EFEFEF]">
-              <span className="text-xs font-bold text-[#4F5050] uppercase tracking-wider pl-1">
+              <span className="text-xs font-bold text-[#64748B] uppercase tracking-wider pl-1">
                 Paket Kerja / Task
               </span>
-              <div className="grid grid-cols-8 gap-2 text-center text-2xs sm:text-xs font-extrabold text-[#4F5050] px-1">
+              <div className="grid grid-cols-8 gap-2 text-center text-2xs sm:text-xs font-extrabold text-[#64748B] px-1">
                 {weeks.map((w) => (
                   <span key={w} className="tracking-wide">
                     {w}
@@ -137,7 +137,7 @@ export function ProjectTimelineGantt({
                     key={task.id}
                     onMouseEnter={() => setHoveredTask(task)}
                     onMouseLeave={() => setHoveredTask(null)}
-                    className="grid grid-cols-[minmax(140px,220px)_1fr] gap-4 sm:gap-6 items-center py-2 px-2 -mx-2 rounded-xl hover:bg-[#EFF6FF] transition-all group"
+                    className="grid grid-cols-[minmax(140px,220px)_1fr] gap-4 sm:gap-6 items-center py-2 px-2 -mx-2 rounded-xl hover:bg-[#E7F2FF] transition-all group"
                   >
                     {/* Left Column: Task Name with Indicator Dot */}
                     <div className="flex items-center gap-2.5 min-w-0 pr-2">
@@ -145,14 +145,14 @@ export function ProjectTimelineGantt({
                         className={cn(
                           "w-2.5 h-2.5 rounded-full flex-shrink-0 transition-transform group-hover:scale-125",
                           isCompleted
-                            ? "bg-[#1E3A8A]"
+                            ? "bg-[#163D64]"
                             : task.progress > 0
-                            ? "bg-[#1D4ED8]"
+                            ? "bg-[#0876CD]"
                             : "bg-[#C7C7C7]"
                         )}
                       />
                       <span
-                        className="text-xs sm:text-sm font-bold text-[#090909] truncate group-hover:text-[#1E3A8A] transition-colors"
+                        className="text-xs sm:text-sm font-bold text-[#0F172A] truncate group-hover:text-[#163D64] transition-colors"
                         title={task.name}
                       >
                         {task.name}
@@ -181,12 +181,12 @@ export function ProjectTimelineGantt({
                           }}
                         >
                           {/* Background Bar Span */}
-                          <div className="absolute inset-0 bg-[#EFF6FF] rounded-full" />
+                          <div className="absolute inset-0 bg-[#E7F2FF] rounded-full" />
 
                           {/* Progress Fill */}
                           {task.progress > 0 ? (
                             <div
-                              className="relative flex h-full min-w-[38px] items-center justify-end rounded-full bg-[#1E3A8A] px-2 transition-all duration-500 shadow-2xs"
+                              className="relative flex h-full min-w-[38px] items-center justify-end rounded-full bg-[#163D64] px-2 transition-all duration-500 shadow-2xs"
                               style={{ width: `${Math.min(100, Math.max(10, task.progress))}%` }}
                             >
                               <span className="text-[10px] sm:text-[11px] font-black text-white leading-none select-none tracking-tight">
@@ -196,7 +196,7 @@ export function ProjectTimelineGantt({
                           ) : (
                             /* 0% Progress Indicator */
                             <div className="relative h-full w-full flex items-center px-1.5 gap-1.5">
-                              <div className="w-3.5 h-3.5 rounded-full bg-[#1E3A8A] flex items-center justify-center flex-shrink-0 shadow-2xs">
+                              <div className="w-3.5 h-3.5 rounded-full bg-[#163D64] flex items-center justify-center flex-shrink-0 shadow-2xs">
                                 <div className="w-1.5 h-1.5 rounded-full bg-white" />
                               </div>
                               <span className="text-[10px] font-bold text-[#2E8CFF] select-none">
@@ -217,12 +217,12 @@ export function ProjectTimelineGantt({
 
       {hasTasks && !scrollable && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#EFEFEF] pt-3 text-xs">
-          <label className="flex items-center gap-2 text-[#4F5050]">
+          <label className="flex items-center gap-2 text-[#64748B]">
             Tampilkan
             <select
               value={pageSize}
               onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }}
-              className="rounded-lg border border-[#D9D9D9] bg-white px-2 py-1 font-semibold text-[#090909] outline-none focus:border-[#1E3A8A]"
+              className="rounded-lg border border-[#E2E8F0] bg-white px-2 py-1 font-semibold text-[#0F172A] outline-none focus:border-[#163D64]"
               aria-label="Jumlah task per halaman"
             >
               {[6, 10, 20].map((size) => <option key={size} value={size}>{size}</option>)}
@@ -234,7 +234,7 @@ export function ProjectTimelineGantt({
               type="button"
               onClick={() => setPage((value) => Math.max(1, value - 1))}
               disabled={page === 1}
-              className="rounded-lg border border-[#D9D9D9] p-1.5 text-[#4F5050] transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-lg border border-[#E2E8F0] p-1.5 text-[#64748B] transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label="Halaman sebelumnya"
             >
               <ChevronLeft size={14} />
@@ -247,8 +247,8 @@ export function ProjectTimelineGantt({
                 className={cn(
                   "min-w-7 rounded-lg px-2.5 py-1 text-xs font-bold transition-colors",
                   page === pageNumber
-                    ? "bg-[#1E3A8A] text-white shadow-xs"
-                    : "border border-[#D9D9D9] text-[#4F5050] hover:bg-gray-50 hover:text-[#090909]"
+                    ? "bg-[#163D64] text-white shadow-xs"
+                    : "border border-[#E2E8F0] text-[#64748B] hover:bg-gray-50 hover:text-[#0F172A]"
                 )}
               >
                 {pageNumber}
@@ -258,7 +258,7 @@ export function ProjectTimelineGantt({
               type="button"
               onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
               disabled={page === totalPages}
-              className="rounded-lg border border-[#D9D9D9] p-1.5 text-[#4F5050] transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-lg border border-[#E2E8F0] p-1.5 text-[#64748B] transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label="Halaman berikutnya"
             >
               <ChevronRight size={14} />
@@ -269,10 +269,10 @@ export function ProjectTimelineGantt({
 
       {/* Detailed Hover Card Footer */}
       {hoveredTask && (
-        <div className="mt-4 pt-3 border-t border-[#EFEFEF] flex flex-wrap items-center justify-between gap-3 text-xs text-[#4F5050] animate-fadeIn">
+        <div className="mt-4 pt-3 border-t border-[#EFEFEF] flex flex-wrap items-center justify-between gap-3 text-xs text-[#64748B] animate-fadeIn">
           <div className="flex items-center gap-2">
-            <span className="font-extrabold text-[#090909]">{hoveredTask.name}</span>
-            <span className="text-3xs bg-[#EFF6FF] text-[#1E3A8A] px-2 py-0.5 rounded-full font-bold border border-[#BFDBFE]">
+            <span className="font-extrabold text-[#0F172A]">{hoveredTask.name}</span>
+            <span className="text-3xs bg-[#E7F2FF] text-[#163D64] px-2 py-0.5 rounded-full font-bold border border-[#BAE6FD]">
               Minggu {hoveredTask.startWeek} – Minggu {hoveredTask.endWeek}
             </span>
           </div>
@@ -283,7 +283,7 @@ export function ProjectTimelineGantt({
               </span>
             )}
             <span>
-              Progres Realisasi: <strong className="text-[#1E3A8A]">{hoveredTask.progress}%</strong>
+              Progres Realisasi: <strong className="text-[#163D64]">{hoveredTask.progress}%</strong>
             </span>
           </div>
         </div>

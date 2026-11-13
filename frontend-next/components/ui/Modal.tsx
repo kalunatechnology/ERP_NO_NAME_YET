@@ -117,12 +117,12 @@ export function Modal({
         {/* Header */}
         <div className="flex items-start justify-between px-5 py-4 sm:px-6 sm:py-4.5 border-b border-[#E2E8F0] bg-white">
           <div className="space-y-0.5 pr-2">
-            <h3 id={titleId} className="text-base font-bold text-[#090909] leading-tight">{title}</h3>
-            {subtitle && <p className="text-xs text-[#626262] leading-relaxed font-medium">{subtitle}</p>}
+            <h3 id={titleId} className="text-base font-bold text-[#0F172A] leading-tight">{title}</h3>
+            {subtitle && <p className="text-xs text-[#64748B] leading-relaxed font-medium">{subtitle}</p>}
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-[#7D7D7D] hover:text-[#090909] hover:bg-[#F1F5F9] transition-colors shrink-0"
+            className="p-1.5 rounded-lg text-[#64748B] hover:text-[#0F172A] hover:bg-[#F1F5F9] transition-colors shrink-0"
             aria-label="Tutup"
           >
             <X size={18} />

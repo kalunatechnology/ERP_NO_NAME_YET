@@ -116,10 +116,10 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
   ];
 
   return (
-    <section className="rounded-[24px] border border-[#D9D9D9] bg-white px-4 py-6 sm:px-7 sm:py-8 lg:px-9">
+    <section className="rounded-[24px] border border-[#E2E8F0] bg-white px-4 py-6 sm:px-7 sm:py-8 lg:px-9">
       <div className="flex flex-col gap-6">
         <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[#EFF6FF] text-[#3157C8]"><Target size={23} /></span>
+          <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[#E7F2FF] text-[#3157C8]"><Target size={23} /></span>
           <div className="min-w-0">
             <h2 className="text-[28px] font-bold leading-tight tracking-[-0.025em] text-black sm:text-[34px]">Weekly Target Staff</h2>
             <p className="mt-2 max-w-2xl text-sm leading-5 text-[#5A5B5D]">Pantau target dan progres staf berdasarkan periode, staf, proyek, dan status.</p>
@@ -184,7 +184,7 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
             "flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition",
             allWeeks
               ? "border-[#3157C8] bg-[#3157C8] text-white shadow-sm"
-              : "border-gray-200 bg-white text-[#4F5050] hover:bg-gray-50"
+              : "border-gray-200 bg-white text-[#64748B] hover:bg-gray-50"
           )}
         >
           Semua Weekly ({calendar.month})
@@ -203,12 +203,12 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
                 "flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition",
                 isSelected
                   ? "border-[#3157C8] bg-[#3157C8] text-white shadow-sm"
-                  : "border-gray-200 bg-white text-[#4F5050] hover:bg-gray-50"
+                  : "border-gray-200 bg-white text-[#64748B] hover:bg-gray-50"
               )}
             >
               <span>Weekly {item.week}</span>
               <span className="text-[10px] font-normal opacity-80">({formatDate(item.start).slice(0, 6)} – {formatDate(item.end)})</span>
-              <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-bold", isSelected ? "bg-white/20 text-white" : "bg-[#EFF6FF] text-[#3157C8]")}>
+              <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-bold", isSelected ? "bg-white/20 text-white" : "bg-[#E7F2FF] text-[#3157C8]")}>
                 {weekCounts[item.week] ?? 0}
               </span>
             </button>
@@ -235,7 +235,7 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
         {filters.map((filter) => (
           <button key={filter.id} type="button" onClick={() => setSelectedState(filter.id)} aria-pressed={selectedState === filter.id} className={cn(
             "shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-[#BDD7FF]",
-            selectedState === filter.id ? "bg-[#3157C8] text-white shadow-sm" : "bg-[#F1F2F4] text-[#4F5050] hover:bg-[#E4E8F0]"
+            selectedState === filter.id ? "bg-[#3157C8] text-white shadow-sm" : "bg-[#F1F2F4] text-[#64748B] hover:bg-[#E4E8F0]"
           )}>
             {filter.label} ({counts[filter.id]})
           </button>
@@ -243,11 +243,11 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
         </div>
       </div>
 
-      <div className="mt-7 overflow-hidden rounded-[14px] border border-[#D9D9D9]">
+      <div className="mt-7 overflow-hidden rounded-[14px] border border-[#E2E8F0]">
         <div className="max-h-[620px] overflow-auto overscroll-contain">
           <table className="w-full min-w-[1100px] text-left">
             <thead className="sticky top-0 z-10 bg-[#F5F5F5]">
-              <tr className="h-12 text-xs font-bold uppercase tracking-[0.03em] text-[#4F5050]">
+              <tr className="h-12 text-xs font-bold uppercase tracking-[0.03em] text-[#64748B]">
                 <th className="w-[150px] px-4">Identitas Minggu</th>
                 <th className="min-w-[280px] px-4">Weekly Target</th>
                 <th className="w-[240px] px-4">Proyek & Main Task</th>
@@ -259,14 +259,14 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
             </thead>
             <tbody>
               {loading || calendar.loading ? Array.from({ length: 5 }).map((_, index) => <LoadingRow key={index} />) : filteredRecords.length === 0 ? (
-                <tr><td colSpan={7} className="h-56 px-6 text-center"><CalendarDays size={32} className="mx-auto text-[#AEB2B8]" /><p className="mt-3 text-sm font-bold text-[#4F5050]">Tidak ada Weekly Target untuk filter ini.</p><p className="mt-1 text-xs text-[#8A8E95]">Ubah bulan, minggu, staf, proyek, status, atau pencarian.</p></td></tr>
+                <tr><td colSpan={7} className="h-56 px-6 text-center"><CalendarDays size={32} className="mx-auto text-[#AEB2B8]" /><p className="mt-3 text-sm font-bold text-[#64748B]">Tidak ada Weekly Target untuk filter ini.</p><p className="mt-1 text-xs text-[#8A8E95]">Ubah bulan, minggu, staf, proyek, status, atau pencarian.</p></td></tr>
               ) : filteredRecords.map((record) => {
                 const state = weeklyGroup(record, today);
                 const status = statusPresentation(state);
                 return (
                   <Fragment key={record.id}><tr className="border-t border-[#ECEDEF] align-middle transition-colors hover:bg-[#F7FAFF]">
                     <td className="px-4 py-5">
-                      <span className="inline-flex rounded-lg bg-[#EFF6FF] px-2.5 py-1 text-xs font-extrabold text-[#3157C8]">
+                      <span className="inline-flex rounded-lg bg-[#E7F2FF] px-2.5 py-1 text-xs font-extrabold text-[#3157C8]">
                         {record.calendarWeekLabel || (period ? `Weekly ${period.week}` : "Weekly")}
                       </span>
                       <p className="mt-1.5 text-[10px] font-semibold text-[#5A5B5D]">
@@ -289,10 +289,10 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
                     <td className="px-4 py-5">
                       <span className="inline-block text-[11px] font-bold text-[#3157C8]">{record.projectCode}</span>
                       <p className="mt-0.5 text-sm font-bold text-[#111318]" title={record.projectName}>{record.projectName}</p>
-                      <p className="mt-1 text-xs font-semibold text-[#4F5050]">{record.mainTaskName}</p>
+                      <p className="mt-1 text-xs font-semibold text-[#64748B]">{record.mainTaskName}</p>
                     </td>
                     <td className="px-4 py-5"><div className="flex items-center gap-2.5"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[#3157C8]"><UserRound size={15} /></span><span className="text-xs font-semibold text-[#292B30]">{record.assigneeName}</span></div></td>
-                    <td className="px-4 py-5 text-xs text-[#4F5050]">
+                    <td className="px-4 py-5 text-xs text-[#64748B]">
                       <span className="inline-block rounded-md bg-[#F4F8FF] px-2 py-0.5 text-[10px] font-bold text-[#3157C8]">
                         {record.calendarWeekLabel || (period ? `Weekly ${period.week}` : "Weekly")} ({record.calendarMonth || calendar.month})
                       </span>
@@ -304,7 +304,7 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
                     <td className="px-4 py-5"><span style={status.style} className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] font-bold">{state === "COMPLETED" ? <CheckCircle2 size={13} /> : state === "ATTENTION" ? <AlertTriangle size={13} /> : null}{status.label}</span></td>
                   </tr>
                   {expandedIds.has(record.id) && <tr className="border-t border-[#ECEDEF] bg-[#F7FAFF]"><td colSpan={7} className="px-6 py-4">
-                    {record.dailyTasks.length === 0 ? <p className="text-xs text-[#777B82]">Belum ada Daily Task.</p> : <table className="w-full text-xs"><thead><tr className="text-[#4F5050]"><th className="pb-2 text-left">Daily Task</th><th className="pb-2 text-left">Pemilik</th><th className="pb-2 text-left">Tanggal</th><th className="pb-2 text-left">Status</th><th className="pb-2 text-left">Progress</th></tr></thead><tbody>{record.dailyTasks.map(daily => <tr key={daily.id} className="border-t border-[#ECEDEF]"><td className="py-2">{daily.title || daily.activity_input}</td><td>{daily.owner_name || String(daily.owner_id || "Belum ditentukan")}</td><td>{daily.planned_date ? formatDate(daily.planned_date) : "-"}</td><td>{daily.status}</td><td>{daily.progress ?? 0}%</td></tr>)}</tbody></table>}
+                    {record.dailyTasks.length === 0 ? <p className="text-xs text-[#777B82]">Belum ada Daily Task.</p> : <table className="w-full text-xs"><thead><tr className="text-[#64748B]"><th className="pb-2 text-left">Daily Task</th><th className="pb-2 text-left">Pemilik</th><th className="pb-2 text-left">Tanggal</th><th className="pb-2 text-left">Status</th><th className="pb-2 text-left">Progress</th></tr></thead><tbody>{record.dailyTasks.map(daily => <tr key={daily.id} className="border-t border-[#ECEDEF]"><td className="py-2">{daily.title || daily.activity_input}</td><td>{daily.owner_name || String(daily.owner_id || "Belum ditentukan")}</td><td>{daily.planned_date ? formatDate(daily.planned_date) : "-"}</td><td>{daily.status}</td><td>{daily.progress ?? 0}%</td></tr>)}</tbody></table>}
                   </td></tr>}
                   </Fragment>
                 );
@@ -319,7 +319,7 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
 
 function SummaryCard({ value, label, tone }: { value: number | string; label: string; tone: "neutral" | "blue" | "green" | "red" }) {
   const styles = {
-    neutral: "border-[#D9D9D9] bg-[#FAFAFA] text-[#111318]",
+    neutral: "border-[#E2E8F0] bg-[#FAFAFA] text-[#111318]",
     blue: "border-[#BDD7FF] bg-[#F4F8FF] text-[#3157C8]",
     green: "border-[#BFE8C9] bg-[#F2FFF5] text-[#237A3B]",
     red: "border-[#F5C2C2] bg-[#FFF5F5] text-[#B42318]",

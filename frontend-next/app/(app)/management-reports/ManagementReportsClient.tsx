@@ -211,14 +211,14 @@ export default function ManagementReportsClient() {
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#EFEFEF] bg-white p-6 shadow-xs">
         <div>
           <div className="flex items-center gap-2.5">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EFF6FF] text-[#1E3A8A]">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#E7F2FF] text-[#163D64]">
               <FileText size={20} />
             </span>
             <div>
-              <h1 className="text-xl font-bold text-[#1E3A8A]">
+              <h1 className="text-xl font-bold text-[#163D64]">
                 {isDirector ? "Management Reports (Inbox Direksi)" : "Management Reports"}
               </h1>
-              <p className="text-xs text-[#4F5050]">
+              <p className="text-xs text-[#64748B]">
                 {isDirector
                   ? "Verifikasi dan berikan catatan review untuk laporan operasional dari Operational Manager."
                   : "Susun dokumen laporan manajerial operasional berkala dan submit langsung ke Direksi."}
@@ -230,7 +230,7 @@ export default function ManagementReportsClient() {
         <div className="flex items-center gap-2">
           <button
             onClick={loadReports}
-            className="flex items-center gap-1.5 rounded-xl border border-[#EFEFEF] bg-white px-3 py-2 text-xs font-semibold text-[#4F5050] hover:bg-[#FDFDFD]"
+            className="flex items-center gap-1.5 rounded-xl border border-[#EFEFEF] bg-white px-3 py-2 text-xs font-semibold text-[#64748B] hover:bg-[#FDFDFD]"
           >
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
             Segarkan
@@ -239,7 +239,7 @@ export default function ManagementReportsClient() {
           {isOM && (
             <button
               onClick={openCreateModal}
-              className="flex items-center gap-1.5 rounded-xl bg-[#1E3A8A] px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#1f3c96]"
+              className="flex items-center gap-1.5 rounded-xl bg-[#163D64] px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#1f3c96]"
             >
               <Plus size={14} />
               Buat Laporan Operasional
@@ -254,8 +254,8 @@ export default function ManagementReportsClient() {
           onClick={() => setActiveTab("ALL")}
           className={`pb-3 px-3 transition-colors border-b-2 ${
             activeTab === "ALL"
-              ? "border-[#1E3A8A] text-[#1E3A8A]"
-              : "border-transparent text-[#4F5050] hover:text-[#090909]"
+              ? "border-[#163D64] text-[#163D64]"
+              : "border-transparent text-[#64748B] hover:text-[#0F172A]"
           }`}
         >
           Semua ({reports.length})
@@ -264,8 +264,8 @@ export default function ManagementReportsClient() {
           onClick={() => setActiveTab("SUBMITTED")}
           className={`pb-3 px-3 transition-colors border-b-2 ${
             activeTab === "SUBMITTED"
-              ? "border-[#1E3A8A] text-[#1E3A8A]"
-              : "border-transparent text-[#4F5050] hover:text-[#090909]"
+              ? "border-[#163D64] text-[#163D64]"
+              : "border-transparent text-[#64748B] hover:text-[#0F172A]"
           }`}
         >
           Menunggu Review ({reports.filter((r) => r.status === "SUBMITTED").length})
@@ -275,8 +275,8 @@ export default function ManagementReportsClient() {
             onClick={() => setActiveTab("DRAFT")}
             className={`pb-3 px-3 transition-colors border-b-2 ${
               activeTab === "DRAFT"
-                ? "border-[#1E3A8A] text-[#1E3A8A]"
-                : "border-transparent text-[#4F5050] hover:text-[#090909]"
+                ? "border-[#163D64] text-[#163D64]"
+                : "border-transparent text-[#64748B] hover:text-[#0F172A]"
             }`}
           >
             Draft ({reports.filter((r) => r.status === "DRAFT").length})
@@ -286,8 +286,8 @@ export default function ManagementReportsClient() {
           onClick={() => setActiveTab("REVISION_REQUESTED")}
           className={`pb-3 px-3 transition-colors border-b-2 ${
             activeTab === "REVISION_REQUESTED"
-              ? "border-[#1E3A8A] text-[#1E3A8A]"
-              : "border-transparent text-[#4F5050] hover:text-[#090909]"
+              ? "border-[#163D64] text-[#163D64]"
+              : "border-transparent text-[#64748B] hover:text-[#0F172A]"
           }`}
         >
           Perlu Revisi ({reports.filter((r) => r.status === "REVISION_REQUESTED").length})
@@ -296,8 +296,8 @@ export default function ManagementReportsClient() {
           onClick={() => setActiveTab("REVIEWED")}
           className={`pb-3 px-3 transition-colors border-b-2 ${
             activeTab === "REVIEWED"
-              ? "border-[#1E3A8A] text-[#1E3A8A]"
-              : "border-transparent text-[#4F5050] hover:text-[#090909]"
+              ? "border-[#163D64] text-[#163D64]"
+              : "border-transparent text-[#64748B] hover:text-[#0F172A]"
           }`}
         >
           Selesai Direview ({reports.filter((r) => r.status === "REVIEWED").length})
@@ -306,8 +306,8 @@ export default function ManagementReportsClient() {
           onClick={() => setActiveTab("ARCHIVED")}
           className={`pb-3 px-3 transition-colors border-b-2 ${
             activeTab === "ARCHIVED"
-              ? "border-[#1E3A8A] text-[#1E3A8A]"
-              : "border-transparent text-[#4F5050] hover:text-[#090909]"
+              ? "border-[#163D64] text-[#163D64]"
+              : "border-transparent text-[#64748B] hover:text-[#0F172A]"
           }`}
         >
           Arsip ({reports.filter((r) => r.status === "ARCHIVED").length})
@@ -318,7 +318,7 @@ export default function ManagementReportsClient() {
       <div className="rounded-2xl border border-[#EFEFEF] bg-white overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="border-b border-[#EFEFEF] bg-[#FDFDFD] text-3xs font-bold uppercase tracking-wider text-[#4F5050]">
+            <thead className="border-b border-[#EFEFEF] bg-[#FDFDFD] text-3xs font-bold uppercase tracking-wider text-[#64748B]">
               <tr>
                 <th className="px-5 py-3.5">No. Laporan</th>
                 <th className="px-5 py-3.5">Judul & Periode</th>
@@ -330,13 +330,13 @@ export default function ManagementReportsClient() {
             <tbody className="divide-y divide-[#EFEFEF]">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center text-xs text-[#4F5050]">
+                  <td colSpan={5} className="py-12 text-center text-xs text-[#64748B]">
                     Memuat data laporan...
                   </td>
                 </tr>
               ) : filteredReports.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center text-xs text-[#4F5050]">
+                  <td colSpan={5} className="py-12 text-center text-xs text-[#64748B]">
                     Tidak ada laporan pada kategori ini.
                   </td>
                 </tr>
@@ -349,16 +349,16 @@ export default function ManagementReportsClient() {
                   };
                   return (
                     <tr key={report.id} className="hover:bg-[#FDFDFD] transition">
-                      <td className="px-5 py-4 font-mono font-semibold text-[#1E3A8A]">
+                      <td className="px-5 py-4 font-mono font-semibold text-[#163D64]">
                         {report.report_number}
-                        <span className="block text-3xs text-[#4F5050]">v{report.version_number}</span>
+                        <span className="block text-3xs text-[#64748B]">v{report.version_number}</span>
                         <span className="mt-1 block font-sans text-[10px] font-normal text-[#6B7280]">
                           {new Date(report.updated_at || report.submitted_at || report.created_at).toLocaleString("id-ID")}
                         </span>
                       </td>
                       <td className="px-5 py-4">
-                        <span className="block font-bold text-sm text-[#090909]">{report.title}</span>
-                        <span className="text-3xs text-[#4F5050] flex items-center gap-1 mt-0.5">
+                        <span className="block font-bold text-sm text-[#0F172A]">{report.title}</span>
+                        <span className="text-3xs text-[#64748B] flex items-center gap-1 mt-0.5">
                           <Calendar size={11} />
                           {report.period_start.slice(0, 10)} s/d {report.period_end.slice(0, 10)} ({report.period_type})
                         </span>
@@ -368,7 +368,7 @@ export default function ManagementReportsClient() {
                           {badge.label}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-[#4F5050]">
+                      <td className="px-5 py-4 text-[#64748B]">
                         <div>Dibuat: {report.prepared_by?.full_name || report.prepared_by?.email || "OM"}</div>
                         {report.reviewed_by && (
                           <div className="text-3xs text-emerald-700 font-medium mt-0.5">
@@ -380,7 +380,7 @@ export default function ManagementReportsClient() {
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             onClick={() => setDetailReport(report)}
-                            className="flex items-center gap-1 rounded-lg border border-[#EFEFEF] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#1E3A8A] hover:bg-[#EFF6FF]"
+                            className="flex items-center gap-1 rounded-lg border border-[#EFEFEF] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#163D64] hover:bg-[#E7F2FF]"
                             title="Buka detail"
                           >
                             <Eye size={13} />
@@ -391,7 +391,7 @@ export default function ManagementReportsClient() {
                             <>
                               <button
                                 onClick={() => openEditModal(report)}
-                                className="flex items-center gap-1 rounded-lg border border-[#EFEFEF] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#4F5050] hover:bg-gray-50"
+                                className="flex items-center gap-1 rounded-lg border border-[#EFEFEF] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#64748B] hover:bg-gray-50"
                                 title="Edit draft"
                               >
                                 <Edit3 size={13} />
@@ -399,7 +399,7 @@ export default function ManagementReportsClient() {
                               </button>
                               <button
                                 onClick={() => handleSubmit(report.id)}
-                                className="flex items-center gap-1 rounded-lg bg-[#1E3A8A] px-2.5 py-1.5 text-xs font-bold text-white hover:bg-[#1f3c96]"
+                                className="flex items-center gap-1 rounded-lg bg-[#163D64] px-2.5 py-1.5 text-xs font-bold text-white hover:bg-[#1f3c96]"
                                 title="Submit ke Direksi"
                               >
                                 <Send size={12} />
@@ -459,34 +459,34 @@ export default function ManagementReportsClient() {
       {editorOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[#EFEFEF] bg-white p-6 shadow-2xl">
-            <h2 className="text-base font-bold text-[#1E3A8A]">
+            <h2 className="text-base font-bold text-[#163D64]">
               {editingReport ? "Edit Laporan Operasional" : "Buat Laporan Operasional Baru"}
             </h2>
-            <p className="mt-0.5 text-xs text-[#4F5050]">
+            <p className="mt-0.5 text-xs text-[#64748B]">
               Lengkapi narasi laporan. Saat Anda melakukan submit, snapshot metrik operasional proyek terkini akan otomatis digenerate.
             </p>
 
             <form onSubmit={handleSaveReport} className="mt-5 space-y-4 text-xs">
               <div>
-                <label className="block font-semibold text-[#090909] mb-1">
+                <label className="block font-semibold text-[#0F172A] mb-1">
                   Judul Laporan <span className="form-required">*</span>
                 </label>
                 <input
                   required
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="w-full rounded-[11px] border border-[#D9D9D9] p-2.5 placeholder:text-gray-400 focus:border-[#1E3A8A] focus:outline-none"
+                  className="w-full rounded-[11px] border border-[#E2E8F0] p-2.5 placeholder:text-gray-400 focus:border-[#163D64] focus:outline-none"
                   placeholder="Contoh: Laporan Operasional Proyek Pekan ke-3"
                 />
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div>
-                  <label className="block font-semibold text-[#090909] mb-1">Tipe Periode</label>
+                  <label className="block font-semibold text-[#0F172A] mb-1">Tipe Periode</label>
                   <select
                     value={formData.period_type}
                     onChange={(e) => setFormData({ ...formData, period_type: e.target.value })}
-                    className="w-full rounded-[11px] border border-[#D9D9D9] p-2.5 focus:border-[#1E3A8A] focus:outline-none"
+                    className="w-full rounded-[11px] border border-[#E2E8F0] p-2.5 focus:border-[#163D64] focus:outline-none"
                   >
                     <option value="WEEKLY">Mingguan (Weekly)</option>
                     <option value="MONTHLY">Bulanan (Monthly)</option>
@@ -494,7 +494,7 @@ export default function ManagementReportsClient() {
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#090909] mb-1">
+                  <label className="block font-semibold text-[#0F172A] mb-1">
                     Tanggal Mulai <span className="form-required">*</span>
                   </label>
                   <input
@@ -502,11 +502,11 @@ export default function ManagementReportsClient() {
                     required
                     value={formData.period_start}
                     onChange={(e) => setFormData({ ...formData, period_start: e.target.value })}
-                    className="w-full rounded-[11px] border border-[#D9D9D9] p-2.5 focus:border-[#1E3A8A] focus:outline-none"
+                    className="w-full rounded-[11px] border border-[#E2E8F0] p-2.5 focus:border-[#163D64] focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#090909] mb-1">
+                  <label className="block font-semibold text-[#0F172A] mb-1">
                     Tanggal Akhir <span className="form-required">*</span>
                   </label>
                   <input
@@ -514,40 +514,40 @@ export default function ManagementReportsClient() {
                     required
                     value={formData.period_end}
                     onChange={(e) => setFormData({ ...formData, period_end: e.target.value })}
-                    className="w-full rounded-[11px] border border-[#D9D9D9] p-2.5 focus:border-[#1E3A8A] focus:outline-none"
+                    className="w-full rounded-[11px] border border-[#E2E8F0] p-2.5 focus:border-[#163D64] focus:outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-[#090909] mb-1">Executive Summary</label>
+                <label className="block font-semibold text-[#0F172A] mb-1">Executive Summary</label>
                 <textarea
                   rows={3}
                   value={formData.executive_summary}
                   onChange={(e) => setFormData({ ...formData, executive_summary: e.target.value })}
-                  className="w-full rounded-[11px] border border-[#D9D9D9] p-2.5 placeholder:text-gray-400 focus:border-[#1E3A8A] focus:outline-none"
+                  className="w-full rounded-[11px] border border-[#E2E8F0] p-2.5 placeholder:text-gray-400 focus:border-[#163D64] focus:outline-none"
                   placeholder="Ringkasan eksekutif performa dan capaian kunci..."
                 />
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="block font-semibold text-[#090909] mb-1">Pencapaian Utama (Achievements)</label>
+                  <label className="block font-semibold text-[#0F172A] mb-1">Pencapaian Utama (Achievements)</label>
                   <textarea
                     rows={2}
                     value={formData.achievements}
                     onChange={(e) => setFormData({ ...formData, achievements: e.target.value })}
-                    className="w-full rounded-[11px] border border-[#D9D9D9] p-2.5 placeholder:text-gray-400 focus:border-[#1E3A8A] focus:outline-none"
+                    className="w-full rounded-[11px] border border-[#E2E8F0] p-2.5 placeholder:text-gray-400 focus:border-[#163D64] focus:outline-none"
                     placeholder="Milestone tercapai, task penting selesai..."
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#090909] mb-1">Kendala / Blockers</label>
+                  <label className="block font-semibold text-[#0F172A] mb-1">Kendala / Blockers</label>
                   <textarea
                     rows={2}
                     value={formData.blockers}
                     onChange={(e) => setFormData({ ...formData, blockers: e.target.value })}
-                    className="w-full rounded-[11px] border border-[#D9D9D9] p-2.5 placeholder:text-gray-400 focus:border-[#1E3A8A] focus:outline-none"
+                    className="w-full rounded-[11px] border border-[#E2E8F0] p-2.5 placeholder:text-gray-400 focus:border-[#163D64] focus:outline-none"
                     placeholder="Hambatan lapangan, keterlambatan vendor..."
                   />
                 </div>
@@ -555,34 +555,34 @@ export default function ManagementReportsClient() {
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="block font-semibold text-[#090909] mb-1">Mitigasi Risiko (Risks)</label>
+                  <label className="block font-semibold text-[#0F172A] mb-1">Mitigasi Risiko (Risks)</label>
                   <textarea
                     rows={2}
                     value={formData.risks}
                     onChange={(e) => setFormData({ ...formData, risks: e.target.value })}
-                    className="w-full rounded-[11px] border border-[#D9D9D9] p-2.5 placeholder:text-gray-400 focus:border-[#1E3A8A] focus:outline-none"
+                    className="w-full rounded-[11px] border border-[#E2E8F0] p-2.5 placeholder:text-gray-400 focus:border-[#163D64] focus:outline-none"
                     placeholder="Potensi risiko ke depan dan langkah antisipasi..."
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#090909] mb-1">Keputusan Diperlukan Direksi</label>
+                  <label className="block font-semibold text-[#0F172A] mb-1">Keputusan Diperlukan Direksi</label>
                   <textarea
                     rows={2}
                     value={formData.decisions_needed}
                     onChange={(e) => setFormData({ ...formData, decisions_needed: e.target.value })}
-                    className="w-full rounded-[11px] border border-[#D9D9D9] p-2.5 placeholder:text-gray-400 focus:border-[#1E3A8A] focus:outline-none"
+                    className="w-full rounded-[11px] border border-[#E2E8F0] p-2.5 placeholder:text-gray-400 focus:border-[#163D64] focus:outline-none"
                     placeholder="Persetujuan perubahan budget, eskalasi izin..."
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-[#090909] mb-1">Rencana Kerja Periode Berikutnya</label>
+                <label className="block font-semibold text-[#0F172A] mb-1">Rencana Kerja Periode Berikutnya</label>
                 <textarea
                   rows={2}
                   value={formData.next_plan}
                   onChange={(e) => setFormData({ ...formData, next_plan: e.target.value })}
-                  className="w-full rounded-[11px] border border-[#D9D9D9] p-2.5 placeholder:text-gray-400 focus:border-[#1E3A8A] focus:outline-none"
+                  className="w-full rounded-[11px] border border-[#E2E8F0] p-2.5 placeholder:text-gray-400 focus:border-[#163D64] focus:outline-none"
                   placeholder="Target kerja dan prioritas operasional mendatang..."
                 />
               </div>
@@ -591,14 +591,14 @@ export default function ManagementReportsClient() {
                 <button
                   type="button"
                   onClick={() => setEditorOpen(false)}
-                  className="rounded-xl border border-[#D9D9D9] px-4 py-2 font-semibold text-[#4F5050] hover:bg-gray-50"
+                  className="rounded-xl border border-[#E2E8F0] px-4 py-2 font-semibold text-[#64748B] hover:bg-gray-50"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="rounded-xl bg-[#1E3A8A] px-5 py-2 font-bold text-white hover:bg-[#1f3c96] flex items-center gap-1.5"
+                  className="rounded-xl bg-[#163D64] px-5 py-2 font-bold text-white hover:bg-[#1f3c96] flex items-center gap-1.5"
                 >
                   {saving && <RefreshCw size={12} className="animate-spin" />}
                   Simpan Draft
@@ -615,9 +615,9 @@ export default function ManagementReportsClient() {
           <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-[#EFEFEF] bg-white p-6 shadow-2xl space-y-5">
             <div className="flex items-start justify-between border-b border-[#EFEFEF] pb-4">
               <div>
-                <span className="font-mono text-xs font-bold text-[#1E3A8A]">{detailReport.report_number}</span>
-                <h2 className="text-lg font-bold text-[#090909]">{detailReport.title}</h2>
-                <p className="text-xs text-[#4F5050] mt-0.5">
+                <span className="font-mono text-xs font-bold text-[#163D64]">{detailReport.report_number}</span>
+                <h2 className="text-lg font-bold text-[#0F172A]">{detailReport.title}</h2>
+                <p className="text-xs text-[#64748B] mt-0.5">
                   Periode: {detailReport.period_start.slice(0, 10)} s/d {detailReport.period_end.slice(0, 10)} · Disusun oleh: {detailReport.prepared_by?.full_name || detailReport.prepared_by?.email || "OM"}
                 </p>
               </div>
@@ -638,38 +638,38 @@ export default function ManagementReportsClient() {
 
             {/* Operational Snapshot Data */}
             {detailReport.snapshot_json && (
-              <div className="rounded-2xl border border-[#1E3A8A]/20 bg-[#F6FAFF] p-4 space-y-3">
-                <div className="flex items-center justify-between text-xs text-[#1E3A8A] font-bold">
+              <div className="rounded-2xl border border-[#163D64]/20 bg-[#F6FAFF] p-4 space-y-3">
+                <div className="flex items-center justify-between text-xs text-[#163D64] font-bold">
                   <span>Snapshot Metrik Operasional Saat Submit</span>
-                  <span className="text-3xs font-normal text-[#4F5050]">
+                  <span className="text-3xs font-normal text-[#64748B]">
                     Terekam: {detailReport.submitted_at ? new Date(detailReport.submitted_at).toLocaleString("id-ID") : "-"}
                   </span>
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 text-xs">
                   <div className="rounded-xl bg-white p-3 border border-[#EFEFEF]">
-                    <div className="flex items-center gap-2 text-[#4F5050] font-medium mb-1">
-                      <Layers size={14} className="text-[#1E3A8A]" /> Proyek
+                    <div className="flex items-center gap-2 text-[#64748B] font-medium mb-1">
+                      <Layers size={14} className="text-[#163D64]" /> Proyek
                     </div>
-                    <div className="text-lg font-bold text-[#090909]">
-                      {detailReport.snapshot_json.projects?.active ?? 0} <span className="text-xs font-normal text-[#4F5050]">aktif</span> / {detailReport.snapshot_json.projects?.total ?? 0} <span className="text-xs font-normal text-[#4F5050]">total</span>
+                    <div className="text-lg font-bold text-[#0F172A]">
+                      {detailReport.snapshot_json.projects?.active ?? 0} <span className="text-xs font-normal text-[#64748B]">aktif</span> / {detailReport.snapshot_json.projects?.total ?? 0} <span className="text-xs font-normal text-[#64748B]">total</span>
                     </div>
                   </div>
 
                   <div className="rounded-xl bg-white p-3 border border-[#EFEFEF]">
-                    <div className="flex items-center gap-2 text-[#4F5050] font-medium mb-1">
+                    <div className="flex items-center gap-2 text-[#64748B] font-medium mb-1">
                       <CheckSquare size={14} className="text-emerald-600" /> Daily Tasks
                     </div>
-                    <div className="text-lg font-bold text-[#090909]">
-                      {detailReport.snapshot_json.tasks?.in_progress ?? 0} <span className="text-xs font-normal text-[#4F5050]">berjalan</span> · {detailReport.snapshot_json.tasks?.blocked ?? 0} <span className="text-xs font-normal text-red-600">terhambat</span>
+                    <div className="text-lg font-bold text-[#0F172A]">
+                      {detailReport.snapshot_json.tasks?.in_progress ?? 0} <span className="text-xs font-normal text-[#64748B]">berjalan</span> · {detailReport.snapshot_json.tasks?.blocked ?? 0} <span className="text-xs font-normal text-red-600">terhambat</span>
                     </div>
                   </div>
 
                   <div className="rounded-xl bg-white p-3 border border-[#EFEFEF]">
-                    <div className="flex items-center gap-2 text-[#4F5050] font-medium mb-1">
+                    <div className="flex items-center gap-2 text-[#64748B] font-medium mb-1">
                       <Milestone size={14} className="text-amber-600" /> Milestones
                     </div>
-                    <div className="text-lg font-bold text-[#090909]">
-                      {detailReport.snapshot_json.milestones?.total ?? 0} <span className="text-xs font-normal text-[#4F5050]">total</span> · {detailReport.snapshot_json.milestones?.overdue ?? 0} <span className="text-xs font-normal text-red-600">jatuh tempo</span>
+                    <div className="text-lg font-bold text-[#0F172A]">
+                      {detailReport.snapshot_json.milestones?.total ?? 0} <span className="text-xs font-normal text-[#64748B]">total</span> · {detailReport.snapshot_json.milestones?.overdue ?? 0} <span className="text-xs font-normal text-red-600">jatuh tempo</span>
                     </div>
                   </div>
                 </div>
@@ -679,22 +679,22 @@ export default function ManagementReportsClient() {
             {/* Narrative Sections */}
             <div className="space-y-4 text-xs">
               <div>
-                <h3 className="font-bold text-[#090909] uppercase tracking-wider text-3xs text-[#4F5050] mb-1">Executive Summary</h3>
-                <p className="rounded-xl bg-[#FDFDFD] p-3 border border-[#EFEFEF] text-[#090909] whitespace-pre-wrap">
+                <h3 className="font-bold text-[#0F172A] uppercase tracking-wider text-3xs text-[#64748B] mb-1">Executive Summary</h3>
+                <p className="rounded-xl bg-[#FDFDFD] p-3 border border-[#EFEFEF] text-[#0F172A] whitespace-pre-wrap">
                   {detailReport.executive_summary || "-"}
                 </p>
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <h3 className="font-bold text-[#090909] uppercase tracking-wider text-3xs text-[#4F5050] mb-1">Pencapaian Utama</h3>
-                  <p className="rounded-xl bg-[#FDFDFD] p-3 border border-[#EFEFEF] text-[#090909] whitespace-pre-wrap">
+                  <h3 className="font-bold text-[#0F172A] uppercase tracking-wider text-3xs text-[#64748B] mb-1">Pencapaian Utama</h3>
+                  <p className="rounded-xl bg-[#FDFDFD] p-3 border border-[#EFEFEF] text-[#0F172A] whitespace-pre-wrap">
                     {detailReport.achievements || "-"}
                   </p>
                 </div>
                 <div>
-                  <h3 className="font-bold text-[#090909] uppercase tracking-wider text-3xs text-[#4F5050] mb-1">Kendala / Hambatan</h3>
-                  <p className="rounded-xl bg-[#FDFDFD] p-3 border border-[#EFEFEF] text-[#090909] whitespace-pre-wrap">
+                  <h3 className="font-bold text-[#0F172A] uppercase tracking-wider text-3xs text-[#64748B] mb-1">Kendala / Hambatan</h3>
+                  <p className="rounded-xl bg-[#FDFDFD] p-3 border border-[#EFEFEF] text-[#0F172A] whitespace-pre-wrap">
                     {detailReport.blockers || "-"}
                   </p>
                 </div>
@@ -702,22 +702,22 @@ export default function ManagementReportsClient() {
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <h3 className="font-bold text-[#090909] uppercase tracking-wider text-3xs text-[#4F5050] mb-1">Mitigasi Risiko</h3>
-                  <p className="rounded-xl bg-[#FDFDFD] p-3 border border-[#EFEFEF] text-[#090909] whitespace-pre-wrap">
+                  <h3 className="font-bold text-[#0F172A] uppercase tracking-wider text-3xs text-[#64748B] mb-1">Mitigasi Risiko</h3>
+                  <p className="rounded-xl bg-[#FDFDFD] p-3 border border-[#EFEFEF] text-[#0F172A] whitespace-pre-wrap">
                     {detailReport.risks || "-"}
                   </p>
                 </div>
                 <div>
-                  <h3 className="font-bold text-[#090909] uppercase tracking-wider text-3xs text-[#4F5050] mb-1">Keputusan Diperlukan</h3>
-                  <p className="rounded-xl bg-[#FDFDFD] p-3 border border-[#EFEFEF] text-[#090909] whitespace-pre-wrap">
+                  <h3 className="font-bold text-[#0F172A] uppercase tracking-wider text-3xs text-[#64748B] mb-1">Keputusan Diperlukan</h3>
+                  <p className="rounded-xl bg-[#FDFDFD] p-3 border border-[#EFEFEF] text-[#0F172A] whitespace-pre-wrap">
                     {detailReport.decisions_needed || "-"}
                   </p>
                 </div>
               </div>
 
               <div>
-                <h3 className="font-bold text-[#090909] uppercase tracking-wider text-3xs text-[#4F5050] mb-1">Rencana Kerja Periode Berikutnya</h3>
-                <p className="rounded-xl bg-[#FDFDFD] p-3 border border-[#EFEFEF] text-[#090909] whitespace-pre-wrap">
+                <h3 className="font-bold text-[#0F172A] uppercase tracking-wider text-3xs text-[#64748B] mb-1">Rencana Kerja Periode Berikutnya</h3>
+                <p className="rounded-xl bg-[#FDFDFD] p-3 border border-[#EFEFEF] text-[#0F172A] whitespace-pre-wrap">
                   {detailReport.next_plan || "-"}
                 </p>
               </div>
@@ -727,7 +727,7 @@ export default function ManagementReportsClient() {
             <div className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t border-[#EFEFEF]">
               <button
                 onClick={() => setDetailReport(null)}
-                className="rounded-xl border border-[#D9D9D9] px-4 py-2 text-xs font-semibold text-[#4F5050] hover:bg-gray-50"
+                className="rounded-xl border border-[#E2E8F0] px-4 py-2 text-xs font-semibold text-[#64748B] hover:bg-gray-50"
               >
                 Tutup
               </button>
@@ -736,7 +736,7 @@ export default function ManagementReportsClient() {
                 {isOM && ["DRAFT", "REVISION_REQUESTED"].includes(detailReport.status) && (
                   <button
                     onClick={() => handleSubmit(detailReport.id)}
-                    className="flex items-center gap-1.5 rounded-xl bg-[#1E3A8A] px-4 py-2 text-xs font-bold text-white hover:bg-[#1f3c96]"
+                    className="flex items-center gap-1.5 rounded-xl bg-[#163D64] px-4 py-2 text-xs font-bold text-white hover:bg-[#1f3c96]"
                   >
                     <Send size={13} />
                     Submit ke Direksi
@@ -777,17 +777,17 @@ export default function ManagementReportsClient() {
       {reviewModalOpen && detailReport && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
           <div className="w-full max-w-md rounded-2xl border border-[#EFEFEF] bg-white p-6 shadow-2xl space-y-4">
-            <h3 className="text-base font-bold text-[#1E3A8A]">
+            <h3 className="text-base font-bold text-[#163D64]">
               {reviewAction === "REVISION" ? "Minta Revisi Laporan" : "Selesaikan Review Laporan"}
             </h3>
-            <p className="text-xs text-[#4F5050]">
+            <p className="text-xs text-[#64748B]">
               {reviewAction === "REVISION"
                 ? "Berikan catatan poin apa saja yang perlu diperbaiki oleh Operational Manager sebelum disetujui."
                 : "Tandai laporan telah ditinjau oleh Direksi. Anda dapat menambahkan catatan apresiasi atau arahan strategis."}
             </p>
 
             <div>
-              <label className="block text-xs font-semibold text-[#090909] mb-1">
+              <label className="block text-xs font-semibold text-[#0F172A] mb-1">
                 {reviewAction === "REVISION" ? (
                   <>
                     Catatan Revisi <span className="form-required">*</span>
@@ -801,7 +801,7 @@ export default function ManagementReportsClient() {
                 rows={4}
                 value={reviewNote}
                 onChange={(e) => setReviewNote(e.target.value)}
-                className="w-full rounded-[11px] border border-[#D9D9D9] p-3 text-xs placeholder:text-gray-400 focus:border-[#1E3A8A] focus:outline-none"
+                className="w-full rounded-[11px] border border-[#E2E8F0] p-3 text-xs placeholder:text-gray-400 focus:border-[#163D64] focus:outline-none"
                 placeholder={reviewAction === "REVISION" ? "Tuliskan poin yang perlu direvisi..." : "Tuliskan arahan / catatan tambahan..."}
               />
             </div>
@@ -810,7 +810,7 @@ export default function ManagementReportsClient() {
               <button
                 type="button"
                 onClick={() => setReviewModalOpen(false)}
-                className="rounded-xl border border-[#D9D9D9] px-4 py-2 text-xs font-semibold text-[#4F5050] hover:bg-gray-50"
+                className="rounded-xl border border-[#E2E8F0] px-4 py-2 text-xs font-semibold text-[#64748B] hover:bg-gray-50"
               >
                 Batal
               </button>

@@ -540,10 +540,10 @@ export default function CRMIntegrationGuide() {
   return (
     <div className="space-y-6">
       {/* HEADER BANNER */}
-      <section className="relative overflow-hidden rounded-2xl border border-[#DCE5F2] bg-gradient-to-br from-white via-[#F8FAFC] to-[#EFF6FF] p-6 shadow-sm">
+      <section className="relative overflow-hidden rounded-2xl border border-[#DCE5F2] bg-gradient-to-br from-white via-[#F8FAFC] to-[#E7F2FF] p-6 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-lg bg-[#EFF6FF] px-2.5 py-1 text-xs font-bold text-[#1E3A8A]">
+            <div className="inline-flex items-center gap-2 rounded-lg bg-[#E7F2FF] px-2.5 py-1 text-xs font-bold text-[#163D64]">
               <ShieldCheck size={14} /> DOKUMENTASI DEVELOPER EKSTERNAL
             </div>
             <h2 className="mt-2 text-xl font-bold text-[#172033]">
@@ -581,7 +581,7 @@ export default function CRMIntegrationGuide() {
       {/* STEP 1: CREDENTIALS */}
       <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
         <div className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#1E3A8A] text-xs font-bold text-white">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#163D64] text-xs font-bold text-white">
             1
           </span>
           <h3 className="text-base font-bold text-[#172033]">Ambil Kredensial &amp; Konfigurasi Server Website</h3>
@@ -603,7 +603,7 @@ export default function CRMIntegrationGuide() {
       <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#1E3A8A] text-xs font-bold text-white">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#163D64] text-xs font-bold text-white">
               2
             </span>
             <h3 className="text-base font-bold text-[#172033]">Helper Pengirim Event (Copy-Paste ke Proyek Anda)</h3>
@@ -621,7 +621,7 @@ export default function CRMIntegrationGuide() {
                 type="button"
                 onClick={() => setLangTab(id as any)}
                 className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
-                  langTab === id ? "bg-[#1E3A8A] text-white shadow-xs" : "text-[#64748B] hover:text-[#172033]"
+                  langTab === id ? "bg-[#163D64] text-white shadow-xs" : "text-[#64748B] hover:text-[#172033]"
                 }`}
               >
                 {label}
@@ -645,7 +645,7 @@ export default function CRMIntegrationGuide() {
       {/* STEP 3: FEATURES CATALOG */}
       <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
         <div className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#1E3A8A] text-xs font-bold text-white">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#163D64] text-xs font-bold text-white">
             3
           </span>
           <h3 className="text-base font-bold text-[#172033]">Implementasi per Fitur Website</h3>
@@ -670,7 +670,7 @@ export default function CRMIntegrationGuide() {
               onClick={() => setFeatureTab(id as any)}
               className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-xs font-semibold transition ${
                 featureTab === id
-                  ? "border-[#1E3A8A] bg-[#1E3A8A] text-white shadow-sm"
+                  ? "border-[#163D64] bg-[#163D64] text-white shadow-sm"
                   : "border-[#E2E8F0] bg-white text-[#475569] hover:bg-[#F8FAFC]"
               }`}
             >
@@ -844,7 +844,7 @@ export default function CRMIntegrationGuide() {
       {/* STEP 4: HTTP STATUS & TROUBLESHOOTING */}
       <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
         <div className="flex items-center gap-2">
-          <HelpCircle size={20} className="text-[#1E3A8A]" />
+          <HelpCircle size={20} className="text-[#163D64]" />
           <h3 className="text-base font-bold text-[#172033]">Tabel Status HTTP &amp; Penanganan Masalah (Troubleshooting)</h3>
         </div>
         <p className="mt-1 text-sm text-[#64748B]">

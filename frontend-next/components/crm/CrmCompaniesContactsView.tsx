@@ -468,7 +468,7 @@ export function CrmCompaniesView({
               <button
                 type="button"
                 onClick={openAddCompany}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[#1E3A8A] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#1E3A8A]"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#163D64] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#163D64]"
               >
                 <Plus size={14} /> Add Company
               </button>
@@ -482,12 +482,12 @@ export function CrmCompaniesView({
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-bold text-slate-900">Companies Directory</h3>
-            <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-[#1D4ED8]">
+            <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-[#0876CD]">
               {filteredParties.length} perusahaan
             </span>
           </div>
           {selectedIds.size > 0 && (
-            <span className="text-xs font-medium text-[#1D4ED8]">{selectedIds.size} dipilih</span>
+            <span className="text-xs font-medium text-[#0876CD]">{selectedIds.size} dipilih</span>
           )}
         </div>
 
@@ -673,7 +673,7 @@ export function CrmCompaniesView({
                     setDrawerParty(null);
                     openEditCompany(target);
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#1E3A8A] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#1E3A8A]"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#163D64] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#163D64]"
                 >
                   <Pencil size={13} /> Edit Company
                 </button>
@@ -725,7 +725,7 @@ export function CrmCompaniesView({
                 <button
                   type="button"
                   onClick={() => setQuickContactOpen(!quickContactOpen)}
-                  className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1 font-semibold text-[#1D4ED8] hover:bg-blue-100"
+                  className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1 font-semibold text-[#0876CD] hover:bg-blue-100"
                 >
                   <Plus size={12} /> Tambah Kontak
                 </button>
@@ -750,7 +750,7 @@ export function CrmCompaniesView({
                 </label>
                 <div className="flex justify-end gap-2">
                   <button type="button" onClick={() => setQuickContactOpen(false)} className="btn-ghost text-xs">Batal</button>
-                  <button type="button" disabled={quickContactSaving} onClick={() => void handleSaveQuickContact()} className="rounded-lg bg-[#1E3A8A] px-3 py-1.5 text-xs font-semibold text-white">
+                  <button type="button" disabled={quickContactSaving} onClick={() => void handleSaveQuickContact()} className="rounded-lg bg-[#163D64] px-3 py-1.5 text-xs font-semibold text-white">
                     {quickContactSaving ? "Menyimpan..." : "Simpan Kontak"}
                   </button>
                 </div>
@@ -775,7 +775,7 @@ export function CrmCompaniesView({
                       <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-slate-500">
                         {c.email && <span>{c.email}</span>}
                         {c.phone && <span>{c.phone}</span>}
-                        {c.primary_contact && <span className="font-semibold text-[#1D4ED8]">★ Primary</span>}
+                        {c.primary_contact && <span className="font-semibold text-[#0876CD]">★ Primary</span>}
                       </div>
                     </div>
                   );
@@ -794,7 +794,7 @@ export function CrmCompaniesView({
                 <div key={o.id} className="rounded-xl border border-slate-200 p-3">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-semibold text-slate-900">{o.opportunity_name}</span>
-                    <span className="font-bold text-[#1D4ED8]">{formatMoney(o.expected_amount)}</span>
+                    <span className="font-bold text-[#0876CD]">{formatMoney(o.expected_amount)}</span>
                   </div>
                   <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
                     <span>Stage: {o.pipeline_stage || o.status}</span>
@@ -874,7 +874,7 @@ export function CrmCompaniesView({
           </label>
           <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
             <button type="button" onClick={() => setIsCompanyModalOpen(false)} disabled={savingParty} className="btn-ghost">Batal</button>
-            <button type="button" onClick={() => void handleSaveCompany()} disabled={savingParty} className="rounded-lg bg-[#1E3A8A] px-4 py-2 text-xs font-semibold text-white hover:bg-[#1E3A8A]">
+            <button type="button" onClick={() => void handleSaveCompany()} disabled={savingParty} className="rounded-lg bg-[#163D64] px-4 py-2 text-xs font-semibold text-white hover:bg-[#163D64]">
               {savingParty ? "Menyimpan..." : editingParty ? "Simpan Perubahan" : "Simpan Company"}
             </button>
           </div>
@@ -1157,7 +1157,7 @@ export function CrmContactsView({
                 <button
                   type="button"
                   onClick={openAddContact}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#1E3A8A] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#1E3A8A]"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#163D64] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#163D64]"
                 >
                   <Plus size={14} /> Add Contact
                 </button>
@@ -1314,7 +1314,7 @@ export function CrmContactsView({
                 setDrawerContact(null);
                 openEditContact(target);
               }}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#1E3A8A] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#1E3A8A]"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#163D64] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#163D64]"
             >
               <Pencil size={13} /> Edit Contact
             </button>
@@ -1394,7 +1394,7 @@ export function CrmContactsView({
           </label>
           <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
             <button type="button" onClick={() => setIsContactModalOpen(false)} disabled={savingContact} className="btn-ghost">Batal</button>
-            <button type="button" onClick={() => void handleSaveContact()} disabled={savingContact} className="rounded-lg bg-[#1E3A8A] px-4 py-2 text-xs font-semibold text-white hover:bg-[#1E3A8A]">
+            <button type="button" onClick={() => void handleSaveContact()} disabled={savingContact} className="rounded-lg bg-[#163D64] px-4 py-2 text-xs font-semibold text-white hover:bg-[#163D64]">
               {savingContact ? "Menyimpan..." : editingContact ? "Simpan Perubahan" : "Simpan Contact"}
             </button>
           </div>
