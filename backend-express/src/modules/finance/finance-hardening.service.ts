@@ -325,7 +325,6 @@ export class FinanceHardeningService {
 
             description: `Posting WIP: ${entry.description}`,
 
-            // BENAR:
             source_document_id: sourceDocument.id,
 
             status: 'POSTED',
@@ -632,6 +631,12 @@ export class FinanceHardeningService {
       );
     }
 
+    if (!input.bank_account_id?.trim()) {
+      throw new ValidationError(
+        'bank_account_id (rekening sumber pembayaran) wajib dipilih.',
+      );
+    }
+
     if (!input.reference_number?.trim()) {
       throw new ValidationError(
         'reference_number wajib diisi.',
@@ -643,6 +648,11 @@ export class FinanceHardeningService {
         'User pembuat payment tidak valid.',
       );
     }
+
+    const paymentDate =
+      input.payment_date instanceof Date && !Number.isNaN(input.payment_date.getTime())
+        ? input.payment_date
+        : new Date();
 
     return prisma.$transaction(
       async (tx) => {
@@ -669,9 +679,6 @@ export class FinanceHardeningService {
           );
         }
 
-        // An outstanding invoice amount does not include submitted payments until
-        // they are executed. Prevent another request against the same invoice
-        // while one is pending, approved, or already posted.
         const existingAllocations = await tx.fin_payment_allocation.findMany({
           where: {
             billing_document_id: bill.id,
@@ -706,7 +713,7 @@ export class FinanceHardeningService {
           0,
         );
 
-        if (input.amount > outstanding) {
+        if (input.amount > outstanding + 0.01) {
           throw new ValidationError(
             'Jumlah payment melebihi outstanding invoice.',
           );
@@ -752,7 +759,7 @@ export class FinanceHardeningService {
             documentType: 'AP_PAYMENT',
             documentNumber: `PAY-${paymentId}`,
 
-            documentDate: input.payment_date,
+            documentDate: paymentDate,
             status: 'SUBMITTED',
           });
 
@@ -760,7 +767,6 @@ export class FinanceHardeningService {
           data: {
             id: paymentId,
 
-            // FK BENAR → core_business_document
             document_id: paymentDocument.id,
 
             tenant_id: bill.tenant_id,
@@ -772,7 +778,7 @@ export class FinanceHardeningService {
             currency_id: bill.currency_id,
 
             payment_type: 'OUTGOING',
-            payment_date: input.payment_date,
+            payment_date: paymentDate,
 
             amount: new Decimal(input.amount),
 
@@ -784,13 +790,17 @@ export class FinanceHardeningService {
 
             status: 'SUBMITTED',
 
-            allocation_plan: {},
+            allocation_plan: {
+              billing_document_id: bill.id,
+              invoice_number: bill.invoice_number,
+              allocated_amount: input.amount,
+            },
 
             submitted_by_id: userId,
             submitted_at: new Date(),
 
             execution_reference: '',
-            execution_note: input.description || '',
+            execution_note: input.description || `Pembayaran Tagihan Vendor ${bill.invoice_number}`,
             failure_reason: '',
           },
         });
@@ -873,6 +883,12 @@ export class FinanceHardeningService {
           );
         }
 
+        if (!payment.bank_account_id) {
+          throw new ValidationError(
+            'Payment belum memiliki bank_account_id yang valid.',
+          );
+        }
+
         const allocations =
           await tx.fin_payment_allocation.findMany({
             where: {
@@ -931,7 +947,7 @@ export class FinanceHardeningService {
         const bank =
           await tx.fin_bank_account.findFirst({
             where: {
-              id: payment.bank_account_id ?? '',
+              id: payment.bank_account_id,
               company_id: companyId,
               status: 'ACTIVE',
             },
@@ -975,8 +991,6 @@ export class FinanceHardeningService {
             userId,
           );
 
-        // Untuk data lama yang document_id masih NULL,
-        // service akan membuat core_business_document.
         const paymentDocument =
           await FinanceDocumentService.ensure(tx, {
             tenantId: payment.tenant_id,
@@ -1027,7 +1041,6 @@ export class FinanceHardeningService {
             description:
               `AP payment ${payment.reference_number}`,
 
-            // BENAR:
             source_document_id:
               paymentDocument.id,
 
@@ -1120,6 +1133,11 @@ export class FinanceHardeningService {
           const outstanding =
             Math.max(total - paid, 0);
 
+          const newPaymentStatus =
+            outstanding <= 0.01
+              ? 'PAID'
+              : 'PARTIALLY_PAID';
+
           await tx.fin_billing_document.update({
             where: {
               id: bill.id,
@@ -1131,10 +1149,21 @@ export class FinanceHardeningService {
               outstanding_amount:
                 new Decimal(outstanding),
 
-              payment_status:
-                outstanding <= 0.01
-                  ? 'PAID'
-                  : 'PARTIALLY_PAID',
+              payment_status: newPaymentStatus,
+            },
+          });
+
+          // Sinkronkan juga jadwal jatuh tempo (fin_ar_ap_schedule)
+          await tx.fin_ar_ap_schedule.updateMany({
+            where: {
+              billing_document_id: bill.id,
+              company_id: companyId,
+            },
+            data: {
+              paid_amount: new Decimal(paid),
+              outstanding_amount: new Decimal(outstanding),
+              status: newPaymentStatus,
+              updated_at: postingDate,
             },
           });
         }
@@ -1165,7 +1194,7 @@ export class FinanceHardeningService {
             execution_reference:
               executionReference.trim(),
 
-            payment_date: postingDate,
+            payment_date: payment.payment_date ?? postingDate,
           },
         });
       },
@@ -1211,18 +1240,22 @@ export class FinanceHardeningService {
         const clientType = isWapu ? 'WAPU' : 'NON_WAPU';
         const taxDirUpper = String(row.tax_direction || '').toUpperCase();
         const note = String(row.validation_note || '');
-        const isBupot = note.startsWith('BUPOT:');
         const taxRate = Number(row.tax_rate || 0);
-        const isPpnRow = !isBupot && (
-          taxDirUpper.includes('OUTPUT') ||
-          taxDirUpper.includes('INPUT') ||
+
+        // Baris PPN (OUTPUT / INPUT / tarif 11%) tidak boleh tertimpa menjadi PPh 23 hanya karena validation_note
+        const isExplicitPpn =
+          taxDirUpper === 'OUTPUT' ||
+          taxDirUpper === 'INPUT' ||
           taxDirUpper.includes('PPN') ||
           taxDirUpper.includes('VAT') ||
-          taxRate === 11
-        );
+          Math.abs(taxRate - 11) < 0.01;
+
+        const isBupot = !isExplicitPpn && note.startsWith('BUPOT:');
+        const isPpnRow = isExplicitPpn;
+
         const dpp = Number(row.taxable_amount || 0);
         const ppn = Number(row.tax_amount || 0);
-        const pphRate = isPpnRow ? 0 : 2.0;
+        const pphRate = isPpnRow ? 0 : (taxRate > 0 ? taxRate : 2.0);
         const pphAmount = isPpnRow ? 0 : Number(((dpp * pphRate) / 100).toFixed(2));
         const netCashInflow = isPpnRow
           ? (dpp + ppn)
@@ -1233,6 +1266,9 @@ export class FinanceHardeningService {
 
         return {
           ...row,
+          validation_note: isPpnRow && note.startsWith('BUPOT:')
+            ? `Auto-generated from posted ${bill?.billing_type || 'CUSTOMER_INVOICE'}`
+            : row.validation_note,
           invoice_number: bill?.invoice_number ?? null,
           customer_name: custName,
           project_id: bill?.project_id ?? null,

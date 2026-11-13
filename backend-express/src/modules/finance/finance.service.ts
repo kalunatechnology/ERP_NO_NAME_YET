@@ -6,10 +6,11 @@
  * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
  * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
  */
+import crypto from 'crypto';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import prisma from '../../config/database';
-import { AccountingError, NotFoundError, ValidationError } from '../../utils/errors';
+import { AccountingError, ConflictError, NotFoundError, ValidationError } from '../../utils/errors';
 import { FinanceDocumentService } from './finance-document.service';
 import { BudgetingService } from './budgeting.service';
 // NOTE: PeriodClosingService is imported lazily to avoid circular deps
@@ -17,6 +18,8 @@ import { BudgetingService } from './budgeting.service';
 
 const FINANCE_TRANSACTION_OPTIONS = { maxWait: 5_000, timeout: 30_000 } as const;
 
+// Kode COA bayangan/duplikat lama yang wajib dinonaktifkan otomatis
+const DEPRECATED_DUPLICATE_COA_CODES = ['1103', '1108', '2101', '2103', '3101', '4101'] as const;
 
 // =============================================================================
 // CHART OF ACCOUNTS - STANDARD HIERARCHICAL (1000–6000)
@@ -25,6 +28,7 @@ const FINANCE_TRANSACTION_OPTIONS = { maxWait: 5_000, timeout: 30_000 } as const
 
 export const DEFAULT_COA = [
   // 1000 - ASET
+  { code: '1101', name: 'Kas dan Rekening Bank Operasional', type: 'ASSET', balance: 'DEBIT', parent_code: null },
   { code: '1110', name: 'Kas Operasional', type: 'ASSET', balance: 'DEBIT', parent_code: null },
   { code: '1120', name: 'Bank Perusahaan', type: 'ASSET', balance: 'DEBIT', parent_code: null },
   { code: '1130', name: 'Piutang Usaha (AR)', type: 'ASSET', balance: 'DEBIT', parent_code: null },
@@ -33,6 +37,7 @@ export const DEFAULT_COA = [
   { code: '1160', name: 'Pajak Dibayar Dimuka (PPh 23 / Final)', type: 'ASSET', balance: 'DEBIT', parent_code: null },
   { code: '1161', name: 'PPN Masukan (Input VAT)', type: 'ASSET', balance: 'DEBIT', parent_code: null },
   { code: '1200', name: 'Aset Tetap (Fixed Assets)', type: 'ASSET', balance: 'DEBIT', parent_code: null },
+  { code: '1210', name: 'Akumulasi Penyusutan Aset Tetap', type: 'ASSET', balance: 'CREDIT', parent_code: null },
   // 2000 - KEWAJIBAN
   { code: '2110', name: 'Hutang Usaha (AP)', type: 'LIABILITY', balance: 'CREDIT', parent_code: null },
   { code: '2120', name: 'Hutang Pajak (PPN / PPh)', type: 'LIABILITY', balance: 'CREDIT', parent_code: null },
@@ -49,17 +54,11 @@ export const DEFAULT_COA = [
   { code: '4200', name: 'Pendapatan Lain-lain', type: 'REVENUE', balance: 'CREDIT', parent_code: null },
   // 5000 - HPP / COGS
   { code: '5100', name: 'Biaya Langsung Proyek (Direct Cost)', type: 'EXPENSE', balance: 'DEBIT', parent_code: null },
+  { code: '5101', name: 'Beban Pokok Proyek (HPP Material & Upah)', type: 'EXPENSE', balance: 'DEBIT', parent_code: null },
   // 6000 - BEBAN OPERASIONAL
   { code: '6100', name: 'Beban Gaji & SDM', type: 'EXPENSE', balance: 'DEBIT', parent_code: null },
   { code: '6200', name: 'Beban Operasional Kantor', type: 'EXPENSE', balance: 'DEBIT', parent_code: null },
 ];
-
-// =============================================================================
-// FINANCE SERVICE - ENTERPRISE GRADE
-// Mencakup: COA, Journal Posting, Computed Balance, Storno/Reversal,
-//           Internal Transfer (Cash in Transit), Banking, Reconciliation,
-//           Financial Reports (Trial Balance, P&L, Balance Sheet)
-// =============================================================================
 
 export class FinanceService {
 
@@ -67,16 +66,25 @@ export class FinanceService {
   // 1. COA & JOURNAL SETUP
   // ---------------------------------------------------------------------------
 
-/**
- * ensureStandardCOA implements a named method within this file's domain service boundary.
- *
- * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
- * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
- * Data/side effects: Reads or mutates Prisma model(s) `fin_account`; transaction boundaries are exactly those visible in the body.
- * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
- */
   static async ensureStandardCOA(companyId?: string | null, db: any = prisma) {
     const map = new Map<string, any>();
+
+    // Nonaktifkan akun duplikat warisan seeder lama jika tidak memiliki mutasi aktif
+    if (companyId) {
+      await db.fin_account.updateMany({
+        where: {
+          company_id: companyId,
+          account_code: { in: [...DEPRECATED_DUPLICATE_COA_CODES] },
+          status: 'ACTIVE',
+        },
+        data: {
+          status: 'INACTIVE',
+          allow_manual_posting: false,
+          updated_at: new Date(),
+        },
+      });
+    }
+
     for (const item of DEFAULT_COA) {
       let acc = await db.fin_account.findFirst({
         where: {
@@ -94,10 +102,15 @@ export class FinanceService {
             account_name: item.name,
             account_type: item.type,
             normal_balance: item.balance,
-            allow_manual_posting: true,
-            reconciliation_required: false,
+            allow_manual_posting: item.code !== '1210',
+            reconciliation_required: ['1101', '1110', '1120'].includes(item.code),
             status: 'ACTIVE',
           },
+        });
+      } else if (acc.status !== 'ACTIVE') {
+        acc = await db.fin_account.update({
+          where: { id: acc.id },
+          data: { status: 'ACTIVE', updated_at: new Date() },
         });
       }
       map.set(item.code, acc);
@@ -105,14 +118,6 @@ export class FinanceService {
     return map;
   }
 
-/**
- * ensureJournal implements a named method within this file's domain service boundary.
- *
- * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
- * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
- * Data/side effects: Reads or mutates Prisma model(s) `fin_journal`; transaction boundaries are exactly those visible in the body.
- * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
- */
   static async ensureJournal(companyId: string | null, code: string, name: string, type = 'GENERAL', db: any = prisma) {
     let journal = await db.fin_journal.findFirst({
       where: {
@@ -140,14 +145,6 @@ export class FinanceService {
   // 2. JOURNAL POSTING (Double-Entry Validation)
   // ---------------------------------------------------------------------------
 
-/**
- * postJournalEntry implements a named method within this file's domain service boundary.
- *
- * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
- * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
- * Data/side effects: No database operation is implied unless explicitly present in the implementation.
- * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
- */
   static async postJournalEntry(entryId: string, companyId?: string) {
     return prisma.$transaction(async (tx) => {
       const entry = await tx.fin_journal_entry.findFirst({
@@ -191,25 +188,14 @@ export class FinanceService {
 
   // ---------------------------------------------------------------------------
   // 3. COMPUTED BALANCE ENGINE
-  //    Saldo selalu dihitung dari akumulasi Debit/Kredit jurnal — TIDAK pernah
-  //    di-UPDATE secara langsung ke kolom statis.
   // ---------------------------------------------------------------------------
 
-/**
- * getAccountBalance implements a named method within this file's domain service boundary.
- *
- * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
- * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
- * Data/side effects: Reads or mutates Prisma model(s) `fin_account`, `fin_journal_entry`, `fin_journal_line`; transaction boundaries are exactly those visible in the body.
- * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
- */
-  static async getAccountBalance(accountId: string, companyId?: string | null) {
+  static async getAccountBalance(accountId: string, companyId?: string | null, projectId?: string | null) {
     const account = await prisma.fin_account.findFirst({
       where: { id: accountId, ...(companyId ? { company_id: companyId } : { company_id: null }) },
     });
     if (!account) throw new NotFoundError('Account');
 
-    // Ambil posted entry IDs dulu, lalu filter journal lines berdasarkan ID tersebut
     const postedEntries = await prisma.fin_journal_entry.findMany({
       where: { status: 'POSTED', ...(companyId ? { company_id: companyId } : { company_id: null }) },
       select: { id: true },
@@ -220,6 +206,7 @@ export class FinanceService {
       where: {
         account_id: accountId,
         ...(companyId ? { company_id: companyId } : { company_id: null }),
+        ...(projectId ? { project_id: projectId } : {}),
         journal_entry_id: { in: postedEntryIds },
       },
     });
@@ -249,20 +236,24 @@ export class FinanceService {
     };
   }
 
-/**
- * getBankAccountBalance implements a named method within this file's domain service boundary.
- *
- * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
- * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
- * Data/side effects: Reads or mutates Prisma model(s) `fin_bank_account`; transaction boundaries are exactly those visible in the body.
- * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
- */
   static async getBankAccountBalance(bankAccountId: string, companyId: string) {
-    const bankAccount = await prisma.fin_bank_account.findFirst({ where: { id: bankAccountId, company_id: companyId } });
+    const bankAccount = await prisma.fin_bank_account.findFirst({
+      where: { id: bankAccountId, company_id: companyId },
+    });
     if (!bankAccount) throw new NotFoundError('BankAccount');
 
-    if (!bankAccount.ledger_account_id) {
-      return { bank_account_id: bankAccountId, balance: 0, note: 'No ledger account linked' };
+    if (bankAccount.status !== 'ACTIVE' || !bankAccount.ledger_account_id) {
+      return {
+        bank_account_id: bankAccountId,
+        bank_name: bankAccount.bank_name,
+        account_number: bankAccount.account_number,
+        account_name: bankAccount.account_name,
+        ledger_account_id: bankAccount.ledger_account_id,
+        balance: 0,
+        total_debit: 0,
+        total_credit: 0,
+        note: bankAccount.status !== 'ACTIVE' ? 'Inactive bank account' : 'No ledger account linked',
+      };
     }
 
     const sharedBankCount = await prisma.fin_bank_account.count({
@@ -284,7 +275,7 @@ export class FinanceService {
       };
     }
 
-    // Isolate sub-ledger balance when multiple bank accounts share the same COA (e.g. 1101)
+    // Isolate sub-ledger balance when multiple active bank accounts share the same COA (e.g. 1101)
     const [openingEntries, postedPayments] = await Promise.all([
       prisma.fin_journal_entry.findMany({
         where: { company_id: companyId, status: 'POSTED', source_document_id: bankAccountId },
@@ -299,13 +290,13 @@ export class FinanceService {
     const openingEntryIds = openingEntries.map((entry) => entry.id);
     const openingLines = openingEntryIds.length > 0
       ? await prisma.fin_journal_line.findMany({
-          where: {
-            company_id: companyId,
-            account_id: bankAccount.ledger_account_id,
-            journal_entry_id: { in: openingEntryIds },
-          },
-          select: { debit_base: true, credit_base: true },
-        })
+        where: {
+          company_id: companyId,
+          account_id: bankAccount.ledger_account_id,
+          journal_entry_id: { in: openingEntryIds },
+        },
+        select: { debit_base: true, credit_base: true },
+      })
       : [];
 
     let totalDebit = 0;
@@ -363,19 +354,23 @@ export class FinanceService {
       });
       if (openingAmount > 0 && !offsetAccount) throw new ValidationError('Pilih akun sumber saldo awal yang aktif (ekuitas atau kewajiban dengan saldo normal kredit).');
 
-      const bankLedger = await tx.fin_account.create({ data: {
-        id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId,
-        parent_account_id: bankParent.id,
-        account_code: `1120-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
-        account_name: `${bankName} · ${accountNumber}`,
-        account_type: 'ASSET', normal_balance: 'DEBIT', allow_manual_posting: true,
-        reconciliation_required: true, status: 'ACTIVE',
-      } });
-      const bankAccount = await tx.fin_bank_account.create({ data: {
-        id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId,
-        ledger_account_id: bankLedger.id, bank_name: bankName, account_number: accountNumber,
-        account_name: accountName, status: 'ACTIVE',
-      } });
+      const bankLedger = await tx.fin_account.create({
+        data: {
+          id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId,
+          parent_account_id: bankParent.id,
+          account_code: `1120-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
+          account_name: `${bankName} · ${accountNumber}`,
+          account_type: 'ASSET', normal_balance: 'DEBIT', allow_manual_posting: true,
+          reconciliation_required: true, status: 'ACTIVE',
+        }
+      });
+      const bankAccount = await tx.fin_bank_account.create({
+        data: {
+          id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId,
+          ledger_account_id: bankLedger.id, bank_name: bankName, account_number: accountNumber,
+          account_name: accountName, status: 'ACTIVE',
+        }
+      });
 
       let openingJournalId: string | null = null;
       if (openingAmount > 0 && offsetAccount) {
@@ -385,18 +380,22 @@ export class FinanceService {
         const journalBook = await this.ensureJournal(companyId, 'GJ', 'General Journal', 'GENERAL', tx);
         openingJournalId = crypto.randomUUID();
         const journalEntryId = openingJournalId;
-        await tx.fin_journal_entry.create({ data: {
-          id: journalEntryId, tenant_id: tenantId, company_id: companyId, created_by_id: userId,
-          journal_id: journalBook.id, fiscal_period_id: fiscalPeriod?.id ?? null,
-          entry_number: `OPEN-BANK-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
-          posting_date: openingDate, description: `Saldo awal rekening ${bankName} ${accountNumber}`,
-          source_document_id: bankAccount.id, status: 'POSTED',
-        } });
+        await tx.fin_journal_entry.create({
+          data: {
+            id: journalEntryId, tenant_id: tenantId, company_id: companyId, created_by_id: userId,
+            journal_id: journalBook.id, fiscal_period_id: fiscalPeriod?.id ?? null,
+            entry_number: `OPEN-BANK-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+            posting_date: openingDate, description: `Saldo awal rekening ${bankName} ${accountNumber}`,
+            source_document_id: bankAccount.id, status: 'POSTED',
+          }
+        });
         const amount = new Decimal(openingAmount);
-        await tx.fin_journal_line.createMany({ data: [
-          { id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId, journal_entry_id: journalEntryId, account_id: bankLedger.id, debit_base: amount, credit_base: new Decimal(0), transaction_amount: amount },
-          { id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId, journal_entry_id: journalEntryId, account_id: offsetAccount.id, debit_base: new Decimal(0), credit_base: amount, transaction_amount: amount },
-        ] });
+        await tx.fin_journal_line.createMany({
+          data: [
+            { id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId, journal_entry_id: journalEntryId, account_id: bankLedger.id, debit_base: amount, credit_base: new Decimal(0), transaction_amount: amount },
+            { id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId, journal_entry_id: journalEntryId, account_id: offsetAccount.id, debit_base: new Decimal(0), credit_base: amount, transaction_amount: amount },
+          ]
+        });
       }
       return { bank_account: bankAccount, ledger_account: bankLedger, opening_journal_id: openingJournalId };
     }, FINANCE_TRANSACTION_OPTIONS);
@@ -404,18 +403,8 @@ export class FinanceService {
 
   // ---------------------------------------------------------------------------
   // 4. JURNAL REVERSAL / STORNO ENGINE
-  //    Pembatalan transaksi yang immutable — TIDAK menghapus data asli.
-  //    Menerbitkan jurnal pembalik yang meniadakan efek jurnal asal.
   // ---------------------------------------------------------------------------
 
-/**
- * reverseJournalEntry implements a named method within this file's domain service boundary.
- *
- * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
- * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
- * Data/side effects: No database operation is implied unless explicitly present in the implementation.
- * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
- */
   static async reverseJournalEntry(entryId: string, reason: string, reversedByUserId: string, companyId: string) {
     return prisma.$transaction(async (tx) => {
       const entry = await tx.fin_journal_entry.findFirst({ where: { id: entryId, company_id: companyId } });
@@ -426,9 +415,6 @@ export class FinanceService {
       const originalLines = await tx.fin_journal_line.findMany({ where: { journal_entry_id: entryId, company_id: companyId } });
       if (originalLines.length === 0) throw new AccountingError('Jurnal tidak memiliki baris transaksi.');
 
-      const journal = await tx.fin_journal.findUnique({ where: { id: entry.journal_id ?? '' } });
-
-      // Buat jurnal pembalik (Storno)
       const reversalEntry = await tx.fin_journal_entry.create({
         data: {
           id: crypto.randomUUID(),
@@ -448,31 +434,29 @@ export class FinanceService {
         },
       });
 
-      // Buat seluruh baris pembalik dalam satu round trip — Debit dan Kredit dibalik.
       await tx.fin_journal_line.createMany({
         data: originalLines.map((line) => ({
-            id: crypto.randomUUID(),
-            tenant_id: line.tenant_id,
-            company_id: companyId,
-            created_by_id: reversedByUserId,
-            journal_entry_id: reversalEntry.id,
-            account_id: line.account_id,
-            party_id: line.party_id,
-            project_id: line.project_id,
-            cost_center_id: line.cost_center_id,
-            department_id: line.department_id,
-            debit_base: line.credit_base,   // Debit <-> Credit dibalik
-            credit_base: line.debit_base,
-            transaction_currency_id: line.transaction_currency_id,
-            transaction_amount: line.transaction_amount,
-            due_date: line.due_date,
-            source_document_line_id: line.source_document_line_id,
+          id: crypto.randomUUID(),
+          tenant_id: line.tenant_id,
+          company_id: companyId,
+          created_by_id: reversedByUserId,
+          journal_entry_id: reversalEntry.id,
+          account_id: line.account_id,
+          party_id: line.party_id,
+          project_id: line.project_id,
+          cost_center_id: line.cost_center_id,
+          department_id: line.department_id,
+          debit_base: line.credit_base,
+          credit_base: line.debit_base,
+          transaction_currency_id: line.transaction_currency_id,
+          transaction_amount: line.transaction_amount,
+          due_date: line.due_date,
+          source_document_line_id: line.source_document_line_id,
         })),
       });
 
       await BudgetingService.reverseJournalActuals(tx, entryId, reversalEntry, reversedByUserId);
 
-      // Tandai jurnal asal sebagai REVERSED
       await tx.fin_journal_entry.update({
         where: { id: entryId },
         data: { status: 'REVERSED' },
@@ -491,16 +475,8 @@ export class FinanceService {
 
   // ---------------------------------------------------------------------------
   // 5. INTERNAL FUND TRANSFER ENGINE (via Cash in Transit - Akun 1140)
-  //    Transfer antar rekening bank internal harus melalui akun perantara 1140.
   // ---------------------------------------------------------------------------
 
-/**
- * executeInternalTransfer implements this operation using the typed arguments declared in its signature.
- *
- * @param input - Parameters declared by the function/method.
- * @returns The synchronous result or Promise produced below.
- * Database/side effects: delegates only to the visible local/imported dependencies.
- */
   static async executeInternalTransfer(payload: {
     fromBankAccountId: string;
     toBankAccountId: string;
@@ -517,8 +493,8 @@ export class FinanceService {
 
     return prisma.$transaction(async (tx) => {
       const [fromBank, toBank] = await Promise.all([
-        tx.fin_bank_account.findFirst({ where: { id: fromBankAccountId, company_id: companyId } }),
-        tx.fin_bank_account.findFirst({ where: { id: toBankAccountId, company_id: companyId } }),
+        tx.fin_bank_account.findFirst({ where: { id: fromBankAccountId, company_id: companyId, status: 'ACTIVE' } }),
+        tx.fin_bank_account.findFirst({ where: { id: toBankAccountId, company_id: companyId, status: 'ACTIVE' } }),
       ]);
       if (!fromBank) throw new NotFoundError('Bank Account Pengirim');
       if (!toBank) throw new NotFoundError('Bank Account Penerima');
@@ -532,7 +508,6 @@ export class FinanceService {
       const journal = await this.ensureJournal(companyId, 'BNK', 'Bank Journal', 'BANK', tx);
       const transferRef = referenceNumber ?? `TRF-${Date.now()}`;
 
-      // --- LANGKAH 1: Sisi Pengirim (Debit Transit, Kredit Bank Pengirim) ---
       const entryOut = await tx.fin_journal_entry.create({
         data: {
           id: crypto.randomUUID(),
@@ -574,7 +549,6 @@ export class FinanceService {
         ],
       });
 
-      // --- LANGKAH 2: Sisi Penerima (Debit Bank Penerima, Kredit Transit) ---
       const entryIn = await tx.fin_journal_entry.create({
         data: {
           id: crypto.randomUUID(),
@@ -634,13 +608,6 @@ export class FinanceService {
   // 6. BANKING: Statement Import & Reconciliation
   // ---------------------------------------------------------------------------
 
-/**
- * importBankStatement implements this operation using the typed arguments declared in its signature.
- *
- * @param input - Parameters declared by the function/method.
- * @returns The synchronous result or Promise produced below.
- * Database/side effects: uses `fin_bank_account`, `fin_bank_statement_line`, `fin_bank_reconciliation`; transaction scope is exactly the coded scope.
- */
   static async importBankStatement(bankAccountId: string, statementDate: Date, statementLines: Array<{
     transaction_date: Date;
     reference_number: string;
@@ -667,16 +634,16 @@ export class FinanceService {
       });
 
       const createdLines = statementLines.map((line) => ({
-            id: crypto.randomUUID(),
-            tenant_id: bankAccount.tenant_id,
-            company_id: companyId,
-            bank_statement_id: statement.id,
-            transaction_date: line.transaction_date,
-            reference_number: line.reference_number,
-            description: line.description,
-            debit_amount: line.debit_amount ?? 0,
-            credit_amount: line.credit_amount ?? 0,
-            running_balance: line.running_balance ?? 0,
+        id: crypto.randomUUID(),
+        tenant_id: bankAccount.tenant_id,
+        company_id: companyId,
+        bank_statement_id: statement.id,
+        transaction_date: line.transaction_date,
+        reference_number: line.reference_number,
+        description: line.description,
+        debit_amount: line.debit_amount ?? 0,
+        credit_amount: line.credit_amount ?? 0,
+        running_balance: line.running_balance ?? 0,
       }));
       if (createdLines.length) await tx.fin_bank_statement_line.createMany({ data: createdLines });
 
@@ -690,13 +657,6 @@ export class FinanceService {
     });
   }
 
-/**
- * reconcileBankTransaction implements this operation using the typed arguments declared in its signature.
- *
- * @param input - Parameters declared by the function/method.
- * @returns The synchronous result or Promise produced below.
- * Database/side effects: uses `fin_bank_statement_line`, `fin_bank_reconciliation`, `fin_account`, `fin_journal_entry`, `fin_journal_line`; transaction scope is exactly the coded scope.
- */
   static async reconcileBankTransaction(payload: {
     statementLineId: string;
     paymentId?: string;
@@ -769,17 +729,9 @@ export class FinanceService {
   }
 
   // ---------------------------------------------------------------------------
-  // 7. FINANCIAL REPORTS (Berbasis General Ledger — 100% Computed)
+  // 7. FINANCIAL REPORTS (Berbasis General Ledger — 100% Computed & Active Only)
   // ---------------------------------------------------------------------------
 
-/**
- * getTrialBalance implements a named method within this file's domain service boundary.
- *
- * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
- * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
- * Data/side effects: Reads or mutates Prisma model(s) `fin_account`, `fin_journal_entry`, `fin_journal_line`; transaction boundaries are exactly those visible in the body.
- * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
- */
   static async getTrialBalance(companyId?: string | null, endDate?: Date) {
     type TrialBalanceRow = {
       id: string; account_code: string; account_name: string; account_type: string;
@@ -788,14 +740,11 @@ export class FinanceService {
     const companyPredicate = companyId
       ? Prisma.sql`a.company_id = ${companyId}::text`
       : Prisma.sql`a.company_id IS NULL`;
-    // Trial Balance is a point-in-time balance: include every posted movement
-    // through the selected period end so opening balances are not lost.
     const postingDatePredicate = endDate
       ? Prisma.sql`je.posting_date <= ${endDate}`
       : Prisma.sql`TRUE`;
-    // A financial report must remain read-only. COA setup belongs to an explicit
-    // setup/write workflow, not to GET. Aggregate posted journal lines in SQL so
-    // the database returns one row per account in a single round trip.
+
+    // Hanya tampilkan akun yang ACTIVE atau akun yang memiliki saldo/mutasi non-nol
     const accounts = await prisma.$queryRaw<TrialBalanceRow[]>(Prisma.sql`
       SELECT a.id, a.account_code, a.account_name, a.account_type, a.normal_balance,
              COALESCE(SUM(l.debit_base) FILTER (WHERE je.status = 'POSTED' AND ${postingDatePredicate}), 0) AS total_debit,
@@ -804,6 +753,14 @@ export class FinanceService {
       LEFT JOIN fin_journal_line l ON l.account_id = a.id AND l.company_id IS NOT DISTINCT FROM a.company_id
       LEFT JOIN fin_journal_entry je ON je.id = l.journal_entry_id AND je.company_id IS NOT DISTINCT FROM a.company_id
       WHERE ${companyPredicate}
+        AND (
+          a.status = 'ACTIVE'
+          OR EXISTS (
+            SELECT 1 FROM fin_journal_line l2
+            JOIN fin_journal_entry je2 ON je2.id = l2.journal_entry_id
+            WHERE l2.account_id = a.id AND je2.status = 'POSTED'
+          )
+        )
       GROUP BY a.id, a.account_code, a.account_name, a.account_type, a.normal_balance
       ORDER BY a.account_code ASC
     `);
@@ -842,24 +799,16 @@ export class FinanceService {
     };
   }
 
-/**
- * getProfitAndLoss implements a named method within this file's domain service boundary.
- *
- * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
- * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
- * Data/side effects: Reads or mutates Prisma model(s) `fin_account`, `fin_journal_entry`, `fin_journal_line`; transaction boundaries are exactly those visible in the body.
- * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
- */
   static async getProfitAndLoss(companyId?: string | null, startDate?: Date, endDate?: Date) {
     const accounts = await prisma.fin_account.findMany({
       where: {
         ...(companyId ? { company_id: companyId } : {}),
+        status: 'ACTIVE',
         account_type: { in: ['REVENUE', 'EXPENSE'] },
       },
       orderBy: { account_code: 'asc' },
     });
 
-    // Two-step query for P&L lines
     const postingDateFilter: any = {};
     if (startDate) postingDateFilter['gte'] = startDate;
     if (endDate) postingDateFilter['lte'] = endDate;
@@ -920,24 +869,16 @@ export class FinanceService {
     };
   }
 
-/**
- * getBalanceSheet implements a named method within this file's domain service boundary.
- *
- * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
- * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
- * Data/side effects: Reads or mutates Prisma model(s) `fin_account`, `fin_journal_entry`, `fin_journal_line`; transaction boundaries are exactly those visible in the body.
- * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
- */
   static async getBalanceSheet(companyId?: string | null, asOfDate?: Date) {
     const accounts = await prisma.fin_account.findMany({
       where: {
         ...(companyId ? { company_id: companyId } : {}),
+        status: 'ACTIVE',
         account_type: { in: ['ASSET', 'LIABILITY', 'EQUITY'] },
       },
       orderBy: { account_code: 'asc' },
     });
 
-    // Two-step query for Balance Sheet
     const bsPostedEntries = await prisma.fin_journal_entry.findMany({
       where: {
         status: 'POSTED',
@@ -995,46 +936,225 @@ export class FinanceService {
   }
 
   // ---------------------------------------------------------------------------
-  // 8. BILLING DOCUMENT & TAX (existing - preserved & enhanced)
+  // 8. FUNDING PROYEK, BILLING DOCUMENT & TAX
   // ---------------------------------------------------------------------------
 
-/**
- * decideFunding implements a named method within this file's domain service boundary.
- *
- * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
- * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
- * Data/side effects: Reads or mutates Prisma model(s) `fin_project_funding`; transaction boundaries are exactly those visible in the body.
- * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
- */
-  static async decideFunding(fundingId: string, decision: string, remarks = '', userId?: string, companyId?: string) {
+  static async decideFunding(
+    fundingId: string,
+    decision: string,
+    remarks = '',
+    userId?: string,
+    companyId?: string,
+    bankAccountId?: string,
+  ) {
     const dec = decision.toUpperCase();
-    if (!['APPROVED', 'REJECTED'].includes(dec)) {
-      throw new ValidationError('Decision must be APPROVED or REJECTED.');
+    if (!['APPROVED', 'REJECTED', 'DRAWN'].includes(dec)) {
+      throw new ValidationError('Decision must be APPROVED, REJECTED, or DRAWN.');
+    }
+
+    if (dec === 'DRAWN') {
+      return this.disburseProjectFunding(fundingId, bankAccountId, remarks, userId, companyId);
     }
 
     const funding = await prisma.fin_project_funding.findFirst({
       where: { id: fundingId, ...(companyId ? { company_id: companyId } : { company_id: null }) },
-      select: { id: true },
+      select: { id: true, review_note: true },
     });
     if (!funding) throw new NotFoundError('ProjectFunding');
     return prisma.fin_project_funding.update({
       where: { id: funding.id },
       data: {
         status: dec,
-        approved_by_id: userId,
-        approved_at: new Date(),
+        approved_by_id: dec === 'APPROVED' ? userId : undefined,
+        approved_at: dec === 'APPROVED' ? new Date() : undefined,
+        rejected_by_id: dec === 'REJECTED' ? userId : undefined,
+        rejected_at: dec === 'REJECTED' ? new Date() : undefined,
+        review_note: remarks || funding.review_note,
+        updated_at: new Date(),
       },
     });
   }
 
-/**
- * postBillingDocument implements a named method within this file's domain service boundary.
- *
- * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
- * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
- * Data/side effects: No database operation is implied unless explicitly present in the implementation.
- * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
- */
+  /**
+   * Pencairan Funding Proyek (DRAWN) yang terintegrasi penuh dengan Jurnal Buku Besar
+   * (Debit 1140 Uang Muka & Cash in Transit / Kredit Bank Sumber) dan Sub-Ledger Kas/Bank.
+   */
+  static async disburseProjectFunding(
+    fundingId: string,
+    bankAccountId?: string,
+    remarks = '',
+    userId?: string,
+    companyId?: string,
+  ) {
+    const postingDate = new Date();
+
+    return prisma.$transaction(async (tx) => {
+      const funding = await tx.fin_project_funding.findFirst({
+        where: { id: fundingId, ...(companyId ? { company_id: companyId } : {}) },
+      });
+      if (!funding) throw new NotFoundError('ProjectFunding');
+
+      const existingTx = await tx.fin_project_funding_transaction.findFirst({
+        where: { project_funding_id: funding.id, company_id: funding.company_id },
+      });
+      if (funding.status === 'DRAWN' && existingTx?.journal_entry_id) {
+        return funding;
+      }
+
+      if (!['APPROVED', 'DRAWN'].includes(funding.status)) {
+        throw new ConflictError('Funding proyek harus berstatus APPROVED sebelum dicairkan (DRAWN).');
+      }
+
+      const disburseAmount = Number(funding.approved_limit ?? funding.requested_amount ?? 0);
+      if (!Number.isFinite(disburseAmount) || disburseAmount <= 0) {
+        throw new ValidationError('Nominal funding proyek yang dicairkan harus lebih dari 0.');
+      }
+
+      const targetCompanyId = funding.company_id ?? companyId ?? null;
+      if (!targetCompanyId) throw new ValidationError('Company ID tidak ditemukan pada tiket funding.');
+
+      const { PeriodClosingService } = await import('./period-closing.service');
+      await PeriodClosingService.assertPeriodOpen(postingDate, targetCompanyId);
+
+      // Cari rekening bank sumber (gunakan bankAccountId jika dikirim, atau fallback rekening operasional aktif)
+      const bank = bankAccountId
+        ? await tx.fin_bank_account.findFirst({
+          where: { id: bankAccountId, company_id: targetCompanyId, status: 'ACTIVE' },
+        })
+        : await tx.fin_bank_account.findFirst({
+          where: { company_id: targetCompanyId, status: 'ACTIVE', ledger_account_id: { not: null } },
+          orderBy: { created_at: 'asc' },
+        });
+
+      if (!bank?.ledger_account_id) {
+        throw new ValidationError('Rekening bank sumber pencairan tidak ditemukan atau belum memiliki akun COA.');
+      }
+
+      const coaMap = await this.ensureStandardCOA(targetCompanyId, tx);
+      const advanceAccount = coaMap.get('1140');
+      if (!advanceAccount) {
+        throw new AccountingError('Akun 1140 (Uang Muka & Cash in Transit) belum tersedia.');
+      }
+
+      const journal = await this.ensureJournal(targetCompanyId, 'BNK', 'Bank Journal', 'BANK', tx);
+      const refNo = `FUND-${funding.id.slice(0, 8).toUpperCase()}`;
+
+      const sourceDoc = await FinanceDocumentService.ensure(tx, {
+        tenantId: funding.tenant_id,
+        companyId: targetCompanyId,
+        userId: userId ?? funding.created_by_id ?? null,
+        existingDocumentId: funding.document_id,
+        documentType: 'PROJECT_FUNDING_DISBURSEMENT',
+        documentNumber: refNo,
+        documentDate: postingDate,
+        postingDate,
+        status: 'POSTED',
+      });
+
+      const journalEntryId = crypto.randomUUID();
+      await tx.fin_journal_entry.create({
+        data: {
+          id: journalEntryId,
+          tenant_id: funding.tenant_id,
+          company_id: targetCompanyId,
+          created_by_id: userId ?? funding.created_by_id,
+          journal_id: journal.id,
+          entry_number: `JE-${refNo}`,
+          posting_date: postingDate,
+          description: `Pencairan Funding Proyek (${refNo}): ${funding.purpose}`,
+          source_document_id: sourceDoc.id,
+          status: 'POSTED',
+        },
+      });
+
+      await tx.fin_journal_line.createMany({
+        data: [
+          {
+            id: crypto.randomUUID(),
+            tenant_id: funding.tenant_id,
+            company_id: targetCompanyId,
+            created_by_id: userId ?? funding.created_by_id,
+            journal_entry_id: journalEntryId,
+            account_id: advanceAccount.id,
+            project_id: funding.project_id,
+            debit_base: new Decimal(disburseAmount),
+            credit_base: new Decimal(0),
+            transaction_amount: new Decimal(disburseAmount),
+          },
+          {
+            id: crypto.randomUUID(),
+            tenant_id: funding.tenant_id,
+            company_id: targetCompanyId,
+            created_by_id: userId ?? funding.created_by_id,
+            journal_entry_id: journalEntryId,
+            account_id: bank.ledger_account_id,
+            project_id: funding.project_id,
+            debit_base: new Decimal(0),
+            credit_base: new Decimal(disburseAmount),
+            transaction_amount: new Decimal(disburseAmount),
+          },
+        ],
+      });
+
+      const paymentId = crypto.randomUUID();
+      await tx.fin_payment.create({
+        data: {
+          id: paymentId,
+          document_id: sourceDoc.id,
+          tenant_id: funding.tenant_id,
+          company_id: targetCompanyId,
+          created_by_id: userId ?? funding.created_by_id,
+          party_id: funding.funding_source_party_id,
+          bank_account_id: bank.id,
+          currency_id: funding.currency_id,
+          payment_type: 'OUTGOING',
+          payment_date: postingDate,
+          amount: new Decimal(disburseAmount),
+          payment_method: 'BANK_TRANSFER',
+          reference_number: refNo,
+          journal_entry_id: journalEntryId,
+          status: 'POSTED',
+          allocation_plan: { project_funding_id: funding.id, project_id: funding.project_id },
+          submitted_by_id: funding.requested_by_id ?? userId,
+          submitted_at: funding.submitted_at ?? postingDate,
+          approved_by_id: funding.approved_by_id ?? userId,
+          approved_at: funding.approved_at ?? postingDate,
+          executed_by_id: userId ?? funding.approved_by_id,
+          executed_at: postingDate,
+          execution_reference: refNo,
+          execution_note: `Pencairan Funding Proyek: ${funding.purpose}`,
+          failure_reason: '',
+        },
+      });
+
+      await tx.fin_project_funding_transaction.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenant_id: funding.tenant_id,
+          company_id: targetCompanyId,
+          created_by_id: userId ?? funding.created_by_id,
+          project_funding_id: funding.id,
+          payment_id: paymentId,
+          journal_entry_id: journalEntryId,
+          transaction_type: 'DISBURSEMENT',
+          transaction_date: postingDate,
+          amount: new Decimal(disburseAmount),
+          outstanding_balance: new Decimal(disburseAmount),
+        },
+      });
+
+      return tx.fin_project_funding.update({
+        where: { id: funding.id },
+        data: {
+          status: 'DRAWN',
+          document_id: sourceDoc.id,
+          review_note: remarks || funding.review_note,
+          updated_at: postingDate,
+        },
+      });
+    }, FINANCE_TRANSACTION_OPTIONS);
+  }
+
   static async postBillingDocument(billingId: string, userId?: string, companyId?: string) {
     return prisma.$transaction(async (tx) => {
       const doc = await tx.fin_billing_document.findFirst({
@@ -1148,10 +1268,6 @@ export class FinanceService {
 
       if (journal) {
         if (doc.billing_type === 'SUPPLIER_INVOICE') {
-          // SUPPLIER INVOICE (AP):
-          // Debit: WIP (1150) / Direct Cost (5100) = subtotal
-          // Debit: PPN Masukan (1161) or Hutang Pajak (2120) = taxAmount
-          // Credit: Hutang Usaha AP (2110) = totalAmount
           const apAccount = coaMap.get('2110');
           const costAccount = projectId
             ? coaMap.get('1150')
@@ -1228,12 +1344,11 @@ export class FinanceService {
           }
         } else {
           // CUSTOMER INVOICE (AR):
-          // Debit: Piutang Usaha AR (1130) = totalAmount
-          // Credit: Pendapatan Proyek (4100) = subtotal
-          // Credit: Hutang PPN Keluaran (2120) = taxAmount
           const arAccount = coaMap.get('1130');
           const revenueAccount = coaMap.get('4100');
           const ppnLiability = coaMap.get('2120');
+          const wipAccount = coaMap.get('1150');
+          const hppAccount = coaMap.get('5101') || coaMap.get('5100');
 
           if (arAccount && revenueAccount) {
             const entry = await tx.fin_journal_entry.create({
@@ -1301,6 +1416,52 @@ export class FinanceService {
                 },
               });
             }
+
+            // Otomatis lepas saldo Persediaan WIP (1150) proyek terkait menjadi HPP (5101) sesuai Matching Principle
+            if (doc.project_id && wipAccount && hppAccount) {
+              const wipAgg = await tx.$queryRaw<Array<{ net_wip: number }>>(Prisma.sql`
+                SELECT COALESCE(SUM(l.debit_base), 0) - COALESCE(SUM(l.credit_base), 0) AS net_wip
+                FROM fin_journal_line l
+                JOIN fin_journal_entry je ON je.id = l.journal_entry_id
+                WHERE l.company_id = ${doc.company_id}
+                  AND l.account_id = ${wipAccount.id}
+                  AND l.project_id = ${doc.project_id}
+                  AND je.status = 'POSTED'
+              `);
+              const availableProjectWip = Number(wipAgg[0]?.net_wip ?? 0);
+              if (availableProjectWip > 0) {
+                await tx.fin_journal_line.createMany({
+                  data: [
+                    {
+                      id: crypto.randomUUID(),
+                      tenant_id: doc.tenant_id,
+                      company_id: doc.company_id,
+                      created_by_id: userId,
+                      journal_entry_id: entry.id,
+                      account_id: hppAccount.id,
+                      project_id: doc.project_id,
+                      party_id: doc.party_id,
+                      debit_base: new Decimal(availableProjectWip),
+                      credit_base: new Decimal(0),
+                      transaction_amount: new Decimal(availableProjectWip),
+                    },
+                    {
+                      id: crypto.randomUUID(),
+                      tenant_id: doc.tenant_id,
+                      company_id: doc.company_id,
+                      created_by_id: userId,
+                      journal_entry_id: entry.id,
+                      account_id: wipAccount.id,
+                      project_id: doc.project_id,
+                      party_id: doc.party_id,
+                      debit_base: new Decimal(0),
+                      credit_base: new Decimal(availableProjectWip),
+                      transaction_amount: new Decimal(availableProjectWip),
+                    },
+                  ],
+                });
+              }
+            }
           }
         }
       }
@@ -1311,8 +1472,6 @@ export class FinanceService {
           : null;
         if (projectId && !linkedProject) throw new ValidationError('Proyek pada invoice vendor tidak valid untuk perusahaan ini.');
 
-        // A posted supplier invoice is the cost source. Record one WIP entry here and
-        // link it to the AP journal; do not ask Finance to post the same cost again.
         if (linkedProject && subtotal > 0) {
           const existingCost = await tx.fin_project_cost_entry.findFirst({
             where: { company_id: doc.company_id, source_type: 'SUPPLIER_INVOICE', source_reference: doc.id },
@@ -1320,21 +1479,21 @@ export class FinanceService {
           });
           if (!existingCost) {
             const now = new Date();
-            await tx.fin_project_cost_entry.create({ data: {
-              id: crypto.randomUUID(), tenant_id: doc.tenant_id, company_id: doc.company_id, project_id: linkedProject.id,
-              source_type: 'SUPPLIER_INVOICE', source_reference: doc.id,
-              description: `Invoice vendor ${doc.invoice_number}`, cost_element: 'MATERIAL',
-              transaction_date: doc.invoice_date ?? now, quantity: 1, unit_cost: subtotal, total_cost: subtotal,
-              status: 'POSTED_TO_WIP', validation_note: 'WIP tercatat otomatis dari invoice vendor yang diposting.',
-              created_by_id: userId ?? doc.created_by_id, validated_by_id: userId ?? null, validated_at: now,
-              posted_by_id: userId ?? null, posted_at: doc.posting_date ?? now, journal_entry_id: postedJournalEntryId,
-              created_at: now, updated_at: now,
-            } });
+            await tx.fin_project_cost_entry.create({
+              data: {
+                id: crypto.randomUUID(), tenant_id: doc.tenant_id, company_id: doc.company_id, project_id: linkedProject.id,
+                source_type: 'SUPPLIER_INVOICE', source_reference: doc.id,
+                description: `Invoice vendor ${doc.invoice_number}`, cost_element: 'MATERIAL',
+                transaction_date: doc.invoice_date ?? now, quantity: 1, unit_cost: subtotal, total_cost: subtotal,
+                status: 'POSTED_TO_WIP', validation_note: 'WIP tercatat otomatis dari invoice vendor yang diposting.',
+                created_by_id: userId ?? doc.created_by_id, validated_by_id: userId ?? null, validated_at: now,
+                posted_by_id: userId ?? null, posted_at: doc.posting_date ?? now, journal_entry_id: postedJournalEntryId,
+                created_at: now, updated_at: now,
+              }
+            });
           }
         }
 
-        // Convert any invoice commitments to actual exactly once when the AP accrual
-        // posts. Payment later clears AP and must not create a second project cost.
         const invoiceIds = [...new Set([doc.id, doc.document_id].filter((id): id is string => Boolean(id)))];
         const pendingReservations = await tx.fin_budget_reservation.findMany({
           where: { company_id: doc.company_id, source_type: 'INVOICE', source_id: { in: invoiceIds }, status: 'PENDING_APPROVAL' },
@@ -1358,22 +1517,25 @@ export class FinanceService {
             const reserved = Number(reservation.remaining_amount);
             const recognized = Math.min(reserved, actualRemaining);
             actualRemaining = Math.max(0, actualRemaining - recognized);
-            await tx.fin_budget_ledger.create({ data: {
-              id: crypto.randomUUID(), tenant_id: reservation.tenant_id, company_id: doc.company_id,
-              budget_id: reservation.budget_id, allocation_id: reservation.allocation_id, fiscal_period_id: reservation.fiscal_period_id,
-              source_type: 'BILLING_DOCUMENT', source_id: doc.id, source_line_id: reservation.source_line_id,
-              entry_type: 'INVOICE_RECOGNITION', committed_delta: -reserved, actual_delta: recognized,
-              description: `Pengakuan biaya dari invoice ${doc.invoice_number}`,
-              idempotency_key: `BUDGET_INVOICE_POST:${doc.id}:${reservation.id}`, posted_by_id: userId ?? null,
-            } });
-            await tx.fin_budget_reservation.update({ where: { id: reservation.id }, data: {
-              remaining_amount: 0, status: recognized > 0 ? 'RECOGNIZED' : 'RELEASED',
-            } });
+            await tx.fin_budget_ledger.create({
+              data: {
+                id: crypto.randomUUID(), tenant_id: reservation.tenant_id, company_id: doc.company_id,
+                budget_id: reservation.budget_id, allocation_id: reservation.allocation_id, fiscal_period_id: reservation.fiscal_period_id,
+                source_type: 'BILLING_DOCUMENT', source_id: doc.id, source_line_id: reservation.source_line_id,
+                entry_type: 'INVOICE_RECOGNITION', committed_delta: -reserved, actual_delta: recognized,
+                description: `Pengakuan biaya dari invoice ${doc.invoice_number}`,
+                idempotency_key: `BUDGET_INVOICE_POST:${doc.id}:${reservation.id}`, posted_by_id: userId ?? null,
+              }
+            });
+            await tx.fin_budget_reservation.update({
+              where: { id: reservation.id }, data: {
+                remaining_amount: 0, status: recognized > 0 ? 'RECOGNIZED' : 'RELEASED',
+              }
+            });
           }
         }
       }
 
-      // Pastikan jadwal jatuh tempo (AR/AP Schedule) tercipta
       const existingSchedule = await tx.fin_ar_ap_schedule.findFirst({
         where: { billing_document_id: doc.id, company_id: doc.company_id },
       });
@@ -1406,14 +1568,6 @@ export class FinanceService {
     }, FINANCE_TRANSACTION_OPTIONS);
   }
 
-/**
- * getTaxSummary implements a named method within this file's domain service boundary.
- *
- * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
- * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
- * Data/side effects: Reads or mutates Prisma model(s) `fin_tax_transaction`, `fin_account`; transaction boundaries are exactly those visible in the body.
- * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
- */
   static async getTaxSummary(companyId?: string | null) {
     const where = companyId ? { company_id: companyId } : { company_id: null };
     const [groups, taxTxs] = await Promise.all([
@@ -1449,52 +1603,41 @@ export class FinanceService {
   }
 
   // ---------------------------------------------------------------------------
-  // WIP CAPITALIZATION ENGINE (Fase 3)
-  //    Pindahkan biaya proyek dari akun WIP (1108) ke COGS/HPP (5100)
-  //    Dengan guard: nominal tidak boleh melebihi saldo aktual WIP
-  //    Cost Overrun dialokasikan ke fin_cost_variance, bukan mengendap di WIP
+  // WIP CAPITALIZATION ENGINE (Per Proyek — Fase 3)
   // ---------------------------------------------------------------------------
 
-/**
- * capitalizeProjectWIP implements this operation using the typed arguments declared in its signature.
- *
- * @param input - Parameters declared by the function/method.
- * @returns The synchronous result or Promise produced below.
- * Database/side effects: uses `fin_account`; transaction scope is exactly the coded scope.
- */
   static async capitalizeProjectWIP(
-    projectId:   string,
-    amount:      number,
+    projectId: string,
+    amount: number,
     description: string,
-    userId:      string,
-    companyId?:  string | null,
+    userId: string,
+    companyId?: string | null,
   ) {
     const project = await prisma.project_project.findFirst({
       where: { id: projectId, ...(companyId ? { company_id: companyId } : { company_id: null }) },
       select: { id: true, tenant_id: true, company_id: true },
     });
     if (!project) throw new NotFoundError('Project');
-    // Period Guard
     const { PeriodClosingService } = await import('./period-closing.service');
     await PeriodClosingService.assertPeriodOpen(new Date(), companyId ?? null);
 
-    const coaMap    = await this.ensureStandardCOA(companyId);
+    const coaMap = await this.ensureStandardCOA(companyId);
     const wipAccount = await prisma.fin_account.findFirst({
-      where: { account_code: '1150', ...(companyId ? { company_id: companyId } : {}) },
+      where: { account_code: '1150', status: 'ACTIVE', ...(companyId ? { company_id: companyId } : {}) },
     }) ?? coaMap.get('1150');
-    const cogsAccount = coaMap.get('5100');
+    const cogsAccount = coaMap.get('5101') ?? coaMap.get('5100');
 
     if (!wipAccount || !cogsAccount) {
-      throw new AccountingError('Akun WIP (1150) atau COGS (5100) tidak ditemukan. Jalankan setup-standard COA.');
+      throw new AccountingError('Akun WIP (1150) atau HPP/COGS (5101/5100) tidak ditemukan. Jalankan setup-standard COA.');
     }
 
-    // Hitung saldo aktual WIP dari GL (Hybrid Balance)
-    const wipBalanceData = await this.getAccountBalance(wipAccount.id, companyId);
+    // Hitung saldo aktual WIP khusus untuk projectId ini (bukan seluruh perusahaan)
+    const wipBalanceData = await this.getAccountBalance(wipAccount.id, companyId, projectId);
     const actualWIPBalance = wipBalanceData.net_balance;
 
     // ==== WIP OVER-CAPITALIZATION GUARD ====
     const capitalizeAmount = Math.min(amount, actualWIPBalance);
-    const overrunAmount    = amount - capitalizeAmount;
+    const overrunAmount = amount - capitalizeAmount;
 
     if (capitalizeAmount <= 0) {
       throw new AccountingError(
@@ -1530,65 +1673,65 @@ export class FinanceService {
 
       await tx.fin_journal_entry.create({
         data: {
-          id:           entryId,
-          tenant_id:    project.tenant_id,
-          company_id:   project.company_id,
+          id: entryId,
+          tenant_id: project.tenant_id,
+          company_id: project.company_id,
           created_by_id: userId,
-          journal_id:   journal?.id ?? null,
+          journal_id: journal?.id ?? null,
           entry_number: capitalizationReference,
-          description:  description || `Kapitalisasi WIP Proyek ${projectId}`,
-          status:       'POSTED',
+          description: description || `Kapitalisasi WIP ke HPP Proyek ${projectId}`,
+          status: 'POSTED',
           posting_date: new Date(),
           source_document_id: sourceDocument.id,
         },
       });
 
-      // Debit COGS 5100 (pengakuan biaya langsung proyek)
+      // Debit HPP/COGS 5101 (pengakuan beban pokok proyek)
       await tx.fin_journal_line.create({
         data: {
-          id:               crypto.randomUUID(),
-          tenant_id:        project.tenant_id,
-          company_id:       project.company_id,
-          created_by_id:    userId,
+          id: crypto.randomUUID(),
+          tenant_id: project.tenant_id,
+          company_id: project.company_id,
+          created_by_id: userId,
           journal_entry_id: entryId,
-          account_id:       cogsAccount.id,
-          project_id:       projectId,
-          debit_base:       new Decimal(capitalizeAmount),
-          credit_base:      null,
+          account_id: cogsAccount.id,
+          project_id: projectId,
+          debit_base: new Decimal(capitalizeAmount),
+          credit_base: new Decimal(0),
+          transaction_amount: new Decimal(capitalizeAmount),
         },
       });
 
       // Credit WIP 1150 (mengurangi saldo WIP)
       await tx.fin_journal_line.create({
         data: {
-          id:               crypto.randomUUID(),
-          tenant_id:        project.tenant_id,
-          company_id:       project.company_id,
-          created_by_id:    userId,
+          id: crypto.randomUUID(),
+          tenant_id: project.tenant_id,
+          company_id: project.company_id,
+          created_by_id: userId,
           journal_entry_id: entryId,
-          account_id:       wipAccount.id,
-          project_id:       projectId,
-          debit_base:       null,
-          credit_base:      new Decimal(capitalizeAmount),
+          account_id: wipAccount.id,
+          project_id: projectId,
+          debit_base: new Decimal(0),
+          credit_base: new Decimal(capitalizeAmount),
+          transaction_amount: new Decimal(capitalizeAmount),
         },
       });
 
-      // ==== COST OVERRUN ALLOCATION ====
-      // Jika ada kelebihan biaya, catat ke fin_cost_variance (bukan mengendap di WIP)
       let costVarianceId: string | null = null;
       if (overrunAmount > 0) {
         const variance = await tx.fin_cost_variance.create({
           data: {
-            id:              crypto.randomUUID(),
-            tenant_id:       project.tenant_id,
-            company_id:      project.company_id,
-            created_by_id:   userId,
-            project_id:      projectId,
-            ideal_amount:    new Decimal(actualWIPBalance),
-            actual_amount:   new Decimal(amount),
+            id: crypto.randomUUID(),
+            tenant_id: project.tenant_id,
+            company_id: project.company_id,
+            created_by_id: userId,
+            project_id: projectId,
+            ideal_amount: new Decimal(actualWIPBalance),
+            actual_amount: new Decimal(amount),
             variance_amount: new Decimal(overrunAmount),
             variance_percent: new Decimal((overrunAmount / Math.max(actualWIPBalance, 1)) * 100),
-            calculated_at:   new Date(),
+            calculated_at: new Date(),
           },
         }).catch(() => null);
         costVarianceId = variance?.id ?? null;
@@ -1598,40 +1741,35 @@ export class FinanceService {
     }, FINANCE_TRANSACTION_OPTIONS);
 
     return {
-      project_id:            projectId,
-      capitalized_amount:    capitalizeAmount,
-      cost_overrun_amount:   overrunAmount,
-      actual_wip_balance:    actualWIPBalance,
-      journal_entry_id:      result.entryId,
-      cost_variance_id:      result.costVarianceId,
-      has_cost_overrun:      overrunAmount > 0,
-      capitalized_by:        userId,
-      capitalized_at:        new Date(),
+      project_id: projectId,
+      capitalized_amount: capitalizeAmount,
+      cost_overrun_amount: overrunAmount,
+      actual_wip_balance: actualWIPBalance,
+      journal_entry_id: result.entryId,
+      cost_variance_id: result.costVarianceId,
+      has_cost_overrun: overrunAmount > 0,
+      capitalized_by: userId,
+      capitalized_at: new Date(),
     };
   }
 
   // ---------------------------------------------------------------------------
-  // NTPN RECORDING (Tax Compliance — Fase 3)
-  //    Validasi dan catat Nomor Transaksi Penerimaan Negara untuk pajak
+  // NTPN & BUPOT RECORDING (Tax Compliance — Fase 3)
   // ---------------------------------------------------------------------------
 
-/**
- * recordNTPN implements this operation using the typed arguments declared in its signature.
- *
- * @param input - Parameters declared by the function/method.
- * @returns The synchronous result or Promise produced below.
- * Database/side effects: uses `fin_tax_transaction`, `fin_bank_account`, `fin_bank_statement`; transaction scope is exactly the coded scope.
- */
   static async recordBupot(
-    taxTxId:      string,
-    bupotNumber:  string,
-    bupotDate:    Date,
-    taxType:      string,
-    notes:        string,
-    companyId:    string,
+    taxTxId: string,
+    bupotNumber: string,
+    bupotDate: Date,
+    taxType: string,
+    notes: string,
+    companyId: string,
   ) {
     const taxTx = await prisma.fin_tax_transaction.findFirst({ where: { id: taxTxId, company_id: companyId } });
     if (!taxTx) throw new NotFoundError('TaxTransaction');
+    if (String(taxTx.tax_direction || '').toUpperCase() === 'OUTPUT' && Math.abs(Number(taxTx.tax_rate || 0) - 11) < 0.01) {
+      throw new ValidationError('Transaksi PPN Keluaran 11% tidak dapat ditimpa dengan bukti potong PPh 23. Gunakan fitur rekam NTPN e-Faktur.');
+    }
     const updated = await prisma.fin_tax_transaction.update({
       where: { id: taxTxId },
       data: {
@@ -1644,11 +1782,11 @@ export class FinanceService {
   }
 
   static async recordNTPN(
-    taxTxId:      string,
-    ntpn:         string,
-    paymentRef:   string,
-    paidAt:       Date,
-    companyId:    string,
+    taxTxId: string,
+    ntpn: string,
+    paymentRef: string,
+    paidAt: Date,
+    companyId: string,
   ) {
     const taxTx = await prisma.fin_tax_transaction.findFirst({ where: { id: taxTxId, company_id: companyId } });
     if (!taxTx) throw new NotFoundError('TaxTransaction');
@@ -1663,40 +1801,33 @@ export class FinanceService {
       data: {
         ntpn,
         payment_reference: paymentRef,
-        paid_at:           paidAt,
-        status:            'PAID',
-        validated_at:      new Date(),
+        paid_at: paidAt,
+        status: 'PAID',
+        validated_at: new Date(),
       },
     });
 
     return {
       tax_transaction_id: taxTxId,
       ntpn,
-      payment_reference:  paymentRef,
-      paid_at:            paidAt,
-      status:             'PAID',
-      tax_amount:         updated.tax_amount,
-      tax_direction:      updated.tax_direction,
-      recorded_at:        new Date(),
+      payment_reference: paymentRef,
+      paid_at: paidAt,
+      status: 'PAID',
+      tax_amount: updated.tax_amount,
+      tax_direction: updated.tax_direction,
+      recorded_at: new Date(),
     };
   }
 
   // ---------------------------------------------------------------------------
-  // AUTO-IMPORT STATEMENT CSV & AUTO-MATCHING (Perbankan Tanpa Lisensi Mahal)
+  // AUTO-IMPORT STATEMENT CSV & AUTO-MATCHING
   // ---------------------------------------------------------------------------
 
-/**
- * importBankStatementCSV implements this operation using the typed arguments declared in its signature.
- *
- * @param input - Parameters declared by the function/method.
- * @returns The synchronous result or Promise produced below.
- * Database/side effects: uses `fin_bank_account`, `fin_bank_statement`; transaction scope is exactly the coded scope.
- */
   static async importBankStatementCSV(params: {
     bankAccountId: string;
-    csvContent:    string;
-    companyId?:    string | null;
-    userId?:       string;
+    csvContent: string;
+    companyId?: string | null;
+    userId?: string;
   }) {
     const { bankAccountId, csvContent, companyId, userId } = params;
 
@@ -1714,8 +1845,6 @@ export class FinanceService {
       throw new ValidationError('File CSV kosong atau tidak memiliki baris transaksi.');
     }
 
-    // Identifikasi header baris pertama
-    const headerLine = lines[0].toLowerCase();
     const rows = lines.slice(1);
 
     const statementId = crypto.randomUUID();
@@ -1734,40 +1863,16 @@ export class FinanceService {
       const cols = row.includes(';') ? row.split(';') : row.split(',');
       if (cols.length < 3) continue;
 
-      let dateStr = cols[0].replace(/['"]/g, '').trim();
-/**
- * descStr implements a named function within this file's domain service boundary.
- *
- * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
- * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
- * Data/side effects: No database operation is implied unless explicitly present in the implementation.
- * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
- */
-      let descStr = (cols[1] || 'Transaksi Bank').replace(/['"]/g, '').trim();
-/**
- * amountRaw implements a named function within this file's domain service boundary.
- *
- * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
- * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
- * Data/side effects: No database operation is implied unless explicitly present in the implementation.
- * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
- */
-      let amountRaw = (cols[2] || '0').replace(/['"]/g, '').trim();
-/**
- * typeRaw implements a named function within this file's domain service boundary.
- *
- * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
- * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
- * Data/side effects: Reads or mutates Prisma model(s) `fin_payment`, `fin_bank_statement_line`; transaction boundaries are exactly those visible in the body.
- * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
- */
-      let typeRaw = (cols[3] || '').replace(/['"]/g, '').trim().toUpperCase();
+      const dateStr = cols[0].replace(/['"]/g, '').trim();
+      const descStr = (cols[1] || 'Transaksi Bank').replace(/['"]/g, '').trim();
+      const amountRaw = (cols[2] || '0').replace(/['"]/g, '').trim();
+      const typeRaw = (cols[3] || '').replace(/['"]/g, '').trim().toUpperCase();
 
       let cleanAmount = amountRaw
         .replace(/rp/gi, '')
         .replace(/\s/g, '');
 
-      let isNegative = cleanAmount.includes('-') || typeRaw === 'DB' || typeRaw === 'D' || typeRaw === 'DEBET';
+      const isNegative = cleanAmount.includes('-') || typeRaw === 'DB' || typeRaw === 'D' || typeRaw === 'DEBET';
       cleanAmount = cleanAmount.replace(/-/g, '');
 
       if (cleanAmount.includes('.') && cleanAmount.includes(',')) {
@@ -1798,18 +1903,18 @@ export class FinanceService {
 
       const lineId = crypto.randomUUID();
       importedLines.push({
-          id:                 lineId,
-          tenant_id:          bankAcc.tenant_id,
-          company_id:         bankAcc.company_id,
-          created_by_id:      userId,
-          bank_statement_id:  statementId,
-          transaction_date:   isNaN(txDate.getTime()) ? now : txDate,
-          reference_number:   `REF-${lineId.slice(-6)}`,
-          description:        descStr,
-          debit_amount:       isNegative ? new Decimal(numAmount) : new Decimal(0),
-          credit_amount:      !isNegative ? new Decimal(numAmount) : new Decimal(0),
-          running_balance:    new Decimal(0),
-          matchAmount:        numAmount,
+        id: lineId,
+        tenant_id: bankAcc.tenant_id,
+        company_id: bankAcc.company_id,
+        created_by_id: userId,
+        bank_statement_id: statementId,
+        transaction_date: isNaN(txDate.getTime()) ? now : txDate,
+        reference_number: `REF-${lineId.slice(-6)}`,
+        description: descStr,
+        debit_amount: isNegative ? new Decimal(numAmount) : new Decimal(0),
+        credit_amount: !isNegative ? new Decimal(numAmount) : new Decimal(0),
+        running_balance: new Decimal(0),
+        matchAmount: numAmount,
       });
     }
 
@@ -1830,13 +1935,14 @@ export class FinanceService {
     const uniqueAmounts = [...new Set(importedLines.map((line) => line.matchAmount))];
     const matchedPayments = uniqueAmounts.length
       ? await prisma.fin_payment.findMany({
-          where: {
-            amount: { in: uniqueAmounts.map((amount) => new Decimal(amount)) },
-            status: { in: ['POSTED', 'PAID', 'PENDING'] },
-            ...(companyId ? { company_id: companyId } : { company_id: null }),
-          },
-          select: { amount: true },
-        }).catch(() => [])
+        where: {
+          bank_account_id: bankAccountId,
+          amount: { in: uniqueAmounts.map((amount) => new Decimal(amount)) },
+          status: { in: ['POSTED', 'PAID', 'PENDING'] },
+          ...(companyId ? { company_id: companyId } : { company_id: null }),
+        },
+        select: { amount: true },
+      }).catch(() => [])
       : [];
     const matchedAmounts = new Set(matchedPayments.map((payment) => Number(payment.amount)));
     const matchedCount = importedLines.filter((line) => matchedAmounts.has(line.matchAmount)).length;
@@ -1848,39 +1954,30 @@ export class FinanceService {
     const importedCount = importedLines.length;
 
     return {
-      statement_id:         statementId,
-      statement_number:     statementNumber,
-      total_rows_imported:  importedCount,
-      auto_matched_count:   matchedCount,
-      unmatched_count:      importedCount - matchedCount,
-      total_inflow:         totalInflow,
-      total_outflow:        totalOutflow,
-      imported_at:          now,
+      statement_id: statementId,
+      statement_number: statementNumber,
+      total_rows_imported: importedCount,
+      auto_matched_count: matchedCount,
+      unmatched_count: importedCount - matchedCount,
+      total_inflow: totalInflow,
+      total_outflow: totalOutflow,
+      imported_at: now,
     };
   }
 
   // ---------------------------------------------------------------------------
-  // EXECUTIVE GOVERNANCE & FINANCIAL AUDIT REPORT (Satu Lembar Direksi)
+  // EXECUTIVE GOVERNANCE & FINANCIAL AUDIT REPORT
   // ---------------------------------------------------------------------------
 
-/**
- * getExecutiveAuditReport implements a named method within this file's domain service boundary.
- *
- * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
- * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
- * Data/side effects: Reads or mutates Prisma model(s) `core_audit_event`; transaction boundaries are exactly those visible in the body.
- * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
- */
   static async getExecutiveAuditReport(companyId?: string | null, year?: number, rangeStart?: Date, rangeEnd?: Date) {
     const targetYear = year || new Date().getFullYear();
     const startDate = rangeStart ?? new Date(Date.UTC(targetYear, 0, 1));
     const endDate = rangeEnd ?? new Date(Date.UTC(targetYear, 11, 31, 23, 59, 59, 999));
 
-    // 1. Agregat Fund Requests & LPJ
     const fundAuditLogs = await prisma.core_audit_event.findMany({
       where: {
         entity_name: 'core_internal_request',
-        event_type:  'CREATE_REQUEST',
+        event_type: 'CREATE_REQUEST',
         occurred_at: { gte: startDate, lte: endDate },
         ...(companyId ? { company_id: companyId } : {}),
       },
@@ -1894,14 +1991,6 @@ export class FinanceService {
     let countLPJClosed = 0;
 
     for (const log of fundAuditLogs) {
-/**
- * p implements a named function within this file's domain service boundary.
- *
- * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
- * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
- * Data/side effects: Reads or mutates Prisma model(s) `fin_cost_variance`, `fin_journal_entry`, `fin_fiscal_period`; transaction boundaries are exactly those visible in the body.
- * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
- */
       const p = (log.after_data as any) || {};
       if (p.request_type === 'FUND_REQUEST' || p.amount) {
         countFund++;
@@ -1920,7 +2009,6 @@ export class FinanceService {
       }
     }
 
-    // 2. Budget Variance Proyek
     const costVariances = await prisma.fin_cost_variance.findMany({
       where: {
         calculated_at: { gte: startDate, lte: endDate },
@@ -1929,24 +2017,22 @@ export class FinanceService {
       take: 10,
     }).catch(() => []);
 
-    // 3. Jurnal Transaksi
     const journalEntries = await prisma.fin_journal_entry.findMany({
       where: {
         posting_date: { gte: startDate, lte: endDate },
         ...(companyId ? { company_id: companyId } : { company_id: null }),
       },
       select: {
-        id:                    true,
-        entry_number:          true,
-        posting_date:          true,
-        description:           true,
-        reversal_of_entry_id:  true,
+        id: true,
+        entry_number: true,
+        posting_date: true,
+        description: true,
+        reversal_of_entry_id: true,
       },
       orderBy: { posting_date: 'desc' },
       take: 30,
     }).catch(() => []);
 
-    // 4. Status Periode Tutup Buku
     const closedPeriods = await prisma.fin_fiscal_period.findMany({
       where: {
         status: { in: ['CLOSED', 'LOCKED'] },
@@ -1958,38 +2044,38 @@ export class FinanceService {
     }).catch(() => []);
 
     return {
-      year:               targetYear,
-      start_date:         startDate,
-      end_date:           endDate,
-      company_id:         companyId,
-      generated_at:       new Date(),
+      year: targetYear,
+      start_date: startDate,
+      end_date: endDate,
+      company_id: companyId,
+      generated_at: new Date(),
       fund_summary: {
-        total_requests:    countFund,
-        total_requested:   totalFundRequested,
-        disbursed_count:   countDisbursed,
-        total_disbursed:   totalFundDisbursed,
-        lpj_closed_count:  countLPJClosed,
+        total_requests: countFund,
+        total_requested: totalFundRequested,
+        disbursed_count: countDisbursed,
+        total_disbursed: totalFundDisbursed,
+        lpj_closed_count: countLPJClosed,
         total_realization: totalLPJRealization,
         lpj_compliance_rate: countDisbursed > 0 ? Math.round((countLPJClosed / countDisbursed) * 100) : 100,
       },
-      budget_variance:     costVariances,
+      budget_variance: costVariances,
       critical_transactions: journalEntries.map(j => ({
-        id:           j.id,
+        id: j.id,
         entry_number: j.entry_number,
-        date:         j.posting_date,
-        description:  j.description,
-        is_reversal:  Boolean(j.reversal_of_entry_id),
+        date: j.posting_date,
+        description: j.description,
+        is_reversal: Boolean(j.reversal_of_entry_id),
       })),
-      adjustments:         journalEntries.filter(j => 
-        Boolean(j.reversal_of_entry_id) || 
-        j.description.toLowerCase().includes('penyesuaian') || 
+      adjustments: journalEntries.filter(j =>
+        Boolean(j.reversal_of_entry_id) ||
+        j.description.toLowerCase().includes('penyesuaian') ||
         j.description.toLowerCase().includes('koreksi')
       ).map(a => ({
-        id:           a.id,
+        id: a.id,
         entry_number: a.entry_number,
-        date:         a.posting_date,
-        description:  a.description,
-        is_reversal:  Boolean(a.reversal_of_entry_id),
+        date: a.posting_date,
+        description: a.description,
+        is_reversal: Boolean(a.reversal_of_entry_id),
       })),
       closed_periods_count: closedPeriods.length,
     };
