@@ -265,17 +265,67 @@ export class FinanceService {
       return { bank_account_id: bankAccountId, balance: 0, note: 'No ledger account linked' };
     }
 
-    const balanceData = await this.getAccountBalance(bankAccount.ledger_account_id, bankAccount.company_id);
+    const sharedBankCount = await prisma.fin_bank_account.count({
+      where: { company_id: companyId, ledger_account_id: bankAccount.ledger_account_id, status: 'ACTIVE' },
+    });
+
+    if (sharedBankCount <= 1) {
+      const balanceData = await this.getAccountBalance(bankAccount.ledger_account_id, bankAccount.company_id);
+      return {
+        bank_account_id: bankAccountId,
+        bank_name: bankAccount.bank_name,
+        account_number: bankAccount.account_number,
+        account_name: bankAccount.account_name,
+        ledger_account_id: bankAccount.ledger_account_id,
+        balance: balanceData.net_balance,
+        total_debit: balanceData.total_debit,
+        total_credit: balanceData.total_credit,
+        computed_at: balanceData.computed_at,
+      };
+    }
+
+    // Isolate sub-ledger balance when multiple bank accounts share the same COA (e.g. 1101)
+    const [openingLines, postedPayments] = await Promise.all([
+      prisma.fin_journal_line.findMany({
+        where: {
+          company_id: companyId,
+          account_id: bankAccount.ledger_account_id,
+          journal_entry: { status: 'POSTED', source_document_id: bankAccountId },
+        },
+        select: { debit_base: true, credit_base: true },
+      }),
+      prisma.fin_payment.findMany({
+        where: { company_id: companyId, bank_account_id: bankAccountId, status: 'POSTED' },
+        select: { payment_type: true, amount: true },
+      }),
+    ]);
+
+    let totalDebit = 0;
+    let totalCredit = 0;
+    for (const line of openingLines) {
+      totalDebit += Number(line.debit_base ?? 0);
+      totalCredit += Number(line.credit_base ?? 0);
+    }
+    for (const p of postedPayments) {
+      const amt = Number(p.amount ?? 0);
+      if (String(p.payment_type || '').toUpperCase() === 'CUSTOMER_RECEIPT') {
+        totalDebit += amt;
+      } else {
+        totalCredit += amt;
+      }
+    }
+
     return {
       bank_account_id: bankAccountId,
       bank_name: bankAccount.bank_name,
       account_number: bankAccount.account_number,
       account_name: bankAccount.account_name,
       ledger_account_id: bankAccount.ledger_account_id,
-      balance: balanceData.net_balance,
-      total_debit: balanceData.total_debit,
-      total_credit: balanceData.total_credit,
-      computed_at: balanceData.computed_at,
+      balance: Number((totalDebit - totalCredit).toFixed(2)),
+      total_debit: Number(totalDebit.toFixed(2)),
+      total_credit: Number(totalCredit.toFixed(2)),
+      is_isolated_subledger: true,
+      computed_at: new Date(),
     };
   }
 

@@ -6,9 +6,12 @@
  * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
  * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
  */
+import crypto from 'crypto';
 import { Router, Request, Response, NextFunction } from 'express';
+import { Prisma } from '@prisma/client';
 import prisma from '../../config/database';
 import { FinanceService } from './finance.service';
+import { FinanceDocumentService } from './finance-document.service';
 import { FinanceHardeningService } from './finance-hardening.service';
 import { PeriodClosingService } from './period-closing.service';
 import { AuditService } from '../core/audit.service';
@@ -645,18 +648,136 @@ financeRouter.post('/project-fundings/:id/decide', async (req: Request, res: Res
  */
 financeRouter.post('/project-fundings/:id/draw', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const funding = await prisma.fin_project_funding.findFirst({
-      where: { id: req.params.id, company_id: activeCompanyId(req) },
-    });
-    if (!funding) return sendError(res, 'Project funding tidak ditemukan.', 404);
+    const companyId = activeCompanyId(req);
+    const userId = req.user?.id || 'system';
+    const bankAccountId = String(req.body?.bank_account_id ?? '').trim();
+    const referenceNumber = String(req.body?.reference_number ?? '').trim() || `FUND-DRAW-${req.params.id.slice(0, 8)}-${Date.now()}`;
+    const remarks = String(req.body?.remarks ?? '').trim();
+    if (!bankAccountId) {
+      throw new ValidationError('Rekening kas/bank sumber pencairan funding wajib dipilih.');
+    }
 
-    const fsm = new DocumentFSM('FUND_REQUEST');
-    const { nextState } = fsm.apply(funding.status as any, 'draw');
+    const updated = await prisma.$transaction(async (tx) => {
+      const funding = await tx.fin_project_funding.findFirst({
+        where: { id: req.params.id, company_id: companyId },
+      });
+      if (!funding) throw new NotFoundError('ProjectFunding');
 
-    const updated = await prisma.fin_project_funding.update({
-      where: { id: req.params.id },
-      data: { status: nextState },
+      const fsm = new DocumentFSM('FUND_REQUEST');
+      const { nextState } = fsm.apply(funding.status as any, 'draw');
+
+      const amount = Number(funding.amount ?? 0);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new ValidationError('Nominal funding harus lebih besar dari 0 untuk dicairkan.');
+      }
+
+      const bank = await tx.fin_bank_account.findFirst({
+        where: { id: bankAccountId, company_id: companyId, status: 'ACTIVE' },
+      });
+      if (!bank || !bank.ledger_account_id) {
+        throw new ValidationError('Rekening kas/bank aktif tidak ditemukan atau belum terhubung ke akun COA.');
+      }
+
+      const bankLedger = await tx.fin_account.findFirst({
+        where: { id: bank.ledger_account_id, company_id: companyId, status: 'ACTIVE' },
+      });
+      const coaMap = await FinanceService.ensureStandardCOA(companyId, tx);
+      const advanceAccount = coaMap.get('1140') ?? await tx.fin_account.findFirst({
+        where: { company_id: companyId, account_code: '1140', status: 'ACTIVE' },
+      });
+      if (!bankLedger || !advanceAccount || bankLedger.id === advanceAccount.id) {
+        throw new ValidationError('Akun kas/bank dan akun 1140 (Uang Muka & Cash in Transit) harus valid dan berbeda.');
+      }
+
+      const now = new Date();
+      await PeriodClosingService.assertPeriodOpen(now, companyId);
+      const journal = await FinanceService.ensureJournal(companyId, 'GJ', 'General Journal', 'GENERAL', tx);
+      const sourceDoc = await FinanceDocumentService.ensure(tx, {
+        tenantId: funding.tenant_id ?? req.tenantId ?? null,
+        companyId,
+        userId,
+        documentType: 'PROJECT_FUNDING_DRAW',
+        documentNumber: referenceNumber,
+        documentDate: now,
+        postingDate: now,
+        status: 'POSTED',
+      });
+
+      const entryId = crypto.randomUUID();
+      await tx.fin_journal_entry.create({
+        data: {
+          id: entryId,
+          tenant_id: funding.tenant_id ?? req.tenantId ?? null,
+          company_id: companyId,
+          created_by_id: userId,
+          journal_id: journal?.id ?? null,
+          entry_number: referenceNumber,
+          posting_date: now,
+          description: `Pencairan Funding Proyek (${funding.description || funding.id})${remarks ? ` — ${remarks}` : ''}`,
+          status: 'POSTED',
+          source_document_id: sourceDoc.id,
+        },
+      });
+
+      await tx.fin_journal_line.createMany({
+        data: [
+          {
+            id: crypto.randomUUID(),
+            tenant_id: funding.tenant_id ?? req.tenantId ?? null,
+            company_id: companyId,
+            created_by_id: userId,
+            journal_entry_id: entryId,
+            account_id: advanceAccount.id,
+            project_id: funding.project_id ?? null,
+            debit_base: new Prisma.Decimal(amount),
+            credit_base: new Prisma.Decimal(0),
+            transaction_amount: new Prisma.Decimal(amount),
+          },
+          {
+            id: crypto.randomUUID(),
+            tenant_id: funding.tenant_id ?? req.tenantId ?? null,
+            company_id: companyId,
+            created_by_id: userId,
+            journal_entry_id: entryId,
+            account_id: bankLedger.id,
+            project_id: funding.project_id ?? null,
+            debit_base: new Prisma.Decimal(0),
+            credit_base: new Prisma.Decimal(amount),
+            transaction_amount: new Prisma.Decimal(amount),
+          },
+        ],
+      });
+
+      await tx.fin_payment.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenant_id: funding.tenant_id ?? req.tenantId ?? null,
+          company_id: companyId,
+          created_by_id: userId,
+          document_id: sourceDoc.id,
+          bank_account_id: bank.id,
+          payment_type: 'PROJECT_FUNDING',
+          payment_date: now,
+          amount: new Prisma.Decimal(amount),
+          payment_method: 'BANK_TRANSFER',
+          reference_number: referenceNumber,
+          journal_entry_id: entryId,
+          status: 'POSTED',
+          allocation_plan: { funding_id: funding.id, project_id: funding.project_id ?? null, remarks },
+          executed_by_id: userId,
+          executed_at: now,
+          execution_reference: referenceNumber,
+          execution_note: remarks || 'Pencairan Funding Proyek',
+          failure_reason: '',
+        },
+      });
+
+      return tx.fin_project_funding.update({
+        where: { id: req.params.id },
+        data: { status: nextState },
+      });
     });
+
     sendSuccess(res, updated);
   } catch (err) {
     next(err);

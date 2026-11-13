@@ -21,10 +21,14 @@ export function validateCustomerReceipt(data: Record<string, any>) {
   }
   if (!reference) errors.reference_number = 'No. bukti transfer / resi bank klien wajib diisi.';
   if (!['BANK_TRANSFER', 'GIRO_CEK', 'CASH'].includes(data.payment_method)) errors.payment_method = 'Pilih metode penerimaan yang valid.';
+  const invoiceRef = String(allocation.invoice_ref ?? data.invoice_ref ?? '').trim();
+  const hasAllocations = Array.isArray(data.allocations) && data.allocations.some((item: any) => Boolean(item?.billing_document_id || item?.invoice_id));
   if (allocation.withholding_tax_amount !== undefined && allocation.withholding_tax_amount !== null && allocation.withholding_tax_amount !== '') {
     const wht = Number(allocation.withholding_tax_amount);
     if (!Number.isFinite(wht) || wht < 0) {
       errors.withholding_tax_amount = 'Nominal potongan pajak harus berupa angka valid (0 atau lebih).';
+    } else if (wht > 0 && !invoiceRef && !hasAllocations) {
+      errors.withholding_tax_amount = 'Potongan PPh hanya dapat dicatat pada penerimaan yang tertaut ke Invoice resmi, bukan Uang Muka (DP).';
     }
   }
   if (Object.keys(errors).length) throw new ValidationError('Lengkapi data penerimaan pelanggan yang wajib diisi.', errors);

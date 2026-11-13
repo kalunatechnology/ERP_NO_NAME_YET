@@ -591,7 +591,29 @@ export default function FinanceClient() {
     .reduce((acc, curr) => acc + Number(curr.total_amount ?? curr.amount ?? curr.subtotal ?? 0), 0);
   const postedReceipts = customerReceipts.filter(receipt => receipt.status === "POSTED");
   const pendingCashReceipts = customerReceipts.filter((receipt) => receipt.status !== "POSTED");
-  const paidVendorBills = vendorBills.filter((bill) => bill.status === "PAID" || bill.payment_status === "PAID" || bill.status === "LUNAS");
+  const paidVendorBills = vendorBills
+    .filter((bill) => bill.status === "PAID" || bill.payment_status === "PAID" || bill.status === "LUNAS")
+    .map((bill) => {
+      const matchedPayment = payments.find((p: any) => {
+        if (String(p.status || "").toUpperCase() !== "POSTED") return false;
+        const pType = String(p.payment_type || "").toUpperCase();
+        if (!["AP_PAYMENT", "VENDOR_PAYMENT"].includes(pType)) return false;
+        const plan = typeof p.allocation_plan === "object" && p.allocation_plan ? p.allocation_plan : {};
+        return (
+          String(plan.vendor_bill_id || plan.bill_id || "") === String(bill.id) ||
+          (bill.vendor_party_id && String(p.party_id || "") === String(bill.vendor_party_id) && Number(p.amount || 0) === Number(bill.total_amount ?? bill.amount ?? 0))
+        );
+      });
+      const bankAcc = matchedPayment?.bank_account_id
+        ? bankAccounts.find((a) => String(a.id) === String(matchedPayment.bank_account_id))
+        : null;
+      return {
+        ...bill,
+        amount: Number(matchedPayment?.amount ?? bill.total_amount ?? bill.amount ?? 0),
+        bank_account_name: bill.bank_account_name || (bankAcc ? `${bankAcc.bank} · ${bankAcc.name}` : "-"),
+        due_date: matchedPayment?.payment_date || bill.payment_date || bill.due_date,
+      };
+    });
   const cashQuery = cashBankSearch.trim().toLocaleLowerCase("id-ID");
   const matchesCashQuery = (values: unknown[]) => !cashQuery || values.some((value) => String(value ?? "").toLocaleLowerCase("id-ID").includes(cashQuery));
   const searchedPendingCashReceipts = pendingCashReceipts.filter((receipt) => matchesCashQuery([receipt.receipt_number, receipt.reference_number, receipt.customer_name, receipt.project_name, receipt.invoice_ref, receipt.bank_account, receipt.amount]));
@@ -1421,6 +1443,7 @@ export default function FinanceClient() {
             fundings={fundings}
             fundRequests={fundRequests}
             projects={financeProjectOptions}
+            bankAccounts={bankAccounts}
             onRefresh={() => loadFinanceData(true)}
             onRequestModalOpen={() => setIsFundingModalOpen(true)}
             readOnly={!canOperateFinance}
@@ -3796,6 +3819,7 @@ function TabFundingProyek({
   fundings,
   fundRequests,
   projects,
+  bankAccounts = [],
   onRefresh,
   onRequestModalOpen,
   readOnly = false,
@@ -3803,6 +3827,7 @@ function TabFundingProyek({
   fundings: any[];
   fundRequests: any[];
   projects: any[];
+  bankAccounts?: any[];
   onRefresh: () => void;
   onRequestModalOpen: () => void;
   readOnly?: boolean;
@@ -3810,6 +3835,8 @@ function TabFundingProyek({
   const [selectedFunding, setSelectedFunding] = useState<any>(null);
   const [isDecisionModalOpen, setIsDecisionModalOpen] = useState(false);
   const [decisionNotes, setDecisionNotes] = useState("");
+  const [fundingBankAccountId, setFundingBankAccountId] = useState("");
+  const [fundingReference, setFundingReference] = useState("");
   const [decisionAction, setDecisionAction] = useState<"APPROVED" | "REJECTED" | "DISBURSED">("APPROVED");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -3838,11 +3865,19 @@ function TabFundingProyek({
  */
   const handleDecision = async () => {
     if (!selectedFunding) return;
+    if (decisionAction === "DISBURSED" && !fundingBankAccountId) {
+      toast.error("Pilih rekening kas/bank sumber pencairan terlebih dahulu.");
+      return;
+    }
     setIsSubmitting(true);
     try {
       if (decisionAction === "DISBURSED") {
-        await api.post(`/api/v1/finance/project-fundings/${selectedFunding.id}/draw/`);
-        toast.success("Funding ditandai telah ditarik sesuai lifecycle backend.");
+        await api.post(`/api/v1/finance/project-fundings/${selectedFunding.id}/draw/`, {
+          bank_account_id: fundingBankAccountId,
+          reference_number: fundingReference.trim() || undefined,
+          remarks: decisionNotes.trim() || undefined,
+        });
+        toast.success("Funding berhasil dicairkan dan dijurnal ke Akun 1140 serta Kas & Bank.");
       } else {
         await api.post(`/api/v1/finance/project-fundings/${selectedFunding.id}/decide/`, {
           decision: decisionAction,
@@ -3853,9 +3888,11 @@ function TabFundingProyek({
 
       setIsDecisionModalOpen(false);
       setDecisionNotes("");
+      setFundingBankAccountId("");
+      setFundingReference("");
       onRefresh();
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail || "Gagal memproses keputusan funding.");
+      toast.error(e?.response?.data?.detail || e?.response?.data?.error?.message || "Gagal memproses keputusan funding.");
     } finally {
       setIsSubmitting(false);
     }
@@ -4062,10 +4099,35 @@ function TabFundingProyek({
               </div>
             </div>
 
-            {/* Draw advances the funding lifecycle; it is not a bank transfer API. */}
             {decisionAction === "DISBURSED" && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                Aksi ini hanya mengubah lifecycle funding menjadi drawn. Transfer bank dan saldo tidak diklaim berubah oleh halaman ini.
+              <div className="space-y-3">
+                <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-3 text-xs text-blue-900">
+                  Pencairan ini akan membuat jurnal otomatis: <strong>Debit 1140 (Uang Muka &amp; Cash in Transit)</strong> dan <strong>Kredit Rekening Bank</strong> pilihan Anda.
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-text-primary block mb-1">Rekening Kas / Bank Sumber Dana *</label>
+                  <select
+                    className="input w-full text-xs bg-white"
+                    value={fundingBankAccountId}
+                    onChange={(e) => setFundingBankAccountId(e.target.value)}
+                  >
+                    <option value="">-- Pilih Rekening Sumber --</option>
+                    {bankAccounts.map((acc: any) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.bank ? `${acc.bank} · ` : ""}{acc.name} ({acc.number || "-"})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-text-primary block mb-1">No. Referensi Transfer (Opsional)</label>
+                  <input
+                    className="input w-full text-xs"
+                    value={fundingReference}
+                    onChange={(e) => setFundingReference(e.target.value)}
+                    placeholder="Auto-generate jika dikosongkan"
+                  />
+                </div>
               </div>
             )}
 

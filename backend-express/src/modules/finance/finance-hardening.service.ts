@@ -1209,16 +1209,20 @@ export class FinanceHardeningService {
         const custUpper = String(custName || '').toUpperCase();
         const isWapu = /BUMN|PERSERO|KOTA|KABUPATEN|DINAS|KEMENTERIAN|BRIDA|BADAN|PEMKOT|PEMKAB|PEMPROV|INSTANSI/i.test(custUpper);
         const clientType = isWapu ? 'WAPU' : 'NON_WAPU';
+        const taxTypeUpper = String(row.tax_type || '').toUpperCase();
+        const isPpnRow = taxTypeUpper.includes('PPN') || taxTypeUpper.includes('VAT');
         const dpp = Number(row.taxable_amount || 0);
         const ppn = Number(row.tax_amount || 0);
-        const pphRate = 2.0;
-        const pphAmount = Number(((dpp * pphRate) / 100).toFixed(2));
-        const netCashInflow = isWapu ? (dpp - pphAmount) : (dpp + ppn - pphAmount);
+        const pphRate = isPpnRow ? 0 : 2.0;
+        const pphAmount = isPpnRow ? 0 : Number(((dpp * pphRate) / 100).toFixed(2));
+        const netCashInflow = isPpnRow
+          ? (dpp + ppn)
+          : (isWapu ? (dpp - pphAmount) : (dpp + ppn - pphAmount));
 
         const note = String(row.validation_note || '');
-        const isBupot = note.startsWith('BUPOT:');
+        const isBupot = !isPpnRow && note.startsWith('BUPOT:');
         const bupotNum = isBupot ? note.split(' ')[0].replace(/^BUPOT:[^:]*:/, '') : undefined;
-        const bupotStatus = isBupot ? 'VERIFIED' : (row.ntpn ? 'VERIFIED' : 'PENDING');
+        const bupotStatus = isPpnRow ? (row.ntpn ? 'VERIFIED' : 'N/A') : (isBupot ? 'VERIFIED' : (row.ntpn ? 'VERIFIED' : 'PENDING'));
 
         return {
           ...row,
@@ -1228,7 +1232,7 @@ export class FinanceHardeningService {
           project_name: bill?.project_id ? projectMap.get(bill.project_id) ?? null : null,
           tax_scheme: bill?.tax_scheme ?? null,
           client_type: clientType,
-          pph_type: 'PPh 23 Jasa Teknik & Manajemen',
+          pph_type: isPpnRow ? (row.tax_type || 'PPN Keluaran 11%') : 'PPh 23 Jasa Teknik & Manajemen',
           pph_rate: pphRate,
           pph_amount: pphAmount,
           bupot_status: bupotStatus,
