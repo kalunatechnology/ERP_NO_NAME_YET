@@ -493,7 +493,10 @@ export function CrmLeadsView({
           notes: serializedNotes,
         });
         if (leadForm.status && leadForm.status !== editingLead._bucket && !editingLead._isConverted) {
-          await updateCRMInquiryLeadStatus(editingLead.id, leadForm.status, leadForm.contact_notes.trim() || leadForm.follow_up_notes.trim() || "");
+          await updateCRMInquiryLeadStatus(editingLead.id, {
+            status: leadForm.status as any,
+            note: leadForm.contact_notes.trim() || leadForm.follow_up_notes.trim() || undefined,
+          });
         }
         toast.success("Data Lead berhasil diperbarui.");
       } else {

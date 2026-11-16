@@ -7,7 +7,7 @@ import {
   Building2, Calendar,
 } from "lucide-react";
 import { CRMData } from "@/lib/api/crm.api";
-import { cn, formatDate, formatMoney } from "@/lib/utils";
+import { formatDate, formatMoney } from "@/lib/utils";
 import {
   CRMAvatarBadge,
   CRMFilterBar,

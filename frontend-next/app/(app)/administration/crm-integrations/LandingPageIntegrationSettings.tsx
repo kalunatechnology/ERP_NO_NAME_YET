@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, Copy, Globe2, History, Link2, Plus, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
+import { Check, Copy, Globe2, History, Plus, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
 import { cn } from "@/lib/utils";
@@ -58,7 +58,6 @@ export default function LandingPageIntegrationSettings() {
   const [eventLogSource, setEventLogSource] = useState<CRMIntegrationSource | null>(null);
   const [eventLogRows, setEventLogRows] = useState<CRMIntegrationEventLog[]>([]);
   const [loadingEventLog, setLoadingEventLog] = useState(false);
-  const scopeHeaders = companyScope ? { headers: { "X-Company-ID": companyScope } } : undefined;
   const endpoint = typeof window !== "undefined" ? new URL("/api/v1/integrations/webhooks/events", api.defaults.baseURL || window.location.origin).toString() : "/api/v1/integrations/webhooks/events";
 
   useEffect(() => { setCompanyScope(new URLSearchParams(window.location.search).get("company_id") || ""); }, []);
