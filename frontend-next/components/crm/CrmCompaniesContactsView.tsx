@@ -81,6 +81,7 @@ export function CrmCompaniesView({
   canEditAll?: boolean;
 }) {
   const [search, setSearch] = useState("");
+  const [brandFilter, setBrandFilter] = useState("ALL");
   const [industryFilter, setIndustryFilter] = useState("ALL");
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [cityFilter, setCityFilter] = useState("ALL");
@@ -99,6 +100,7 @@ export function CrmCompaniesView({
   const [editingParty, setEditingParty] = useState<any | null>(null);
   const [savingParty, setSavingParty] = useState(false);
   const [partyForm, setPartyForm] = useState({
+    brand_id: "",
     display_name: "",
     legal_name: "",
     party_code: "",
@@ -197,6 +199,7 @@ export function CrmCompaniesView({
   const filteredParties = useMemo(() => {
     const q = search.trim().toLowerCase();
     return enrichedParties.filter((p) => {
+      if (brandFilter !== "ALL" && String(p.brand_id || "") !== brandFilter) return false;
       if (typeFilter !== "ALL" && p._normType !== typeFilter) return false;
       if (industryFilter !== "ALL" && p._industry !== industryFilter) return false;
       if (cityFilter !== "ALL" && p._city !== cityFilter) return false;
@@ -205,11 +208,12 @@ export function CrmCompaniesView({
       return [p.display_name, p.legal_name, p.party_code, p._industry, p._email, p._phone, p._city, p.notes]
         .some((v) => String(v || "").toLowerCase().includes(q));
     });
-  }, [enrichedParties, typeFilter, industryFilter, cityFilter, ownerFilter, search]);
+  }, [enrichedParties, brandFilter, typeFilter, industryFilter, cityFilter, ownerFilter, search]);
 
   const openAddCompany = () => {
     setEditingParty(null);
     setPartyForm({
+      brand_id: brandFilter !== "ALL" ? brandFilter : "",
       display_name: "",
       legal_name: "",
       party_code: "",
@@ -229,6 +233,7 @@ export function CrmCompaniesView({
   const openEditCompany = (party: any) => {
     setEditingParty(party);
     setPartyForm({
+      brand_id: party.brand_id ? String(party.brand_id) : "",
       display_name: party.display_name || "",
       legal_name: party.legal_name || "",
       party_code: party.party_code || "",
@@ -253,6 +258,7 @@ export function CrmCompaniesView({
     setSavingParty(true);
     try {
       const payload = {
+        brand_id: partyForm.brand_id || null,
         display_name: partyForm.display_name.trim() || partyForm.legal_name.trim(),
         legal_name: partyForm.legal_name.trim() || partyForm.display_name.trim(),
         party_code:
@@ -423,6 +429,19 @@ export function CrmCompaniesView({
         onSearchChange={setSearch}
         searchPlaceholder="Cari perusahaan, kode, email, kota..."
         filters={[
+          {
+            id: "brand",
+            value: brandFilter,
+            onChange: setBrandFilter,
+            ariaLabel: "Filter Brand Perusahaan",
+            options: [
+              { value: "ALL", label: "All Brands" },
+              ...(data.brands || []).map((b: any) => ({
+                value: String(b.id),
+                label: `${b.brand_code} — ${b.brand_name}`,
+              })),
+            ],
+          },
           { id: "industry", value: industryFilter, onChange: setIndustryFilter, options: industryOptions, ariaLabel: "Filter Industri" },
           {
             id: "companyType",
@@ -815,6 +834,17 @@ export function CrmCompaniesView({
         size="md"
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 text-xs">
+          <label className="font-medium text-slate-600 sm:col-span-2">
+            Brand / Unit Bisnis
+            <select className="input mt-1 w-full bg-white" value={partyForm.brand_id} onChange={(e) => setPartyForm((f) => ({ ...f, brand_id: e.target.value }))}>
+              <option value="">-- Umum / Lintas Brand --</option>
+              {(data.brands || []).map((b: any) => (
+                <option key={b.id} value={String(b.id)}>
+                  [{b.brand_code}] {b.brand_name}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="font-medium text-slate-600">
             Company Name *
             <input className="input mt-1 w-full" value={partyForm.display_name} onChange={(e) => setPartyForm((f) => ({ ...f, display_name: e.target.value }))} placeholder="Contoh: PT Maju Jaya" />
@@ -921,6 +951,7 @@ export function CrmContactsView({
   compactMode?: boolean;
 }) {
   const [search, setSearch] = useState("");
+  const [brandFilter, setBrandFilter] = useState("ALL");
   const [companyFilter, setCompanyFilter] = useState("ALL");
   const [deptFilter, setDeptFilter] = useState("ALL");
   const [typeFilter, setTypeFilter] = useState("ALL");
@@ -1002,6 +1033,9 @@ export function CrmContactsView({
   const filteredContacts = useMemo(() => {
     const q = search.trim().toLowerCase();
     return enrichedContacts.filter((c) => {
+      const party = partyById.get(String(c.party_id || ""));
+      const cBrandId = String(c.brand_id || party?.brand_id || "");
+      if (brandFilter !== "ALL" && cBrandId !== brandFilter) return false;
       if (companyFilter !== "ALL" && String(c.party_id || "") !== companyFilter) return false;
       if (deptFilter !== "ALL" && String(c.department || "") !== deptFilter) return false;
       if (typeFilter !== "ALL" && c._contactType !== typeFilter) return false;
@@ -1009,7 +1043,7 @@ export function CrmContactsView({
       return [c.contact_name, c._companyName, c.job_title, c.department, c.email, c.phone, c.notes]
         .some((v) => String(v || "").toLowerCase().includes(q));
     });
-  }, [enrichedContacts, companyFilter, deptFilter, typeFilter, search]);
+  }, [enrichedContacts, partyById, brandFilter, companyFilter, deptFilter, typeFilter, search]);
 
   const filteredWonContacts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1116,6 +1150,19 @@ export function CrmContactsView({
           onSearchChange={setSearch}
           searchPlaceholder="Cari nama, perusahaan, jabatan, email..."
           filters={[
+            {
+              id: "brand",
+              value: brandFilter,
+              onChange: setBrandFilter,
+              ariaLabel: "Filter Brand Kontak",
+              options: [
+                { value: "ALL", label: "All Brands" },
+                ...(data.brands || []).map((b: any) => ({
+                  value: String(b.id),
+                  label: `${b.brand_code} — ${b.brand_name}`,
+                })),
+              ],
+            },
             {
               id: "company",
               value: companyFilter,

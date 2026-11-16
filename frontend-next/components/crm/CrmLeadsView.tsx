@@ -98,6 +98,7 @@ export function CrmLeadsView({
 }) {
   const [subView, setSubView] = useState<"PIPELINE" | "LIST" | "INBOX">(initialSubView);
   const [search, setSearch] = useState("");
+  const [brandFilter, setBrandFilter] = useState("ALL");
   const [sourceFilter, setSourceFilter] = useState("ALL");
   const [serviceFilter, setServiceFilter] = useState("ALL");
   const [ownerFilter, setOwnerFilter] = useState("ALL");
@@ -116,6 +117,7 @@ export function CrmLeadsView({
   const [editingLead, setEditingLead] = useState<any | null>(null);
   const [savingLead, setSavingLead] = useState(false);
   const [leadForm, setLeadForm] = useState({
+    brand_id: "",
     subject: "",
     customer_name: "",
     customer_email: "",
@@ -168,6 +170,10 @@ export function CrmLeadsView({
     () => new Map((data.contacts || []).map((c: any) => [String(c.id), c])),
     [data.contacts]
   );
+  const brandById = useMemo(
+    () => new Map((data.brands || []).map((b: any) => [String(b.id), b])),
+    [data.brands]
+  );
 
   const enrichedLeads = useMemo(() => {
     return (data.inquiries || []).map((inq: any) => {
@@ -176,6 +182,7 @@ export function CrmLeadsView({
       const linkedOpp = inq.opportunity_id ? oppById.get(String(inq.opportunity_id)) : null;
       const party = inq.customer_party_id ? partyById.get(String(inq.customer_party_id)) : null;
       const contact = inq.contact_id ? contactById.get(String(inq.contact_id)) : null;
+      const brandObj = inq.brand_id ? brandById.get(String(inq.brand_id)) : null;
       const ownerId = String(inq.owner_user_id || inq.created_by_id || "");
       const ownerUser = userById.get(ownerId);
       const source = inq.lead_source || inq.source_channel || "MANUAL";
@@ -189,6 +196,8 @@ export function CrmLeadsView({
       return {
         ...inq,
         _bucket: bucket,
+        _brandId: inq.brand_id ? String(inq.brand_id) : "",
+        _brandName: brandObj ? `${brandObj.brand_code} · ${brandObj.brand_name}` : "",
         _source: source,
         _service: service,
         _ownerId: ownerId,
@@ -200,7 +209,7 @@ export function CrmLeadsView({
         _isWon: isWon,
       };
     });
-  }, [data.inquiries, oppById, partyById, contactById, userById, optimisticBuckets]);
+  }, [data.inquiries, oppById, partyById, contactById, brandById, userById, optimisticBuckets]);
 
   const kpiItems: CRMKpiItem[] = useMemo(() => {
     const total = enrichedLeads.length;
@@ -229,6 +238,7 @@ export function CrmLeadsView({
   const filteredLeads = useMemo(() => {
     const q = search.trim().toLowerCase();
     return enrichedLeads.filter((l) => {
+      if (brandFilter !== "ALL" && l._brandId !== brandFilter) return false;
       if (sourceFilter !== "ALL" && l._source !== sourceFilter) return false;
       if (serviceFilter !== "ALL" && l._service !== serviceFilter) return false;
       if (ownerFilter !== "ALL" && l._ownerId !== ownerFilter) return false;
@@ -238,10 +248,10 @@ export function CrmLeadsView({
       if (statusFilter === "WON" && !l._isWon) return false;
       if (statusFilter === "UNQUALIFIED" && l._bucket !== "UNQUALIFIED") return false;
       if (!q) return true;
-      return [l.customer_name, l.subject, l.inquiry_number, l._service, l.customer_email, l.customer_phone, l.description]
+      return [l.customer_name, l.subject, l.inquiry_number, l._service, l._brandName, l.customer_email, l.customer_phone, l.description]
         .some((v) => String(v || "").toLowerCase().includes(q));
     });
-  }, [enrichedLeads, sourceFilter, serviceFilter, ownerFilter, statusFilter, search]);
+  }, [enrichedLeads, brandFilter, sourceFilter, serviceFilter, ownerFilter, statusFilter, search]);
 
   const kanbanColumns: CRMKanbanColumn<any>[] = useMemo(() => {
     return LEAD_COLUMNS.map((col) => {
@@ -342,6 +352,7 @@ export function CrmLeadsView({
   const openAddLead = () => {
     setEditingLead(null);
     setLeadForm({
+      brand_id: brandFilter !== "ALL" ? brandFilter : "",
       subject: "",
       customer_name: "",
       customer_email: "",
@@ -384,6 +395,7 @@ export function CrmLeadsView({
     setEditingLead(lead);
     const parsedMeta = parseStageMetadata(lead.notes);
     setLeadForm({
+      brand_id: lead.brand_id ? String(lead.brand_id) : "",
       subject: lead.subject || "",
       customer_name: lead.customer_name || "",
       customer_email: lead.customer_email || "",
@@ -459,6 +471,7 @@ export function CrmLeadsView({
           ...stagePayload,
         });
         await updateCustomerInquiry(editingLead.id, {
+          brand_id: leadForm.brand_id || null,
           subject: leadForm.subject.trim(),
           customer_name: leadForm.customer_name.trim(),
           customer_email: leadForm.customer_email.trim(),
@@ -486,6 +499,7 @@ export function CrmLeadsView({
       } else {
         const serializedNotes = serializeStageMetadata(stagePayload);
         await createCustomerInquiry({
+          brand_id: leadForm.brand_id || null,
           subject: leadForm.subject.trim(),
           customer_name: leadForm.customer_name.trim(),
           customer_email: leadForm.customer_email.trim(),
@@ -557,8 +571,21 @@ export function CrmLeadsView({
       <CRMFilterBar
         searchValue={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Cari perusahaan, PIC, atau layanan..."
+        searchPlaceholder="Cari perusahaan, PIC, brand, atau layanan..."
         filters={[
+          {
+            id: "brand",
+            value: brandFilter,
+            onChange: setBrandFilter,
+            ariaLabel: "Filter Brand",
+            options: [
+              { value: "ALL", label: "All Brands" },
+              ...(data.brands || []).map((b: any) => ({
+                value: String(b.id),
+                label: `${b.brand_code} — ${b.brand_name}`,
+              })),
+            ],
+          },
           {
             id: "leadSource",
             value: sourceFilter,
@@ -634,6 +661,11 @@ export function CrmLeadsView({
               </div>
 
               <div className="flex flex-wrap items-center gap-1.5">
+                {lead._brandName && (
+                  <span className="rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-800">
+                    {lead._brandName}
+                  </span>
+                )}
                 {lead._service && (
                   <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-[#0876CD]">
                     {lead._service}
@@ -888,6 +920,21 @@ export function CrmLeadsView({
           <div className="rounded-2xl border border-slate-200 p-3.5 space-y-3">
             <div className="font-bold text-sm text-[#163D64]">Lead Information</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="font-medium text-slate-600">
+                Brand / Unit Bisnis
+                <select
+                  className="input mt-1 w-full bg-white"
+                  value={leadForm.brand_id}
+                  onChange={(e) => setLeadForm((f) => ({ ...f, brand_id: e.target.value }))}
+                >
+                  <option value="">-- Pilih Brand --</option>
+                  {(data.brands || []).map((b: any) => (
+                    <option key={b.id} value={String(b.id)}>
+                      [{b.brand_code}] {b.brand_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <label className="font-medium text-slate-600">
                 Project Type / Jenis Kebutuhan *
                 <input className="input mt-1 w-full" value={leadForm.subject} onChange={(e) => setLeadForm((f) => ({ ...f, subject: e.target.value }))} placeholder="Contoh: Booth Exhibition" />

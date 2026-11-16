@@ -10,7 +10,19 @@ import { normalizeList } from "./auth.api";
 import { canRequestApi, FrontendAccessContext } from "@/lib/access/module-contract";
 
 /* ── Types ───────────────────────────────────────── */
+export interface CRMBrand {
+  id: string;
+  brand_code: string;
+  brand_name: string;
+  slug?: string | null;
+  origin_domain?: string | null;
+  color_hex?: string;
+  description?: string;
+  status: string;
+}
+
 export interface CRMData {
+  brands: CRMBrand[];
   inquiries: any[];
   requirements: any[];
   opportunities: any[];
@@ -231,6 +243,7 @@ export async function updateCRMIntegrationSourceEvents(id: string, allowed_event
 // frontend-next/lib/api/crm.api.ts
 
 const CRM_SOURCES: Record<keyof CRMData, string> = {
+  brands:       "/api/v1/master-data/brands/?page_size=100",
   inquiries:    "/api/v1/crm/customer-inquiries/?page_size=100",
   requirements: "/api/v1/crm/inquiry-requirements/?page_size=200",
   opportunities:"/api/v1/crm/opportunities/?page_size=100",
@@ -344,6 +357,7 @@ export async function createOpportunity(payload: {
   expected_close_date?: string | null;
   next_follow_up_at?: string | null;
   owner_user_id?: string | null;
+  brand_id?: string | null;
   follow_up_reason?: string;
   lost_reason?: string;
   lost_reason_detail?: string;
@@ -351,6 +365,7 @@ export async function createOpportunity(payload: {
   const { data } = await api.post("/api/v1/crm/opportunities/", {
     opportunity_name: payload.opportunity_name,
     customer_party_id: payload.customer_party || null,
+    brand_id: payload.brand_id || null,
     expected_amount: payload.expected_amount ?? 0,
     expected_margin: payload.expected_margin ?? 0,
     probability_percent: payload.probability_percent ?? 50,
@@ -364,6 +379,17 @@ export async function createOpportunity(payload: {
     status: "OPEN",
   });
   return data;
+}
+
+export async function createCRMBrand(payload: {
+  brand_code: string;
+  brand_name: string;
+  origin_domain?: string;
+  color_hex?: string;
+  description?: string;
+}) {
+  const { data } = await api.post("/api/v1/master-data/brands/", payload);
+  return data?.data ?? data;
 }
 
 export async function updateOpportunityCustomer(id: string | number, customerPartyId: string | number) {
@@ -545,6 +571,7 @@ export async function createCustomerInquiry(payload: {
   lead_source?: string | null;
   interested_service?: string | null;
   notes?: string | null;
+  brand_id?: string | null;
   owner_user_id?: string | null;
   status?: string;
   last_contact_note?: string;
@@ -557,6 +584,7 @@ export async function createCustomerInquiry(payload: {
     customer_phone: payload.customer_phone || "",
     customer_party_id: payload.customer_party || null,
     contact_id: payload.contact_id || null,
+    brand_id: payload.brand_id || null,
     contact_name: payload.contact_name || "",
     job_title: payload.job_title || "",
     industry: payload.industry || "",
@@ -584,6 +612,7 @@ export async function updateCustomerInquiry(id: string | number, payload: {
   customer_phone?: string;
   customer_party_id?: string | null;
   contact_id?: string | null;
+  brand_id?: string | null;
   contact_name?: string;
   job_title?: string;
   industry?: string;

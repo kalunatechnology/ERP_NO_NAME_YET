@@ -86,6 +86,7 @@ export function CrmSalesPipelineShell({
   creditSlot: React.ReactNode;
 }) {
   const [search, setSearch] = useState("");
+  const [brandFilter, setBrandFilter] = useState("ALL");
   const [ownerFilter, setOwnerFilter] = useState("ALL");
   const [stageFilter, setStageFilter] = useState("ALL");
   const [optimisticBuckets, setOptimisticBuckets] = useState<Record<string, string>>({});
@@ -105,6 +106,10 @@ export function CrmSalesPipelineShell({
     () => new Map(teamUsers.map((u: any) => [String(u.id), u])),
     [teamUsers]
   );
+  const brandById = useMemo(
+    () => new Map((data.brands || []).map((b: any) => [String(b.id), b])),
+    [data.brands]
+  );
 
   const enrichedOpps = useMemo(() => {
     return (data.opportunities || []).map((o: any) => {
@@ -113,12 +118,15 @@ export function CrmSalesPipelineShell({
       const bucket = optimisticBuckets[idStr] || serverBucket;
       const pid = o.customer_party_id ?? o.customer_party ?? o.customer;
       const party = pid ? partyById.get(String(pid)) : null;
+      const brandObj = o.brand_id ? brandById.get(String(o.brand_id)) : null;
       const ownerId = String(o.owner_user_id || o.created_by_id || "");
       const ownerUser = userById.get(ownerId);
       const rawProb = optimisticProbs[idStr] !== undefined ? optimisticProbs[idStr] : Number(o.probability_percent || 0);
       return {
         ...o,
         _bucket: bucket,
+        _brandId: o.brand_id ? String(o.brand_id) : "",
+        _brandName: brandObj ? `${brandObj.brand_code} · ${brandObj.brand_name}` : "",
         _customerName: party?.display_name || party?.legal_name || o.customer_name || "Pelanggan Umum",
         _party: party,
         _ownerId: ownerId,
@@ -127,18 +135,23 @@ export function CrmSalesPipelineShell({
         _prob: Math.max(0, Math.min(100, rawProb)),
       };
     });
-  }, [data.opportunities, partyById, userById, optimisticBuckets, optimisticProbs]);
+  }, [data.opportunities, partyById, brandById, userById, optimisticBuckets, optimisticProbs]);
+
+  const brandScopedOpps = useMemo(() => {
+    if (brandFilter === "ALL") return enrichedOpps;
+    return enrichedOpps.filter((o) => o._brandId === brandFilter);
+  }, [enrichedOpps, brandFilter]);
 
   const kpiItems: CRMKpiItem[] = useMemo(() => {
-    const total = enrichedOpps.length;
-    const active = enrichedOpps.filter((o) => !["WON", "LOST"].includes(o._bucket));
+    const total = brandScopedOpps.length;
+    const active = brandScopedOpps.filter((o) => !["WON", "LOST"].includes(o._bucket));
     const pipelineValue = active.reduce((sum, o) => sum + o._amount, 0);
     const weightedValue = active.reduce((sum, o) => sum + o._amount * (o._prob / 100), 0);
-    const closing = enrichedOpps.filter((o) => ["NEGOTIATION", "FOLLOW_UP"].includes(o._bucket));
+    const closing = brandScopedOpps.filter((o) => ["NEGOTIATION", "FOLLOW_UP"].includes(o._bucket));
     const closingValue = closing.reduce((sum, o) => sum + o._amount, 0);
-    const won = enrichedOpps.filter((o) => o._bucket === "WON");
+    const won = brandScopedOpps.filter((o) => o._bucket === "WON");
     const wonValue = won.reduce((sum, o) => sum + o._amount, 0);
-    const lost = enrichedOpps.filter((o) => o._bucket === "LOST");
+    const lost = brandScopedOpps.filter((o) => o._bucket === "LOST");
     const closedTotal = won.length + lost.length;
     const winRate = closedTotal > 0 ? Math.round((won.length / closedTotal) * 100) : 0;
 
@@ -192,19 +205,19 @@ export function CrmSalesPipelineShell({
         onClick: () => setStageFilter(stageFilter === "LOST" ? "ALL" : "LOST"),
       },
     ];
-  }, [enrichedOpps, stageFilter]);
+  }, [brandScopedOpps, stageFilter]);
 
   const filteredOpps = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return enrichedOpps.filter((o) => {
+    return brandScopedOpps.filter((o) => {
       if (ownerFilter !== "ALL" && o._ownerId !== ownerFilter) return false;
       if (stageFilter === "CLOSING" && !["NEGOTIATION", "FOLLOW_UP"].includes(o._bucket)) return false;
       if (!["ALL", "CLOSING"].includes(stageFilter) && o._bucket !== stageFilter) return false;
       if (!q) return true;
-      return [o.opportunity_name, o._customerName, o._ownerName, o.pipeline_stage]
+      return [o.opportunity_name, o._customerName, o._brandName, o._ownerName, o.pipeline_stage]
         .some((v) => String(v || "").toLowerCase().includes(q));
     });
-  }, [enrichedOpps, ownerFilter, stageFilter, search]);
+  }, [brandScopedOpps, ownerFilter, stageFilter, search]);
 
   const STAGE_PROB_MAP: Record<string, number> = {
     PROSPECT: 10,
@@ -350,10 +363,23 @@ export function CrmSalesPipelineShell({
       <CRMFilterBar
         searchValue={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Cari opportunity, customer, atau PIC..."
+        searchPlaceholder="Cari opportunity, customer, brand, atau PIC..."
         filters={
-          viewMode === "PIPELINE"
+          viewMode === "PIPELINE" || viewMode === "LIST"
             ? [
+                {
+                  id: "brand",
+                  value: brandFilter,
+                  onChange: setBrandFilter,
+                  ariaLabel: "Filter Brand Pipeline",
+                  options: [
+                    { value: "ALL", label: "All Brands" },
+                    ...(data.brands || []).map((b: any) => ({
+                      value: String(b.id),
+                      label: `${b.brand_code} — ${b.brand_name}`,
+                    })),
+                  ],
+                },
                 {
                   id: "stage",
                   value: stageFilter,
@@ -421,6 +447,13 @@ export function CrmSalesPipelineShell({
                 <div className="mt-0.5 text-[11px] font-medium text-[#334155] line-clamp-2">
                   {opp.opportunity_name}
                 </div>
+                {opp._brandName && (
+                  <div className="mt-1">
+                    <span className="inline-block rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-800">
+                      {opp._brandName}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-between gap-2">

@@ -364,6 +364,7 @@ crmRouter.post('/customer-inquiries', async (req: Request, res: Response, next: 
     const allowedInitialStatuses = new Set(['NEW', 'CONTACTED', 'FOLLOW_UP', 'WAITING_RESPONSE', 'RESPONDED', 'INTERESTED', 'UNQUALIFIED', 'UNREACHABLE']);
     const initialStatus = allowedInitialStatuses.has(requestedStatus) ? requestedStatus : 'NEW';
     const requestedOwnerId = req.body.owner_user_id ? String(req.body.owner_user_id).trim() : '';
+    const brandId = req.body.brand_id ? String(req.body.brand_id).trim() || null : null;
     const tenantId = req.tenantId;
     const userId = req.user.id;
     const ownerUserId = requestedOwnerId || userId;
@@ -377,6 +378,7 @@ crmRouter.post('/customer-inquiries', async (req: Request, res: Response, next: 
         const createdParty = await tx.master_party.create({
           data: {
             id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId,
+            brand_id: brandId,
             created_by_id: userId, created_at: now, updated_at: now,
             party_code: partyCode, party_type: 'PROSPECT', legal_name: customerName,
             display_name: customerName, tax_number: '', default_currency_id: null, status: 'ACTIVE',
@@ -387,6 +389,7 @@ crmRouter.post('/customer-inquiries', async (req: Request, res: Response, next: 
         const createdContact = await tx.master_contact.create({
           data: {
             id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId,
+            brand_id: brandId,
             created_by_id: userId, created_at: now, updated_at: now,
             party_id: createdParty.id, contact_name: contactName || customerName,
             job_title: jobTitle, email: customerEmail, phone: customerPhone, primary_contact: true,
@@ -401,6 +404,7 @@ crmRouter.post('/customer-inquiries', async (req: Request, res: Response, next: 
         const createdContact = await tx.master_contact.create({
           data: {
             id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId,
+            brand_id: brandId,
             created_by_id: userId, created_at: now, updated_at: now,
             party_id: resolvedPartyId, contact_name: contactName,
             job_title: jobTitle, email: customerEmail, phone: customerPhone, primary_contact: !existingPrimary,
@@ -412,6 +416,7 @@ crmRouter.post('/customer-inquiries', async (req: Request, res: Response, next: 
       return tx.crm_customer_inquiry.create({
         data: {
           id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId,
+          brand_id: brandId,
           created_by_id: userId, owner_user_id: ownerUserId,
           customer_party_id: resolvedPartyId, contact_id: resolvedContactId,
           inquiry_number: `INQ-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
@@ -510,6 +515,9 @@ crmRouter.patch('/customer-inquiries/:id/edit', requireActiveRole(RoleCode.SALES
     const ownerUserId = req.body.owner_user_id === undefined
       ? inquiry.owner_user_id
       : (String(req.body.owner_user_id ?? '').trim() || inquiry.owner_user_id);
+    const brandId = req.body.brand_id === undefined
+      ? (inquiry as any).brand_id
+      : (String(req.body.brand_id ?? '').trim() || null);
 
     const updated = await prisma.$transaction(async (tx) => {
       if (nextPartyId && (req.body.industry !== undefined || req.body.website !== undefined || req.body.address !== undefined || req.body.customer_name !== undefined)) {
@@ -547,6 +555,7 @@ crmRouter.patch('/customer-inquiries/:id/edit', requireActiveRole(RoleCode.SALES
           customer_phone: customerPhone,
           customer_party_id: nextPartyId,
           contact_id: nextContactId,
+          brand_id: brandId,
           owner_user_id: ownerUserId,
           description,
           lead_source: leadSource,
@@ -1673,6 +1682,9 @@ crmRouter.patch('/opportunities/:id/stage-details', async (req: Request, res: Re
       const lostReasonDetail = req.body.lost_reason_detail !== undefined
         ? String(req.body.lost_reason_detail ?? '')
         : opportunity.lost_reason_detail;
+      const brandId = req.body.brand_id !== undefined
+        ? (String(req.body.brand_id ?? '').trim() || null)
+        : (opportunity as any).brand_id;
 
       return tx.crm_opportunity.update({
         where: { id: opportunity.id },
@@ -1684,6 +1696,7 @@ crmRouter.patch('/opportunities/:id/stage-details', async (req: Request, res: Re
           follow_up_reason: followUpReason,
           lost_reason: lostReason,
           lost_reason_detail: lostReasonDetail,
+          brand_id: brandId,
           updated_at: now,
         },
       });

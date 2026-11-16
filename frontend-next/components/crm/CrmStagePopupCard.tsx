@@ -182,6 +182,7 @@ export function LeadStagePopupModal({
     email: "",
   });
   const [leadInfoForm, setLeadInfoForm] = useState({
+    brand_id: "",
     subject: "",
     interested_service: "",
     lead_source: "",
@@ -216,6 +217,7 @@ export function LeadStagePopupModal({
       email: lead.customer_email || contact?.email || "",
     });
     setLeadInfoForm({
+      brand_id: lead.brand_id ? String(lead.brand_id) : "",
       subject: lead.subject || "",
       interested_service: lead.interested_service || "",
       lead_source: lead.lead_source || lead.source_channel || "MANUAL",
@@ -242,6 +244,7 @@ export function LeadStagePopupModal({
         follow_up_date: nextFollowUp || "",
       });
       await updateCustomerInquiry(lead.id, {
+        brand_id: leadInfoForm.brand_id || null,
         subject: leadInfoForm.subject.trim() || lead.subject,
         customer_name: companyForm.company_name.trim() || lead.customer_name,
         customer_email: contactForm.email.trim(),
@@ -423,6 +426,27 @@ export function LeadStagePopupModal({
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3 text-xs">
+        <div>
+          <div className="text-[#64748B]">Brand / Unit Bisnis</div>
+          {editing ? (
+            <select
+              className="input mt-0.5 w-full text-xs bg-white"
+              value={leadInfoForm.brand_id}
+              onChange={(e) => setLeadInfoForm((f) => ({ ...f, brand_id: e.target.value }))}
+            >
+              <option value="">-- Pilih Brand --</option>
+              {(data.brands || []).map((b: any) => (
+                <option key={b.id} value={String(b.id)}>
+                  [{b.brand_code}] {b.brand_name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div className="mt-0.5 text-sm font-semibold text-[#0876CD]">
+              {(data.brands || []).find((b: any) => String(b.id) === String(leadInfoForm.brand_id))?.brand_name || "Umum / Lintas Brand"}
+            </div>
+          )}
+        </div>
         <div>
           <div className="text-[#64748B]">{isNewLeadLayout ? "Project Type" : "Jenis Kebutuhan"}</div>
           {editing ? (
@@ -722,6 +746,7 @@ export function OpportunityStagePopupModal({
     email: "",
   });
   const [leadInfoForm, setLeadInfoForm] = useState({
+    brand_id: "",
     project_type: "",
     interested_service: "",
     lead_source: "",
@@ -768,6 +793,7 @@ export function OpportunityStagePopupModal({
       email: primaryContact?.email || sourceInquiry?.customer_email || "",
     });
     setLeadInfoForm({
+      brand_id: opp.brand_id ? String(opp.brand_id) : (sourceInquiry?.brand_id ? String(sourceInquiry.brand_id) : ""),
       project_type: sourceInquiry?.subject || opp.opportunity_name || "",
       interested_service: sourceInquiry?.interested_service || "",
       lead_source: sourceInquiry?.lead_source || sourceInquiry?.source_channel || "MANUAL",
@@ -804,6 +830,7 @@ export function OpportunityStagePopupModal({
         internal_pic: leadInfoForm.internal_pic,
       });
       await updateOpportunityStageDetails(opp.id, {
+        brand_id: leadInfoForm.brand_id || null,
         opportunity_name: (meta.project_name || opp.opportunity_name || "").trim(),
         expected_amount: Number.isFinite(numericAmount) && numericAmount > 0 ? numericAmount : opp.expected_amount,
         expected_close_date: meta.event_date || meta.target_submission_date || meta.project_start_date || null,
@@ -1099,6 +1126,27 @@ export function OpportunityStagePopupModal({
                 )}
               </div>
               <div className="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <div className="text-[#64748B]">Brand / Unit Bisnis</div>
+                  {editing ? (
+                    <select
+                      className="input mt-0.5 w-full text-xs bg-white"
+                      value={leadInfoForm.brand_id}
+                      onChange={(e) => setLeadInfoForm((f) => ({ ...f, brand_id: e.target.value }))}
+                    >
+                      <option value="">-- Pilih Brand --</option>
+                      {(data.brands || []).map((b: any) => (
+                        <option key={b.id} value={String(b.id)}>
+                          [{b.brand_code}] {b.brand_name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="mt-0.5 text-sm font-semibold text-[#0876CD]">
+                      {(data.brands || []).find((b: any) => String(b.id) === String(leadInfoForm.brand_id))?.brand_name || "Umum / Lintas Brand"}
+                    </div>
+                  )}
+                </div>
                 <div>
                   <div className="text-[#64748B]">Project Type</div>
                   {editing ? (

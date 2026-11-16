@@ -37,6 +37,7 @@ function apiErrorMessage(error: any, fallback: string) {
 
 export default function LandingPageIntegrationSettings() {
   const [sources, setSources] = useState<CRMIntegrationSource[]>([]);
+  const [brands, setBrands] = useState<Array<{ id: string; brand_code: string; brand_name: string; origin_domain?: string | null }>>([]);
   const [assignees, setAssignees] = useState<Array<{ id: string; full_name: string; email: string }>>([]);
   const [assigneesLoading, setAssigneesLoading] = useState(true);
   const [assigneesError, setAssigneesError] = useState(false);
@@ -46,7 +47,7 @@ export default function LandingPageIntegrationSettings() {
   const [createdSecret, setCreatedSecret] = useState("");
   const [createdSource, setCreatedSource] = useState<CRMIntegrationSource | null>(null);
   const [copied, setCopied] = useState(false);
-  const [form, setForm] = useState({ source_code: "ARSALYNK_LANDING", account_name: "Arsalynk Landing Page", external_account_id: "landing-page-main", business_unit_code: "SALES", business_unit_name: "Sales", default_assigned_user_id: "", allowed_origin_domains: "" });
+  const [form, setForm] = useState({ brand_id: "", source_code: "ARSALYNK_LANDING", account_name: "Arsalynk Landing Page", external_account_id: "landing-page-main", business_unit_code: "SALES", business_unit_name: "Sales", default_assigned_user_id: "", allowed_origin_domains: "" });
   const [events, setEvents] = useState<string[]>(["inquiry.submitted"]);
   const [editingDomains, setEditingDomains] = useState<{ id: string; value: string } | null>(null);
   const [editingEvents, setEditingEvents] = useState<{ id: string; values: string[] } | null>(null);
@@ -76,6 +77,14 @@ export default function LandingPageIntegrationSettings() {
       .then((rows) => { if (!cancelled) setAssignees(rows); })
       .catch(() => { if (!cancelled) { setAssignees([]); setAssigneesError(true); } })
       .finally(() => { if (!cancelled) setAssigneesLoading(false); });
+    api.get("/api/v1/master-data/brands/?page_size=100", companyScope ? { headers: { "X-Company-ID": companyScope } } : undefined)
+      .then(({ data: res }) => {
+        if (cancelled) return;
+        const payload = res?.data ?? res;
+        const rows = Array.isArray(payload?.results) ? payload.results : Array.isArray(payload) ? payload : [];
+        setBrands(rows);
+      })
+      .catch(() => { if (!cancelled) setBrands([]); });
     return () => { cancelled = true; };
   }, [companyScope]);
 
@@ -172,7 +181,34 @@ export default function LandingPageIntegrationSettings() {
   return <div className="space-y-5">
     <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
       <div className="flex items-start gap-3"><div className="rounded-xl bg-[#E7F2FF] p-2 text-[#163D64]"><Globe2 size={19}/></div><div><h2 className="text-base font-bold text-[#172033]">Hubungkan website atau aplikasi eksternal</h2><p className="mt-1 max-w-3xl text-sm leading-6 text-[#64748B]">Daftarkan backend landing page, marketplace, helpdesk, ERP, atau adapter chat sebagai source CRM. Marka membuat ID dan signing secret untuk mengirim event yang dipilih melalui server secara aman.</p></div></div>
-      <div className="mt-5 grid gap-3 md:grid-cols-2">{field("Kode sumber", "source_code", "Huruf kapital, angka, _ atau -; contoh ARSALYNK_LANDING")}{field("Nama integrasi", "account_name", "Nama yang mudah dikenali administrator")}{field("ID akun eksternal", "external_account_id", "Penanda channel dari website Anda")}{field("Kode unit bisnis (opsional)", "business_unit_code", "Contoh SALES atau SERVICE")}{field("Nama unit bisnis (opsional)", "business_unit_name", "Nama unit untuk routing inbox")}
+      <div className="mt-5 grid gap-3 md:grid-cols-2">
+        <label className="flex flex-col gap-1.5 text-xs font-semibold text-[#475569]">
+          Brand / Unit Bisnis (Klasifikasi Otomatis)
+          <select
+            className={inputClass}
+            value={form.brand_id}
+            onChange={(e) => {
+              const bid = e.target.value;
+              const selectedBrand = brands.find((b) => String(b.id) === bid);
+              setForm((curr) => ({
+                ...curr,
+                brand_id: bid,
+                business_unit_code: selectedBrand ? selectedBrand.brand_code : curr.business_unit_code,
+                business_unit_name: selectedBrand ? selectedBrand.brand_name : curr.business_unit_name,
+                allowed_origin_domains: !curr.allowed_origin_domains && selectedBrand?.origin_domain ? selectedBrand.origin_domain : curr.allowed_origin_domains,
+              }));
+            }}
+          >
+            <option value="">-- Umum / Lintas Brand --</option>
+            {brands.map((b) => (
+              <option key={b.id} value={String(b.id)}>
+                [{b.brand_code}] {b.brand_name}
+              </option>
+            ))}
+          </select>
+          <span className="font-normal text-[#718096]">Mengikat webhook landing page langsung ke Brand sehingga Inquiry, Chat, dan Tiket masuk otomatis terklasifikasi.</span>
+        </label>
+        {field("Kode sumber", "source_code", "Huruf kapital, angka, _ atau -; contoh ARSALYNK_LANDING")}{field("Nama integrasi", "account_name", "Nama yang mudah dikenali administrator")}{field("ID akun eksternal", "external_account_id", "Penanda channel dari website Anda")}{field("Kode unit bisnis (opsional)", "business_unit_code", "Contoh SALES atau SERVICE")}{field("Nama unit bisnis (opsional)", "business_unit_name", "Nama unit untuk routing inbox")}
         <label className="flex flex-col gap-1.5 text-xs font-semibold text-[#475569]">Domain website yang diizinkan (opsional)<textarea className={inputClass} rows={3} value={form.allowed_origin_domains} onChange={(e) => update("allowed_origin_domains", e.target.value)} placeholder="arsalynk.com&#10;promo.arsalynk.com"/><span className="font-normal text-[#718096]">Satu hostname per baris atau pisahkan dengan koma. Domain dalam payload harus cocok dengan daftar ini; jika daftar kosong, kirim event tanpa origin_domain.</span></label>
         <label className="flex flex-col gap-1.5 text-xs font-semibold text-[#475569]">Penanggung jawab awal (opsional)<select className={inputClass} value={form.default_assigned_user_id} onChange={(e) => update("default_assigned_user_id", e.target.value)} disabled={assigneesLoading || assigneesError || assignees.length === 0}><option value="">{assigneesLoading ? "Memuat pengguna…" : assigneesError ? "Daftar pengguna gagal dimuat" : assignees.length ? "Belum ditentukan" : "Belum ada user CRM/Sales"}</option>{assignees.map((user) => <option key={user.id} value={user.id}>{user.full_name} · {user.email}</option>)}</select><span className="font-normal text-[#718096]">{assigneesError ? "Coba muat ulang halaman. Jika tetap gagal, periksa koneksi atau akses admin." : assignees.length === 0 && !assigneesLoading ? "Tambahkan role CRM Lead atau Sales ke pengguna pada company ini melalui Pengguna & Akses." : "Inquiry dari kanal ini akan diarahkan ke user aktif berperan CRM Lead atau Sales."}</span></label>
       </div>

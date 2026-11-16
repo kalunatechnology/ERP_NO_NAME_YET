@@ -150,6 +150,8 @@ export class CRMService {
             id: crypto.randomUUID(),
             tenant_id: inquiry.tenant_id,
             company_id: inquiry.company_id,
+            brand_id: (inquiry as any).brand_id ?? null,
+            department_id: (inquiry as any).department_id ?? null,
             customer_party_id: inquiry.customer_party_id,
             source_inquiry_id: inquiry.id,
             owner_user_id: inquiry.owner_user_id ?? userId,
@@ -362,7 +364,7 @@ export class CRMService {
       const opportunityId = payload.opportunity_id ? String(payload.opportunity_id) : null;
       const opportunity = opportunityId ? await tx.crm_opportunity.findFirst({
         where: { id: opportunityId, company_id: companyId },
-        select: { id: true, tenant_id: true, status: true, pipeline_stage: true },
+        select: { id: true, tenant_id: true, brand_id: true, status: true, pipeline_stage: true },
       }) : null;
       if (opportunityId && !opportunity) throw new NotFoundError('Opportunity');
       if (opportunity && (['LOST', 'CLOSED_LOST', 'CANCELLED', 'CANCEL', 'BATAL'].includes(String(opportunity.status || '').toUpperCase())
@@ -370,15 +372,17 @@ export class CRMService {
         throw new ConflictError('Estimasi tidak dapat dibuat dari Opportunity yang sudah ditutup.');
       }
       const inquiryId = payload.inquiry_id ? String(payload.inquiry_id) : null;
-      const inquiry = inquiryId ? await tx.crm_customer_inquiry.findFirst({ where: { id: inquiryId, company_id: companyId }, select: { id: true, tenant_id: true } }) : null;
+      const inquiry = inquiryId ? await tx.crm_customer_inquiry.findFirst({ where: { id: inquiryId, company_id: companyId }, select: { id: true, tenant_id: true, brand_id: true } }) : null;
       if (inquiryId && !inquiry) throw new NotFoundError('CustomerInquiry');
 
       const tenantId = opportunity?.tenant_id ?? inquiry?.tenant_id;
       if (!tenantId) throw new ValidationError('Hubungkan estimasi ke Opportunity atau Inquiry pada company aktif.');
+      const resolvedBrandId = payload.brand_id ?? (opportunity as any)?.brand_id ?? (inquiry as any)?.brand_id ?? null;
       const now = new Date();
       const estimate = await tx.crm_cost_estimate.create({
         data: {
           id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId,
+          brand_id: resolvedBrandId,
           created_by_id: userId, opportunity_id: opportunity?.id ?? null, inquiry_id: inquiry?.id ?? null,
           estimate_number: `EST-${crypto.randomUUID().slice(0, 8).toUpperCase()}`, version_number: 1,
           direct_cost: direct, overhead_cost: overhead, contingency_amount: contingency,
@@ -446,7 +450,7 @@ export class CRMService {
       }
       const opportunity = await tx.crm_opportunity.findFirst({
         where: { id: estimate.opportunity_id, company_id: companyId },
-        select: { id: true, customer_party_id: true, status: true, pipeline_stage: true },
+        select: { id: true, customer_party_id: true, brand_id: true, status: true, pipeline_stage: true },
       });
       if (!opportunity) throw new ValidationError('Opportunity estimasi tidak ditemukan pada company ini.');
       if (['LOST', 'CLOSED_LOST', 'CANCELLED', 'CANCEL', 'BATAL'].includes(String(opportunity.status || '').toUpperCase())
@@ -482,6 +486,7 @@ export class CRMService {
           id: crypto.randomUUID(),
           tenant_id: estimate.tenant_id,
           company_id: companyId,
+          brand_id: (estimate as any).brand_id ?? (opportunity as any).brand_id ?? null,
           created_by_id: userId,
           document_id: document.id,
           opportunity_id: estimate.opportunity_id,
@@ -760,6 +765,7 @@ export class CRMService {
               id: crypto.randomUUID(),
               tenant_id: opportunity.tenant_id,
               company_id: companyId,
+              brand_id: (opportunity as any).brand_id ?? null,
               created_by_id: user?.id,
               customer_party_id: customerPartyId,
               quotation_id: acceptedQuotation.id,
@@ -801,6 +807,7 @@ export class CRMService {
               id: crypto.randomUUID(),
               tenant_id: opportunity.tenant_id,
               company_id: companyId,
+              brand_id: (opportunity as any).brand_id ?? null,
               customer_party_id: customerPartyId,
               customer_name: customerParty.display_name ?? customerParty.legal_name ?? opportunity.opportunity_name,
               description: opportunity.opportunity_name,

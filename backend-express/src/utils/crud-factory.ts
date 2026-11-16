@@ -317,6 +317,9 @@ export function autoFillRequiredFields(modelName: string, data: any, req?: Reque
   if (result.assignee && !result.assignee_id && model.fields.some(f => f.name === 'assignee_id')) {
     result.assignee_id = String(result.assignee);
   }
+  if (result.brand && !result.brand_id && model.fields.some(f => f.name === 'brand_id')) {
+    result.brand_id = String(result.brand);
+  }
 
   // 2. Iterate each schema field
   for (const field of model.fields) {
@@ -477,6 +480,7 @@ export function normalizeRecord(record: any, modelName?: string): any {
   if (result.vendor_party_id !== undefined && result.vendor === undefined) result.vendor = result.vendor_party_id;
   if (result.product_id !== undefined && result.product === undefined) result.product = result.product_id;
   if (result.warehouse_id !== undefined && result.warehouse === undefined) result.warehouse = result.warehouse_id;
+  if (result.brand_id !== undefined && result.brand === undefined) result.brand = result.brand_id;
 
   // Project domain aliases
   if (result.project_name !== undefined && result.name === undefined) result.name = result.project_name;
@@ -883,6 +887,7 @@ export function createCrudRouter(options: CrudOptions): Router {
           else if (fieldKey === 'vendor') resolvedKey = 'vendor_party_id';
           else if (fieldKey === 'product') resolvedKey = 'product_id';
           else if (fieldKey === 'warehouse') resolvedKey = 'warehouse_id';
+          else if (fieldKey === 'brand') resolvedKey = 'brand_id';
 
           const field = modelMetadata?.fields.find(item => item.name === resolvedKey);
           if (!field || validFields.size > 0 && !validFields.has(resolvedKey)) throw new ValidationError(`Filter ${key} tidak tersedia pada model ${modelNameStr}.`);

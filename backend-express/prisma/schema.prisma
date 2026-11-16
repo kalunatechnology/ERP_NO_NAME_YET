@@ -372,6 +372,7 @@ model request_ticket {
   id                    String    @id @default(uuid())
   tenant_id             String?
   company_id            String
+  brand_id              String?   @map("brand_id")
   created_by_id         String
   workflow_instance_id  String    @unique
   request_number        String
@@ -403,6 +404,7 @@ model request_meeting {
   id                String    @id @default(uuid())
   tenant_id         String?
   company_id        String
+  brand_id              String?   @map("brand_id")
   created_by_id     String
   request_id        String    @unique
   crm_opportunity_id String?
@@ -1124,6 +1126,7 @@ model iam_user_project_access {
 
 model master_party {
   company_id          String?   @map("company_id")
+  brand_id              String?   @map("brand_id")
   created_by_id       String?   @map("created_by_id")
   created_at          DateTime? @default(now())
   updated_at          DateTime? @updatedAt
@@ -1146,6 +1149,7 @@ model master_party {
   project_links       project_project_party[]
 
   @@index([tenant_id, company_id])
+  @@index([company_id, brand_id], map: "idx_master_party_company_brand")
   @@map("master_party")
 }
 
@@ -1169,6 +1173,7 @@ model master_party_role {
 model master_contact {
   tenant_id       String?   @map("tenant_id")
   company_id      String?   @map("company_id")
+  brand_id              String?   @map("brand_id")
   created_by_id   String?   @map("created_by_id")
   created_at      DateTime? @default(now())
   updated_at      DateTime? @updatedAt
@@ -1513,6 +1518,7 @@ model crm_lead {
   document_id         String?   @map("document_id")
   tenant_id           String?   @map("tenant_id")
   company_id          String?   @map("company_id")
+  brand_id              String?   @map("brand_id")
   party_id            String?   @map("party_id")
   owner_user_id       String?   @map("owner_user_id")
   lead_source         String
@@ -1531,6 +1537,7 @@ model crm_opportunity {
   id                  String    @id @default(uuid())
   tenant_id           String?   @map("tenant_id")
   company_id          String?   @map("company_id")
+  brand_id              String?   @map("brand_id")
   document_id         String?   @map("document_id")
   customer_party_id   String?   @map("customer_party_id")
   lead_id             String?   @map("lead_id")
@@ -1554,6 +1561,7 @@ model crm_opportunity {
   status              String
 
   @@index([tenant_id, company_id])
+  @@index([company_id, brand_id], map: "idx_crm_opp_company_brand")
   @@map("crm_opportunity")
 }
 
@@ -1564,6 +1572,7 @@ model core_integration_source {
   source_code               String    @map("source_code")
   tenant_id                 String    @map("tenant_id")
   company_id                String    @map("company_id")
+  brand_id              String?   @map("brand_id")
   channel_type              String    @map("channel_type")
   channel_account_id         String?   @map("channel_account_id")
   business_unit_code        String?   @map("business_unit_code")
@@ -1592,6 +1601,7 @@ model crm_whatsapp_connection {
   id                    String    @id @default(uuid())
   tenant_id             String    @map("tenant_id")
   company_id            String    @map("company_id")
+  brand_id              String?   @map("brand_id")
   source_id             String    @unique @map("source_id")
   waba_id               String    @map("waba_id")
   phone_number_id       String    @map("phone_number_id")
@@ -1787,6 +1797,7 @@ model crm_deal_handoff {
   id                  String   @id @default(uuid())
   tenant_id           String   @map("tenant_id")
   company_id          String   @map("company_id")
+  brand_id              String?   @map("brand_id")
   opportunity_id      String   @unique @map("opportunity_id")
   decision            String
   credit_snapshot_id  String   @map("credit_snapshot_id")
@@ -1958,6 +1969,7 @@ model crm_channel_account {
 model crm_conversation {
   tenant_id                String?   @map("tenant_id")
   company_id               String?   @map("company_id")
+  brand_id              String?   @map("brand_id")
   created_by_id            String?   @map("created_by_id")
   created_at               DateTime? @default(now())
   updated_at               DateTime? @updatedAt
@@ -1981,6 +1993,7 @@ model crm_conversation {
 
   @@index([tenant_id, company_id])
   @@index([company_id, business_unit_code], map: "crm_conversation_company_id_business_unit_code_idx")
+  @@index([company_id, brand_id], map: "idx_crm_conv_company_brand")
   @@map("crm_conversation")
 }
 
@@ -2060,6 +2073,7 @@ model crm_message_delivery_status {
 model crm_feedback {
   tenant_id         String?   @map("tenant_id")
   company_id        String?   @map("company_id")
+  brand_id              String?   @map("brand_id")
   created_by_id     String?   @map("created_by_id")
   created_at        DateTime? @default(now())
   updated_at        DateTime? @updatedAt
@@ -2124,6 +2138,7 @@ model crm_survey_question {
 model crm_survey_response {
   tenant_id         String?   @map("tenant_id")
   company_id        String?   @map("company_id")
+  brand_id              String?   @map("brand_id")
   created_by_id     String?   @map("created_by_id")
   created_at        DateTime? @default(now())
   updated_at        DateTime? @updatedAt
@@ -2164,6 +2179,7 @@ model crm_customer_inquiry {
   id                     String    @id @default(uuid())
   tenant_id              String?   @map("tenant_id")
   company_id             String?   @map("company_id")
+  brand_id              String?   @map("brand_id")
   document_id            String?   @map("document_id")
   customer_party_id      String?   @map("customer_party_id")
   contact_id             String?   @map("contact_id")
@@ -2194,6 +2210,7 @@ model crm_customer_inquiry {
   updated_at             DateTime
 
   @@index([tenant_id, company_id])
+  @@index([company_id, brand_id], map: "idx_crm_inquiry_company_brand")
   @@map("crm_customer_inquiry")
 }
 
@@ -2223,6 +2240,7 @@ model crm_cost_estimate {
   id                 String    @id @default(uuid())
   tenant_id          String?   @map("tenant_id")
   company_id         String?   @map("company_id")
+  brand_id              String?   @map("brand_id")
   inquiry_id         String?   @map("inquiry_id")
   opportunity_id     String?   @map("opportunity_id")
   estimate_number    String
@@ -2243,6 +2261,7 @@ model crm_cost_estimate {
   updated_at         DateTime
 
   @@index([tenant_id, company_id])
+  @@index([company_id, brand_id], map: "idx_crm_estimate_company_brand")
   @@map("crm_cost_estimate")
 }
 
@@ -2359,6 +2378,7 @@ model crm_customer_feedback {
 model sales_quotation {
   tenant_id            String?   @map("tenant_id")
   company_id           String?   @map("company_id")
+  brand_id              String?   @map("brand_id")
   created_by_id        String?   @map("created_by_id")
   created_at           DateTime? @default(now())
   updated_at           DateTime? @updatedAt
@@ -2377,6 +2397,7 @@ model sales_quotation {
   status               String
 
   @@index([tenant_id, company_id])
+  @@index([company_id, brand_id], map: "idx_sales_quotation_company_brand")
   @@map("sales_quotation")
 }
 
@@ -2422,6 +2443,7 @@ model sales_quotation_cost {
 model sales_contract {
   tenant_id         String?   @map("tenant_id")
   company_id        String?   @map("company_id")
+  brand_id              String?   @map("brand_id")
   created_by_id     String?   @map("created_by_id")
   created_at        DateTime? @default(now())
   updated_at        DateTime? @updatedAt
@@ -2442,6 +2464,7 @@ model sales_contract {
   notes             String?   @map("notes")
 
   @@index([tenant_id, company_id])
+  @@index([company_id, brand_id], map: "idx_sales_contract_company_brand")
   @@map("sales_contract")
 }
 
@@ -2466,6 +2489,7 @@ model sales_contract_line {
 model sales_order {
   tenant_id               String?   @map("tenant_id")
   company_id              String?   @map("company_id")
+  brand_id              String?   @map("brand_id")
   created_by_id           String?   @map("created_by_id")
   created_at              DateTime? @default(now())
   updated_at              DateTime? @updatedAt
@@ -2484,6 +2508,7 @@ model sales_order {
   status                  String
 
   @@index([tenant_id, company_id])
+  @@index([company_id, brand_id], map: "idx_sales_order_company_brand")
   @@map("sales_order")
 }
 
@@ -2640,6 +2665,7 @@ model project_project {
   document_id           String?   @map("document_id")
   tenant_id             String?   @map("tenant_id")
   company_id            String?   @map("company_id")
+  brand_id              String?   @map("brand_id")
   customer_party_id     String?   @map("customer_party_id")
   sales_order_id        String?   @map("sales_order_id")
   project_manager_id    String?   @map("project_manager_id")
@@ -5603,6 +5629,7 @@ model asset_disposal {
 model service_case {
   tenant_id           String?   @map("tenant_id")
   company_id          String?   @map("company_id")
+  brand_id              String?   @map("brand_id")
   created_by_id       String?   @map("created_by_id")
   created_at          DateTime? @default(now())
   updated_at          DateTime? @updatedAt
@@ -5627,6 +5654,7 @@ model service_case {
   origin_domain       String?   @map("origin_domain")
 
   @@index([tenant_id, company_id])
+  @@index([company_id, brand_id], map: "idx_service_case_company_brand")
   @@map("service_case")
 }
 
@@ -6277,4 +6305,26 @@ model management_report {
   @@unique([company_id, report_number, version_number])
   @@index([tenant_id, company_id, status])
   @@map("management_report")
+}
+
+model master_brand {
+  id                    String    @id @default(uuid())
+  tenant_id             String?   @map("tenant_id")
+  company_id            String    @map("company_id")
+  brand_code            String    @map("brand_code")
+  brand_name            String    @map("brand_name")
+  slug                  String?   @map("slug")
+  description           String    @default("") @map("description")
+  origin_domain         String?   @map("origin_domain")
+  default_department_id String?   @map("default_department_id")
+  default_owner_user_id String?   @map("default_owner_user_id")
+  color_hex             String    @default("#0876CD") @map("color_hex")
+  status                String    @default("ACTIVE") @map("status")
+  created_by_id         String?   @map("created_by_id")
+  created_at            DateTime  @default(now()) @map("created_at")
+  updated_at            DateTime  @updatedAt @map("updated_at")
+
+  @@unique([company_id, brand_code], map: "uq_master_brand_company_code")
+  @@index([tenant_id, company_id, status], map: "idx_master_brand_company_status")
+  @@map("master_brand")
 }

@@ -885,3 +885,108 @@ masterDataRouter.use('/warehouse-locations', requireModuleAccess('INVENTORY'), c
 }));
 masterDataRouter.use('/work-centers', createCrudRouter({ modelName: 'master_work_center', searchFields: ['work_center_name', 'work_center_code'] }));
 masterDataRouter.use('/machines', createCrudRouter({ modelName: 'master_machine', searchFields: ['machine_name', 'machine_code'] }));
+
+const DEFAULT_COMPANY_BRANDS: Array<{
+  brand_code: string;
+  brand_name: string;
+  slug: string;
+  origin_domain: string;
+  color_hex: string;
+  description: string;
+}> = [
+  { brand_code: 'ARSL', brand_name: 'Arsalynk', slug: 'arsalynk', origin_domain: 'arsalynk.com', color_hex: '#0876CD', description: 'Brand Utama Arsalynk' },
+  { brand_code: 'CRFT', brand_name: 'Craftivation', slug: 'craftivation', origin_domain: 'craftivation.id', color_hex: '#059669', description: 'Event, Exhibition & Creative Production' },
+  { brand_code: 'ADSV', brand_name: 'ADSVAR', slug: 'adsvar', origin_domain: 'adsvar.com', color_hex: '#7C3AED', description: 'Digital Marketing & Media Campaign' },
+  { brand_code: 'KLNA', brand_name: 'Kaluna Technology', slug: 'kaluna-technology', origin_domain: 'kalunatechnology.com', color_hex: '#D97706', description: 'IT, Software & Enterprise Solutions' },
+];
+
+export async function ensureCompanyBrands(companyId: string, tenantId?: string | null): Promise<void> {
+  if (!companyId) return;
+  try {
+    const count = await (prisma as any).master_brand.count({ where: { company_id: companyId } });
+    if (count > 0) return;
+
+    let resolvedTenantId = tenantId ?? null;
+    if (!resolvedTenantId) {
+      const company = await prisma.core_company.findUnique({ where: { id: companyId }, select: { tenant_id: true } });
+      resolvedTenantId = company?.tenant_id ?? null;
+    }
+
+    const now = new Date();
+    for (const item of DEFAULT_COMPANY_BRANDS) {
+      await (prisma as any).master_brand.upsert({
+        where: { company_id_brand_code: { company_id: companyId, brand_code: item.brand_code } },
+        update: {},
+        create: {
+          id: crypto.randomUUID(),
+          tenant_id: resolvedTenantId,
+          company_id: companyId,
+          brand_code: item.brand_code,
+          brand_name: item.brand_name,
+          slug: item.slug,
+          origin_domain: item.origin_domain,
+          color_hex: item.color_hex,
+          description: item.description,
+          status: 'ACTIVE',
+          created_at: now,
+          updated_at: now,
+        },
+      });
+    }
+  } catch {
+    // Non-blocking if migration hasn't run yet
+  }
+}
+
+masterDataRouter.get('/brands', async (req: Request, _res: Response, next: NextFunction) => {
+  try {
+    const companyId = req.companyId || (req.headers['x-company-id'] as string) || '';
+    if (companyId) {
+      await ensureCompanyBrands(companyId, req.tenantId);
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
+masterDataRouter.use('/brands', createCrudRouter({
+  modelName: 'master_brand',
+  searchFields: ['brand_code', 'brand_name', 'origin_domain', 'description'],
+  defaultSort: { field: 'brand_name', order: 'asc' },
+  beforeCreate: async (req, data) => {
+    const code = String(data.brand_code ?? '').trim().toUpperCase();
+    const name = String(data.brand_name ?? '').trim();
+    if (!code || !name) throw new ValidationError('Kode Brand dan Nama Brand wajib diisi.');
+    const duplicate = await (prisma as any).master_brand.findFirst({
+      where: { company_id: req.companyId, brand_code: { equals: code, mode: 'insensitive' } },
+      select: { id: true },
+    });
+    if (duplicate) throw new ConflictError(`Kode Brand "${code}" sudah terdaftar pada company ini.`);
+    return {
+      ...data,
+      brand_code: code,
+      brand_name: name,
+      slug: data.slug ? String(data.slug).trim().toLowerCase() : code.toLowerCase(),
+      origin_domain: data.origin_domain ? String(data.origin_domain).trim().toLowerCase() : null,
+      color_hex: data.color_hex ? String(data.color_hex).trim() : '#0876CD',
+      status: data.status || 'ACTIVE',
+    };
+  },
+  beforeUpdate: async (req, data, existing) => {
+    const code = data.brand_code !== undefined ? String(data.brand_code ?? '').trim().toUpperCase() : existing.brand_code;
+    const name = data.brand_name !== undefined ? String(data.brand_name ?? '').trim() : existing.brand_name;
+    if (!code || !name) throw new ValidationError('Kode Brand dan Nama Brand wajib diisi.');
+    const duplicate = await (prisma as any).master_brand.findFirst({
+      where: { company_id: req.companyId, id: { not: existing.id }, brand_code: { equals: code, mode: 'insensitive' } },
+      select: { id: true },
+    });
+    if (duplicate) throw new ConflictError(`Kode Brand "${code}" sudah terdaftar pada company ini.`);
+    return {
+      ...data,
+      brand_code: code,
+      brand_name: name,
+    };
+  },
+}));
+

@@ -249,6 +249,31 @@ async function processMessageEvent(event: ClaimedEvent) {
   }, { maxWait: 10_000, timeout: 30_000, isolationLevel: 'Serializable' as Prisma.TransactionIsolationLevel });
 }
 
+async function resolveEventBrandId(
+  tx: Prisma.TransactionClient,
+  source: { company_id: string; brand_id?: string | null },
+  data: any,
+  originDomain: string | null,
+): Promise<string | null> {
+  if (source.brand_id) return source.brand_id;
+  const rawBrandCode = typeof data?.brand_code === 'string' ? data.brand_code.trim().toUpperCase() : '';
+  if (rawBrandCode) {
+    const byCode = await (tx as any).master_brand.findFirst({
+      where: { company_id: source.company_id, brand_code: rawBrandCode, status: 'ACTIVE' },
+      select: { id: true },
+    });
+    if (byCode) return byCode.id;
+  }
+  if (originDomain) {
+    const byDomain = await (tx as any).master_brand.findFirst({
+      where: { company_id: source.company_id, origin_domain: originDomain, status: 'ACTIVE' },
+      select: { id: true },
+    });
+    if (byDomain) return byDomain.id;
+  }
+  return null;
+}
+
 async function processOtherIntegrationEvent(event: ClaimedEvent) {
   const envelope = event.payload;
   const data = envelope?.data;
@@ -261,6 +286,7 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
     const source = await tx.core_integration_source.findUnique({ where: { id: event.source_id } });
     if (!source) throw new Error('INTEGRATION_SOURCE_MISSING');
     const originDomain = resolveEventOriginDomain(data, source.allowed_origin_domains ?? []);
+    const resolvedBrandId = await resolveEventBrandId(tx, source as any, data, originDomain);
     if (envelope.event_type === 'inquiry.submitted') {
       const customer = data?.customer && typeof data.customer === 'object' && !Array.isArray(data.customer) ? data.customer : data;
       const requirements = data?.requirements && typeof data.requirements === 'object' && !Array.isArray(data.requirements) ? data.requirements : data;
@@ -275,6 +301,7 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
       const now = new Date();
       await tx.crm_customer_inquiry.create({ data: {
         id: crypto.randomUUID(), tenant_id: source.tenant_id, company_id: source.company_id,
+        brand_id: resolvedBrandId,
         owner_user_id: source.default_assigned_user_id, inquiry_number: `EXT-${crypto.randomUUID()}`,
         source_channel: `INTEGRATION:${source.source_code}`, subject,
         origin_domain: originDomain,
@@ -293,6 +320,7 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
       const now = new Date();
       await tx.service_case.create({ data: {
         id: crypto.randomUUID(), tenant_id: source.tenant_id, company_id: source.company_id,
+        brand_id: resolvedBrandId,
         assigned_user_id: source.default_assigned_user_id, product_id: serialRow?.product_id ?? null,
         serial_number_id: serialRow?.id ?? null, priority, subject, description,
         status: 'OPEN', created_at: now, updated_at: now,
@@ -328,6 +356,7 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
       }
       await tx.crm_feedback.create({ data: {
         id: crypto.randomUUID(), tenant_id: source.tenant_id, company_id: source.company_id,
+        brand_id: resolvedBrandId,
         customer_party_id: party?.id ?? null, reviewer_name: reviewerName || null, reviewer_email: reviewerEmail || null, sales_order_id: salesOrderId || null,
         feedback_type: feedbackType, rating_value: rating, feedback_text: feedbackText,
         submitted_at: isoDate(envelope.occurred_at), status: 'SUBMITTED', origin_domain: originDomain,

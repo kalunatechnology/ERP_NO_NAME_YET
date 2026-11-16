@@ -48,6 +48,7 @@ export function decryptIntegrationSecret(value: string): string {
 }
 
 export interface CreateIntegrationSourceInput {
+  brand_id?: string | null;
   source_code: string;
   account_name?: string;
   external_account_id?: string;
@@ -139,6 +140,7 @@ export class CRMIntegrationService {
           source_code: sourceCode,
           tenant_id: tenantId,
           company_id: companyId,
+          brand_id: input.brand_id || null,
           channel_type: 'INTERNAL_PIPELINE',
           channel_account_id: channel.id,
           business_unit_code: businessUnitCode,

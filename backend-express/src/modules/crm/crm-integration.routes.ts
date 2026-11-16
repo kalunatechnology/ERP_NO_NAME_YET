@@ -154,6 +154,7 @@ crmIntegrationAdminRouter.post('/', requireCompanyContextForWrite, async (req, r
       if (req.body[field] !== undefined && typeof req.body[field] !== 'string') throw new ValidationError(`${field} harus berupa teks.`);
     }
     const result = await CRMIntegrationService.createSource({
+      brand_id: req.body.brand_id ? String(req.body.brand_id).trim() || null : null,
       source_code: String(req.body.source_code ?? ''),
       account_name: req.body.account_name,
       external_account_id: req.body.external_account_id,

@@ -26,6 +26,7 @@ import {
   loadCRMData, CRMData, CRMDashboard,
   processDealWon, executiveOverrideCredit, qualifyInquiry, convertCRMProspect,
   createOpportunity, updateOpportunityCustomer, moveCRMOpportunityStage, deleteOpportunity,
+  createCRMBrand,
   serializeStageMetadata,
   createCRMActivity, getOpportunityCustomer360, markOpportunityLost, createServiceWorkOrder,
   createCustomerInquiry, updateCustomerInquiry, updateCRMInquiryLeadStatus, deleteCustomerInquiry,
@@ -633,6 +634,7 @@ function TabDeals({
   const [form, setForm] = useState({ 
     opportunity_name: "", 
     customer_party: "", 
+    brand_id: "",
     expected_amount: "150000000", 
     probability_percent: 50, 
     pipeline_stage: "PROSPECT",
@@ -986,6 +988,7 @@ function TabDeals({
       const payload = {
         opportunity_name: form.opportunity_name.trim(),
         customer_party: form.customer_party ? form.customer_party.trim() : null,
+        brand_id: form.brand_id || null,
         expected_amount: Number(form.expected_amount || 0),
         probability_percent: Number(form.probability_percent || 50),
         pipeline_stage: form.pipeline_stage || "PROSPECT",
@@ -1005,7 +1008,7 @@ function TabDeals({
       
       setIsNewOppOpen(false);
       setForm({
-        opportunity_name: "", customer_party: "", expected_amount: "150000000", probability_percent: 50, pipeline_stage: "PROSPECT",
+        opportunity_name: "", customer_party: "", brand_id: "", expected_amount: "150000000", probability_percent: 50, pipeline_stage: "PROSPECT",
         expected_close_date: "", next_follow_up_at: "", owner_user_id: "", project_type: "",
         meeting_date: "", project_brief: "", initial_discussion_notes: "", concept_summary: "", key_deliverables: "",
         proposal_deck_status: "In Progress", quotation_number: "", sent_date: "", quotation_status: "Sent",
@@ -1396,7 +1399,22 @@ function TabDeals({
         <div className="flex flex-col gap-4 p-4 text-xs">
           <div className="rounded-2xl border border-slate-200 p-3.5 space-y-3">
             <div className="font-bold text-sm text-[#163D64]">Project &amp; Deal Information</div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="font-medium text-slate-600 mb-1 block">Brand / Unit Bisnis</label>
+                <select
+                  className="input w-full bg-white"
+                  value={form.brand_id}
+                  onChange={e => setForm(f => ({ ...f, brand_id: e.target.value }))}
+                >
+                  <option value="">-- Pilih Brand --</option>
+                  {(data.brands || []).map((b: any) => (
+                    <option key={b.id} value={String(b.id)}>
+                      [{b.brand_code}] {b.brand_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <label className="font-medium text-slate-600 mb-1 block">Project Name / Nama Opportunity *</label>
                 <input
@@ -4067,9 +4085,19 @@ export default function CrmClient() {
   const [exportingCrm, setExportingCrm] = useState(false);
   const [isNewOppOpen, setIsNewOppOpen] = useState(false);
 
-  // 3-Role Hierarchy (GM / SPV / STAFF) & Delegation state
+  // 3-Role Hierarchy (GM / SPV / STAFF), Multi-Brand & Delegation state
   const [scopeFilter, setScopeFilter] = useState<"MINE" | "TEAM" | "ALL">(roleLevel === "STAFF" ? "MINE" : "ALL");
   const [ownerFilter, setOwnerFilter] = useState("");
+  const [brandFilter, setBrandFilter] = useState("ALL");
+  const [isBrandModalOpen, setIsBrandModalOpen] = useState(false);
+  const [savingBrand, setSavingBrand] = useState(false);
+  const [brandForm, setBrandForm] = useState({
+    brand_code: "",
+    brand_name: "",
+    origin_domain: "",
+    color_hex: "#0876CD",
+    description: "",
+  });
   const [teamUsers, setTeamUsers] = useState<any[]>([]);
   const [departmentsList, setDepartmentsList] = useState<any[]>([]);
   const [delegatingTarget, setDelegatingTarget] = useState<{ record: any; recordType: "INQUIRY" | "OPPORTUNITY" } | null>(null);
@@ -4252,14 +4280,51 @@ export default function CrmClient() {
   };
 
   const rawData: CRMData = crmData || {
-    inquiries:[], requirements:[], opportunities:[], activities:[], stages:[], estimates:[], estimateLines:[],
+    brands:[], inquiries:[], requirements:[], opportunities:[], activities:[], stages:[], estimates:[], estimateLines:[],
     quotations:[], businessDocuments:[], approvals:[], deliveries:[], contracts:[], orders:[], conversations:[],
     feedback:[], surveyQuestions:[], surveyResponses:[], surveyAnswers:[], credit:[], cases:[], resolutions:[], products:[], parties:[], contacts:[],
   };
 
-  const filterByRoleAndScope = (rows: any[]) => {
+  const activeBrands = (rawData.brands || []).filter(
+    (b: any) => String(b.status || "ACTIVE").toUpperCase() === "ACTIVE"
+  );
+
+  const handleSaveBrand = async () => {
+    if (!brandForm.brand_code.trim() || !brandForm.brand_name.trim()) {
+      toast.error("Kode Brand dan Nama Brand wajib diisi.");
+      return;
+    }
+    setSavingBrand(true);
+    try {
+      await createCRMBrand({
+        brand_code: brandForm.brand_code.trim().toUpperCase(),
+        brand_name: brandForm.brand_name.trim(),
+        origin_domain: brandForm.origin_domain.trim(),
+        color_hex: brandForm.color_hex || "#0876CD",
+        description: brandForm.description.trim(),
+      });
+      toast.success("Brand berhasil ditambahkan.");
+      setIsBrandModalOpen(false);
+      setBrandForm({ brand_code: "", brand_name: "", origin_domain: "", color_hex: "#0876CD", description: "" });
+      await loadData(true);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || err?.response?.data?.error?.message || "Gagal menyimpan Brand.");
+    } finally {
+      setSavingBrand(false);
+    }
+  };
+
+  const filterByRoleAndScope = (rows: any[], applyOwnerAndScope = true) => {
     const myId = user?.id ? String(user.id) : "";
     return (rows || []).filter((item) => {
+      if (brandFilter !== "ALL") {
+        if (brandFilter === "UNASSIGNED") {
+          if (item.brand_id) return false;
+        } else if (String(item.brand_id || "") !== brandFilter) {
+          return false;
+        }
+      }
+      if (!applyOwnerAndScope) return true;
       if (ownerFilter && String(item.owner_user_id || "") !== ownerFilter) return false;
       if (scopeFilter === "MINE" && myId) {
         return !item.owner_user_id || String(item.owner_user_id) === myId || String(item.created_by_id || "") === myId;
@@ -4275,6 +4340,12 @@ export default function CrmClient() {
     ...rawData,
     inquiries: filterByRoleAndScope(rawData.inquiries),
     opportunities: filterByRoleAndScope(rawData.opportunities),
+    estimates: filterByRoleAndScope(rawData.estimates, false),
+    quotations: filterByRoleAndScope(rawData.quotations, false),
+    contracts: filterByRoleAndScope(rawData.contracts, false),
+    orders: filterByRoleAndScope(rawData.orders, false),
+    cases: filterByRoleAndScope(rawData.cases, false),
+    conversations: filterByRoleAndScope(rawData.conversations, false),
   };
 
   const exportCrmToExcel = async () => {
@@ -4483,23 +4554,54 @@ export default function CrmClient() {
             )}
           </div>
         </div>
-        {(roleLevel === "SPV" || roleLevel === "GM" || canDelegateCrm) && (
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="font-semibold text-text-secondary">Filter PIC Sales:</span>
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          {/* Klasifikasi Select per Brand */}
+          <div className="flex items-center gap-1.5">
+            <span className="font-semibold text-text-secondary">Filter Brand:</span>
             <select
-              value={ownerFilter}
-              onChange={(e) => setOwnerFilter(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-text-primary"
+              aria-label="Filter Klasifikasi Brand CRM"
+              value={brandFilter}
+              onChange={(e) => setBrandFilter(e.target.value)}
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-[#163D64]"
             >
-              <option value="">Semua PIC Sales ({teamUsers.length})</option>
-              {teamUsers.map((u: any) => (
-                <option key={u.id} value={String(u.id)}>
-                  {u.full_name || u.email} {u.role_level ? `(${u.role_level})` : ""}
+              <option value="ALL">Semua Brand ({activeBrands.length})</option>
+              {activeBrands.map((b: any) => (
+                <option key={b.id} value={String(b.id)}>
+                  [{b.brand_code}] {b.brand_name}
                 </option>
               ))}
+              <option value="UNASSIGNED">Tanpa Brand / Umum</option>
             </select>
+            {canOperateCrm && (
+              <button
+                type="button"
+                onClick={() => setIsBrandModalOpen(true)}
+                className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-[#0876CD] hover:bg-blue-50"
+                title="Tambah / Definisikan Brand Baru"
+              >
+                + Brand
+              </button>
+            )}
           </div>
-        )}
+
+          {(roleLevel === "SPV" || roleLevel === "GM" || canDelegateCrm) && (
+            <div className="flex items-center gap-1.5">
+              <span className="font-semibold text-text-secondary">Filter PIC Sales:</span>
+              <select
+                value={ownerFilter}
+                onChange={(e) => setOwnerFilter(e.target.value)}
+                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-text-primary"
+              >
+                <option value="">Semua PIC Sales ({teamUsers.length})</option>
+                {teamUsers.map((u: any) => (
+                  <option key={u.id} value={String(u.id)}>
+                    {u.full_name || u.email} {u.role_level ? `(${u.role_level})` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── Tab Navigation ───────────────────── */}
@@ -4999,6 +5101,93 @@ export default function CrmClient() {
             </div>
           );
         })()}
+      </Modal>
+
+      {/* Modal: Definisikan Brand / Unit Bisnis Baru */}
+      <Modal
+        isOpen={isBrandModalOpen}
+        onClose={() => !savingBrand && setIsBrandModalOpen(false)}
+        title="Definisikan Brand / Unit Bisnis"
+        size="sm"
+      >
+        <div className="space-y-3 p-4 text-xs">
+          <p className="text-slate-500">
+            Tambahkan Brand baru pada perusahaan ini agar Lead, Opportunity, Quotation, dan Proyek dapat diklasifikasikan per Brand.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label className="font-medium text-slate-600">
+              Kode Brand *
+              <input
+                className="input mt-1 w-full uppercase"
+                value={brandForm.brand_code}
+                onChange={(e) => setBrandForm((f) => ({ ...f, brand_code: e.target.value.toUpperCase() }))}
+                placeholder="Contoh: ARSL / CRFT"
+              />
+            </label>
+            <label className="font-medium text-slate-600">
+              Nama Brand *
+              <input
+                className="input mt-1 w-full"
+                value={brandForm.brand_name}
+                onChange={(e) => setBrandForm((f) => ({ ...f, brand_name: e.target.value }))}
+                placeholder="Contoh: Arsalynk"
+              />
+            </label>
+            <label className="font-medium text-slate-600">
+              Origin Domain Website
+              <input
+                className="input mt-1 w-full"
+                value={brandForm.origin_domain}
+                onChange={(e) => setBrandForm((f) => ({ ...f, origin_domain: e.target.value }))}
+                placeholder="Contoh: arsalynk.com"
+              />
+            </label>
+            <label className="font-medium text-slate-600">
+              Warna Identitas
+              <input
+                type="color"
+                className="input mt-1 h-9 w-full cursor-pointer p-1"
+                value={brandForm.color_hex}
+                onChange={(e) => setBrandForm((f) => ({ ...f, color_hex: e.target.value }))}
+              />
+            </label>
+            <label className="font-medium text-slate-600 sm:col-span-2">
+              Deskripsi Brand
+              <input
+                className="input mt-1 w-full"
+                value={brandForm.description}
+                onChange={(e) => setBrandForm((f) => ({ ...f, description: e.target.value }))}
+                placeholder="Keterangan singkat unit bisnis / brand..."
+              />
+            </label>
+          </div>
+          {activeBrands.length > 0 && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+              <div className="mb-1.5 font-semibold text-slate-700">Daftar Brand Aktif ({activeBrands.length})</div>
+              <div className="flex flex-wrap gap-1.5">
+                {activeBrands.map((b: any) => (
+                  <span key={b.id} className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: b.color_hex || "#0876CD" }} />
+                    <b>{b.brand_code}</b> · {b.brand_name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={() => setIsBrandModalOpen(false)} disabled={savingBrand} className="btn-ghost">
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSaveBrand()}
+              disabled={savingBrand}
+              className="rounded-lg bg-[#163D64] px-4 py-2 text-xs font-semibold text-white hover:bg-[#0876CD]"
+            >
+              {savingBrand ? "Menyimpan..." : "Simpan Brand"}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );
