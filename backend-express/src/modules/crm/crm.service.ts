@@ -346,7 +346,7 @@ export class CRMService {
   }
 
   static async createCostEstimate(
-    payload: { opportunity_id?: string | null; inquiry_id?: string | null; direct_cost?: unknown; overhead_cost?: unknown; contingency_amount?: unknown; markup_percent?: unknown; tax_percent?: unknown; description?: string },
+    payload: { opportunity_id?: string | null; inquiry_id?: string | null; brand_id?: string | null; direct_cost?: unknown; overhead_cost?: unknown; contingency_amount?: unknown; markup_percent?: unknown; tax_percent?: unknown; description?: string },
     userId: string,
     companyId: string,
   ) {
