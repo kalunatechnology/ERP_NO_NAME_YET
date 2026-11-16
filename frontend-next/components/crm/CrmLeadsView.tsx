@@ -133,6 +133,23 @@ export function CrmLeadsView({
     interested_service: "",
     description: "",
     notes: "",
+    status: "NEW",
+    owner_user_id: "",
+    contact_date: "",
+    contact_method: "WhatsApp",
+    introduction_sent: "Company Profile",
+    contact_notes: "",
+    follow_up_notes: "",
+    response_summary: "",
+    client_feedback: "",
+    potential_service: "",
+    next_action: "",
+    estimated_timeline: "",
+    meeting_schedule: "",
+    initial_brief_file: "",
+    potential_project_notes: "",
+    reason_not_interested: "",
+    number_of_attempts: "1",
   });
 
   const userById = useMemo(
@@ -342,6 +359,23 @@ export function CrmLeadsView({
       interested_service: "",
       description: "",
       notes: "",
+      status: "NEW",
+      owner_user_id: _currentUserId || "",
+      contact_date: "",
+      contact_method: "WhatsApp",
+      introduction_sent: "Company Profile",
+      contact_notes: "",
+      follow_up_notes: "",
+      response_summary: "",
+      client_feedback: "",
+      potential_service: "",
+      next_action: "",
+      estimated_timeline: "",
+      meeting_schedule: "",
+      initial_brief_file: "",
+      potential_project_notes: "",
+      reason_not_interested: "",
+      number_of_attempts: "1",
     });
     setIsLeadModalOpen(true);
   };
@@ -367,6 +401,23 @@ export function CrmLeadsView({
       interested_service: lead.interested_service || "",
       description: lead.description || "",
       notes: parsedMeta.plain_notes || "",
+      status: lead._bucket || "NEW",
+      owner_user_id: lead._ownerId || "",
+      contact_date: parsedMeta.contact_date || (lead.last_contacted_at ? String(lead.last_contacted_at).slice(0, 10) : ""),
+      contact_method: parsedMeta.contact_method || "WhatsApp",
+      introduction_sent: parsedMeta.introduction_sent || "Company Profile",
+      contact_notes: parsedMeta.contact_notes || lead.last_contact_note || "",
+      follow_up_notes: parsedMeta.follow_up_notes || lead.last_contact_note || "",
+      response_summary: parsedMeta.response_summary || lead.description || "",
+      client_feedback: parsedMeta.client_feedback || "",
+      potential_service: parsedMeta.potential_service || lead.interested_service || "",
+      next_action: parsedMeta.next_action || "",
+      estimated_timeline: parsedMeta.estimated_timeline || "",
+      meeting_schedule: parsedMeta.meeting_schedule || "",
+      initial_brief_file: parsedMeta.initial_brief_file || "",
+      potential_project_notes: parsedMeta.potential_project_notes || lead.description || "",
+      reason_not_interested: parsedMeta.reason_not_interested || "",
+      number_of_attempts: parsedMeta.number_of_attempts || "1",
     });
     setIsLeadModalOpen(true);
   };
@@ -382,12 +433,30 @@ export function CrmLeadsView({
     }
     setSavingLead(true);
     try {
+      const stagePayload = {
+        plain_notes: leadForm.notes.trim(),
+        follow_up_date: leadForm.next_follow_up_at || "",
+        contact_date: leadForm.contact_date || "",
+        contact_method: leadForm.contact_method || "",
+        introduction_sent: leadForm.introduction_sent || "",
+        contact_notes: leadForm.contact_notes.trim(),
+        follow_up_notes: leadForm.follow_up_notes.trim(),
+        response_summary: leadForm.response_summary.trim(),
+        client_feedback: leadForm.client_feedback.trim(),
+        potential_service: leadForm.potential_service.trim(),
+        next_action: leadForm.next_action.trim(),
+        estimated_timeline: leadForm.estimated_timeline.trim(),
+        meeting_schedule: leadForm.meeting_schedule.trim(),
+        initial_brief_file: leadForm.initial_brief_file.trim(),
+        potential_project_notes: leadForm.potential_project_notes.trim(),
+        reason_not_interested: leadForm.reason_not_interested.trim(),
+        number_of_attempts: leadForm.number_of_attempts.trim(),
+      };
       if (editingLead) {
         const existingMeta = parseStageMetadata(editingLead.notes);
         const serializedNotes = serializeStageMetadata({
           ...existingMeta,
-          plain_notes: leadForm.notes.trim(),
-          follow_up_date: leadForm.next_follow_up_at || existingMeta.follow_up_date || "",
+          ...stagePayload,
         });
         await updateCustomerInquiry(editingLead.id, {
           subject: leadForm.subject.trim(),
@@ -401,18 +470,21 @@ export function CrmLeadsView({
           industry: leadForm.industry.trim(),
           website: leadForm.website.trim(),
           address: leadForm.address.trim(),
+          owner_user_id: leadForm.owner_user_id || null,
           next_follow_up_at: leadForm.next_follow_up_at || null,
-          description: leadForm.description.trim(),
+          last_contacted_at: leadForm.contact_date || null,
+          last_contact_note: leadForm.contact_notes.trim() || leadForm.follow_up_notes.trim() || "",
+          description: leadForm.description.trim() || leadForm.notes.trim(),
           lead_source: leadForm.lead_source,
           interested_service: leadForm.interested_service.trim() || null,
           notes: serializedNotes,
         });
+        if (leadForm.status && leadForm.status !== editingLead._bucket && !editingLead._isConverted) {
+          await updateCRMInquiryLeadStatus(editingLead.id, leadForm.status, leadForm.contact_notes.trim() || leadForm.follow_up_notes.trim() || "");
+        }
         toast.success("Data Lead berhasil diperbarui.");
       } else {
-        const serializedNotes = serializeStageMetadata({
-          plain_notes: leadForm.notes.trim(),
-          follow_up_date: leadForm.next_follow_up_at || "",
-        });
+        const serializedNotes = serializeStageMetadata(stagePayload);
         await createCustomerInquiry({
           subject: leadForm.subject.trim(),
           customer_name: leadForm.customer_name.trim(),
@@ -425,9 +497,13 @@ export function CrmLeadsView({
           industry: leadForm.industry.trim(),
           website: leadForm.website.trim(),
           address: leadForm.address.trim(),
+          owner_user_id: leadForm.owner_user_id || null,
+          status: leadForm.status || "NEW",
           next_follow_up_at: leadForm.next_follow_up_at || null,
+          last_contacted_at: leadForm.contact_date || null,
+          last_contact_note: leadForm.contact_notes.trim() || leadForm.follow_up_notes.trim() || "",
           auto_create_company: !leadForm.customer_party && leadForm.auto_create_company,
-          description: leadForm.description.trim(),
+          description: leadForm.description.trim() || leadForm.notes.trim(),
           lead_source: leadForm.lead_source,
           interested_service: leadForm.interested_service.trim() || null,
           notes: serializedNotes,
@@ -817,6 +893,19 @@ export function CrmLeadsView({
                 <input className="input mt-1 w-full" value={leadForm.subject} onChange={(e) => setLeadForm((f) => ({ ...f, subject: e.target.value }))} placeholder="Contoh: Booth Exhibition" />
               </label>
               <label className="font-medium text-slate-600">
+                Stage Lead
+                <select
+                  className="input mt-1 w-full bg-white disabled:bg-slate-100"
+                  disabled={Boolean(editingLead?._isConverted)}
+                  value={leadForm.status}
+                  onChange={(e) => setLeadForm((f) => ({ ...f, status: e.target.value }))}
+                >
+                  {LEAD_COLUMNS.map((col) => (
+                    <option key={col.id} value={col.id}>{col.title}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="font-medium text-slate-600">
                 Source
                 <select className="input mt-1 w-full bg-white" value={leadForm.lead_source} onChange={(e) => setLeadForm((f) => ({ ...f, lead_source: e.target.value }))}>
                   {LEAD_SOURCE_OPTIONS.map((opt) => (
@@ -834,15 +923,143 @@ export function CrmLeadsView({
                 </select>
               </label>
               <label className="font-medium text-slate-600">
+                Assigned Sales
+                <select className="input mt-1 w-full bg-white" value={leadForm.owner_user_id} onChange={(e) => setLeadForm((f) => ({ ...f, owner_user_id: e.target.value }))}>
+                  <option value="">-- Default (Pembuat Lead) --</option>
+                  {teamUsers.map((u: any) => (
+                    <option key={u.id} value={String(u.id)}>
+                      {u.full_name || u.email}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="font-medium text-slate-600">
                 Follow Up Date
                 <input type="date" className="input mt-1 w-full" value={leadForm.next_follow_up_at} onChange={(e) => setLeadForm((f) => ({ ...f, next_follow_up_at: e.target.value }))} />
               </label>
               <label className="font-medium text-slate-600 sm:col-span-2">
                 Deskripsi / Notes
-                <textarea className="input mt-1 w-full min-h-16" value={leadForm.notes} onChange={(e) => setLeadForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Catatan kebutuhan klien..." />
+                <textarea className="input mt-1 w-full min-h-16" value={leadForm.notes} onChange={(e) => setLeadForm((f) => ({ ...f, notes: e.target.value, description: e.target.value }))} placeholder="Catatan kebutuhan klien..." />
               </label>
             </div>
           </div>
+
+          {/* Stage-Specific Details (Sesuai Kartu Popup Stage Marka) */}
+          {leadForm.status !== "NEW" && (
+            <div className="rounded-2xl border border-blue-200 bg-blue-50/30 p-3.5 space-y-3">
+              <div className="font-bold text-sm text-[#163D64]">
+                Detail Tahap: {LEAD_COLUMNS.find((c) => c.id === leadForm.status)?.title || leadForm.status}
+              </div>
+              {leadForm.status === "CONTACTED" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="font-medium text-slate-600">
+                    Contact Date
+                    <input type="date" className="input mt-1 w-full bg-white" value={leadForm.contact_date} onChange={(e) => setLeadForm((f) => ({ ...f, contact_date: e.target.value }))} />
+                  </label>
+                  <label className="font-medium text-slate-600">
+                    Contact Method
+                    <input className="input mt-1 w-full bg-white" value={leadForm.contact_method} onChange={(e) => setLeadForm((f) => ({ ...f, contact_method: e.target.value }))} placeholder="WhatsApp / Email / Call" />
+                  </label>
+                  <label className="font-medium text-slate-600">
+                    Introduction Sent
+                    <input className="input mt-1 w-full bg-white" value={leadForm.introduction_sent} onChange={(e) => setLeadForm((f) => ({ ...f, introduction_sent: e.target.value }))} placeholder="Company Profile / Deck" />
+                  </label>
+                  <label className="font-medium text-slate-600">
+                    Contact Notes
+                    <input className="input mt-1 w-full bg-white" value={leadForm.contact_notes} onChange={(e) => setLeadForm((f) => ({ ...f, contact_notes: e.target.value }))} placeholder="Ringkasan kontak..." />
+                  </label>
+                </div>
+              )}
+              {leadForm.status === "FOLLOW_UP" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="font-medium text-slate-600">
+                    Last Contact Date
+                    <input type="date" className="input mt-1 w-full bg-white" value={leadForm.contact_date} onChange={(e) => setLeadForm((f) => ({ ...f, contact_date: e.target.value }))} />
+                  </label>
+                  <label className="font-medium text-slate-600">
+                    Contact Method
+                    <input className="input mt-1 w-full bg-white" value={leadForm.contact_method} onChange={(e) => setLeadForm((f) => ({ ...f, contact_method: e.target.value }))} placeholder="WhatsApp / Email" />
+                  </label>
+                  <label className="font-medium text-slate-600">
+                    Introduction Sent
+                    <input className="input mt-1 w-full bg-white" value={leadForm.introduction_sent} onChange={(e) => setLeadForm((f) => ({ ...f, introduction_sent: e.target.value }))} placeholder="Company Profile" />
+                  </label>
+                  <label className="font-medium text-slate-600">
+                    Follow-Up Notes
+                    <input className="input mt-1 w-full bg-white" value={leadForm.follow_up_notes} onChange={(e) => setLeadForm((f) => ({ ...f, follow_up_notes: e.target.value }))} placeholder="Catatan tindak lanjut..." />
+                  </label>
+                </div>
+              )}
+              {leadForm.status === "RESPONDED" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="font-medium text-slate-600 sm:col-span-2">
+                    Response Summary
+                    <textarea className="input mt-1 w-full bg-white min-h-14" value={leadForm.response_summary} onChange={(e) => setLeadForm((f) => ({ ...f, response_summary: e.target.value }))} placeholder="Ringkasan respon klien..." />
+                  </label>
+                  <label className="font-medium text-slate-600">
+                    Client Feedback
+                    <input className="input mt-1 w-full bg-white" value={leadForm.client_feedback} onChange={(e) => setLeadForm((f) => ({ ...f, client_feedback: e.target.value }))} placeholder="Feedback klien..." />
+                  </label>
+                  <label className="font-medium text-slate-600">
+                    Potential Service
+                    <input className="input mt-1 w-full bg-white" value={leadForm.potential_service} onChange={(e) => setLeadForm((f) => ({ ...f, potential_service: e.target.value }))} placeholder="Layanan yang diminati..." />
+                  </label>
+                  <label className="font-medium text-slate-600 sm:col-span-2">
+                    Next Action
+                    <input className="input mt-1 w-full bg-white" value={leadForm.next_action} onChange={(e) => setLeadForm((f) => ({ ...f, next_action: e.target.value }))} placeholder="Langkah selanjutnya..." />
+                  </label>
+                </div>
+              )}
+              {leadForm.status === "INTERESTED" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="font-medium text-slate-600">
+                    Estimated Project Timeline
+                    <input className="input mt-1 w-full bg-white" value={leadForm.estimated_timeline} onChange={(e) => setLeadForm((f) => ({ ...f, estimated_timeline: e.target.value }))} placeholder="Contoh: 24 - 31 Nov 2026" />
+                  </label>
+                  <label className="font-medium text-slate-600">
+                    Meeting Schedule
+                    <input className="input mt-1 w-full bg-white" value={leadForm.meeting_schedule} onChange={(e) => setLeadForm((f) => ({ ...f, meeting_schedule: e.target.value }))} placeholder="Contoh: 21 Nov 2026 | 10.00 AM" />
+                  </label>
+                  <label className="font-medium text-slate-600">
+                    Initial Project Brief
+                    <input className="input mt-1 w-full bg-white" value={leadForm.initial_brief_file} onChange={(e) => setLeadForm((f) => ({ ...f, initial_brief_file: e.target.value }))} placeholder="Booth Brief Draft.pdf" />
+                  </label>
+                  <label className="font-medium text-slate-600">
+                    Potential Project Notes
+                    <input className="input mt-1 w-full bg-white" value={leadForm.potential_project_notes} onChange={(e) => setLeadForm((f) => ({ ...f, potential_project_notes: e.target.value }))} placeholder="Catatan proyek potensial..." />
+                  </label>
+                </div>
+              )}
+              {leadForm.status === "UNQUALIFIED" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="font-medium text-slate-600">
+                    Reason Not Interested
+                    <input className="input mt-1 w-full bg-white" value={leadForm.reason_not_interested} onChange={(e) => setLeadForm((f) => ({ ...f, reason_not_interested: e.target.value }))} placeholder="Alasan tidak tertarik..." />
+                  </label>
+                  <label className="font-medium text-slate-600">
+                    Client Feedback
+                    <input className="input mt-1 w-full bg-white" value={leadForm.client_feedback} onChange={(e) => setLeadForm((f) => ({ ...f, client_feedback: e.target.value }))} placeholder="Feedback klien..." />
+                  </label>
+                </div>
+              )}
+              {leadForm.status === "UNREACHABLE" && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <label className="font-medium text-slate-600">
+                    Last Contact Attempt
+                    <input type="date" className="input mt-1 w-full bg-white" value={leadForm.contact_date} onChange={(e) => setLeadForm((f) => ({ ...f, contact_date: e.target.value }))} />
+                  </label>
+                  <label className="font-medium text-slate-600">
+                    Contact Method
+                    <input className="input mt-1 w-full bg-white" value={leadForm.contact_method} onChange={(e) => setLeadForm((f) => ({ ...f, contact_method: e.target.value }))} placeholder="WhatsApp, Email" />
+                  </label>
+                  <label className="font-medium text-slate-600">
+                    Number of Attempts
+                    <input className="input mt-1 w-full bg-white" value={leadForm.number_of_attempts} onChange={(e) => setLeadForm((f) => ({ ...f, number_of_attempts: e.target.value }))} placeholder="1" />
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex justify-end gap-2 pt-1">
             <button type="button" onClick={() => setIsLeadModalOpen(false)} disabled={savingLead} className="btn-ghost">Batal</button>

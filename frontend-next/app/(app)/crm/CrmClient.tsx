@@ -26,6 +26,7 @@ import {
   loadCRMData, CRMData, CRMDashboard,
   processDealWon, executiveOverrideCredit, qualifyInquiry, convertCRMProspect,
   createOpportunity, updateOpportunityCustomer, moveCRMOpportunityStage, deleteOpportunity,
+  serializeStageMetadata,
   createCRMActivity, getOpportunityCustomer360, markOpportunityLost, createServiceWorkOrder,
   createCustomerInquiry, updateCustomerInquiry, updateCRMInquiryLeadStatus, deleteCustomerInquiry,
   linkInquiryCustomer,
@@ -634,7 +635,26 @@ function TabDeals({
     customer_party: "", 
     expected_amount: "150000000", 
     probability_percent: 50, 
-    pipeline_stage: "PROSPECT"
+    pipeline_stage: "PROSPECT",
+    expected_close_date: "",
+    next_follow_up_at: "",
+    owner_user_id: "",
+    project_type: "",
+    meeting_date: "",
+    project_brief: "",
+    initial_discussion_notes: "",
+    concept_summary: "",
+    key_deliverables: "",
+    proposal_deck_status: "In Progress",
+    quotation_number: "",
+    sent_date: "",
+    quotation_status: "Sent",
+    revision_count: "0",
+    negotiation_notes: "",
+    client_feedback: "",
+    deal_status: "Pending PO / Approval",
+    payment_terms: "",
+    plain_notes: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resultModal, setResultModal] = useState<any>(null);
@@ -937,10 +957,42 @@ function TabDeals({
     }
     setIsSubmitting(true);
     try {
+      const selectedPic = teamUsers.find((u: any) => String(u.id) === String(form.owner_user_id));
+      const serializedMeta = serializeStageMetadata({
+        project_name: form.opportunity_name.trim(),
+        project_type: form.project_type.trim() || form.opportunity_name.trim(),
+        event_date: form.expected_close_date || "",
+        follow_up_date: form.next_follow_up_at || "",
+        internal_pic: selectedPic ? (selectedPic.full_name || selectedPic.email || "") : "",
+        meeting_date: form.meeting_date || "",
+        project_brief: form.project_brief.trim(),
+        initial_discussion_notes: form.initial_discussion_notes.trim(),
+        concept_summary: form.concept_summary.trim(),
+        key_deliverables: form.key_deliverables.trim(),
+        proposal_deck_status: form.proposal_deck_status.trim(),
+        quotation_number: form.quotation_number.trim(),
+        total_quotation_value: form.expected_amount ? String(form.expected_amount) : "",
+        sent_date: form.sent_date || "",
+        quotation_status: form.quotation_status.trim(),
+        final_proposed_value: form.expected_amount ? String(form.expected_amount) : "",
+        revision_count: form.revision_count.trim(),
+        negotiation_notes: form.negotiation_notes.trim(),
+        client_feedback: form.client_feedback.trim(),
+        final_project_value: form.expected_amount ? String(form.expected_amount) : "",
+        deal_status: form.deal_status.trim(),
+        payment_terms: form.payment_terms.trim(),
+        plain_notes: form.plain_notes.trim(),
+      });
       const payload = {
-        ...form,
-        expected_amount: Number(form.expected_amount || 0),
+        opportunity_name: form.opportunity_name.trim(),
         customer_party: form.customer_party ? form.customer_party.trim() : null,
+        expected_amount: Number(form.expected_amount || 0),
+        probability_percent: Number(form.probability_percent || 50),
+        pipeline_stage: form.pipeline_stage || "PROSPECT",
+        expected_close_date: form.expected_close_date || null,
+        next_follow_up_at: form.next_follow_up_at || null,
+        owner_user_id: form.owner_user_id || null,
+        follow_up_reason: serializedMeta,
       };
       const res = await createOpportunity(payload);
       toast.success("Opportunity berhasil dibuat!");
@@ -952,7 +1004,14 @@ function TabDeals({
       }
       
       setIsNewOppOpen(false);
-      setForm({ opportunity_name: "", customer_party: "", expected_amount: "150000000", probability_percent: 50, pipeline_stage: "PROSPECT" });
+      setForm({
+        opportunity_name: "", customer_party: "", expected_amount: "150000000", probability_percent: 50, pipeline_stage: "PROSPECT",
+        expected_close_date: "", next_follow_up_at: "", owner_user_id: "", project_type: "",
+        meeting_date: "", project_brief: "", initial_discussion_notes: "", concept_summary: "", key_deliverables: "",
+        proposal_deck_status: "In Progress", quotation_number: "", sent_date: "", quotation_status: "Sent",
+        revision_count: "0", negotiation_notes: "", client_feedback: "", deal_status: "Pending PO / Approval",
+        payment_terms: "", plain_notes: "",
+      });
       onRefresh();
     } catch (e: any) { 
       toast.error(e?.response?.data?.detail || "Gagal buat opportunity"); 
@@ -1332,74 +1391,216 @@ function TabDeals({
         </div>
       </Modal>
 
-      {/* Modal: Buat Opportunity Baru */}
-      <Modal isOpen={isNewOppOpen} onClose={() => setIsNewOppOpen(false)} title="Buat Opportunity Baru" size="md">
-        <div className="flex flex-col gap-3 p-4">
-          <div>
-            <label className="text-xs font-medium text-text-secondary mb-1 block">Nama Opportunity *</label>
-            <input 
-              className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" 
-              value={form.opportunity_name} 
-              onChange={e => setForm(f => ({ ...f, opportunity_name: e.target.value }))} 
-              placeholder="Contoh: Pengadaan Server Smart Office..." 
-            />
+      {/* Modal: Buat Opportunity Baru (Selaras dengan Kartu Popup Stage Marka) */}
+      <Modal isOpen={isNewOppOpen} onClose={() => setIsNewOppOpen(false)} title="Buat Opportunity Baru" size="lg">
+        <div className="flex flex-col gap-4 p-4 text-xs">
+          <div className="rounded-2xl border border-slate-200 p-3.5 space-y-3">
+            <div className="font-bold text-sm text-[#163D64]">Project &amp; Deal Information</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="font-medium text-slate-600 mb-1 block">Project Name / Nama Opportunity *</label>
+                <input
+                  className="input w-full"
+                  value={form.opportunity_name}
+                  onChange={e => setForm(f => ({ ...f, opportunity_name: e.target.value }))}
+                  placeholder="Contoh: Booth Exhibition Pameran..."
+                />
+              </div>
+              <div>
+                <label className="font-medium text-slate-600 mb-1 block">Project Type / Jenis Proyek</label>
+                <input
+                  className="input w-full"
+                  value={form.project_type}
+                  onChange={e => setForm(f => ({ ...f, project_type: e.target.value }))}
+                  placeholder="Contoh: Booth Exhibition / Event Management"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-medium text-slate-600">Pilih Pelanggan * (Customer / Prospect)</label>
+                  <button
+                    type="button"
+                    onClick={() => setIsQuickPartyOpen(true)}
+                    className="text-2xs font-semibold text-[#0876CD] hover:underline flex items-center gap-1"
+                  >
+                    <UserPlus size={12} /> + Pelanggan Baru
+                  </button>
+                </div>
+                <select
+                  className="input w-full bg-white"
+                  value={form.customer_party}
+                  onChange={e => setForm(f => ({ ...f, customer_party: e.target.value }))}
+                >
+                  <option value="">-- Pilih customer aktif --</option>
+                  {(data.parties || []).filter((party: any) => ["CUSTOMER", "PROSPECT"].includes(String(party.party_type || "").toUpperCase()) && party.status === "ACTIVE").map(p => (
+                    <option key={p.id} value={String(p.id)}>
+                      {p.display_name || p.legal_name} {p.party_code ? `(${p.party_code})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="font-medium text-slate-600 mb-1 block">Internal PIC / Sales Owner</label>
+                <select
+                  className="input w-full bg-white"
+                  value={form.owner_user_id}
+                  onChange={e => setForm(f => ({ ...f, owner_user_id: e.target.value }))}
+                >
+                  <option value="">-- Default (Pembuat Opportunity) --</option>
+                  {teamUsers.map((u: any) => (
+                    <option key={u.id} value={String(u.id)}>
+                      {u.full_name || u.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="font-medium text-slate-600 mb-1 block">Expected Amount (Rp)</label>
+                <IDRInput aria-label="Expected Amount dalam rupiah" value={form.expected_amount} onChange={(digits) => setForm((current) => ({ ...current, expected_amount: digits }))} />
+              </div>
+              <div>
+                <label className="font-medium text-slate-600 mb-1 block">Probabilitas (%)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  className="input w-full"
+                  value={form.probability_percent}
+                  onChange={e => setForm(f => ({ ...f, probability_percent: Number(e.target.value) }))}
+                />
+              </div>
+              <div>
+                <label className="font-medium text-slate-600 mb-1 block">Tahap Pipeline</label>
+                <select
+                  className="input w-full bg-white"
+                  value={form.pipeline_stage}
+                  onChange={e => setForm(f => ({ ...f, pipeline_stage: e.target.value }))}
+                >
+                  {["PROSPECT", "DISCOVERY", "PROPOSAL_SENT", "NEGOTIATION", "FOLLOW_UP"].map(s => (
+                    <option key={s} value={s}>{CRM_PIPELINE_STAGE_LABELS[s] || s}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="font-medium text-slate-600 mb-1 block">Event Date / Target Closing</label>
+                <input
+                  type="date"
+                  className="input w-full"
+                  value={form.expected_close_date}
+                  onChange={e => setForm(f => ({ ...f, expected_close_date: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="font-medium text-slate-600 mb-1 block">Follow-Up Date</label>
+                <input
+                  type="date"
+                  className="input w-full"
+                  value={form.next_follow_up_at}
+                  onChange={e => setForm(f => ({ ...f, next_follow_up_at: e.target.value }))}
+                />
+              </div>
+            </div>
           </div>
 
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-medium text-text-secondary">Pilih Pelanggan * (wajib untuk Deal Won)</label>
-              <button 
-                type="button" 
-                onClick={() => setIsQuickPartyOpen(true)}
-                className="text-2xs font-semibold text-brand-green hover:underline flex items-center gap-1"
-              >
-                <UserPlus size={12} /> + Pelanggan Baru
-              </button>
+          {/* Stage-Specific Details (Sesuai Kartu Popup Stage Marka) */}
+          <div className="rounded-2xl border border-blue-200 bg-blue-50/30 p-3.5 space-y-3">
+            <div className="font-bold text-sm text-[#163D64]">
+              Detail Tahap: {CRM_PIPELINE_STAGE_LABELS[form.pipeline_stage] || form.pipeline_stage}
             </div>
-            <select
-              className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green bg-white"
-              value={form.customer_party}
-              onChange={e => setForm(f => ({ ...f, customer_party: e.target.value }))}
-            >
-              <option value="">-- Pilih customer aktif --</option>
-              {(data.parties || []).filter((party: any) => party.party_type === "CUSTOMER" && party.status === "ACTIVE").map(p => (
-                <option key={p.id} value={String(p.id)}>
-                  {p.display_name || p.legal_name} {p.party_code ? `(${p.party_code})` : ""}
-                </option>
-              ))}
-            </select>
+            {form.pipeline_stage === "PROSPECT" && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="font-medium text-slate-600">
+                  Meeting Date
+                  <input type="date" className="input mt-1 w-full bg-white" value={form.meeting_date} onChange={e => setForm(f => ({ ...f, meeting_date: e.target.value }))} />
+                </label>
+                <label className="font-medium text-slate-600">
+                  Project Brief
+                  <input className="input mt-1 w-full bg-white" value={form.project_brief} onChange={e => setForm(f => ({ ...f, project_brief: e.target.value }))} placeholder="Ringkasan brief / link file..." />
+                </label>
+                <label className="font-medium text-slate-600 sm:col-span-2">
+                  Initial Discussion Notes
+                  <textarea className="input mt-1 w-full bg-white min-h-14" value={form.initial_discussion_notes} onChange={e => setForm(f => ({ ...f, initial_discussion_notes: e.target.value }))} placeholder="Hasil diskusi awal dengan klien..." />
+                </label>
+              </div>
+            )}
+            {form.pipeline_stage === "DISCOVERY" && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="font-medium text-slate-600 sm:col-span-2">
+                  Concept Summary
+                  <textarea className="input mt-1 w-full bg-white min-h-14" value={form.concept_summary} onChange={e => setForm(f => ({ ...f, concept_summary: e.target.value }))} placeholder="Ringkasan konsep yang ditawarkan..." />
+                </label>
+                <label className="font-medium text-slate-600">
+                  Key Deliverables
+                  <input className="input mt-1 w-full bg-white" value={form.key_deliverables} onChange={e => setForm(f => ({ ...f, key_deliverables: e.target.value }))} placeholder="3D Design, Booth Production, Audio..." />
+                </label>
+                <label className="font-medium text-slate-600">
+                  Proposal / Concept Deck Status
+                  <input className="input mt-1 w-full bg-white" value={form.proposal_deck_status} onChange={e => setForm(f => ({ ...f, proposal_deck_status: e.target.value }))} placeholder="In Progress / Ready / Sent" />
+                </label>
+              </div>
+            )}
+            {form.pipeline_stage === "PROPOSAL_SENT" && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <label className="font-medium text-slate-600">
+                  Quotation Number
+                  <input className="input mt-1 w-full bg-white" value={form.quotation_number} onChange={e => setForm(f => ({ ...f, quotation_number: e.target.value }))} placeholder="QUO-2026-001" />
+                </label>
+                <label className="font-medium text-slate-600">
+                  Sent Date
+                  <input type="date" className="input mt-1 w-full bg-white" value={form.sent_date} onChange={e => setForm(f => ({ ...f, sent_date: e.target.value }))} />
+                </label>
+                <label className="font-medium text-slate-600">
+                  Quotation Status
+                  <input className="input mt-1 w-full bg-white" value={form.quotation_status} onChange={e => setForm(f => ({ ...f, quotation_status: e.target.value }))} placeholder="Sent / Reviewed" />
+                </label>
+              </div>
+            )}
+            {form.pipeline_stage === "NEGOTIATION" && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="font-medium text-slate-600">
+                  Revision Count
+                  <input className="input mt-1 w-full bg-white" value={form.revision_count} onChange={e => setForm(f => ({ ...f, revision_count: e.target.value }))} placeholder="0" />
+                </label>
+                <label className="font-medium text-slate-600">
+                  Client Feedback
+                  <input className="input mt-1 w-full bg-white" value={form.client_feedback} onChange={e => setForm(f => ({ ...f, client_feedback: e.target.value }))} placeholder="Masukan dari klien..." />
+                </label>
+                <label className="font-medium text-slate-600 sm:col-span-2">
+                  Negotiation Notes
+                  <textarea className="input mt-1 w-full bg-white min-h-14" value={form.negotiation_notes} onChange={e => setForm(f => ({ ...f, negotiation_notes: e.target.value }))} placeholder="Catatan negosiasi harga/scope..." />
+                </label>
+              </div>
+            )}
+            {form.pipeline_stage === "FOLLOW_UP" && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="font-medium text-slate-600">
+                  Deal Status
+                  <input className="input mt-1 w-full bg-white" value={form.deal_status} onChange={e => setForm(f => ({ ...f, deal_status: e.target.value }))} placeholder="Pending PO / Approval" />
+                </label>
+                <label className="font-medium text-slate-600">
+                  Payment Terms
+                  <input className="input mt-1 w-full bg-white" value={form.payment_terms} onChange={e => setForm(f => ({ ...f, payment_terms: e.target.value }))} placeholder="50% DP, 50% Pelunasan" />
+                </label>
+              </div>
+            )}
+            <label className="block font-medium text-slate-600">
+              Notes Tambahan
+              <textarea className="input mt-1 w-full bg-white min-h-12" value={form.plain_notes} onChange={e => setForm(f => ({ ...f, plain_notes: e.target.value }))} placeholder="Catatan internal tambahan..." />
+            </label>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-text-secondary mb-1 block">Expected Amount (Rp)</label>
-              <IDRInput aria-label="Expected Amount dalam rupiah" value={form.expected_amount} onChange={(digits) => setForm((current) => ({ ...current, expected_amount: digits }))} />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-text-secondary mb-1 block">Probabilitas (%)</label>
-              <input 
-                type="number" 
-                min={0} 
-                max={100} 
-                className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" 
-                value={form.probability_percent} 
-                onChange={e => setForm(f => ({ ...f, probability_percent: Number(e.target.value) }))} 
-              />
-            </div>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-text-secondary mb-1 block">Tahap Deal</label>
-            <select 
-              className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green bg-white" 
-              value={form.pipeline_stage} 
-              onChange={e => setForm(f => ({ ...f, pipeline_stage: e.target.value }))}
-            >
-              {["PROSPECT","DISCOVERY","PROPOSAL_SENT","NEGOTIATION"].map(s => <option key={s} value={s}>{CRM_PIPELINE_STAGE_LABELS[s]}</option>)}
-            </select>
-          </div>
-          <div className="flex gap-2 pt-2 justify-end">
-            <button onClick={() => setIsNewOppOpen(false)} disabled={isSubmitting} className="btn-ghost">Batal</button>
-            <button onClick={handleCreate} disabled={isSubmitting || !form.opportunity_name.trim() || !form.customer_party} className="btn-primary">
+          <div className="flex gap-2 pt-1 justify-end">
+            <button type="button" onClick={() => setIsNewOppOpen(false)} disabled={isSubmitting} className="btn-ghost">Batal</button>
+            <button type="button" onClick={handleCreate} disabled={isSubmitting || !form.opportunity_name.trim() || !form.customer_party} className="rounded-lg bg-[#163D64] px-4 py-2 text-xs font-semibold text-white hover:bg-[#0876CD] disabled:opacity-50">
               {isSubmitting ? "Memproses..." : "Buat Opportunity"}
             </button>
           </div>

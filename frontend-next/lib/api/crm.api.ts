@@ -341,6 +341,12 @@ export async function createOpportunity(payload: {
   expected_margin?: number;
   probability_percent?: number;
   pipeline_stage?: string;
+  expected_close_date?: string | null;
+  next_follow_up_at?: string | null;
+  owner_user_id?: string | null;
+  follow_up_reason?: string;
+  lost_reason?: string;
+  lost_reason_detail?: string;
 }) {
   const { data } = await api.post("/api/v1/crm/opportunities/", {
     opportunity_name: payload.opportunity_name,
@@ -349,6 +355,12 @@ export async function createOpportunity(payload: {
     expected_margin: payload.expected_margin ?? 0,
     probability_percent: payload.probability_percent ?? 50,
     pipeline_stage: payload.pipeline_stage ?? "PROSPECT",
+    expected_close_date: payload.expected_close_date || null,
+    next_follow_up_at: payload.next_follow_up_at || null,
+    ...(payload.owner_user_id ? { owner_user_id: payload.owner_user_id } : {}),
+    follow_up_reason: payload.follow_up_reason ?? "",
+    lost_reason: payload.lost_reason ?? "",
+    lost_reason_detail: payload.lost_reason_detail ?? "",
     status: "OPEN",
   });
   return data;
@@ -533,6 +545,10 @@ export async function createCustomerInquiry(payload: {
   lead_source?: string | null;
   interested_service?: string | null;
   notes?: string | null;
+  owner_user_id?: string | null;
+  status?: string;
+  last_contact_note?: string;
+  last_contacted_at?: string | null;
 }) {
   const { data } = await api.post("/api/v1/crm/customer-inquiries/", {
     subject: payload.subject,
@@ -553,7 +569,10 @@ export async function createCustomerInquiry(payload: {
     lead_source: payload.lead_source || null,
     interested_service: payload.interested_service || null,
     notes: payload.notes || null,
-    status: "NEW",
+    status: payload.status || "NEW",
+    ...(payload.owner_user_id ? { owner_user_id: payload.owner_user_id } : {}),
+    ...(payload.last_contact_note !== undefined ? { last_contact_note: payload.last_contact_note } : {}),
+    ...(payload.last_contacted_at ? { last_contacted_at: payload.last_contacted_at } : {}),
   });
   return data;
 }

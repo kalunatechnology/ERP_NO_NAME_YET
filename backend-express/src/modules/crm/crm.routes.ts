@@ -357,8 +357,16 @@ crmRouter.post('/customer-inquiries', async (req: Request, res: Response, next: 
     const jobTitle = req.body.job_title ? String(req.body.job_title).trim() : '';
     const nextFollowUpAt = req.body.next_follow_up_at ? new Date(req.body.next_follow_up_at) : null;
     const validFollowUpAt = nextFollowUpAt && Number.isFinite(nextFollowUpAt.getTime()) ? nextFollowUpAt : null;
+    const lastContactedAt = req.body.last_contacted_at ? new Date(req.body.last_contacted_at) : null;
+    const validLastContactedAt = lastContactedAt && Number.isFinite(lastContactedAt.getTime()) ? lastContactedAt : null;
+    const lastContactNote = req.body.last_contact_note ? String(req.body.last_contact_note).trim() : '';
+    const requestedStatus = String(req.body.status || 'NEW').trim().toUpperCase();
+    const allowedInitialStatuses = new Set(['NEW', 'CONTACTED', 'FOLLOW_UP', 'WAITING_RESPONSE', 'RESPONDED', 'INTERESTED', 'UNQUALIFIED', 'UNREACHABLE']);
+    const initialStatus = allowedInitialStatuses.has(requestedStatus) ? requestedStatus : 'NEW';
+    const requestedOwnerId = req.body.owner_user_id ? String(req.body.owner_user_id).trim() : '';
     const tenantId = req.tenantId;
     const userId = req.user.id;
+    const ownerUserId = requestedOwnerId || userId;
 
     const inquiry = await prisma.$transaction(async (tx) => {
       let resolvedPartyId = customerPartyId;
@@ -404,7 +412,7 @@ crmRouter.post('/customer-inquiries', async (req: Request, res: Response, next: 
       return tx.crm_customer_inquiry.create({
         data: {
           id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId,
-          created_by_id: userId, owner_user_id: userId,
+          created_by_id: userId, owner_user_id: ownerUserId,
           customer_party_id: resolvedPartyId, contact_id: resolvedContactId,
           inquiry_number: `INQ-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
           source_channel: String(req.body.source_channel || 'MANUAL').trim() || 'MANUAL',
@@ -415,7 +423,8 @@ crmRouter.post('/customer-inquiries', async (req: Request, res: Response, next: 
           customer_email: customerEmail, customer_phone: customerPhone, description,
           expected_delivery_date: expectedDeliveryDate,
           next_follow_up_at: validFollowUpAt,
-          status: 'NEW', last_contact_note: '', created_at: now, updated_at: now,
+          last_contacted_at: validLastContactedAt,
+          status: initialStatus, last_contact_note: lastContactNote, created_at: now, updated_at: now,
         },
       });
     });
@@ -1760,10 +1769,15 @@ crmRouter.use('/opportunities', createCrmCrudRouter({
   searchFields: ['opportunity_name', 'pipeline_stage'],
   beforeCreate: async (req, data) => {
     const validated = await validateOpportunityCustomer(req, data);
+    const parsedCloseDate = validated.expected_close_date ? new Date(validated.expected_close_date) : null;
+    const parsedFollowUp = validated.next_follow_up_at ? new Date(validated.next_follow_up_at) : null;
     return {
       ...validated,
-      department_id: validated.department_id ?? req.user?.department_id ?? null,
-      owner_user_id: validated.owner_user_id ?? req.user?.id ?? null,
+      department_id: validated.department_id || req.user?.department_id || null,
+      owner_user_id: validated.owner_user_id || req.user?.id || null,
+      expected_close_date: parsedCloseDate && Number.isFinite(parsedCloseDate.getTime()) ? parsedCloseDate : null,
+      next_follow_up_at: parsedFollowUp && Number.isFinite(parsedFollowUp.getTime()) ? parsedFollowUp : null,
+      follow_up_reason: typeof validated.follow_up_reason === 'string' ? validated.follow_up_reason : '',
     };
   },
   beforeUpdate: async (req, data, existing) => {
