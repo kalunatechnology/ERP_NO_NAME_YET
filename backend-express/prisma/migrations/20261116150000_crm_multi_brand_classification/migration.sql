@@ -53,3 +53,4 @@ CREATE INDEX IF NOT EXISTS "idx_sales_order_company_brand"     ON "sales_order" 
 CREATE INDEX IF NOT EXISTS "idx_crm_conv_company_brand"        ON "crm_conversation" ("company_id", "brand_id");
 CREATE INDEX IF NOT EXISTS "idx_service_case_company_brand"    ON "service_case" ("company_id", "brand_id");
 CREATE INDEX IF NOT EXISTS "idx_master_party_company_brand"    ON "master_party" ("company_id", "brand_id");
+
