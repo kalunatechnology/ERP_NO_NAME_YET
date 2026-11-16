@@ -410,7 +410,6 @@ export function CrmSalesPipelineShell({
             <div
               onClick={() => {
                 setDrawerOpp(opp);
-                setDrawerTab("overview");
               }}
               className="cursor-pointer space-y-2.5"
             >

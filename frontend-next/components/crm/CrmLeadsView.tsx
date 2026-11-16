@@ -3,7 +3,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import {
   FileText, Plus, Kanban, Table2, Inbox, ArrowRight,
-  Building2, Phone, Award,
+  Building2, Award,
   CheckCircle2, Clock, XCircle, Sparkles,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -17,7 +17,7 @@ import {
   updateCRMInquiryLeadStatus,
   updateCustomerInquiry,
 } from "@/lib/api/crm.api";
-import { cn, formatDate } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
 import {
   CRMAvatarBadge,
@@ -77,9 +77,9 @@ export function CrmLeadsView({
   onOpenDelegate,
   canDelegate = false,
   readOnly = false,
-  canEditAll = false,
+  canEditAll: _canEditAll = false,
   canDelete = false,
-  currentUserId,
+  currentUserId: _currentUserId,
   initialSubView = "PIPELINE",
   inboxSlot,
 }: {
@@ -183,7 +183,7 @@ export function CrmLeadsView({
         _isWon: isWon,
       };
     });
-  }, [data.inquiries, oppById, partyById, userById, optimisticBuckets]);
+  }, [data.inquiries, oppById, partyById, contactById, userById, optimisticBuckets]);
 
   const kpiItems: CRMKpiItem[] = useMemo(() => {
     const total = enrichedLeads.length;
@@ -536,13 +536,12 @@ export function CrmLeadsView({
           columns={kanbanColumns}
           canDrag={!readOnly}
           onMoveCard={(id, targetCol) => void handleMoveLeadStage(id, targetCol)}
+          pendingIds={pendingLeadIds}
           emptyColumnText="Belum ada Lead di tahap ini"
           renderCard={(lead) => (
             <div
               onClick={() => {
                 setDrawerLead(lead);
-                setDrawerTab("overview");
-                setLinkingPartyId("");
               }}
               className="cursor-pointer space-y-2.5"
             >
@@ -607,8 +606,6 @@ export function CrmLeadsView({
                       key={l.id}
                       onClick={() => {
                         setDrawerLead(l);
-                        setDrawerTab("overview");
-                        setLinkingPartyId("");
                       }}
                       className="cursor-pointer hover:bg-[#EBF5FF]/45"
                     >

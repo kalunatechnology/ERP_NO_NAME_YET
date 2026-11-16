@@ -4,20 +4,15 @@ import { useState, type ReactNode } from "react";
 import { 
   Check, 
   Clipboard, 
-  ExternalLink, 
   ShieldCheck, 
-  Code2, 
   Send, 
   MessageSquare, 
   LifeBuoy, 
   Star, 
   FileCheck2, 
   Radio, 
-  Lock, 
-  AlertCircle,
   HelpCircle,
-  Terminal,
-  Layers
+  Terminal
 } from "lucide-react";
 import { CollapsibleGuideline } from "@/components/ui/CollapsibleGuideline";
 
@@ -454,7 +449,7 @@ export async function POST(req: NextRequest) {
 // COMPONENTS
 // ==========================================
 
-function CodeBlock({ title, code, language = "typescript" }: { title: string; code: string; language?: string }) {
+function CodeBlock({ title, code, language: _language = "typescript" }: { title: string; code: string; language?: string }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
