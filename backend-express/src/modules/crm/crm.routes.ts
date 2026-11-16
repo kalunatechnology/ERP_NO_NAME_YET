@@ -351,6 +351,12 @@ crmRouter.post('/customer-inquiries', async (req: Request, res: Response, next: 
     const leadSource = req.body.lead_source ? String(req.body.lead_source).trim() : null;
     const interestedService = req.body.interested_service ? String(req.body.interested_service).trim() : null;
     const notes = req.body.notes ? String(req.body.notes).trim() : null;
+    const industry = req.body.industry ? String(req.body.industry).trim() : null;
+    const website = req.body.website ? String(req.body.website).trim() : null;
+    const address = req.body.address ? String(req.body.address).trim() : null;
+    const jobTitle = req.body.job_title ? String(req.body.job_title).trim() : '';
+    const nextFollowUpAt = req.body.next_follow_up_at ? new Date(req.body.next_follow_up_at) : null;
+    const validFollowUpAt = nextFollowUpAt && Number.isFinite(nextFollowUpAt.getTime()) ? nextFollowUpAt : null;
     const tenantId = req.tenantId;
     const userId = req.user.id;
 
@@ -366,6 +372,7 @@ crmRouter.post('/customer-inquiries', async (req: Request, res: Response, next: 
             created_by_id: userId, created_at: now, updated_at: now,
             party_code: partyCode, party_type: 'PROSPECT', legal_name: customerName,
             display_name: customerName, tax_number: '', default_currency_id: null, status: 'ACTIVE',
+            industry, website, city: address, email: customerEmail || null, phone: customerPhone || null,
           },
         });
         resolvedPartyId = createdParty.id;
@@ -374,7 +381,7 @@ crmRouter.post('/customer-inquiries', async (req: Request, res: Response, next: 
             id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId,
             created_by_id: userId, created_at: now, updated_at: now,
             party_id: createdParty.id, contact_name: contactName || customerName,
-            job_title: '', email: customerEmail, phone: customerPhone, primary_contact: true,
+            job_title: jobTitle, email: customerEmail, phone: customerPhone, primary_contact: true,
           },
         });
         resolvedContactId = createdContact.id;
@@ -388,7 +395,7 @@ crmRouter.post('/customer-inquiries', async (req: Request, res: Response, next: 
             id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId,
             created_by_id: userId, created_at: now, updated_at: now,
             party_id: resolvedPartyId, contact_name: contactName,
-            job_title: '', email: customerEmail, phone: customerPhone, primary_contact: !existingPrimary,
+            job_title: jobTitle, email: customerEmail, phone: customerPhone, primary_contact: !existingPrimary,
           },
         });
         resolvedContactId = createdContact.id;
@@ -407,6 +414,7 @@ crmRouter.post('/customer-inquiries', async (req: Request, res: Response, next: 
           subject, customer_name: customerName,
           customer_email: customerEmail, customer_phone: customerPhone, description,
           expected_delivery_date: expectedDeliveryDate,
+          next_follow_up_at: validFollowUpAt,
           status: 'NEW', last_contact_note: '', created_at: now, updated_at: now,
         },
       });
@@ -481,21 +489,66 @@ crmRouter.patch('/customer-inquiries/:id/edit', requireActiveRole(RoleCode.SALES
       nextContactId = null;
     }
 
-    const updated = await prisma.crm_customer_inquiry.update({
-      where: { id: inquiry.id },
-      data: {
-        subject,
-        customer_name: nextCustomerName,
-        customer_email: customerEmail,
-        customer_phone: customerPhone,
-        customer_party_id: nextPartyId,
-        contact_id: nextContactId,
-        description,
-        lead_source: leadSource,
-        interested_service: interestedService,
-        notes,
-        updated_at: new Date(),
-      },
+    const nextFollowUpAt = req.body.next_follow_up_at === undefined
+      ? inquiry.next_follow_up_at
+      : (req.body.next_follow_up_at ? new Date(req.body.next_follow_up_at) : null);
+    const lastContactedAt = req.body.last_contacted_at === undefined
+      ? inquiry.last_contacted_at
+      : (req.body.last_contacted_at ? new Date(req.body.last_contacted_at) : null);
+    const lastContactNote = req.body.last_contact_note === undefined
+      ? inquiry.last_contact_note
+      : String(req.body.last_contact_note ?? '').trim();
+    const ownerUserId = req.body.owner_user_id === undefined
+      ? inquiry.owner_user_id
+      : (String(req.body.owner_user_id ?? '').trim() || inquiry.owner_user_id);
+
+    const updated = await prisma.$transaction(async (tx) => {
+      if (nextPartyId && (req.body.industry !== undefined || req.body.website !== undefined || req.body.address !== undefined || req.body.customer_name !== undefined)) {
+        await tx.master_party.updateMany({
+          where: { id: nextPartyId, company_id: companyId },
+          data: {
+            ...(req.body.customer_name !== undefined ? { display_name: nextCustomerName, legal_name: nextCustomerName } : {}),
+            ...(req.body.industry !== undefined ? { industry: String(req.body.industry ?? '').trim() || null } : {}),
+            ...(req.body.website !== undefined ? { website: String(req.body.website ?? '').trim() || null } : {}),
+            ...(req.body.address !== undefined ? { city: String(req.body.address ?? '').trim() || null } : {}),
+            updated_at: new Date(),
+          },
+        });
+      }
+
+      if (nextContactId && (req.body.contact_name !== undefined || req.body.job_title !== undefined || req.body.customer_email !== undefined || req.body.customer_phone !== undefined)) {
+        await tx.master_contact.updateMany({
+          where: { id: nextContactId, company_id: companyId },
+          data: {
+            ...(req.body.contact_name !== undefined && String(req.body.contact_name ?? '').trim() ? { contact_name: String(req.body.contact_name).trim() } : {}),
+            ...(req.body.job_title !== undefined ? { job_title: String(req.body.job_title ?? '').trim() } : {}),
+            ...(req.body.customer_email !== undefined ? { email: customerEmail } : {}),
+            ...(req.body.customer_phone !== undefined ? { phone: customerPhone } : {}),
+            updated_at: new Date(),
+          },
+        });
+      }
+
+      return tx.crm_customer_inquiry.update({
+        where: { id: inquiry.id },
+        data: {
+          subject,
+          customer_name: nextCustomerName,
+          customer_email: customerEmail,
+          customer_phone: customerPhone,
+          customer_party_id: nextPartyId,
+          contact_id: nextContactId,
+          owner_user_id: ownerUserId,
+          description,
+          lead_source: leadSource,
+          interested_service: interestedService,
+          notes,
+          next_follow_up_at: nextFollowUpAt && Number.isFinite(nextFollowUpAt.getTime()) ? nextFollowUpAt : (req.body.next_follow_up_at === null ? null : inquiry.next_follow_up_at),
+          last_contacted_at: lastContactedAt && Number.isFinite(lastContactedAt.getTime()) ? lastContactedAt : (req.body.last_contacted_at === null ? null : inquiry.last_contacted_at),
+          last_contact_note: lastContactNote,
+          updated_at: new Date(),
+        },
+      });
     });
     res.json({ success: true, data: updated });
   } catch (error) { next(error); }
@@ -1523,11 +1576,11 @@ crmRouter.post('/opportunities/:id/stage', async (req: Request, res: Response, n
     const stage = normalizeCrmStage(req.body.stage);
     if (!CRM_OPEN_STAGES.includes(stage as any)) throw new ValidationError('Gunakan tindakan Menang/Kalah untuk menutup Opportunity.');
     const nextFollowUpAt = req.body.next_follow_up_at ? new Date(req.body.next_follow_up_at) : null;
-    if (stage === 'FOLLOW_UP' && (!nextFollowUpAt || Number.isNaN(nextFollowUpAt.getTime()) || nextFollowUpAt <= new Date())) {
-      throw new ValidationError('Pilih tanggal tindak lanjut yang akan datang.');
+    if (stage === 'FOLLOW_UP' && (!nextFollowUpAt || Number.isNaN(nextFollowUpAt.getTime()))) {
+      throw new ValidationError('Pilih tanggal tindak lanjut yang valid.');
     }
     const reason = String(req.body.reason ?? '').trim();
-    if (reason.length > 2000 || (stage === 'FOLLOW_UP' && !reason)) throw new ValidationError('Isi alasan tindak lanjut maksimal 2.000 karakter.');
+    if (reason.length > 5000 || (stage === 'FOLLOW_UP' && !reason)) throw new ValidationError('Isi alasan tindak lanjut maksimal 5.000 karakter.');
     const sourceStage = req.body.source_stage != null ? String(req.body.source_stage) : null;
     const rawPosition = req.body.position !== undefined && req.body.position !== null ? Number(req.body.position) : null;
     const position = rawPosition !== null && Number.isFinite(rawPosition) && rawPosition >= 0 ? Math.floor(rawPosition) : null;
@@ -1537,6 +1590,97 @@ crmRouter.post('/opportunities/:id/stage', async (req: Request, res: Response, n
       actorId: req.user?.id, reason, nextFollowUpAt, sourceStage, position, expectedUpdatedAt,
     }));
     res.json(result);
+  } catch (error) { next(error); }
+});
+
+crmRouter.patch('/opportunities/:id/stage-details', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await assertSalesOwnsModelRecord(req, 'crm_opportunity', String(req.params.id));
+    const companyId = activeCompanyId(req);
+    const opportunity = await prisma.crm_opportunity.findFirst({
+      where: { id: String(req.params.id), company_id: companyId },
+    });
+    if (!opportunity) throw new NotFoundError('Opportunity');
+
+    const now = new Date();
+    const updated = await prisma.$transaction(async (tx) => {
+      if (opportunity.customer_party_id && (req.body.company_name !== undefined || req.body.industry !== undefined || req.body.website !== undefined || req.body.address !== undefined)) {
+        const nextCompName = String(req.body.company_name ?? '').trim();
+        await tx.master_party.updateMany({
+          where: { id: opportunity.customer_party_id, company_id: companyId },
+          data: {
+            ...(nextCompName ? { display_name: nextCompName, legal_name: nextCompName } : {}),
+            ...(req.body.industry !== undefined ? { industry: String(req.body.industry ?? '').trim() || null } : {}),
+            ...(req.body.website !== undefined ? { website: String(req.body.website ?? '').trim() || null } : {}),
+            ...(req.body.address !== undefined ? { city: String(req.body.address ?? '').trim() || null } : {}),
+            updated_at: now,
+          },
+        });
+      }
+
+      if (req.body.contact_id && (req.body.contact_name !== undefined || req.body.job_title !== undefined || req.body.contact_phone !== undefined || req.body.contact_email !== undefined)) {
+        await tx.master_contact.updateMany({
+          where: { id: String(req.body.contact_id), company_id: companyId },
+          data: {
+            ...(req.body.contact_name !== undefined && String(req.body.contact_name ?? '').trim() ? { contact_name: String(req.body.contact_name).trim() } : {}),
+            ...(req.body.job_title !== undefined ? { job_title: String(req.body.job_title ?? '').trim() } : {}),
+            ...(req.body.contact_phone !== undefined ? { phone: String(req.body.contact_phone ?? '').trim() } : {}),
+            ...(req.body.contact_email !== undefined ? { email: String(req.body.contact_email ?? '').trim().toLowerCase() } : {}),
+            updated_at: now,
+          },
+        });
+      }
+
+      if (opportunity.source_inquiry_id && (req.body.project_type !== undefined || req.body.interested_service !== undefined || req.body.lead_source !== undefined)) {
+        await tx.crm_customer_inquiry.updateMany({
+          where: { id: opportunity.source_inquiry_id, company_id: companyId },
+          data: {
+            ...(req.body.project_type !== undefined && String(req.body.project_type ?? '').trim() ? { subject: String(req.body.project_type).trim() } : {}),
+            ...(req.body.interested_service !== undefined ? { interested_service: String(req.body.interested_service ?? '').trim() || null } : {}),
+            ...(req.body.lead_source !== undefined ? { lead_source: String(req.body.lead_source ?? '').trim() || null } : {}),
+            updated_at: now,
+          },
+        });
+      }
+
+      const oppName = req.body.opportunity_name !== undefined && String(req.body.opportunity_name ?? '').trim()
+        ? String(req.body.opportunity_name).trim()
+        : opportunity.opportunity_name;
+      const expectedAmount = req.body.expected_amount !== undefined && req.body.expected_amount !== null && req.body.expected_amount !== ''
+        ? Number(req.body.expected_amount)
+        : opportunity.expected_amount;
+      const expectedCloseDate = req.body.expected_close_date !== undefined
+        ? (req.body.expected_close_date ? new Date(req.body.expected_close_date) : null)
+        : opportunity.expected_close_date;
+      const nextFollowUpAt = req.body.next_follow_up_at !== undefined
+        ? (req.body.next_follow_up_at ? new Date(req.body.next_follow_up_at) : null)
+        : opportunity.next_follow_up_at;
+      const followUpReason = req.body.follow_up_reason !== undefined
+        ? String(req.body.follow_up_reason ?? '')
+        : opportunity.follow_up_reason;
+      const lostReason = req.body.lost_reason !== undefined
+        ? String(req.body.lost_reason ?? '')
+        : opportunity.lost_reason;
+      const lostReasonDetail = req.body.lost_reason_detail !== undefined
+        ? String(req.body.lost_reason_detail ?? '')
+        : opportunity.lost_reason_detail;
+
+      return tx.crm_opportunity.update({
+        where: { id: opportunity.id },
+        data: {
+          opportunity_name: oppName,
+          expected_amount: expectedAmount,
+          expected_close_date: expectedCloseDate && Number.isFinite(expectedCloseDate.getTime()) ? expectedCloseDate : null,
+          next_follow_up_at: nextFollowUpAt && Number.isFinite(nextFollowUpAt.getTime()) ? nextFollowUpAt : null,
+          follow_up_reason: followUpReason,
+          lost_reason: lostReason,
+          lost_reason_detail: lostReasonDetail,
+          updated_at: now,
+        },
+      });
+    });
+
+    res.json({ success: true, data: updated });
   } catch (error) { next(error); }
 });
 

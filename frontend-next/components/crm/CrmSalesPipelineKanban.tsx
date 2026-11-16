@@ -4,7 +4,7 @@ import React, { useMemo, useRef, useState } from "react";
 import {
   TrendingUp, DollarSign, Clock, Award, XCircle,
   Kanban, Table2, Calculator, ShieldAlert, Plus,
-  Building2, Calendar, UserPlus, CheckCircle2, FileText,
+  Building2, Calendar,
 } from "lucide-react";
 import { CRMData } from "@/lib/api/crm.api";
 import { cn, formatDate, formatMoney } from "@/lib/utils";
@@ -15,9 +15,9 @@ import {
   CRMKanbanColumn,
   CRMKpiItem,
   CRMKpiRow,
-  CRMRightDrawer,
   CRMTone,
 } from "./CrmDesignSystem";
+import { OpportunityStagePopupModal } from "./CrmStagePopupCard";
 
 export type PipelineViewMode = "PIPELINE" | "LIST" | "ESTIMATE" | "CREDIT";
 
@@ -53,8 +53,8 @@ export function CrmSalesPipelineShell({
   onMoveStage,
   onDealWon,
   onMarkLost,
-  onOpenActivity,
-  onOpenMeeting,
+  onOpenActivity: _onOpenActivity,
+  onOpenMeeting: _onOpenMeeting,
   onOpenCustomer360,
   onOpenDelegate,
   canDelegate = false,
@@ -93,9 +93,8 @@ export function CrmSalesPipelineShell({
   const [pendingOppIds, setPendingOppIds] = useState<Set<string>>(() => new Set());
   const latestMoveSeqRef = useRef<Record<string, number>>({});
 
-  // Drawer
+  // Popup
   const [drawerOpp, setDrawerOpp] = useState<any | null>(null);
-  const [drawerTab, setDrawerTab] = useState<"overview" | "activities" | "notes" | "estimate">("overview");
   const [columnOrder, setColumnOrder] = useState<Record<string, string[]>>({});
 
   const partyById = useMemo(
@@ -340,22 +339,6 @@ export function CrmSalesPipelineShell({
       });
   };
 
-  const drawerActivities = useMemo(() => {
-    if (!drawerOpp) return [];
-    return (data.activities || []).filter((a: any) => String(a.opportunity_id) === String(drawerOpp.id));
-  }, [drawerOpp, data.activities]);
-
-  const drawerEstimates = useMemo(() => {
-    if (!drawerOpp) return [];
-    return (data.estimates || []).filter((e: any) => String(e.opportunity_id || e.opportunity) === String(drawerOpp.id));
-  }, [drawerOpp, data.estimates]);
-
-  const drawerQuotations = useMemo(() => {
-    if (!drawerOpp) return [];
-    return (data.quotations || []).filter((q: any) => String(q.opportunity_id || q.opportunity) === String(drawerOpp.id));
-  }, [drawerOpp, data.quotations]);
-
-  const isDrawerClosed = drawerOpp ? ["WON", "LOST"].includes(drawerOpp._bucket) : false;
   const canManageDrawer = drawerOpp
     ? !readOnly && (canEditAll || Boolean(currentUserId && String(drawerOpp.created_by_id) === currentUserId))
     : false;
@@ -470,240 +453,21 @@ export function CrmSalesPipelineShell({
       {viewMode === "ESTIMATE" && estimateSlot}
       {viewMode === "CREDIT" && creditSlot}
 
-      {/* Right Contextual Drawer: Opportunity Details */}
-      <CRMRightDrawer
+      {/* Opportunity Stage Popup Modal (Sesuai SVG Marka) */}
+      <OpportunityStagePopupModal
+        opp={drawerOpp ? (enrichedOpps.find((o) => String(o.id) === String(drawerOpp.id)) || drawerOpp) : null}
+        data={data}
         isOpen={Boolean(drawerOpp)}
         onClose={() => setDrawerOpp(null)}
-        title={drawerOpp?.opportunity_name || "Opportunity Details"}
-        subtitle={drawerOpp?._customerName}
-        badge={
-          drawerOpp && (
-            <span className={cn(
-              "rounded-full border px-2.5 py-0.5 text-[11px] font-bold",
-              drawerOpp._bucket === "CONCEPT_DEVELOPMENT" ? "border-[#C7D2FE] bg-[#EEF2FF] text-[#4338CA]" :
-              drawerOpp._bucket === "QUOTATION_SUBMISSION" ? "border-[#FDE68A] bg-[#FEF3C7] text-[#B45309]" :
-              drawerOpp._bucket === "NEGOTIATION" ? "border-[#BAE6FD] bg-[#E0F2FE] text-[#0369A1]" :
-              drawerOpp._bucket === "CLOSING" || drawerOpp._bucket === "WON" ? "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]" :
-              drawerOpp._bucket === "LOST" ? "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]" :
-              "border-[#BAE6FD] bg-[#E7F2FF] text-[#0876CD]"
-            )}>
-              {PIPELINE_COLUMNS.find((c) => c.id === drawerOpp._bucket)?.title || drawerOpp.pipeline_stage}
-            </span>
-          )
-        }
-        tabs={[
-          { id: "overview", label: "Overview" },
-          { id: "activities", label: "Activities", badge: drawerActivities.length },
-          { id: "notes", label: "Notes" },
-          { id: "estimate", label: "Estimate & Quotation", badge: drawerEstimates.length + drawerQuotations.length },
-        ]}
-        activeTab={drawerTab}
-        onTabChange={(t) => setDrawerTab(t as any)}
-        footer={
-          drawerOpp && (
-            <>
-              {canManageDrawer && !isDrawerClosed && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const target = drawerOpp;
-                    setDrawerOpp(null);
-                    onMarkLost(target);
-                  }}
-                  className="mr-auto inline-flex items-center gap-1.5 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3.5 py-2 text-xs font-bold text-[#B91C1C] hover:bg-[#FEE2E2] transition-colors"
-                >
-                  <XCircle size={14} /> Mark Lost
-                </button>
-              )}
-              {drawerOpp._party && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const id = drawerOpp.id;
-                    setDrawerOpp(null);
-                    onOpenCustomer360(id);
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#E2E8F0] bg-white px-3.5 py-2 text-xs font-semibold text-[#334155] hover:bg-[#F8FAFC] transition-colors"
-                >
-                  Customer 360
-                </button>
-              )}
-              {canManageDrawer && !isDrawerClosed && drawerOpp._party && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const target = drawerOpp;
-                    setDrawerOpp(null);
-                    onDealWon(target);
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#059669] px-4 py-2 text-xs font-bold text-white hover:bg-[#047857] shadow-xs transition-colors"
-                >
-                  <CheckCircle2 size={14} /> Process Deal Won
-                </button>
-              )}
-            </>
-          )
-        }
-      >
-        {drawerOpp && drawerTab === "overview" && (
-          <div className="space-y-4 text-xs">
-            <div className="grid grid-cols-2 gap-3.5 rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4 shadow-2xs">
-              <div>
-                <div className="text-[11px] font-medium text-[#64748B]">Expected Amount</div>
-                <div className="mt-1 text-base font-black text-[#0876CD]">{formatMoney(drawerOpp._amount)}</div>
-              </div>
-              <div>
-                <div className="text-[11px] font-medium text-[#64748B]">Probability</div>
-                <div className="mt-1 text-base font-bold text-[#059669]">{drawerOpp._prob}%</div>
-              </div>
-              <div>
-                <div className="text-[11px] font-medium text-[#64748B]">Customer</div>
-                <div className="mt-1 font-bold text-[#0F172A]">{drawerOpp._customerName}</div>
-              </div>
-              <div>
-                <div className="text-[11px] font-medium text-[#64748B]">Sales Owner</div>
-                <div className="mt-1.5"><CRMAvatarBadge name={drawerOpp._ownerName} size="xs" /></div>
-              </div>
-            </div>
-
-            {canManageDrawer && !isDrawerClosed && (
-              <div className="rounded-2xl border border-[#E2E8F0] p-4 bg-white shadow-2xs">
-                <div className="mb-2.5 font-bold text-[#0F172A]">Pindahkan Tahap Pipeline</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {PIPELINE_COLUMNS.filter((c) => !["WON", "LOST"].includes(c.id)).map((col) => (
-                    <button
-                      key={col.id}
-                      type="button"
-                      onClick={() => {
-                        onMoveStage(drawerOpp, col.id);
-                        setDrawerOpp(null);
-                      }}
-                      className={cn(
-                        "rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all",
-                        drawerOpp._bucket === col.id
-                          ? "border-[#163D64] bg-[#163D64] text-white shadow-2xs font-bold"
-                          : "border-[#E2E8F0] bg-white text-[#334155] hover:bg-[#F6FBFF] hover:border-[#BAE6FD]"
-                      )}
-                    >
-                      {col.title}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {canDelegate && onOpenDelegate && !isDrawerClosed && (
-              <button
-                type="button"
-                onClick={() => {
-                  const target = drawerOpp;
-                  setDrawerOpp(null);
-                  onOpenDelegate(target);
-                }}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#BAE6FD] bg-[#EDF6FF] py-2.5 text-xs font-bold text-[#163D64] hover:bg-[#E7F2FF] transition-colors shadow-2xs"
-              >
-                <UserPlus size={14} /> Delegasikan PIC Sales / Departemen
-              </button>
-            )}
-          </div>
-        )}
-
-        {drawerOpp && drawerTab === "activities" && (
-          <div className="space-y-3 text-xs">
-            {canManageDrawer && !isDrawerClosed && (
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const target = drawerOpp;
-                    setDrawerOpp(null);
-                    onOpenActivity(target);
-                  }}
-                  className="flex-1 rounded-xl bg-[#163D64] px-3.5 py-2 font-bold text-white hover:bg-[#163D64] transition-colors shadow-xs"
-                >
-                  + Catat Aktivitas
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const target = drawerOpp;
-                    setDrawerOpp(null);
-                    onOpenMeeting(target);
-                  }}
-                  className="flex-1 rounded-xl border border-[#E2E8F0] bg-white px-3.5 py-2 font-semibold text-[#334155] hover:bg-[#F8FAFC] transition-colors"
-                >
-                  Jadwalkan Meeting
-                </button>
-              </div>
-            )}
-            {drawerActivities.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-slate-200 py-8 text-center text-slate-400">
-                Belum ada aktivitas tercatat.
-              </p>
-            ) : (
-              drawerActivities.map((a: any) => (
-                <div key={a.id} className="rounded-xl border border-slate-200 p-3">
-                  <div className="font-bold text-slate-900">{a.activity_type} · {a.subject}</div>
-                  <div className="mt-1 text-[11px] text-slate-400">{formatDate(a.scheduled_at || a.created_at)}</div>
-                </div>
-              ))
-            )}
-          </div>
-        )}
-
-        {drawerOpp && drawerTab === "notes" && (
-          <div className="space-y-3 text-xs">
-            <div className="rounded-xl border border-slate-200 p-3.5">
-              <div className="font-semibold text-slate-700 mb-1">Catatan Follow-Up / Pipeline</div>
-              <p className="text-slate-600 whitespace-pre-wrap">{drawerOpp.follow_up_reason || "Belum ada catatan follow-up."}</p>
-            </div>
-            {drawerOpp.lost_reason && (
-              <div className="rounded-xl border border-red-200 bg-red-50 p-3.5 text-red-800">
-                <div className="font-semibold mb-1">Alasan Lost: {drawerOpp.lost_reason}</div>
-                <p>{drawerOpp.lost_reason_detail || ""}</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {drawerOpp && drawerTab === "estimate" && (
-          <div className="space-y-3 text-xs">
-            <button
-              type="button"
-              onClick={() => {
-                setDrawerOpp(null);
-                onViewModeChange("ESTIMATE");
-              }}
-              className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#163D64] px-3.5 py-2.5 font-bold text-white hover:bg-[#163D64] transition-colors shadow-xs"
-            >
-              <Calculator size={14} /> Kelola di Estimating &amp; Quotations
-            </button>
-            {drawerEstimates.map((e: any) => (
-              <div key={e.id} className="flex items-center justify-between rounded-xl border border-[#E2E8F0] p-3 bg-white">
-                <div>
-                  <div className="font-bold text-[#0F172A]">{e.estimate_number || `EST-${String(e.id).slice(0, 8)}`}</div>
-                  <div className="text-[11px] text-[#64748B]">Status: {e.status}</div>
-                </div>
-                <div className="font-bold text-[#0876CD]">{formatMoney(e.offered_amount || e.total_cost)}</div>
-              </div>
-            ))}
-            {drawerQuotations.map((q: any) => (
-              <div key={q.id} className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50/40 p-3">
-                <div>
-                  <div className="font-bold text-slate-900 flex items-center gap-1"><FileText size={12} /> {q.quotation_code || `QUO-${String(q.id).slice(0, 8)}`}</div>
-                  <div className="text-[11px] text-slate-500">Status: {q.status}</div>
-                </div>
-                <div className="font-bold text-emerald-700">{formatMoney(q.total_amount)}</div>
-              </div>
-            ))}
-            {drawerEstimates.length === 0 && drawerQuotations.length === 0 && (
-              <p className="rounded-xl border border-dashed border-slate-200 py-8 text-center text-slate-400">
-                Belum ada Cost Estimate atau Quotation untuk Opportunity ini.
-              </p>
-            )}
-          </div>
-        )}
-      </CRMRightDrawer>
+        onMoveStage={(opp, targetStage) => onMoveStage(opp, targetStage)}
+        onDealWon={onDealWon}
+        onMarkLost={onMarkLost}
+        onOpenCustomer360={onOpenCustomer360}
+        onOpenDelegate={onOpenDelegate}
+        onViewEstimate={() => onViewModeChange("ESTIMATE")}
+        canManage={canManageDrawer}
+        canDelegate={canDelegate}
+      />
     </div>
   );
 }

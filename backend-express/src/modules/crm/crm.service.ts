@@ -24,18 +24,19 @@ export class CRMService {
     const rawTarget = String(payload.status ?? '').trim().toUpperCase();
     const aliasMap: Record<string, string> = {
       WAITING: 'FOLLOW_UP',
+      WAITING_RESPONSE: 'FOLLOW_UP',
       NOT_INTERESTED: 'UNQUALIFIED',
       CLOSED_LOST: 'UNQUALIFIED',
       REJECTED: 'UNQUALIFIED',
     };
     const target = aliasMap[rawTarget] ?? rawTarget;
-    const allowedTargets = ['NEW', 'CONTACTED', 'FOLLOW_UP', 'RESPONDED', 'INTERESTED', 'UNQUALIFIED'];
+    const allowedTargets = ['NEW', 'CONTACTED', 'FOLLOW_UP', 'RESPONDED', 'INTERESTED', 'UNQUALIFIED', 'UNREACHABLE'];
     if (!allowedTargets.includes(target)) throw new ValidationError('Status lead tidak valid.');
     const note = String(payload.note ?? '').trim();
-    if (note.length > 2000) throw new ValidationError('Catatan kontak maksimal 2.000 karakter.');
+    if (note.length > 5000) throw new ValidationError('Catatan kontak maksimal 5.000 karakter.');
     const followUpAt = payload.next_follow_up_at ? new Date(payload.next_follow_up_at) : null;
-    if (followUpAt && (Number.isNaN(followUpAt.getTime()) || followUpAt <= new Date())) {
-      throw new ValidationError('Pilih tanggal tindak lanjut yang akan datang.');
+    if (followUpAt && Number.isNaN(followUpAt.getTime())) {
+      throw new ValidationError('Format tanggal tindak lanjut tidak valid.');
     }
 
     return prisma.$transaction(async (tx) => {
@@ -51,11 +52,12 @@ export class CRMService {
         where: { id: inquiry.id },
         data: {
           status: target,
-          ...(target === 'CONTACTED' ? { last_contacted_at: now, last_contact_note: note || inquiry.last_contact_note, next_follow_up_at: null } : {}),
-          ...(target === 'RESPONDED' || target === 'INTERESTED' ? { responded_at: inquiry.responded_at ?? now, last_contact_note: note || inquiry.last_contact_note, next_follow_up_at: null } : {}),
+          ...(target === 'CONTACTED' ? { last_contacted_at: now, last_contact_note: note || inquiry.last_contact_note, next_follow_up_at: followUpAt ?? inquiry.next_follow_up_at } : {}),
+          ...(target === 'RESPONDED' || target === 'INTERESTED' ? { responded_at: inquiry.responded_at ?? now, last_contact_note: note || inquiry.last_contact_note, next_follow_up_at: followUpAt ?? inquiry.next_follow_up_at } : {}),
           ...(target === 'FOLLOW_UP' ? { next_follow_up_at: followUpAt ?? inquiry.next_follow_up_at, last_contact_note: note || inquiry.last_contact_note } : {}),
           ...(target === 'UNQUALIFIED' ? { closed_at: now, last_contact_note: note || inquiry.last_contact_note, next_follow_up_at: null } : {}),
-          ...(target === 'NEW' ? { closed_at: null, next_follow_up_at: null } : {}),
+          ...(target === 'UNREACHABLE' ? { last_contacted_at: now, last_contact_note: note || inquiry.last_contact_note, next_follow_up_at: null } : {}),
+          ...(target === 'NEW' ? { closed_at: null, next_follow_up_at: followUpAt ?? inquiry.next_follow_up_at } : {}),
           updated_at: now,
         },
       });

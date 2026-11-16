@@ -437,6 +437,83 @@ export async function linkInquiryCustomer(id: string | number, customer_party_id
  * External dependency: calls `/api/v1/crm/customer-inquiries/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
+export interface CRMStageMetadata {
+  // Lead stage fields
+  contact_date?: string;
+  contact_method?: string;
+  introduction_sent?: string;
+  contact_notes?: string;
+  follow_up_date?: string;
+  follow_up_notes?: string;
+  response_summary?: string;
+  client_feedback?: string;
+  potential_service?: string;
+  next_action?: string;
+  estimated_timeline?: string;
+  meeting_schedule?: string;
+  initial_brief_file?: string;
+  potential_project_notes?: string;
+  reason_not_interested?: string;
+  number_of_attempts?: string;
+  // Opportunity stage fields
+  project_name?: string;
+  event_date?: string;
+  project_location?: string;
+  meeting_notes?: string;
+  project_brief_file?: string;
+  sow_file?: string;
+  design_reference_file?: string;
+  concept_file?: string;
+  target_submission_date?: string;
+  quotation_number?: string;
+  quotation_doc_file?: string;
+  total_quotation_value?: string;
+  submission_date?: string;
+  payment_terms?: string;
+  client_budget?: string;
+  negotiation_notes?: string;
+  revision_request?: string;
+  revised_quotation_file?: string;
+  final_proposed_value?: string;
+  final_project_value?: string;
+  final_quotation_file?: string;
+  po_spk_file?: string;
+  contract_doc_file?: string;
+  project_start_date?: string;
+  closing_status?: string;
+  final_contract_value?: string;
+  downpayment_status?: string;
+  project_handover_file?: string;
+  person_in_charge?: string;
+  internal_pic?: string;
+  competitor_selected?: string;
+  evaluation_notes?: string;
+  plain_notes?: string;
+  [key: string]: any;
+}
+
+const STAGE_META_PREFIX = "/*CRM_META*/";
+
+export function parseStageMetadata(raw?: string | null): CRMStageMetadata {
+  const text = String(raw || "").trim();
+  if (!text) return { plain_notes: "" };
+  if (text.startsWith(STAGE_META_PREFIX)) {
+    try {
+      const parsed = JSON.parse(text.slice(STAGE_META_PREFIX.length));
+      if (parsed && typeof parsed === "object") {
+        return { plain_notes: parsed.plain_notes || "", ...parsed };
+      }
+    } catch {
+      // fallback to plain text
+    }
+  }
+  return { plain_notes: text };
+}
+
+export function serializeStageMetadata(meta: CRMStageMetadata): string {
+  return `${STAGE_META_PREFIX}${JSON.stringify(meta)}`;
+}
+
 export async function createCustomerInquiry(payload: {
   subject: string;
   customer_name: string;
@@ -445,6 +522,11 @@ export async function createCustomerInquiry(payload: {
   customer_party?: string | number | null;
   contact_id?: string | null;
   contact_name?: string;
+  job_title?: string;
+  industry?: string;
+  website?: string;
+  address?: string;
+  next_follow_up_at?: string | null;
   auto_create_company?: boolean;
   description?: string;
   expected_delivery_date?: string | null;
@@ -460,6 +542,11 @@ export async function createCustomerInquiry(payload: {
     customer_party_id: payload.customer_party || null,
     contact_id: payload.contact_id || null,
     contact_name: payload.contact_name || "",
+    job_title: payload.job_title || "",
+    industry: payload.industry || "",
+    website: payload.website || "",
+    address: payload.address || "",
+    next_follow_up_at: payload.next_follow_up_at || null,
     auto_create_company: Boolean(payload.auto_create_company),
     description: payload.description || "",
     expected_delivery_date: payload.expected_delivery_date || null,
@@ -478,6 +565,15 @@ export async function updateCustomerInquiry(id: string | number, payload: {
   customer_phone?: string;
   customer_party_id?: string | null;
   contact_id?: string | null;
+  contact_name?: string;
+  job_title?: string;
+  industry?: string;
+  website?: string;
+  address?: string;
+  owner_user_id?: string | null;
+  next_follow_up_at?: string | null;
+  last_contacted_at?: string | null;
+  last_contact_note?: string;
   description?: string;
   lead_source?: string | null;
   interested_service?: string | null;
@@ -489,6 +585,11 @@ export async function updateCustomerInquiry(id: string | number, payload: {
     customer_phone: payload.customer_phone || "",
     description: payload.description || "",
   });
+  return data?.data ?? data;
+}
+
+export async function updateOpportunityStageDetails(id: string | number, payload: Record<string, any>) {
+  const { data } = await api.patch(`/api/v1/crm/opportunities/${id}/stage-details`, payload);
   return data?.data ?? data;
 }
 

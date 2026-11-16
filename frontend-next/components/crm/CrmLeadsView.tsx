@@ -2,8 +2,8 @@
 
 import React, { useMemo, useRef, useState } from "react";
 import {
-  FileText, Plus, Kanban, Table2, Inbox, ArrowRight, Pencil,
-  Trash2, UserPlus, Building2, Mail, Phone, Globe2, Award,
+  FileText, Plus, Kanban, Table2, Inbox, ArrowRight,
+  Building2, Phone, Award,
   CheckCircle2, Clock, XCircle, Sparkles,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -11,8 +11,9 @@ import {
   CRMData,
   createCustomerInquiry,
   deleteCustomerInquiry,
-  linkInquiryCustomer,
+  parseStageMetadata,
   qualifyInquiry,
+  serializeStageMetadata,
   updateCRMInquiryLeadStatus,
   updateCustomerInquiry,
 } from "@/lib/api/crm.api";
@@ -25,17 +26,18 @@ import {
   CRMKanbanColumn,
   CRMKpiItem,
   CRMKpiRow,
-  CRMRightDrawer,
   CRMTone,
 } from "./CrmDesignSystem";
+import { LeadStagePopupModal } from "./CrmStagePopupCard";
 
 const LEAD_COLUMNS: Array<{ id: string; title: string; tone: CRMTone }> = [
   { id: "NEW", title: "New Lead", tone: "blue" },
   { id: "CONTACTED", title: "Contacted", tone: "purple" },
-  { id: "FOLLOW_UP", title: "Waiting", tone: "amber" },
+  { id: "FOLLOW_UP", title: "Waiting Response", tone: "amber" },
   { id: "RESPONDED", title: "Responded", tone: "pink" },
   { id: "INTERESTED", title: "Interested", tone: "green" },
   { id: "UNQUALIFIED", title: "Not Interested", tone: "red" },
+  { id: "UNREACHABLE", title: "Unreachable", tone: "slate" },
 ];
 
 const LEAD_SOURCE_OPTIONS = [
@@ -60,10 +62,10 @@ const SERVICE_OPTIONS = [
 
 function normalizeLeadBucket(status: unknown): string {
   const s = String(status || "NEW").toUpperCase();
-  if (s === "WAITING") return "FOLLOW_UP";
+  if (s === "WAITING" || s === "WAITING_RESPONSE") return "FOLLOW_UP";
   if (s === "QUALIFIED") return "INTERESTED";
   if (["CLOSED_LOST", "REJECTED", "NOT_INTERESTED", "UNQUALIFIED"].includes(s)) return "UNQUALIFIED";
-  if (["NEW", "CONTACTED", "FOLLOW_UP", "RESPONDED", "INTERESTED"].includes(s)) return s;
+  if (["NEW", "CONTACTED", "FOLLOW_UP", "RESPONDED", "INTERESTED", "UNREACHABLE"].includes(s)) return s;
   return "NEW";
 }
 
@@ -105,11 +107,8 @@ export function CrmLeadsView({
   const latestLeadSeqRef = useRef<Record<string, number>>({});
   const [columnOrder, setColumnOrder] = useState<Record<string, string[]>>({});
 
-  // Drawer state
+  // Popup state
   const [drawerLead, setDrawerLead] = useState<any | null>(null);
-  const [drawerTab, setDrawerTab] = useState<"overview" | "activities" | "notes">("overview");
-  const [linkingPartyId, setLinkingPartyId] = useState("");
-  const [linkingContactId, setLinkingContactId] = useState("");
   const [isQualifying, setIsQualifying] = useState(false);
 
   // Add / Edit Lead Modal
@@ -124,6 +123,11 @@ export function CrmLeadsView({
     customer_party: "",
     contact_id: "",
     contact_name: "",
+    job_title: "",
+    industry: "",
+    website: "",
+    address: "",
+    next_follow_up_at: "",
     auto_create_company: true,
     lead_source: "MANUAL",
     interested_service: "",
@@ -328,6 +332,11 @@ export function CrmLeadsView({
       customer_party: "",
       contact_id: "",
       contact_name: "",
+      job_title: "",
+      industry: "",
+      website: "",
+      address: "",
+      next_follow_up_at: "",
       auto_create_company: true,
       lead_source: "MANUAL",
       interested_service: "",
@@ -339,6 +348,7 @@ export function CrmLeadsView({
 
   const openEditLead = (lead: any) => {
     setEditingLead(lead);
+    const parsedMeta = parseStageMetadata(lead.notes);
     setLeadForm({
       subject: lead.subject || "",
       customer_name: lead.customer_name || "",
@@ -347,18 +357,23 @@ export function CrmLeadsView({
       customer_party: lead.customer_party_id ? String(lead.customer_party_id) : "",
       contact_id: lead.contact_id ? String(lead.contact_id) : "",
       contact_name: lead._contact?.contact_name || "",
+      job_title: lead._contact?.job_title || "",
+      industry: lead._party?.industry || "",
+      website: lead._party?.website || "",
+      address: lead._party?.city || "",
+      next_follow_up_at: lead.next_follow_up_at ? String(lead.next_follow_up_at).slice(0, 10) : (parsedMeta.follow_up_date || ""),
       auto_create_company: false,
       lead_source: lead.lead_source || lead.source_channel || "MANUAL",
       interested_service: lead.interested_service || "",
       description: lead.description || "",
-      notes: lead.notes || "",
+      notes: parsedMeta.plain_notes || "",
     });
     setIsLeadModalOpen(true);
   };
 
   const handleSaveLead = async () => {
     if (!leadForm.subject.trim() || !leadForm.customer_name.trim()) {
-      toast.error("Subject/Kebutuhan dan Nama Customer wajib diisi.");
+      toast.error("Project Type / Kebutuhan dan Nama Perusahaan wajib diisi.");
       return;
     }
     if (!leadForm.customer_email.trim() && !leadForm.customer_phone.trim()) {
@@ -368,6 +383,12 @@ export function CrmLeadsView({
     setSavingLead(true);
     try {
       if (editingLead) {
+        const existingMeta = parseStageMetadata(editingLead.notes);
+        const serializedNotes = serializeStageMetadata({
+          ...existingMeta,
+          plain_notes: leadForm.notes.trim(),
+          follow_up_date: leadForm.next_follow_up_at || existingMeta.follow_up_date || "",
+        });
         await updateCustomerInquiry(editingLead.id, {
           subject: leadForm.subject.trim(),
           customer_name: leadForm.customer_name.trim(),
@@ -375,13 +396,23 @@ export function CrmLeadsView({
           customer_phone: leadForm.customer_phone.trim(),
           customer_party_id: editingLead._isConverted ? undefined : (leadForm.customer_party || null),
           contact_id: leadForm.contact_id || null,
+          contact_name: leadForm.contact_name.trim(),
+          job_title: leadForm.job_title.trim(),
+          industry: leadForm.industry.trim(),
+          website: leadForm.website.trim(),
+          address: leadForm.address.trim(),
+          next_follow_up_at: leadForm.next_follow_up_at || null,
           description: leadForm.description.trim(),
           lead_source: leadForm.lead_source,
           interested_service: leadForm.interested_service.trim() || null,
-          notes: leadForm.notes.trim() || null,
+          notes: serializedNotes,
         });
         toast.success("Data Lead berhasil diperbarui.");
       } else {
+        const serializedNotes = serializeStageMetadata({
+          plain_notes: leadForm.notes.trim(),
+          follow_up_date: leadForm.next_follow_up_at || "",
+        });
         await createCustomerInquiry({
           subject: leadForm.subject.trim(),
           customer_name: leadForm.customer_name.trim(),
@@ -390,11 +421,16 @@ export function CrmLeadsView({
           customer_party: leadForm.customer_party || null,
           contact_id: leadForm.contact_id || null,
           contact_name: leadForm.contact_name.trim(),
+          job_title: leadForm.job_title.trim(),
+          industry: leadForm.industry.trim(),
+          website: leadForm.website.trim(),
+          address: leadForm.address.trim(),
+          next_follow_up_at: leadForm.next_follow_up_at || null,
           auto_create_company: !leadForm.customer_party && leadForm.auto_create_company,
           description: leadForm.description.trim(),
           lead_source: leadForm.lead_source,
           interested_service: leadForm.interested_service.trim() || null,
-          notes: leadForm.notes.trim() || null,
+          notes: serializedNotes,
         });
         toast.success("Lead baru berhasil ditambahkan.");
       }
@@ -404,20 +440,6 @@ export function CrmLeadsView({
       toast.error(err?.response?.data?.detail || err?.response?.data?.error?.message || "Gagal menyimpan Lead.");
     } finally {
       setSavingLead(false);
-    }
-  };
-
-  const handleLinkCustomerInDrawer = async () => {
-    if (!drawerLead || !linkingPartyId) return;
-    try {
-      const updated = await linkInquiryCustomer(drawerLead.id, linkingPartyId, linkingContactId || null);
-      toast.success("Perusahaan berhasil ditautkan ke Lead.");
-      setDrawerLead({ ...drawerLead, ...updated, customer_party_id: linkingPartyId, contact_id: linkingContactId || updated.contact_id || null });
-      setLinkingPartyId("");
-      setLinkingContactId("");
-      onRefresh();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || "Gagal menautkan perusahaan.");
     }
   };
 
@@ -637,375 +659,197 @@ export function CrmLeadsView({
         </div>
       )}
 
-      {/* Right Contextual Drawer: Lead Details */}
-      <CRMRightDrawer
+      {/* Lead Stage Popup Modal (Sesuai SVG Marka) */}
+      <LeadStagePopupModal
+        lead={drawerLead ? (enrichedLeads.find((l) => String(l.id) === String(drawerLead.id)) || drawerLead) : null}
+        data={data}
         isOpen={Boolean(drawerLead)}
         onClose={() => setDrawerLead(null)}
-        title={drawerLead?.customer_name || "Lead Details"}
-        subtitle={drawerLead?.subject}
-        badge={
-          drawerLead && (
-            <span className="rounded-full bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-[11px] font-semibold text-[#0876CD]">
-              {LEAD_COLUMNS.find((c) => c.id === drawerLead._bucket)?.title || drawerLead.status}
-            </span>
-          )
-        }
-        tabs={[
-          { id: "overview", label: "Overview" },
-          { id: "activities", label: "Activities" },
-          { id: "notes", label: "Notes" },
-        ]}
-        activeTab={drawerTab}
-        onTabChange={(t) => setDrawerTab(t as any)}
-        footer={
-          drawerLead && (
-            <>
-              {!readOnly && canDelete && !drawerLead._isConverted && (
-                <button
-                  type="button"
-                  onClick={() => void handleDeleteLead(drawerLead)}
-                  className="mr-auto inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100"
-                >
-                  <Trash2 size={13} /> Hapus
-                </button>
-              )}
-              {!readOnly && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const target = drawerLead;
-                    setDrawerLead(null);
-                    openEditLead(target);
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  <Pencil size={13} /> Edit Lead
-                </button>
-              )}
-              {!readOnly && !drawerLead._isConverted && (
-                <button
-                  type="button"
-                  disabled={isQualifying}
-                  onClick={() => void handleConvertToOpportunity(drawerLead)}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#163D64] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#163D64] disabled:opacity-50"
-                >
-                  <ArrowRight size={13} /> {isQualifying ? "Mengkonversi..." : "Convert to Opportunity"}
-                </button>
-              )}
-            </>
-          )
-        }
-      >
-        {drawerLead && drawerTab === "overview" && (
-          <div className="space-y-4 text-xs">
-            {/* Quick Stage Switcher */}
-            {!readOnly && !drawerLead._isConverted && (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <div className="mb-2 font-semibold text-slate-700">Pindahkan Tahap Lead</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {LEAD_COLUMNS.map((col) => (
-                    <button
-                      key={col.id}
-                      type="button"
-                      onClick={() => void handleMoveLeadStage(String(drawerLead.id), col.id)}
-                      className={cn(
-                        "rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition",
-                        drawerLead._bucket === col.id
-                          ? "border-[#163D64] bg-[#163D64] text-white"
-                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
-                      )}
-                    >
-                      {col.title}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+        onMoveStage={(leadId, targetBucket) => void handleMoveLeadStage(leadId, targetBucket)}
+        onConvert={(lead) => void handleConvertToOpportunity(lead)}
+        onDelete={(lead) => void handleDeleteLead(lead)}
+        onOpenEditModal={(lead) => openEditLead(lead)}
+        onOpenDelegate={onOpenDelegate}
+        onRefresh={onRefresh}
+        canDelete={canDelete}
+        canDelegate={canDelegate}
+        readOnly={readOnly}
+        isQualifying={isQualifying}
+      />
 
-            {/* Company Details */}
-            <div className="rounded-xl border border-slate-200 p-3.5 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-800 flex items-center gap-1.5">
-                  <Building2 size={14} className="text-[#0876CD]" /> Company Details
-                </span>
-                {drawerLead._party && (
-                  <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                    Terhubung: {drawerLead._party.party_type}
-                  </span>
-                )}
-              </div>
-              <div className="text-slate-700 font-semibold">
-                {drawerLead._party?.display_name || drawerLead._party?.legal_name || drawerLead.customer_name}
-              </div>
-              {!drawerLead.customer_party_id && !readOnly && (
-                <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50/70 p-2.5 space-y-2">
-                  <div className="text-[11px] font-medium text-amber-900">
-                    Hubungkan ke Customer / Prospect sebelum Convert to Opportunity:
-                  </div>
-                  <div className="space-y-1.5">
-                    <div className="flex gap-1.5">
-                      <select
-                        className="input flex-1 text-xs bg-white"
-                        value={linkingPartyId}
-                        onChange={(e) => {
-                          const pid = e.target.value;
-                          setLinkingPartyId(pid);
-                          const primary = (data.contacts || []).find((c: any) => String(c.party_id) === pid && c.primary_contact);
-                          setLinkingContactId(primary ? String(primary.id) : "");
-                        }}
-                      >
-                        <option value="">-- Pilih Customer / Prospect --</option>
-                        {(data.parties || [])
-                          .filter((p: any) => ["CUSTOMER", "PROSPECT"].includes(String(p.party_type || "").toUpperCase()) && p.status === "ACTIVE")
-                          .map((p: any) => (
-                            <option key={p.id} value={String(p.id)}>
-                              {p.display_name || p.legal_name} ({p.party_type})
-                            </option>
-                          ))}
-                      </select>
-                      <button
-                        type="button"
-                        disabled={!linkingPartyId}
-                        onClick={() => void handleLinkCustomerInDrawer()}
-                        className="rounded-lg bg-[#163D64] px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-50"
-                      >
-                        Tautkan
-                      </button>
-                    </div>
-                    {linkingPartyId && (
-                      <select
-                        className="input w-full text-xs bg-white"
-                        value={linkingContactId}
-                        onChange={(e) => setLinkingContactId(e.target.value)}
-                      >
-                        <option value="">-- Pilih Contact PIC (Opsional) --</option>
-                        {(data.contacts || [])
-                          .filter((c: any) => String(c.party_id) === linkingPartyId)
-                          .map((c: any) => (
-                            <option key={c.id} value={String(c.id)}>
-                              {c.contact_name}{c.job_title ? ` · ${c.job_title}` : ""}
-                            </option>
-                          ))}
-                      </select>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Contact Person (Primary) */}
-            <div className="rounded-xl border border-slate-200 p-3.5 space-y-1.5">
-              <div className="font-bold text-slate-800">Contact Person (Primary)</div>
-              {drawerLead._contact?.contact_name && (
-                <div className="font-semibold text-slate-700">
-                  {drawerLead._contact.contact_name}
-                  {drawerLead._contact.job_title ? <span className="font-normal text-slate-400"> · {drawerLead._contact.job_title}</span> : null}
-                </div>
-              )}
-              <div className="flex items-center gap-2 text-slate-600"><Mail size={12} /> {drawerLead.customer_email || drawerLead._contact?.email || "—"}</div>
-              <div className="flex items-center gap-2 text-slate-600"><Phone size={12} /> {drawerLead.customer_phone || drawerLead._contact?.phone || "—"}</div>
-            </div>
-
-            {/* Lead Information */}
-            <div className="rounded-xl border border-slate-200 p-3.5 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-800">Lead Information</span>
-                {canDelegate && onOpenDelegate && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const rec = drawerLead;
-                      setDrawerLead(null);
-                      onOpenDelegate(rec, "INQUIRY");
-                    }}
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#0876CD] hover:underline"
-                  >
-                    <UserPlus size={12} /> Delegasi PIC
-                  </button>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-2.5">
-                <div><div className="text-slate-400">Inquiry Number</div><div className="font-semibold text-slate-800">{drawerLead.inquiry_number || "—"}</div></div>
-                <div><div className="text-slate-400">Lead Source</div><div className="font-semibold text-slate-800">{drawerLead._source}</div></div>
-                <div><div className="text-slate-400">Interested Service</div><div className="font-semibold text-slate-800">{drawerLead._service || "—"}</div></div>
-                <div><div className="text-slate-400">Sales Owner</div><div className="mt-0.5"><CRMAvatarBadge name={drawerLead._ownerName} size="xs" /></div></div>
-              </div>
-              {drawerLead.origin_domain && (
-                <div className="pt-1 flex items-center gap-1.5 text-[11px] text-sky-700">
-                  <Globe2 size={12} /> Origin Domain: {drawerLead.origin_domain}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {drawerLead && drawerTab === "activities" && (
-          <div className="space-y-3 text-xs">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <div className="font-semibold text-slate-700">Terakhir Dihubungi</div>
-              <div className="mt-1 text-slate-600">{drawerLead.last_contacted_at ? formatDate(drawerLead.last_contacted_at) : "Belum ada catatan kontak"}</div>
-              {drawerLead.last_contact_note && <p className="mt-1 text-slate-700">{drawerLead.last_contact_note}</p>}
-            </div>
-            {drawerLead.next_follow_up_at && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
-                Jadwal Follow-Up: <b>{formatDate(drawerLead.next_follow_up_at)}</b>
-              </div>
-            )}
-          </div>
-        )}
-
-        {drawerLead && drawerTab === "notes" && (
-          <div className="space-y-3 text-xs">
-            <div className="rounded-xl border border-slate-200 p-3.5">
-              <div className="font-semibold text-slate-700 mb-1">Deskripsi Kebutuhan</div>
-              <p className="text-slate-600 whitespace-pre-wrap">{drawerLead.description || "Belum ada deskripsi."}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 p-3.5">
-              <div className="font-semibold text-slate-700 mb-1">Catatan Internal</div>
-              <p className="text-slate-600 whitespace-pre-wrap">{drawerLead.notes || drawerLead.last_contact_note || "Belum ada catatan tambahan."}</p>
-            </div>
-          </div>
-        )}
-      </CRMRightDrawer>
-
-      {/* Add / Edit Lead Modal */}
+      {/* Add / Edit Lead Modal (Sesuai Struktur Card - New Lead.svg) */}
       <Modal
         isOpen={isLeadModalOpen}
         onClose={() => !savingLead && setIsLeadModalOpen(false)}
-        title={editingLead ? "Edit Lead" : "Add New Lead"}
-        size="md"
+        title={editingLead ? "Edit Lead" : "New Lead"}
+        size="lg"
       >
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 text-xs">
-          <label className="font-medium text-slate-600 sm:col-span-2">
-            Subject / Kebutuhan *
-            <input className="input mt-1 w-full" value={leadForm.subject} onChange={(e) => setLeadForm((f) => ({ ...f, subject: e.target.value }))} placeholder="Contoh: Pengadaan Event Annual Gathering 2026" />
-          </label>
-          <label className="font-medium text-slate-600 sm:col-span-2">
-            Nama Perusahaan / Customer *
-            <input className="input mt-1 w-full" value={leadForm.customer_name} onChange={(e) => setLeadForm((f) => ({ ...f, customer_name: e.target.value }))} placeholder="PT / Instansi / Nama Klien" />
-          </label>
-          <label className="font-medium text-slate-600 sm:col-span-2">
-            Tautkan Perusahaan (Company)
-            <select
-              className="input mt-1 w-full bg-white disabled:bg-slate-100"
-              disabled={Boolean(editingLead?._isConverted)}
-              value={leadForm.customer_party}
-              onChange={(e) => {
-                const pid = e.target.value;
-                const p = partyById.get(pid);
-                const primaryContact = pid
-                  ? ((data.contacts || []).find((c: any) => String(c.party_id) === pid && c.primary_contact) ||
-                     (data.contacts || []).find((c: any) => String(c.party_id) === pid))
-                  : null;
-                setLeadForm((f) => ({
-                  ...f,
-                  customer_party: pid,
-                  contact_id: primaryContact ? String(primaryContact.id) : "",
-                  customer_name: p ? p.display_name || p.legal_name : f.customer_name,
-                  customer_email: primaryContact?.email || f.customer_email,
-                  customer_phone: primaryContact?.phone || f.customer_phone,
-                }));
-              }}
-            >
-              <option value="">-- Input Manual / Belum Terdaftar --</option>
-              {(data.parties || [])
-                .filter((p: any) => ["CUSTOMER", "PROSPECT"].includes(String(p.party_type || "").toUpperCase()) && p.status === "ACTIVE")
-                .map((p: any) => (
-                  <option key={p.id} value={String(p.id)}>
-                    {p.display_name || p.legal_name} ({p.party_type})
-                  </option>
-                ))}
-            </select>
-          </label>
-          {leadForm.customer_party ? (
-            <label className="font-medium text-slate-600 sm:col-span-2">
-              Contact Person (PIC)
-              <select
-                className="input mt-1 w-full bg-white"
-                value={leadForm.contact_id}
-                onChange={(e) => {
-                  const cid = e.target.value;
-                  const ct = contactById.get(cid);
-                  setLeadForm((f) => ({
-                    ...f,
-                    contact_id: cid,
-                    customer_email: ct?.email || f.customer_email,
-                    customer_phone: ct?.phone || f.customer_phone,
-                  }));
-                }}
-              >
-                <option value="">-- Pilih Contact PIC (Opsional) --</option>
-                {(data.contacts || [])
-                  .filter((c: any) => String(c.party_id) === leadForm.customer_party)
-                  .map((c: any) => (
-                    <option key={c.id} value={String(c.id)}>
-                      {c.contact_name}{c.job_title ? ` · ${c.job_title}` : ""}{c.primary_contact ? " (Utama)" : ""}
-                    </option>
-                  ))}
-              </select>
-            </label>
-          ) : (
-            <>
-              {!editingLead && (
-                <label className="sm:col-span-2 flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2 text-[11px] font-medium text-[#163D64] cursor-pointer">
+        <div className="space-y-4 p-4 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Company Details */}
+            <div className="rounded-2xl border border-slate-200 p-3.5 space-y-2.5">
+              <div className="font-bold text-sm text-[#163D64]">Company Details</div>
+              <label className="block font-medium text-slate-600">
+                Pilih Master Company (Opsional)
+                <select
+                  className="input mt-1 w-full bg-white disabled:bg-slate-100"
+                  disabled={Boolean(editingLead?._isConverted)}
+                  value={leadForm.customer_party}
+                  onChange={(e) => {
+                    const pid = e.target.value;
+                    const p = partyById.get(pid);
+                    const primaryContact = pid
+                      ? ((data.contacts || []).find((c: any) => String(c.party_id) === pid && c.primary_contact) ||
+                         (data.contacts || []).find((c: any) => String(c.party_id) === pid))
+                      : null;
+                    setLeadForm((f) => ({
+                      ...f,
+                      customer_party: pid,
+                      contact_id: primaryContact ? String(primaryContact.id) : "",
+                      customer_name: p ? p.display_name || p.legal_name : f.customer_name,
+                      industry: p?.industry || f.industry,
+                      website: p?.website || f.website,
+                      address: p?.city || f.address,
+                      contact_name: primaryContact?.contact_name || f.contact_name,
+                      job_title: primaryContact?.job_title || f.job_title,
+                      customer_email: primaryContact?.email || f.customer_email,
+                      customer_phone: primaryContact?.phone || f.customer_phone,
+                    }));
+                  }}
+                >
+                  <option value="">-- Input Perusahaan Baru --</option>
+                  {(data.parties || [])
+                    .filter((p: any) => ["CUSTOMER", "PROSPECT"].includes(String(p.party_type || "").toUpperCase()) && p.status === "ACTIVE")
+                    .map((p: any) => (
+                      <option key={p.id} value={String(p.id)}>
+                        {p.display_name || p.legal_name} ({p.party_type})
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="block font-medium text-slate-600">
+                Company *
+                <input className="input mt-1 w-full" value={leadForm.customer_name} onChange={(e) => setLeadForm((f) => ({ ...f, customer_name: e.target.value }))} placeholder="Contoh: PT Danacipta" />
+              </label>
+              <label className="block font-medium text-slate-600">
+                Industry
+                <input className="input mt-1 w-full" value={leadForm.industry} onChange={(e) => setLeadForm((f) => ({ ...f, industry: e.target.value }))} placeholder="Contoh: Venture Capital" />
+              </label>
+              <label className="block font-medium text-slate-600">
+                Website
+                <input className="input mt-1 w-full" value={leadForm.website} onChange={(e) => setLeadForm((f) => ({ ...f, website: e.target.value }))} placeholder="Contoh: www.danacipta.co.id" />
+              </label>
+              <label className="block font-medium text-slate-600">
+                Address
+                <input className="input mt-1 w-full" value={leadForm.address} onChange={(e) => setLeadForm((f) => ({ ...f, address: e.target.value }))} placeholder="Contoh: Batam, Indonesia" />
+              </label>
+              {!editingLead && !leadForm.customer_party && (
+                <label className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/60 px-2.5 py-1.5 text-[11px] font-medium text-[#163D64] cursor-pointer">
                   <input
                     type="checkbox"
                     checked={leadForm.auto_create_company}
                     onChange={(e) => setLeadForm((f) => ({ ...f, auto_create_company: e.target.checked }))}
                     className="rounded border-slate-300 text-[#0868B5]"
                   />
-                  Otomatis daftarkan sebagai Prospect Company &amp; Contact baru di CRM
+                  Simpan otomatis ke Master Company &amp; Contact
                 </label>
               )}
-              {!editingLead && leadForm.auto_create_company && (
-                <label className="font-medium text-slate-600 sm:col-span-2">
-                  Nama PIC / Contact Person
-                  <input
-                    className="input mt-1 w-full"
-                    value={leadForm.contact_name}
-                    onChange={(e) => setLeadForm((f) => ({ ...f, contact_name: e.target.value }))}
-                    placeholder="Contoh: Budi Santoso (kosongkan jika sama dengan nama perusahaan)"
-                  />
+            </div>
+
+            {/* Contact Person */}
+            <div className="rounded-2xl border border-slate-200 p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-sm text-[#163D64]">Contact Person</span>
+                <span className="rounded-full bg-[#EDF6FE] px-2.5 py-0.5 text-[10px] font-semibold text-[#0876CD]">Primary</span>
+              </div>
+              {leadForm.customer_party && (
+                <label className="block font-medium text-slate-600">
+                  Pilih Contact Terdaftar
+                  <select
+                    className="input mt-1 w-full bg-white"
+                    value={leadForm.contact_id}
+                    onChange={(e) => {
+                      const cid = e.target.value;
+                      const ct = contactById.get(cid);
+                      setLeadForm((f) => ({
+                        ...f,
+                        contact_id: cid,
+                        contact_name: ct?.contact_name || f.contact_name,
+                        job_title: ct?.job_title || f.job_title,
+                        customer_email: ct?.email || f.customer_email,
+                        customer_phone: ct?.phone || f.customer_phone,
+                      }));
+                    }}
+                  >
+                    <option value="">-- Input PIC Baru / Manual --</option>
+                    {(data.contacts || [])
+                      .filter((c: any) => String(c.party_id) === leadForm.customer_party)
+                      .map((c: any) => (
+                        <option key={c.id} value={String(c.id)}>
+                          {c.contact_name}{c.job_title ? ` · ${c.job_title}` : ""}
+                        </option>
+                      ))}
+                  </select>
                 </label>
               )}
-            </>
-          )}
-          <label className="font-medium text-slate-600">
-            Lead Source
-            <select className="input mt-1 w-full bg-white" value={leadForm.lead_source} onChange={(e) => setLeadForm((f) => ({ ...f, lead_source: e.target.value }))}>
-              {LEAD_SOURCE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </label>
-          <label className="font-medium text-slate-600">
-            Interested Service
-            <select className="input mt-1 w-full bg-white" value={leadForm.interested_service} onChange={(e) => setLeadForm((f) => ({ ...f, interested_service: e.target.value }))}>
-              <option value="">-- Pilih Layanan --</option>
-              {SERVICE_OPTIONS.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          </label>
-          <label className="font-medium text-slate-600">
-            Email Kontak
-            <input type="email" className="input mt-1 w-full" value={leadForm.customer_email} onChange={(e) => setLeadForm((f) => ({ ...f, customer_email: e.target.value }))} placeholder="email@perusahaan.com" />
-          </label>
-          <label className="font-medium text-slate-600">
-            Nomor Telepon
-            <input type="tel" className="input mt-1 w-full" value={leadForm.customer_phone} onChange={(e) => setLeadForm((f) => ({ ...f, customer_phone: e.target.value }))} placeholder="+62 812 ..." />
-          </label>
-          <label className="font-medium text-slate-600 sm:col-span-2">
-            Deskripsi Kebutuhan
-            <textarea className="input mt-1 w-full min-h-20" value={leadForm.description} onChange={(e) => setLeadForm((f) => ({ ...f, description: e.target.value }))} placeholder="Rincian kebutuhan proyek/event..." />
-          </label>
-          <label className="font-medium text-slate-600 sm:col-span-2">
-            Notes
-            <textarea className="input mt-1 w-full min-h-16" value={leadForm.notes} onChange={(e) => setLeadForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Catatan internal sales..." />
-          </label>
-          <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
+              <label className="block font-medium text-slate-600">
+                Contact Name
+                <input className="input mt-1 w-full" value={leadForm.contact_name} onChange={(e) => setLeadForm((f) => ({ ...f, contact_name: e.target.value }))} placeholder="Contoh: Kevin" />
+              </label>
+              <label className="block font-medium text-slate-600">
+                Job Title / Role
+                <input className="input mt-1 w-full" value={leadForm.job_title} onChange={(e) => setLeadForm((f) => ({ ...f, job_title: e.target.value }))} placeholder="Contoh: Regional Manager" />
+              </label>
+              <label className="block font-medium text-slate-600">
+                Phone / WhatsApp *
+                <input type="tel" className="input mt-1 w-full" value={leadForm.customer_phone} onChange={(e) => setLeadForm((f) => ({ ...f, customer_phone: e.target.value }))} placeholder="+62 812 - 3456 - 7890" />
+              </label>
+              <label className="block font-medium text-slate-600">
+                Email *
+                <input type="email" className="input mt-1 w-full" value={leadForm.customer_email} onChange={(e) => setLeadForm((f) => ({ ...f, customer_email: e.target.value }))} placeholder="kevin@danacipta.co.id" />
+              </label>
+            </div>
+          </div>
+
+          {/* Lead Information */}
+          <div className="rounded-2xl border border-slate-200 p-3.5 space-y-3">
+            <div className="font-bold text-sm text-[#163D64]">Lead Information</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="font-medium text-slate-600">
+                Project Type / Jenis Kebutuhan *
+                <input className="input mt-1 w-full" value={leadForm.subject} onChange={(e) => setLeadForm((f) => ({ ...f, subject: e.target.value }))} placeholder="Contoh: Booth Exhibition" />
+              </label>
+              <label className="font-medium text-slate-600">
+                Source
+                <select className="input mt-1 w-full bg-white" value={leadForm.lead_source} onChange={(e) => setLeadForm((f) => ({ ...f, lead_source: e.target.value }))}>
+                  {LEAD_SOURCE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="font-medium text-slate-600">
+                Interested Service
+                <select className="input mt-1 w-full bg-white" value={leadForm.interested_service} onChange={(e) => setLeadForm((f) => ({ ...f, interested_service: e.target.value }))}>
+                  <option value="">-- Pilih Layanan --</option>
+                  {SERVICE_OPTIONS.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="font-medium text-slate-600">
+                Follow Up Date
+                <input type="date" className="input mt-1 w-full" value={leadForm.next_follow_up_at} onChange={(e) => setLeadForm((f) => ({ ...f, next_follow_up_at: e.target.value }))} />
+              </label>
+              <label className="font-medium text-slate-600 sm:col-span-2">
+                Deskripsi / Notes
+                <textarea className="input mt-1 w-full min-h-16" value={leadForm.notes} onChange={(e) => setLeadForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Catatan kebutuhan klien..." />
+              </label>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-1">
             <button type="button" onClick={() => setIsLeadModalOpen(false)} disabled={savingLead} className="btn-ghost">Batal</button>
-            <button type="button" onClick={() => void handleSaveLead()} disabled={savingLead} className="rounded-lg bg-[#163D64] px-4 py-2 text-xs font-semibold text-white hover:bg-[#163D64]">
+            <button type="button" onClick={() => void handleSaveLead()} disabled={savingLead} className="rounded-lg bg-[#163D64] px-4 py-2 text-xs font-semibold text-white hover:bg-[#0876CD]">
               {savingLead ? "Menyimpan..." : editingLead ? "Simpan Perubahan" : "Simpan Lead"}
             </button>
           </div>
