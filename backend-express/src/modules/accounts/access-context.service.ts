@@ -383,7 +383,7 @@ export async function loadUserAccessContext(
     const tier = Number(ma.tier_level ?? 3);
     const tp = tierPermMap.get(`${code}:${tier}`);
     const allowRead = tp ? Boolean(tp.allow_read) : true;
-    const allowWrite = tp ? Boolean(tp.allow_write) : tier >= 1;
+    const allowWrite = tp ? Boolean(tp.allow_write) : (tier === 0 ? code !== 'FINANCE' : tier >= 1);
     const allowApprove = tp ? Boolean(tp.allow_approve) : tier <= 2;
     const allowDelete = tp ? Boolean(tp.allow_delete) : tier === 1;
     const allowManageUsers = tp ? Boolean(tp.allow_manage_users) : tier <= 1;

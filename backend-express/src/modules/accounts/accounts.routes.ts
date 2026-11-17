@@ -914,139 +914,141 @@ async function ensureModuleHierarchyTables() {
   try {
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "iam_module_tier_config" (
-        "id" TEXT NOT NULL,
+        "id" TEXT NOT NULL PRIMARY KEY,
         "tenant_id" TEXT,
         "company_id" TEXT NOT NULL,
-        "module_code" VARCHAR(50) NOT NULL,
+        "module_code" TEXT NOT NULL,
         "tier_level" INTEGER NOT NULL,
-        "custom_title" VARCHAR(120) NOT NULL,
-        "default_title" VARCHAR(120) NOT NULL,
-        "description" TEXT,
+        "custom_title" TEXT NOT NULL,
+        "description" TEXT NOT NULL DEFAULT '',
         "is_active" BOOLEAN NOT NULL DEFAULT true,
-        "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT "iam_module_tier_config_pkey" PRIMARY KEY ("id")
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "uq_iam_module_tier_config"
+        ON "iam_module_tier_config" ("company_id", "module_code", "tier_level");
     `);
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "iam_user_module_assignment" (
-        "id" TEXT NOT NULL,
+        "id" TEXT NOT NULL PRIMARY KEY,
         "tenant_id" TEXT,
         "company_id" TEXT NOT NULL,
         "user_id" TEXT NOT NULL,
-        "module_code" VARCHAR(50) NOT NULL,
-        "tier_level" INTEGER NOT NULL,
-        "position_title" VARCHAR(120),
+        "module_code" TEXT NOT NULL,
+        "tier_level" INTEGER NOT NULL DEFAULT 3,
+        "tier_config_id" TEXT,
+        "position_title" TEXT NOT NULL DEFAULT '',
         "department_id" TEXT,
         "reports_to_user_id" TEXT,
-        "data_scope" VARCHAR(40) NOT NULL DEFAULT 'OWN',
-        "is_primary_position" BOOLEAN NOT NULL DEFAULT false,
-        "status" VARCHAR(30) NOT NULL DEFAULT 'ACTIVE',
-        "effective_from" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "effective_until" TIMESTAMPTZ(6),
-        "assigned_by_id" TEXT,
-        "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT "iam_user_module_assignment_pkey" PRIMARY KEY ("id")
+        "data_scope" TEXT NOT NULL DEFAULT 'OWN',
+        "permission_profile" TEXT NOT NULL DEFAULT 'STANDARD',
+        "is_primary" BOOLEAN NOT NULL DEFAULT false,
+        "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+        "effective_from" TIMESTAMP(3),
+        "effective_until" TIMESTAMP(3),
+        "created_by_id" TEXT,
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "uq_iam_user_module_assignment"
+        ON "iam_user_module_assignment" ("company_id", "user_id", "module_code");
     `);
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "iam_module_tier_permission" (
-        "id" TEXT NOT NULL,
+        "id" TEXT NOT NULL PRIMARY KEY,
         "tenant_id" TEXT,
         "company_id" TEXT NOT NULL,
-        "module_code" VARCHAR(50) NOT NULL,
+        "module_code" TEXT NOT NULL,
         "tier_level" INTEGER NOT NULL,
-        "permission_code" VARCHAR(120) NOT NULL,
         "allow_read" BOOLEAN NOT NULL DEFAULT true,
-        "allow_write" BOOLEAN NOT NULL DEFAULT false,
+        "allow_write" BOOLEAN NOT NULL DEFAULT true,
         "allow_approve" BOOLEAN NOT NULL DEFAULT false,
         "allow_delete" BOOLEAN NOT NULL DEFAULT false,
         "allow_manage_users" BOOLEAN NOT NULL DEFAULT false,
-        "allow_export" BOOLEAN NOT NULL DEFAULT false,
-        "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT "iam_module_tier_permission_pkey" PRIMARY KEY ("id")
+        "allow_export" BOOLEAN NOT NULL DEFAULT true,
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
     await prisma.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "uq_iam_module_tier_permission"
+        ON "iam_module_tier_permission" ("company_id", "module_code", "tier_level");
+    `);
+    await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "iam_user_permission_override" (
-        "id" TEXT NOT NULL,
+        "id" TEXT NOT NULL PRIMARY KEY,
         "tenant_id" TEXT,
         "company_id" TEXT NOT NULL,
         "user_id" TEXT NOT NULL,
-        "module_code" VARCHAR(50) NOT NULL,
-        "permission_code" VARCHAR(120) NOT NULL,
-        "effect" VARCHAR(20) NOT NULL DEFAULT 'ALLOW',
-        "reason" TEXT,
-        "granted_by_id" TEXT,
-        "expires_at" TIMESTAMPTZ(6),
-        "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT "iam_user_permission_override_pkey" PRIMARY KEY ("id")
+        "module_code" TEXT NOT NULL,
+        "action_code" TEXT NOT NULL,
+        "effect" TEXT NOT NULL DEFAULT 'ALLOW',
+        "reason" TEXT NOT NULL DEFAULT '',
+        "created_by_id" TEXT,
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "iam_approval_delegation" (
-        "id" TEXT NOT NULL,
+        "id" TEXT NOT NULL PRIMARY KEY,
         "tenant_id" TEXT,
         "company_id" TEXT NOT NULL,
         "delegator_user_id" TEXT NOT NULL,
         "delegate_user_id" TEXT NOT NULL,
-        "module_code" VARCHAR(50) NOT NULL,
-        "permission_scope" VARCHAR(120) NOT NULL DEFAULT 'APPROVE_ONLY',
-        "max_approval_amount" DECIMAL(18,2),
-        "status" VARCHAR(30) NOT NULL DEFAULT 'ACTIVE',
-        "reason" TEXT,
-        "valid_from" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "valid_until" TIMESTAMPTZ(6) NOT NULL,
-        "revoked_by_id" TEXT,
-        "revoked_at" TIMESTAMPTZ(6),
-        "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT "iam_approval_delegation_pkey" PRIMARY KEY ("id")
+        "module_code" TEXT NOT NULL,
+        "max_amount" DECIMAL(65,30) NOT NULL DEFAULT 0,
+        "reason" TEXT NOT NULL DEFAULT '',
+        "valid_from" TIMESTAMP(3) NOT NULL,
+        "valid_until" TIMESTAMP(3) NOT NULL,
+        "revoked_at" TIMESTAMP(3),
+        "created_by_id" TEXT,
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "iam_assignment_history" (
-        "id" TEXT NOT NULL,
+        "id" TEXT NOT NULL PRIMARY KEY,
         "tenant_id" TEXT,
         "company_id" TEXT NOT NULL,
-        "user_id" TEXT NOT NULL,
-        "module_code" VARCHAR(50) NOT NULL,
-        "action_type" VARCHAR(40) NOT NULL,
-        "previous_tier_level" INTEGER,
-        "new_tier_level" INTEGER,
-        "previous_title" VARCHAR(120),
-        "new_title" VARCHAR(120),
-        "previous_scope" VARCHAR(40),
-        "new_scope" VARCHAR(40),
-        "reason" TEXT,
-        "changed_by_id" TEXT,
-        "changed_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT "iam_assignment_history_pkey" PRIMARY KEY ("id")
+        "actor_id" TEXT,
+        "target_user_id" TEXT NOT NULL,
+        "module_code" TEXT NOT NULL DEFAULT '',
+        "change_type" TEXT NOT NULL,
+        "before_json" TEXT NOT NULL DEFAULT '{}',
+        "after_json" TEXT NOT NULL DEFAULT '{}',
+        "reason" TEXT NOT NULL DEFAULT '',
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "iam_cross_module_capability" (
-        "id" TEXT NOT NULL,
+        "id" TEXT NOT NULL PRIMARY KEY,
         "tenant_id" TEXT,
         "company_id" TEXT NOT NULL,
-        "source_module" VARCHAR(50) NOT NULL,
-        "source_tier_level" INTEGER NOT NULL,
-        "target_module" VARCHAR(50) NOT NULL,
-        "capability_code" VARCHAR(120) NOT NULL,
-        "allow_read" BOOLEAN NOT NULL DEFAULT true,
-        "allow_action" BOOLEAN NOT NULL DEFAULT false,
-        "is_enabled" BOOLEAN NOT NULL DEFAULT true,
-        "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT "iam_cross_module_capability_pkey" PRIMARY KEY ("id")
+        "user_id" TEXT NOT NULL,
+        "source_module_code" TEXT NOT NULL,
+        "target_module_code" TEXT NOT NULL,
+        "capability_code" TEXT NOT NULL,
+        "allowed_actions" TEXT NOT NULL DEFAULT '[]',
+        "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+        "created_by_id" TEXT,
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    await prisma.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "uq_iam_cross_module_capability"
+        ON "iam_cross_module_capability" ("company_id", "user_id", "source_module_code", "target_module_code", "capability_code");
+    `);
     moduleHierarchyTablesEnsured = true;
-  } catch {
-    // Non-fatal fallback
+  } catch (err) {
+    console.error('[ensureModuleHierarchyTables]', err);
   }
 }
 
@@ -1059,90 +1061,77 @@ async function getModuleHierarchy(req: Request, res: Response, next: NextFunctio
       throw new ForbiddenError('Pilih company terlebih dahulu untuk melihat konfigurasi hirarki modul.');
     }
 
-    let tierConfigs: any[] = [];
-    let tierPermissions: any[] = [];
-    let assignments: any[] = [];
-    let crossModuleCapabilities: any[] = [];
-    let delegations: any[] = [];
-    let history: any[] = [];
+    let tierConfigs = await (prisma as any).iam_module_tier_config.findMany({
+      where: { company_id: companyId },
+      orderBy: [{ module_code: 'asc' }, { tier_level: 'asc' }],
+    });
 
-    try {
+    if (tierConfigs.length === 0) {
+      const seedConfigs: any[] = [];
+      const seedPerms: any[] = [];
+      for (const modCode of DEFAULT_HIERARCHY_MODULES) {
+        for (const tier of DEFAULT_TIER_CONFIGS) {
+          seedConfigs.push({
+            tenant_id: tenantId,
+            company_id: companyId,
+            module_code: modCode,
+            tier_level: tier.tier_level,
+            custom_title: `${modCode} ${tier.default_title.split(' / ')[0]}`,
+            description: tier.description,
+            is_active: true,
+          });
+          seedPerms.push({
+            tenant_id: tenantId,
+            company_id: companyId,
+            module_code: modCode,
+            tier_level: tier.tier_level,
+            allow_read: tier.allow_read,
+            allow_write: tier.allow_write,
+            allow_approve: tier.allow_approve,
+            allow_delete: tier.allow_delete,
+            allow_manage_users: tier.allow_manage_users,
+            allow_export: tier.allow_export,
+          });
+        }
+      }
+      await (prisma as any).iam_module_tier_config.createMany({
+        data: seedConfigs,
+        skipDuplicates: true,
+      });
+      await (prisma as any).iam_module_tier_permission.createMany({
+        data: seedPerms,
+        skipDuplicates: true,
+      });
       tierConfigs = await (prisma as any).iam_module_tier_config.findMany({
         where: { company_id: companyId },
         orderBy: [{ module_code: 'asc' }, { tier_level: 'asc' }],
       });
-
-      if (tierConfigs.length === 0) {
-        const seedConfigs: any[] = [];
-        const seedPerms: any[] = [];
-        for (const modCode of DEFAULT_HIERARCHY_MODULES) {
-          for (const tier of DEFAULT_TIER_CONFIGS) {
-            seedConfigs.push({
-              tenant_id: tenantId,
-              company_id: companyId,
-              module_code: modCode,
-              tier_level: tier.tier_level,
-              custom_title: `${modCode} ${tier.default_title.split(' / ')[0]}`,
-              default_title: tier.default_title,
-              description: tier.description,
-              is_active: true,
-            });
-            seedPerms.push({
-              tenant_id: tenantId,
-              company_id: companyId,
-              module_code: modCode,
-              tier_level: tier.tier_level,
-              permission_code: `${modCode}.TIER_${tier.tier_level}.DEFAULT`,
-              allow_read: tier.allow_read,
-              allow_write: tier.allow_write,
-              allow_approve: tier.allow_approve,
-              allow_delete: tier.allow_delete,
-              allow_manage_users: tier.allow_manage_users,
-              allow_export: tier.allow_export,
-            });
-          }
-        }
-        await (prisma as any).iam_module_tier_config.createMany({
-          data: seedConfigs,
-          skipDuplicates: true,
-        });
-        await (prisma as any).iam_module_tier_permission.createMany({
-          data: seedPerms,
-          skipDuplicates: true,
-        });
-        tierConfigs = await (prisma as any).iam_module_tier_config.findMany({
-          where: { company_id: companyId },
-          orderBy: [{ module_code: 'asc' }, { tier_level: 'asc' }],
-        });
-      }
-
-      [tierPermissions, assignments, crossModuleCapabilities, delegations, history] = await Promise.all([
-        (prisma as any).iam_module_tier_permission.findMany({
-          where: { company_id: companyId },
-          orderBy: [{ module_code: 'asc' }, { tier_level: 'asc' }],
-        }),
-        (prisma as any).iam_user_module_assignment.findMany({
-          where: { company_id: companyId },
-          orderBy: [{ module_code: 'asc' }, { tier_level: 'asc' }, { updated_at: 'desc' }],
-        }),
-        (prisma as any).iam_cross_module_capability.findMany({
-          where: { company_id: companyId },
-          orderBy: [{ source_module: 'asc' }, { target_module: 'asc' }],
-        }),
-        (prisma as any).iam_approval_delegation.findMany({
-          where: { company_id: companyId },
-          orderBy: { created_at: 'desc' },
-          take: 50,
-        }),
-        (prisma as any).iam_assignment_history.findMany({
-          where: { company_id: companyId },
-          orderBy: { changed_at: 'desc' },
-          take: 60,
-        }),
-      ]);
-    } catch {
-      // Graceful fallback if tables are not yet migrated in DB
     }
+
+    const [tierPermissions, assignments, crossModuleCapabilities, delegations, history] = await Promise.all([
+      (prisma as any).iam_module_tier_permission.findMany({
+        where: { company_id: companyId },
+        orderBy: [{ module_code: 'asc' }, { tier_level: 'asc' }],
+      }),
+      (prisma as any).iam_user_module_assignment.findMany({
+        where: { company_id: companyId },
+        orderBy: [{ module_code: 'asc' }, { tier_level: 'asc' }, { updated_at: 'desc' }],
+      }),
+      (prisma as any).iam_cross_module_capability.findMany({
+        where: { company_id: companyId },
+        orderBy: [{ source_module_code: 'asc' }, { target_module_code: 'asc' }],
+      }),
+      (prisma as any).iam_approval_delegation.findMany({
+        where: { company_id: companyId },
+        orderBy: { created_at: 'desc' },
+        take: 50,
+      }),
+      (prisma as any).iam_assignment_history.findMany({
+        where: { company_id: companyId },
+        orderBy: { created_at: 'desc' },
+        take: 60,
+      }),
+    ]);
 
     res.json({
       company_id: companyId,
@@ -1154,6 +1143,7 @@ async function getModuleHierarchy(req: Request, res: Response, next: NextFunctio
       history,
     });
   } catch (err) {
+    console.error('[getModuleHierarchy]', err);
     next(err);
   }
 }
@@ -1172,7 +1162,7 @@ async function upsertModuleTier(req: Request, res: Response, next: NextFunction)
     }
 
     const customTitle = String(req.body.custom_title || '').trim() || `Level ${tierLevel}`;
-    const description = req.body.description !== undefined ? String(req.body.description || '').trim() : null;
+    const description = req.body.description !== undefined ? String(req.body.description || '').trim() : '';
 
     const existingConfig = await (prisma as any).iam_module_tier_config.findFirst({
       where: { company_id: companyId, module_code: moduleCode, tier_level: tierLevel },
@@ -1194,19 +1184,16 @@ async function upsertModuleTier(req: Request, res: Response, next: NextFunction)
             module_code: moduleCode,
             tier_level: tierLevel,
             custom_title: customTitle,
-            default_title: `Level ${tierLevel}`,
             description,
             is_active: true,
           },
         });
 
-    const permCode = `${moduleCode}.TIER_${tierLevel}.DEFAULT`;
     const existingPerm = await (prisma as any).iam_module_tier_permission.findFirst({
       where: {
         company_id: companyId,
         module_code: moduleCode,
         tier_level: tierLevel,
-        permission_code: permCode,
       },
     });
 
@@ -1230,7 +1217,6 @@ async function upsertModuleTier(req: Request, res: Response, next: NextFunction)
             company_id: companyId,
             module_code: moduleCode,
             tier_level: tierLevel,
-            permission_code: permCode,
             ...permData,
           },
         });
@@ -1260,11 +1246,14 @@ async function upsertModuleAssignment(req: Request, res: Response, next: NextFun
       throw new ValidationError('user_id, module_code, dan tier_level (0=GM, 1=Head, 2=SPV, 3=Staff) wajib valid.');
     }
 
-    const positionTitle = req.body.position_title ? String(req.body.position_title).trim() : null;
+    const positionTitle = req.body.position_title ? String(req.body.position_title).trim() : '';
     const departmentId = req.body.department_id ? String(req.body.department_id).trim() : null;
     const reportsToUserId = req.body.reports_to_user_id ? String(req.body.reports_to_user_id).trim() : null;
     const dataScope = String(req.body.data_scope || (tierLevel <= 1 ? 'ALL_MODULE' : tierLevel === 2 ? 'TEAM' : 'OWN')).trim().toUpperCase();
     const status = String(req.body.status || 'ACTIVE').trim().toUpperCase();
+    const isPrimary = req.body.is_primary !== undefined
+      ? Boolean(req.body.is_primary)
+      : Boolean(req.body.is_primary_position);
 
     const existing = await (prisma as any).iam_user_module_assignment.findFirst({
       where: { company_id: companyId, user_id: userId, module_code: moduleCode },
@@ -1280,9 +1269,8 @@ async function upsertModuleAssignment(req: Request, res: Response, next: NextFun
             reports_to_user_id: reportsToUserId,
             data_scope: dataScope,
             status,
-            is_primary_position: req.body.is_primary_position !== undefined ? Boolean(req.body.is_primary_position) : existing.is_primary_position,
+            is_primary: isPrimary,
             effective_until: req.body.effective_until ? new Date(req.body.effective_until) : null,
-            assigned_by_id: req.user?.id || null,
           },
         })
       : await (prisma as any).iam_user_module_assignment.create({
@@ -1297,10 +1285,10 @@ async function upsertModuleAssignment(req: Request, res: Response, next: NextFun
             reports_to_user_id: reportsToUserId,
             data_scope: dataScope,
             status,
-            is_primary_position: Boolean(req.body.is_primary_position),
+            is_primary: isPrimary,
             effective_from: req.body.effective_from ? new Date(req.body.effective_from) : new Date(),
             effective_until: req.body.effective_until ? new Date(req.body.effective_until) : null,
-            assigned_by_id: req.user?.id || null,
+            created_by_id: req.user?.id || null,
           },
         });
 
@@ -1308,17 +1296,15 @@ async function upsertModuleAssignment(req: Request, res: Response, next: NextFun
       data: {
         tenant_id: tenantId,
         company_id: companyId,
-        user_id: userId,
+        actor_id: req.user?.id || null,
+        target_user_id: userId,
         module_code: moduleCode,
-        action_type: existing ? (existing.tier_level !== tierLevel ? 'TIER_CHANGE' : 'UPDATED') : 'ASSIGNED',
-        previous_tier_level: existing ? existing.tier_level : null,
-        new_tier_level: tierLevel,
-        previous_title: existing ? existing.position_title : null,
-        new_title: positionTitle,
-        previous_scope: existing ? existing.data_scope : null,
-        new_scope: dataScope,
+        change_type: existing ? (existing.tier_level !== tierLevel ? 'TIER_CHANGE' : 'UPDATED') : 'ASSIGNED',
+        before_json: existing
+          ? JSON.stringify({ tier_level: existing.tier_level, position_title: existing.position_title, data_scope: existing.data_scope })
+          : '{}',
+        after_json: JSON.stringify({ tier_level: tierLevel, position_title: positionTitle, data_scope: dataScope }),
         reason: req.body.reason ? String(req.body.reason).trim() : 'Penugasan struktur modul 3-tingkat',
-        changed_by_id: req.user?.id || null,
       },
     });
 
@@ -1336,28 +1322,32 @@ async function deleteModuleAssignment(req: Request, res: Response, next: NextFun
     await ensureModuleHierarchyTables();
     const companyId = req.companyId || String(req.header('X-Company-ID') || '').trim();
     const tenantId = req.user?.tenant_id || null;
+    if (!companyId) throw new ForbiddenError('Pilih company terlebih dahulu.');
+
     const { id } = req.params;
-    const existing = await (prisma as any).iam_user_module_assignment.findUnique({ where: { id } });
-    if (!existing || (companyId && existing.company_id !== companyId)) {
-      throw new ValidationError('Penugasan modul tidak ditemukan.');
+    const existing = await (prisma as any).iam_user_module_assignment.findFirst({
+      where: { id, company_id: companyId },
+    });
+    if (!existing) {
+      throw new ValidationError('Penugasan modul tidak ditemukan pada company aktif.');
     }
 
-    await (prisma as any).iam_user_module_assignment.delete({ where: { id } });
+    await (prisma as any).iam_user_module_assignment.delete({ where: { id: existing.id } });
     await (prisma as any).iam_assignment_history.create({
       data: {
         tenant_id: tenantId || existing.tenant_id,
         company_id: existing.company_id,
-        user_id: existing.user_id,
+        actor_id: req.user?.id || null,
+        target_user_id: existing.user_id,
         module_code: existing.module_code,
-        action_type: 'REVOKED',
-        previous_tier_level: existing.tier_level,
-        new_tier_level: null,
-        previous_title: existing.position_title,
-        new_title: null,
-        previous_scope: existing.data_scope,
-        new_scope: null,
+        change_type: 'REVOKED',
+        before_json: JSON.stringify({
+          tier_level: existing.tier_level,
+          position_title: existing.position_title,
+          data_scope: existing.data_scope,
+        }),
+        after_json: '{}',
         reason: 'Penghapusan penugasan modul',
-        changed_by_id: req.user?.id || null,
       },
     });
 
@@ -1374,21 +1364,30 @@ async function upsertCrossModuleCapability(req: Request, res: Response, next: Ne
     const tenantId = req.user?.tenant_id || null;
     if (!companyId) throw new ForbiddenError('Pilih company terlebih dahulu.');
 
-    const sourceModule = String(req.body.source_module || '').trim().toUpperCase();
-    const sourceTierLevel = Number(req.body.source_tier_level);
-    const targetModule = String(req.body.target_module || '').trim().toUpperCase();
+    const userId = String(req.body.user_id || req.user?.id || '').trim();
+    const sourceModuleCode = String(req.body.source_module_code || req.body.source_module || '').trim().toUpperCase();
+    const targetModuleCode = String(req.body.target_module_code || req.body.target_module || '').trim().toUpperCase();
     const capabilityCode = String(req.body.capability_code || '').trim().toUpperCase();
 
-    if (!sourceModule || !targetModule || !capabilityCode || ![0, 1, 2, 3].includes(sourceTierLevel)) {
-      throw new ValidationError('source_module, source_tier_level, target_module, dan capability_code wajib diisi.');
+    if (!userId || !sourceModuleCode || !targetModuleCode || !capabilityCode) {
+      throw new ValidationError('user_id, source_module_code, target_module_code, dan capability_code wajib diisi.');
     }
+
+    const actionsArray: string[] = Array.isArray(req.body.allowed_actions)
+      ? req.body.allowed_actions.map((a: unknown) => String(a).toUpperCase())
+      : [
+          ...(req.body.allow_read !== false ? ['READ'] : []),
+          ...(req.body.allow_action ? ['ACTION'] : []),
+        ];
+    const allowedActionsJson = JSON.stringify(actionsArray);
+    const status = String(req.body.status || 'ACTIVE').trim().toUpperCase();
 
     const existing = await (prisma as any).iam_cross_module_capability.findFirst({
       where: {
         company_id: companyId,
-        source_module: sourceModule,
-        source_tier_level: sourceTierLevel,
-        target_module: targetModule,
+        user_id: userId,
+        source_module_code: sourceModuleCode,
+        target_module_code: targetModuleCode,
         capability_code: capabilityCode,
       },
     });
@@ -1397,22 +1396,21 @@ async function upsertCrossModuleCapability(req: Request, res: Response, next: Ne
       ? await (prisma as any).iam_cross_module_capability.update({
           where: { id: existing.id },
           data: {
-            allow_read: req.body.allow_read !== undefined ? Boolean(req.body.allow_read) : existing.allow_read,
-            allow_action: req.body.allow_action !== undefined ? Boolean(req.body.allow_action) : existing.allow_action,
-            is_enabled: req.body.is_enabled !== undefined ? Boolean(req.body.is_enabled) : existing.is_enabled,
+            allowed_actions: allowedActionsJson,
+            status,
           },
         })
       : await (prisma as any).iam_cross_module_capability.create({
           data: {
             tenant_id: tenantId,
             company_id: companyId,
-            source_module: sourceModule,
-            source_tier_level: sourceTierLevel,
-            target_module: targetModule,
+            user_id: userId,
+            source_module_code: sourceModuleCode,
+            target_module_code: targetModuleCode,
             capability_code: capabilityCode,
-            allow_read: req.body.allow_read !== undefined ? Boolean(req.body.allow_read) : true,
-            allow_action: req.body.allow_action !== undefined ? Boolean(req.body.allow_action) : false,
-            is_enabled: true,
+            allowed_actions: allowedActionsJson,
+            status,
+            created_by_id: req.user?.id || null,
           },
         });
 
@@ -1433,6 +1431,7 @@ async function createApprovalDelegation(req: Request, res: Response, next: NextF
     const delegateUserId = String(req.body.delegate_user_id || '').trim();
     const moduleCode = String(req.body.module_code || 'FINANCE').trim().toUpperCase();
     const validUntil = req.body.valid_until ? new Date(req.body.valid_until) : new Date(Date.now() + 7 * 86400000);
+    const rawMaxAmount = req.body.max_amount ?? req.body.max_approval_amount ?? 0;
 
     if (!delegatorUserId || !delegateUserId || delegatorUserId === delegateUserId) {
       throw new ValidationError('Delegator dan penerima delegasi (delegate) harus berbeda dan valid.');
@@ -1445,12 +1444,11 @@ async function createApprovalDelegation(req: Request, res: Response, next: NextF
         delegator_user_id: delegatorUserId,
         delegate_user_id: delegateUserId,
         module_code: moduleCode,
-        permission_scope: String(req.body.permission_scope || 'APPROVE_ONLY').trim().toUpperCase(),
-        max_approval_amount: req.body.max_approval_amount ? Number(req.body.max_approval_amount) : null,
-        status: 'ACTIVE',
+        max_amount: Number(rawMaxAmount) || 0,
         reason: req.body.reason ? String(req.body.reason).trim() : 'Delegasi persetujuan sementara (DoA)',
         valid_from: req.body.valid_from ? new Date(req.body.valid_from) : new Date(),
         valid_until: validUntil,
+        created_by_id: req.user?.id || null,
       },
     });
 
@@ -1463,12 +1461,20 @@ async function createApprovalDelegation(req: Request, res: Response, next: NextF
 async function revokeApprovalDelegation(req: Request, res: Response, next: NextFunction) {
   try {
     await ensureModuleHierarchyTables();
+    const companyId = req.companyId || String(req.header('X-Company-ID') || '').trim();
+    if (!companyId) throw new ForbiddenError('Pilih company terlebih dahulu.');
+
     const { id } = req.params;
+    const existing = await (prisma as any).iam_approval_delegation.findFirst({
+      where: { id, company_id: companyId },
+    });
+    if (!existing) {
+      throw new ValidationError('Delegasi persetujuan tidak ditemukan pada company aktif.');
+    }
+
     const record = await (prisma as any).iam_approval_delegation.update({
-      where: { id },
+      where: { id: existing.id },
       data: {
-        status: 'REVOKED',
-        revoked_by_id: req.user?.id || null,
         revoked_at: new Date(),
       },
     });

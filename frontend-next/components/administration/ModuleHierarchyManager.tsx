@@ -60,13 +60,12 @@ export interface ModuleAssignmentRow {
 
 export interface CrossModuleCapabilityRow {
   id: string;
-  source_module: string;
-  source_tier_level: number;
-  target_module: string;
+  user_id: string;
+  source_module_code: string;
+  target_module_code: string;
   capability_code: string;
-  allow_read: boolean;
-  allow_action: boolean;
-  is_enabled: boolean;
+  allowed_actions: string;
+  status: string;
 }
 
 export interface ApprovalDelegationRow {
@@ -74,27 +73,23 @@ export interface ApprovalDelegationRow {
   delegator_user_id: string;
   delegate_user_id: string;
   module_code: string;
-  permission_scope: string;
-  max_approval_amount?: number | string | null;
-  status: string;
+  max_amount?: number | string | null;
   reason?: string | null;
   valid_from: string;
   valid_until: string;
+  revoked_at?: string | null;
 }
 
 export interface AssignmentHistoryRow {
   id: string;
-  user_id: string;
+  actor_id?: string | null;
+  target_user_id: string;
   module_code: string;
-  action_type: string;
-  previous_tier_level?: number | null;
-  new_tier_level?: number | null;
-  previous_title?: string | null;
-  new_title?: string | null;
-  previous_scope?: string | null;
-  new_scope?: string | null;
+  change_type: string;
+  before_json: string;
+  after_json: string;
   reason?: string | null;
-  changed_at: string;
+  created_at: string;
 }
 
 interface ModuleHierarchyManagerProps {
@@ -151,9 +146,9 @@ export function ModuleHierarchyManager({
 
   // Form: Cross-Module Capability
   const [capForm, setCapForm] = useState({
-    source_module: "PROJECTS",
-    source_tier_level: 1,
-    target_module: "FINANCE",
+    user_id: "",
+    source_module_code: "PROJECTS",
+    target_module_code: "FINANCE",
     capability_code: "SUBMIT_BUDGET_REQUEST",
     allow_read: true,
     allow_action: true,
@@ -750,35 +745,37 @@ export function ModuleHierarchyManager({
             </div>
 
             <form onSubmit={handleSaveCapability} className="grid grid-cols-2 gap-3 rounded-2xl bg-[#F8FAFC] p-4">
+              <div className="col-span-2">
+                <label className="text-[11px] font-semibold text-[#334155]">Pengguna</label>
+                <select
+                  value={capForm.user_id}
+                  onChange={(e) => setCapForm((p) => ({ ...p, user_id: e.target.value }))}
+                  className="mt-1 h-9 w-full rounded-xl border border-[#CBD5E1] bg-white px-2.5 text-xs"
+                  required
+                >
+                  <option value="">-- Pilih Pengguna --</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>{u.full_name || u.email}</option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <label className="text-[11px] font-semibold text-[#334155]">Modul Asal</label>
                 <select
-                  value={capForm.source_module}
-                  onChange={(e) => setCapForm((p) => ({ ...p, source_module: e.target.value }))}
+                  value={capForm.source_module_code}
+                  onChange={(e) => setCapForm((p) => ({ ...p, source_module_code: e.target.value }))}
                   className="mt-1 h-9 w-full rounded-xl border border-[#CBD5E1] bg-white px-2.5 text-xs"
                 >
                   {HIERARCHY_MODULES.map((m) => (
                     <option key={m} value={m}>{m}</option>
                   ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-[11px] font-semibold text-[#334155]">Tingkatan Asal</label>
-                <select
-                  value={capForm.source_tier_level}
-                  onChange={(e) => setCapForm((p) => ({ ...p, source_tier_level: Number(e.target.value) }))}
-                  className="mt-1 h-9 w-full rounded-xl border border-[#CBD5E1] bg-white px-2.5 text-xs"
-                >
-                  <option value={0}>Level 0 (GM)</option>
-                  <option value={1}>Level 1 (Head)</option>
-                  <option value={2}>Level 2 (SPV)</option>
                 </select>
               </div>
               <div>
                 <label className="text-[11px] font-semibold text-[#334155]">Modul Tujuan</label>
                 <select
-                  value={capForm.target_module}
-                  onChange={(e) => setCapForm((p) => ({ ...p, target_module: e.target.value }))}
+                  value={capForm.target_module_code}
+                  onChange={(e) => setCapForm((p) => ({ ...p, target_module_code: e.target.value }))}
                   className="mt-1 h-9 w-full rounded-xl border border-[#CBD5E1] bg-white px-2.5 text-xs"
                 >
                   {HIERARCHY_MODULES.map((m) => (
@@ -786,7 +783,7 @@ export function ModuleHierarchyManager({
                   ))}
                 </select>
               </div>
-              <div>
+              <div className="col-span-2">
                 <label className="text-[11px] font-semibold text-[#334155]">Kode Kapabilitas</label>
                 <input
                   type="text"
@@ -810,13 +807,13 @@ export function ModuleHierarchyManager({
                 <div key={c.id} className="flex items-center justify-between py-2.5">
                   <div>
                     <span className="font-bold text-[#163D64]">
-                      {c.source_module} (Level {c.source_tier_level})
+                      {userMap.get(c.user_id) || c.user_id}
                     </span>{" "}
-                    → <span className="font-bold text-[#0F172A]">{c.target_module}</span>
-                    <div className="text-[11px] text-[#64748B]">Kapabilitas: {c.capability_code}</div>
+                    ({c.source_module_code} → <span className="font-bold text-[#0F172A]">{c.target_module_code}</span>)
+                    <div className="text-[11px] text-[#64748B]">Kapabilitas: {c.capability_code} • Aksi: {c.allowed_actions}</div>
                   </div>
                   <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
-                    Aktif
+                    {c.status}
                   </span>
                 </div>
               ))}
@@ -895,28 +892,31 @@ export function ModuleHierarchyManager({
             </form>
 
             <div className="divide-y divide-[#F1F5F9] text-xs">
-              {delegations.map((d) => (
-                <div key={d.id} className="flex items-center justify-between py-2.5">
-                  <div>
-                    <div className="font-bold text-[#0F172A]">
-                      {userMap.get(d.delegator_user_id) || d.delegator_user_id} →{" "}
-                      {userMap.get(d.delegate_user_id) || d.delegate_user_id}
+              {delegations.map((d) => {
+                const isActive = !d.revoked_at && new Date(d.valid_until) >= new Date();
+                return (
+                  <div key={d.id} className="flex items-center justify-between py-2.5">
+                    <div>
+                      <div className="font-bold text-[#0F172A]">
+                        {userMap.get(d.delegator_user_id) || d.delegator_user_id} →{" "}
+                        {userMap.get(d.delegate_user_id) || d.delegate_user_id}
+                      </div>
+                      <div className="text-[11px] text-[#64748B]">
+                        Modul {d.module_code} • Maks: Rp {Number(d.max_amount || 0).toLocaleString("id-ID")} • Status: {d.revoked_at ? "DICABUT" : isActive ? "AKTIF" : "KEDALUWARSA"}
+                      </div>
                     </div>
-                    <div className="text-[11px] text-[#64748B]">
-                      Modul {d.module_code} • Status: {d.status}
-                    </div>
+                    {!d.revoked_at && (
+                      <button
+                        type="button"
+                        onClick={() => void handleRevokeDoa(d.id)}
+                        className="rounded-lg border border-red-200 px-2.5 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50"
+                      >
+                        Cabut
+                      </button>
+                    )}
                   </div>
-                  {d.status === "ACTIVE" && (
-                    <button
-                      type="button"
-                      onClick={() => void handleRevokeDoa(d.id)}
-                      className="rounded-lg border border-red-200 px-2.5 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50"
-                    >
-                      Cabut
-                    </button>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -932,22 +932,28 @@ export function ModuleHierarchyManager({
             <p className="py-8 text-center text-xs text-[#64748B]">Belum ada riwayat perubahan jabatan modul.</p>
           ) : (
             <div className="divide-y divide-[#F1F5F9] text-xs">
-              {history.map((h) => (
-                <div key={h.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
-                  <div>
-                    <span className="font-bold text-[#163D64]">{userMap.get(h.user_id) || h.user_id}</span>{" "}
-                    pada modul <span className="font-bold">{h.module_code}</span> —{" "}
-                    <span className="rounded bg-[#F1F5F9] px-2 py-0.5 font-semibold">{h.action_type}</span>
-                    <div className="mt-0.5 text-[11px] text-[#64748B]">
-                      Level: {h.previous_tier_level ?? "—"} → {h.new_tier_level ?? "—"} • Scope:{" "}
-                      {h.previous_scope ?? "—"} → {h.new_scope ?? "—"} ({h.reason || "Tanpa catatan"})
+              {history.map((h) => {
+                let before: any = {};
+                let after: any = {};
+                try { before = JSON.parse(h.before_json || "{}"); } catch { /* ignore */ }
+                try { after = JSON.parse(h.after_json || "{}"); } catch { /* ignore */ }
+                return (
+                  <div key={h.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
+                    <div>
+                      <span className="font-bold text-[#163D64]">{userMap.get(h.target_user_id) || h.target_user_id}</span>{" "}
+                      pada modul <span className="font-bold">{h.module_code}</span> —{" "}
+                      <span className="rounded bg-[#F1F5F9] px-2 py-0.5 font-semibold">{h.change_type}</span>
+                      <div className="mt-0.5 text-[11px] text-[#64748B]">
+                        Level: {before.tier_level ?? "—"} → {after.tier_level ?? "—"} • Scope:{" "}
+                        {before.data_scope ?? "—"} → {after.data_scope ?? "—"} ({h.reason || "Tanpa catatan"})
+                      </div>
                     </div>
+                    <span className="text-[11px] text-[#64748B]">
+                      {new Date(h.created_at).toLocaleString("id-ID")}
+                    </span>
                   </div>
-                  <span className="text-[11px] text-[#64748B]">
-                    {new Date(h.changed_at).toLocaleString("id-ID")}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

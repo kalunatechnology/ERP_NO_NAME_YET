@@ -410,7 +410,7 @@ export class ProjectsService {
         select: { project_id: true },
       });
       return { OR: [{ project_manager_id: user.id }, { created_by_id: user.id },
-        { source_type: 'CRM' }, { project_manager_id: null },
+        { AND: [{ source_type: 'CRM' }, { project_manager_id: null }, { status: 'PENDING_PM_APPROVAL' }] },
         { id: { in: memberships.map((row: { project_id: string }) => row.project_id) } }],
         ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}) };
     }
