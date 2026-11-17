@@ -907,8 +907,152 @@ const DEFAULT_TIER_CONFIGS = [
   },
 ];
 
+let moduleHierarchyTablesEnsured = false;
+
+async function ensureModuleHierarchyTables() {
+  if (moduleHierarchyTablesEnsured) return;
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "iam_module_tier_config" (
+        "id" TEXT NOT NULL,
+        "tenant_id" TEXT,
+        "company_id" TEXT NOT NULL,
+        "module_code" VARCHAR(50) NOT NULL,
+        "tier_level" INTEGER NOT NULL,
+        "custom_title" VARCHAR(120) NOT NULL,
+        "default_title" VARCHAR(120) NOT NULL,
+        "description" TEXT,
+        "is_active" BOOLEAN NOT NULL DEFAULT true,
+        "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "iam_module_tier_config_pkey" PRIMARY KEY ("id")
+      );
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "iam_user_module_assignment" (
+        "id" TEXT NOT NULL,
+        "tenant_id" TEXT,
+        "company_id" TEXT NOT NULL,
+        "user_id" TEXT NOT NULL,
+        "module_code" VARCHAR(50) NOT NULL,
+        "tier_level" INTEGER NOT NULL,
+        "position_title" VARCHAR(120),
+        "department_id" TEXT,
+        "reports_to_user_id" TEXT,
+        "data_scope" VARCHAR(40) NOT NULL DEFAULT 'OWN',
+        "is_primary_position" BOOLEAN NOT NULL DEFAULT false,
+        "status" VARCHAR(30) NOT NULL DEFAULT 'ACTIVE',
+        "effective_from" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "effective_until" TIMESTAMPTZ(6),
+        "assigned_by_id" TEXT,
+        "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "iam_user_module_assignment_pkey" PRIMARY KEY ("id")
+      );
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "iam_module_tier_permission" (
+        "id" TEXT NOT NULL,
+        "tenant_id" TEXT,
+        "company_id" TEXT NOT NULL,
+        "module_code" VARCHAR(50) NOT NULL,
+        "tier_level" INTEGER NOT NULL,
+        "permission_code" VARCHAR(120) NOT NULL,
+        "allow_read" BOOLEAN NOT NULL DEFAULT true,
+        "allow_write" BOOLEAN NOT NULL DEFAULT false,
+        "allow_approve" BOOLEAN NOT NULL DEFAULT false,
+        "allow_delete" BOOLEAN NOT NULL DEFAULT false,
+        "allow_manage_users" BOOLEAN NOT NULL DEFAULT false,
+        "allow_export" BOOLEAN NOT NULL DEFAULT false,
+        "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "iam_module_tier_permission_pkey" PRIMARY KEY ("id")
+      );
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "iam_user_permission_override" (
+        "id" TEXT NOT NULL,
+        "tenant_id" TEXT,
+        "company_id" TEXT NOT NULL,
+        "user_id" TEXT NOT NULL,
+        "module_code" VARCHAR(50) NOT NULL,
+        "permission_code" VARCHAR(120) NOT NULL,
+        "effect" VARCHAR(20) NOT NULL DEFAULT 'ALLOW',
+        "reason" TEXT,
+        "granted_by_id" TEXT,
+        "expires_at" TIMESTAMPTZ(6),
+        "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "iam_user_permission_override_pkey" PRIMARY KEY ("id")
+      );
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "iam_approval_delegation" (
+        "id" TEXT NOT NULL,
+        "tenant_id" TEXT,
+        "company_id" TEXT NOT NULL,
+        "delegator_user_id" TEXT NOT NULL,
+        "delegate_user_id" TEXT NOT NULL,
+        "module_code" VARCHAR(50) NOT NULL,
+        "permission_scope" VARCHAR(120) NOT NULL DEFAULT 'APPROVE_ONLY',
+        "max_approval_amount" DECIMAL(18,2),
+        "status" VARCHAR(30) NOT NULL DEFAULT 'ACTIVE',
+        "reason" TEXT,
+        "valid_from" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "valid_until" TIMESTAMPTZ(6) NOT NULL,
+        "revoked_by_id" TEXT,
+        "revoked_at" TIMESTAMPTZ(6),
+        "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "iam_approval_delegation_pkey" PRIMARY KEY ("id")
+      );
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "iam_assignment_history" (
+        "id" TEXT NOT NULL,
+        "tenant_id" TEXT,
+        "company_id" TEXT NOT NULL,
+        "user_id" TEXT NOT NULL,
+        "module_code" VARCHAR(50) NOT NULL,
+        "action_type" VARCHAR(40) NOT NULL,
+        "previous_tier_level" INTEGER,
+        "new_tier_level" INTEGER,
+        "previous_title" VARCHAR(120),
+        "new_title" VARCHAR(120),
+        "previous_scope" VARCHAR(40),
+        "new_scope" VARCHAR(40),
+        "reason" TEXT,
+        "changed_by_id" TEXT,
+        "changed_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "iam_assignment_history_pkey" PRIMARY KEY ("id")
+      );
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "iam_cross_module_capability" (
+        "id" TEXT NOT NULL,
+        "tenant_id" TEXT,
+        "company_id" TEXT NOT NULL,
+        "source_module" VARCHAR(50) NOT NULL,
+        "source_tier_level" INTEGER NOT NULL,
+        "target_module" VARCHAR(50) NOT NULL,
+        "capability_code" VARCHAR(120) NOT NULL,
+        "allow_read" BOOLEAN NOT NULL DEFAULT true,
+        "allow_action" BOOLEAN NOT NULL DEFAULT false,
+        "is_enabled" BOOLEAN NOT NULL DEFAULT true,
+        "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "iam_cross_module_capability_pkey" PRIMARY KEY ("id")
+      );
+    `);
+    moduleHierarchyTablesEnsured = true;
+  } catch {
+    // Non-fatal fallback
+  }
+}
+
 async function getModuleHierarchy(req: Request, res: Response, next: NextFunction) {
   try {
+    await ensureModuleHierarchyTables();
     const companyId = req.companyId || String(req.header('X-Company-ID') || req.query.company_id || '').trim();
     const tenantId = req.user?.tenant_id || null;
     if (!companyId) {
