@@ -926,10 +926,9 @@ export class CRMService {
         role_code: {
           in: [
             RoleCode.PROJECT_MANAGER,
-            RoleCode.PROJECT_ADMIN,
+            RoleCode.OPERATIONAL_MANAGER,
             RoleCode.COMPANY_ADMIN,
             RoleCode.DIRECTOR,
-            RoleCode.GM,
           ],
         },
       },
@@ -946,7 +945,6 @@ export class CRMService {
         tenant_id: params.tenantId,
         company_id: params.companyId,
         module_code: 'PROJECTS',
-        is_active: true,
       },
       select: { user_id: true },
     });
