@@ -104,7 +104,7 @@ inventoryRouter.post('/stock-moves/:id/reverse', requireModulePermission('INVENT
 // 2-STAGE EXCLUSIVE RESERVATIONS (RESERVE -> ALLOCATE -> FULFILL / RELEASE)
 // =============================================================================
 
-inventoryRouter.post('/reservations/reserve', async (req: Request, res: Response, next: NextFunction) => {
+inventoryRouter.post('/reservations/reserve', requireModulePermission('INVENTORY', 'write'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = requireCompany(req);
     const result = await createStockReservation({
@@ -130,7 +130,7 @@ inventoryRouter.post('/reservations/reserve', async (req: Request, res: Response
   }
 });
 
-inventoryRouter.post('/reservations/:id/allocate', async (req: Request, res: Response, next: NextFunction) => {
+inventoryRouter.post('/reservations/:id/allocate', requireModulePermission('INVENTORY', 'write'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = requireCompany(req);
     const result = await allocateStockReservation({
@@ -144,7 +144,7 @@ inventoryRouter.post('/reservations/:id/allocate', async (req: Request, res: Res
   }
 });
 
-inventoryRouter.post('/reservations/:id/fulfill', async (req: Request, res: Response, next: NextFunction) => {
+inventoryRouter.post('/reservations/:id/fulfill', requireModulePermission('INVENTORY', 'write'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = requireCompany(req);
     const result = await fulfillStockReservation({
@@ -158,7 +158,7 @@ inventoryRouter.post('/reservations/:id/fulfill', async (req: Request, res: Resp
   }
 });
 
-inventoryRouter.post('/reservations/:id/release', async (req: Request, res: Response, next: NextFunction) => {
+inventoryRouter.post('/reservations/:id/release', requireModulePermission('INVENTORY', 'write'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = requireCompany(req);
     const result = await releaseStockReservation({
@@ -185,7 +185,7 @@ inventoryRouter.get('/transfers', async (req: Request, res: Response, next: Next
   }
 });
 
-inventoryRouter.post('/transfers', async (req: Request, res: Response, next: NextFunction) => {
+inventoryRouter.post('/transfers', requireModulePermission('INVENTORY', 'write'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = requireCompany(req);
     const result = await createTransferOrder({
@@ -218,7 +218,7 @@ inventoryRouter.post('/transfers/:id/approve', requireModulePermission('INVENTOR
   }
 });
 
-inventoryRouter.post('/transfers/:id/dispatch', async (req: Request, res: Response, next: NextFunction) => {
+inventoryRouter.post('/transfers/:id/dispatch', requireModulePermission('INVENTORY', 'write'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = requireCompany(req);
     const result = await dispatchTransferOrder({
@@ -232,7 +232,7 @@ inventoryRouter.post('/transfers/:id/dispatch', async (req: Request, res: Respon
   }
 });
 
-inventoryRouter.post('/transfers/:id/receive', async (req: Request, res: Response, next: NextFunction) => {
+inventoryRouter.post('/transfers/:id/receive', requireModulePermission('INVENTORY', 'write'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = requireCompany(req);
     const result = await receiveTransferOrder({
@@ -294,7 +294,7 @@ inventoryRouter.post('/stock-counts/:id/approve', requireModulePermission('INVEN
   }
 });
 
-inventoryRouter.post('/assets/capitalize', async (req: Request, res: Response, next: NextFunction) => {
+inventoryRouter.post('/assets/capitalize', requireModulePermission('INVENTORY', 'write'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = requireCompany(req);
     const result = await capitalizeAssetIdempotent({
@@ -318,7 +318,7 @@ inventoryRouter.post('/assets/capitalize', async (req: Request, res: Response, n
   }
 });
 
-inventoryRouter.post('/assets/:id/assign-custodian', async (req: Request, res: Response, next: NextFunction) => {
+inventoryRouter.post('/assets/:id/assign-custodian', requireModulePermission('INVENTORY', 'write'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = requireCompany(req);
     const result = await assignAssetCustodian({
@@ -363,7 +363,14 @@ inventoryRouter.post('/reconcile/verify', requireModuleTier('INVENTORY', 1), asy
 
 inventoryRouter.use('/uom-conversions', createCrudRouter({ modelName: 'master_uom_conversion' }));
 inventoryRouter.use('/inventory-owners', createCrudRouter({ modelName: 'inv_inventory_owner', searchFields: ['owner_code', 'owner_name'] }));
-inventoryRouter.use('/costing-policies', createCrudRouter({ modelName: 'inv_costing_policy' }));
+inventoryRouter.use(
+  '/costing-policies',
+  (req, res, next) =>
+    ['GET', 'HEAD', 'OPTIONS'].includes(req.method.toUpperCase())
+      ? next()
+      : requireModuleTier('INVENTORY', 1)(req, res, next),
+  createCrudRouter({ modelName: 'inv_costing_policy' }),
+);
 inventoryRouter.use('/outbox-events', createCrudRouter({ modelName: 'inv_outbox_event', readOnly: true }));
 
 inventoryRouter.get('/internal-documents', async (req, res, next) => {
@@ -436,7 +443,7 @@ async function assertDraftMove(req: Request, id: string) {
  * Data/side effects: Uses Prisma model(s) `inv_stock_move` in the handler path.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-inventoryRouter.post('/stock-moves/:id/complete', async (req: Request, res: Response, next: NextFunction) => {
+inventoryRouter.post('/stock-moves/:id/complete', requireModulePermission('INVENTORY', 'write'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.companyId) throw new ForbiddenError('Pilih company sebelum mengakses inventory.');
     const updated = await postStockMove(req.params.id, req.companyId, req.user!.id);

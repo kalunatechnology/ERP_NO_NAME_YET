@@ -245,7 +245,7 @@ export function requireModulePermission(
   const normalizedAction = action.toUpperCase();
   return (req: Request, _res: Response, next: NextFunction): void => {
     if (!req.user) return next(new UnauthorizedError());
-    if (isSuperAdmin(req.user.roles)) return next();
+    if (isSuperAdmin(req.user.roles) || req.user.active_role_code === RoleCode.COMPANY_ADMIN) return next();
 
     const overrides: any[] = (req.user as any)?.permission_overrides ?? [];
     const explicitOverride = overrides.find(
