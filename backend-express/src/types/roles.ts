@@ -18,7 +18,6 @@ export const CRM_MODULE_ACCESS_ROLES = [
   RoleCode.COMPANY_ADMIN,
   RoleCode.CRM_LEAD,
   RoleCode.SALES,
-  RoleCode.PROJECT_MANAGER,
   RoleCode.DIRECTOR,
 ] as const;
 export const SALES_MODULE_ACCESS_ROLES = [...CRM_MODULE_ACCESS_ROLES] as const;

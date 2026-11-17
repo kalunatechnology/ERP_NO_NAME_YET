@@ -84,7 +84,7 @@ export const ROUTE_ACCESS_CONTRACTS: readonly RouteAccessContract[] = [
   { prefix: "/tasks", module: "PROJECTS", roles: null, allowDelegation: false },
   { prefix: "/finance", module: "FINANCE", roles: [ROLE_CODES.finance, ROLE_CODES.director], allowDelegation: false },
   { prefix: "/inventory", module: "INVENTORY", roles: null },
-  { prefix: "/crm", module: "CRM", roles: [ROLE_CODES.companyAdmin, ROLE_CODES.projectManager, ROLE_CODES.crmLead, ROLE_CODES.sales, ROLE_CODES.director], allowDelegation: false },
+  { prefix: "/crm", module: "CRM", roles: [ROLE_CODES.companyAdmin, ROLE_CODES.crmLead, ROLE_CODES.sales, ROLE_CODES.director], allowDelegation: false },
   { prefix: "/dashboard", module: null, roles: null },
 ] as const;
 
@@ -123,14 +123,17 @@ export function canAccessRoute(input: {
   const bypassesModule = Boolean(contract.moduleBypassRoles?.includes(activeRole));
   if (!bypassesModule && !hasModuleEntitlement(input.enabledModules, contract.module)) return false;
   const override = contract.module && getModuleOverride(input.moduleAccess, contract.module);
-  if (override) return override.allow_read;
+  if (override && !override.allow_read) return false;
   if (!contract.roles || contract.roles.includes(activeRole)) return true;
 
   if (contract.allowDelegation === false) return false;
 
   // Backend requireRole accepts an explicit per-user module delegation after
   // requireModuleAccess. Preserve that exact exception on frontend routes only when allowed.
-  return Boolean(contract.module && normalizeModuleCodes(input.delegatedModules).has(contract.module));
+  return Boolean(
+    override?.allow_read
+    || (contract.module && normalizeModuleCodes(input.delegatedModules).has(contract.module)),
+  );
 }
 
 export interface ApiAccessContract {
@@ -140,7 +143,7 @@ export interface ApiAccessContract {
   allowDelegation?: boolean;
 }
 
-const CRM_ROLES = [ROLE_CODES.companyAdmin, ROLE_CODES.crmLead, ROLE_CODES.sales, ROLE_CODES.projectManager, ROLE_CODES.director] as const;
+const CRM_ROLES = [ROLE_CODES.companyAdmin, ROLE_CODES.crmLead, ROLE_CODES.sales, ROLE_CODES.director] as const;
 const PROJECT_ROLES = [ROLE_CODES.companyAdmin, ROLE_CODES.projectManager, ROLE_CODES.operationalManager, ROLE_CODES.director, ROLE_CODES.supervisor, ROLE_CODES.staff] as const;
 const FINANCE_ROLES = [ROLE_CODES.finance, ROLE_CODES.director] as const;
 
@@ -226,12 +229,11 @@ export function canRequestApi(url: string, access: FrontendAccessContext): boole
   const activeRole = normalizeRoleCode(access.activeRoleCode);
   const superAdmin = Boolean(access.isSuperAdmin || activeRole === ROLE_CODES.superAdmin);
   if (!hasModuleEntitlement(access.enabledModules, contract.module, superAdmin)) return false;
-  if (!superAdmin) {
-    const override = getModuleOverride(access.moduleAccess, contract.module);
-    if (override) return override.allow_read;
-  }
+  const override = getModuleOverride(access.moduleAccess, contract.module);
+  if (!superAdmin && override && !override.allow_read) return false;
   if (superAdmin || !contract.roles || contract.roles.includes(activeRole)) return true;
-  return contract.allowDelegation !== false && normalizeModuleCodes(access.delegatedModules).has(contract.module);
+  if (contract.allowDelegation === false) return false;
+  return Boolean(override?.allow_read || normalizeModuleCodes(access.delegatedModules).has(contract.module));
 }
 
 export type DashboardSection = "projects" | "finance" | "crm";

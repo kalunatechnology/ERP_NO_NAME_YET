@@ -346,10 +346,11 @@ export async function loadUserAccessContext(
   // Merge department module access + GM cross-department access + explicit user overrides
   const mergedOverridesMap = new Map<string, ModulePermission>();
 
-  // 1. Department module delegations
+  // 1. Department module delegations (excluding restricted domain modules CRM, SALES, FINANCE unless user has matching domain role or explicit assignment)
+  const STRICT_ROLE_MODULES = new Set(['CRM', 'SALES', 'FINANCE']);
   for (const dm of rawDeptModules) {
     const code = String(dm.module_key || '').trim().toUpperCase();
-    if (!code) continue;
+    if (!code || STRICT_ROLE_MODULES.has(code)) continue;
     mergedOverridesMap.set(code, {
       module_code: code,
       allow_read: Boolean(dm.can_read),
@@ -402,14 +403,14 @@ export async function loadUserAccessContext(
     };
   });
 
-  // 3. GM role level cross-department visibility & access (Finance write requires explicit assignment)
+  // 3. GM role level cross-department visibility & access (Strict modules CRM, SALES, FINANCE require explicit role or 3-tier module assignment)
   if (roleLevel === 'GM') {
-    for (const gmMod of ['REPORTING', 'PROJECTS', 'FINANCE', 'CRM', 'SALES', 'REQUESTS']) {
+    for (const gmMod of ['REPORTING', 'PROJECTS', 'REQUESTS']) {
       if (!mergedOverridesMap.has(gmMod)) {
         mergedOverridesMap.set(gmMod, {
           module_code: gmMod,
           allow_read: true,
-          allow_write: gmMod !== 'FINANCE' && activeRoleCode !== RoleCode.DIRECTOR,
+          allow_write: activeRoleCode !== RoleCode.DIRECTOR,
         });
       }
     }

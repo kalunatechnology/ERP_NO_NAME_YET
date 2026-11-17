@@ -43,7 +43,6 @@ const ROLE_NAVIGATION: Record<string, readonly NavigationEntry[]> = {
     { href: "/requests", label: "Meeting & Request" },
     { href: "/projects", label: "Projects" },
     { href: "/tasks", label: "Daily Tasks" },
-    { href: "/crm", label: "CRM" },
     { href: "/reporting", label: "Reports" },
   ],
   [ROLE_CODES.supervisor]: [
