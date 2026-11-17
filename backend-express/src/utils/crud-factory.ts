@@ -556,6 +556,7 @@ export function assertNoGenericLifecycleWrite(modelName: string, payload: any, c
     const value = String(payload[field] ?? '').toUpperCase();
     if (field === 'status') return value !== 'OPEN';
     if (field === 'pipeline_stage') return !['OPEN', 'PROSPECT', 'QUALIFICATION', 'PROPOSAL', 'NEGOTIATION'].includes(value);
+    if ((field === 'lost_reason' || field === 'lost_reason_detail') && !value.trim()) return false;
     return true;
   });
   if (guardedAttempts.length) {

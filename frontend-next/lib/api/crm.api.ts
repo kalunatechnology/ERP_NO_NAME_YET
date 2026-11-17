@@ -373,9 +373,7 @@ export async function createOpportunity(payload: {
     expected_close_date: payload.expected_close_date || null,
     next_follow_up_at: payload.next_follow_up_at || null,
     ...(payload.owner_user_id ? { owner_user_id: payload.owner_user_id } : {}),
-    follow_up_reason: payload.follow_up_reason ?? "",
-    lost_reason: payload.lost_reason ?? "",
-    lost_reason_detail: payload.lost_reason_detail ?? "",
+    ...(payload.follow_up_reason ? { follow_up_reason: payload.follow_up_reason } : {}),
     status: "OPEN",
   });
   return data;
