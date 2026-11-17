@@ -307,13 +307,15 @@ export class CoreService {
 
   static readonly ALL_MODULE_CODES = [
     'CORE',
-    'REQUESTS',
-    'CRM',
-    'SALES',
-    'PROJECTS',
     'FINANCE',
-    'PROCUREMENT',
+    'PROJECTS',
+    'CRM',
     'INVENTORY',
+    'HRMS',
+    'MARBOT',
+    'REQUESTS',
+    'SALES',
+    'PROCUREMENT',
     'MANUFACTURING',
     'QUALITY',
     'ASSETS',
@@ -322,7 +324,6 @@ export class CoreService {
     'ANALYTICS',
     'IMPLEMENTATION',
     'REPORTING',
-    'MARBOT',
   ];
 
 /**
@@ -764,9 +765,9 @@ export class CoreService {
       if (data.module_preset === 'ALL') {
         modulesToEnable = this.ALL_MODULE_CODES.filter((c) => c !== 'MARBOT');
       } else if (data.module_preset === 'STANDARD') {
-        modulesToEnable = ['CORE', 'REQUESTS', 'CRM', 'SALES', 'PROJECTS', 'FINANCE', 'REPORTING'];
+        modulesToEnable = ['CORE', 'FINANCE', 'PROJECTS', 'CRM', 'INVENTORY', 'HRMS'];
       } else if (data.module_preset === 'MINIMAL') {
-        modulesToEnable = ['CORE', 'REQUESTS'];
+        modulesToEnable = ['CORE', 'HRMS'];
       }
 
       for (const code of this.ALL_MODULE_CODES) {

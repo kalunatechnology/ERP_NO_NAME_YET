@@ -106,13 +106,12 @@ const TIER_BADGES: Record<number, { label: string; color: string }> = {
 };
 
 const HIERARCHY_MODULES = [
-  "PROJECTS",
   "FINANCE",
+  "PROJECTS",
   "CRM",
-  "SALES",
   "INVENTORY",
-  "REQUESTS",
-  "REPORTING",
+  "HRMS",
+  "MARBOT",
 ];
 
 export function ModuleHierarchyManager({
@@ -134,6 +133,7 @@ export function ModuleHierarchyManager({
   // Form: Multi-Module User Assignment
   const [assignForm, setAssignForm] = useState({
     user_id: "",
+    system_role_code: "",
     module_code: "PROJECTS",
     tier_level: 1,
     position_title: "",
@@ -204,6 +204,13 @@ export function ModuleHierarchyManager({
     }
     setSubmittingAssign(true);
     try {
+      if (assignForm.system_role_code) {
+        await api.put(
+          `/api/v1/accounts/users/${assignForm.user_id}/roles`,
+          { role_code: assignForm.system_role_code },
+          { headers: { "X-Company-ID": companyId } },
+        );
+      }
       await api.post(
         "/api/v1/accounts/module-assignments",
         {
@@ -213,7 +220,7 @@ export function ModuleHierarchyManager({
         },
         { headers: { "X-Company-ID": companyId } },
       );
-      toast.success("Penugasan posisi modul berhasil disimpan.");
+      toast.success("Role & penugasan posisi modul berhasil disimpan.");
       setAssignForm((prev) => ({ ...prev, position_title: "", reason: "" }));
       await loadHierarchy();
     } catch (error) {
@@ -438,6 +445,27 @@ export function ModuleHierarchyManager({
                     {u.full_name || u.email} ({u.email})
                   </option>
                 ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-[#334155]">
+                Tetapkan Role Utama User (Opsional)
+              </label>
+              <select
+                value={assignForm.system_role_code}
+                onChange={(e) => setAssignForm((p) => ({ ...p, system_role_code: e.target.value }))}
+                className="h-10 w-full rounded-xl border border-[#CBD5E1] bg-white px-3 text-xs font-medium text-[#0F172A]"
+              >
+                <option value="">-- Pertahankan Role Saat Ini --</option>
+                <option value="ROLE-DIRECTOR">Director (Eksekutif)</option>
+                <option value="ROLE-OM">Operational Manager</option>
+                <option value="ROLE-PM">Project Manager</option>
+                <option value="ROLE-CRM-LEAD">CRM Lead</option>
+                <option value="ROLE-FINANCE">Finance</option>
+                <option value="ROLE-SUPERVISOR">Supervisor</option>
+                <option value="ROLE-SALES">Sales</option>
+                <option value="ROLE-STAFF">Staff</option>
               </select>
             </div>
 

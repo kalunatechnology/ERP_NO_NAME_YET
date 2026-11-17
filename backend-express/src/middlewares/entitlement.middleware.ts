@@ -19,8 +19,15 @@ import { isSuperAdmin } from '../types/roles';
  * - For company users, validates against `iam_company_module_access`.
  * - Defaults to fail-closed if module access record does not exist or is disabled.
  */
+const MODULE_ENTITLEMENT_ALIASES: Record<string, string[]> = {
+  REQUESTS: ['REQUESTS', 'HRMS'],
+  SALES: ['SALES', 'CRM'],
+  ASSETS: ['ASSETS', 'INVENTORY'],
+};
+
 export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' = 'read') {
   const normalizedModule = moduleCode.trim().toUpperCase();
+  const candidateModules = MODULE_ENTITLEMENT_ALIASES[normalizedModule] ?? [normalizedModule];
 
   return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -40,14 +47,17 @@ export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' =
         );
       }
 
-      const access = await prisma.iam_company_module_access.findUnique({
+      const accessRows = await prisma.iam_company_module_access.findMany({
         where: {
-          company_id_module_code: {
-            company_id: companyId,
-            module_code: normalizedModule,
-          },
+          company_id: companyId,
+          module_code: { in: candidateModules },
         },
       });
+      const access =
+        accessRows.find((r) => r.enabled) ??
+        accessRows.find((r) => r.allow_read) ??
+        accessRows[0] ??
+        null;
 
       const isWriteMethod = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
       const effectiveMode = isWriteMethod ? 'write' : mode;

@@ -862,13 +862,12 @@ async function updateUserDepartmentAndRoleLevel(req: Request, res: Response, nex
 }
 
 const DEFAULT_HIERARCHY_MODULES = [
-  'PROJECTS',
   'FINANCE',
+  'PROJECTS',
   'CRM',
-  'SALES',
   'INVENTORY',
-  'REQUESTS',
-  'REPORTING',
+  'HRMS',
+  'MARBOT',
 ];
 
 const DEFAULT_TIER_CONFIGS = [

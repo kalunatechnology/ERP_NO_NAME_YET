@@ -48,6 +48,16 @@ export type ModuleAccessItem = {
   allow_write: boolean;
 };
 
+const VISIBLE_OFFICIAL_MODULES = new Set([
+  "CORE",
+  "FINANCE",
+  "PROJECTS",
+  "CRM",
+  "INVENTORY",
+  "HRMS",
+  "MARBOT",
+]);
+
 const MODULE_DEFINITIONS: Record<
   string,
   { name: string; description: string; icon: any; category: string }
@@ -58,23 +68,11 @@ const MODULE_DEFINITIONS: Record<
     icon: Building2,
     category: "Platform",
   },
-  REQUESTS: {
-    name: "Requests & Approval",
-    description: "Pengajuan izin, pengadaan, approval card multi-level, dan LPJ",
-    icon: CheckCircle2,
-    category: "Workflow",
-  },
-  CRM: {
-    name: "CRM & Leads",
-    description: "Pipeline prospek, opportunity, relasi klien, dan lead tracking",
-    icon: Briefcase,
-    category: "Komersial",
-  },
-  SALES: {
-    name: "Sales & Invoicing",
-    description: "Quotation, sales order, delivery order, dan penagihan pelanggan",
-    icon: ShoppingCart,
-    category: "Komersial",
+  FINANCE: {
+    name: "Finance & Accounting",
+    description: "Jurnal umum, buku besar, rekonsiliasi kas, billing, anggaran, dan kepatuhan pajak",
+    icon: Receipt,
+    category: "Finansial",
   },
   PROJECTS: {
     name: "Project Management",
@@ -82,74 +80,26 @@ const MODULE_DEFINITIONS: Record<
     icon: FolderKanban,
     category: "Operasional",
   },
-  FINANCE: {
-    name: "Finance & Accounting",
-    description: "Jurnal umum, buku besar, rekonsiliasi kas, billing, dan kepatuhan pajak",
-    icon: Receipt,
-    category: "Finansial",
-  },
-  PROCUREMENT: {
-    name: "Procurement",
-    description: "Purchase request, perbandingan penawaran vendor, dan PO",
-    icon: PackageCheck,
-    category: "Operasional",
+  CRM: {
+    name: "CRM & Sales",
+    description: "Pipeline prospek, opportunity, quotation, sales order, kontrak, dan relasi klien",
+    icon: Briefcase,
+    category: "Komersial",
   },
   INVENTORY: {
-    name: "Inventory & Stock",
-    description: "Manajemen gudang, level stok material, stock opname, dan perpindahan barang",
+    name: "Inventory & Asset Management",
+    description: "Manajemen gudang, stok kanonis, transfer transit, opname, dan aset tetap",
     icon: Warehouse,
     category: "Operasional",
   },
-  MANUFACTURING: {
-    name: "Manufacturing",
-    description: "Perencanaan produksi, Bill of Materials (BOM), dan work order",
-    icon: Factory,
-    category: "Produksi",
-  },
-  QUALITY: {
-    name: "Quality Control",
-    description: "Inspeksi barang masuk/keluar, audit mutu, dan standar kepatuhan",
-    icon: Award,
-    category: "Produksi",
-  },
-  ASSETS: {
-    name: "Asset Management",
-    description: "Registrasi aset tetap, jadwal pemeliharaan, dan penyusutan nilai",
-    icon: Cpu,
-    category: "Aset",
-  },
-  SERVICE: {
-    name: "Service Desk",
-    description: "Tiket keluhan pelanggan, dispatch teknisi, dan SLA layanan",
-    icon: Headphones,
-    category: "Layanan",
-  },
-  LOGISTICS: {
-    name: "Logistics & Fleet",
-    description: "Rute pengiriman, tracking armada distribusi, dan surat jalan",
-    icon: Truck,
-    category: "Logistik",
-  },
-  ANALYTICS: {
-    name: "Executive Analytics",
-    description: "Grafik metrik real-time, profitabilitas proyek, dan KPI korporasi",
-    icon: BarChart3,
-    category: "Analisis",
-  },
-  IMPLEMENTATION: {
-    name: "Implementation",
-    description: "Pelacakan implementasi sistem, checklist deployment, dan handover",
-    icon: Compass,
-    category: "Operasional",
-  },
-  REPORTING: {
-    name: "Reporting Engine",
-    description: "Laporan neraca, laba rugi, operasional, dan export berkas audit",
-    icon: FileSpreadsheet,
-    category: "Finansial",
+  HRMS: {
+    name: "HRMS (People, Meeting & Lembur)",
+    description: "Manajemen meeting, pengajuan & persetujuan lembur, absensi, serta request karyawan",
+    icon: CheckCircle2,
+    category: "SDM & Workflow",
   },
   MARBOT: {
-    name: "Marka Plus AI Assistant",
+    name: "Marka Plus (AI Assistant)",
     description: "Asisten cerdas ERP dengan konteks data aman, query analitik, dan knowledge base",
     icon: Bot,
     category: "AI & Otomasi",
@@ -195,10 +145,11 @@ export function ModuleEntitlements({
     return modules.filter((m) => m.enabled).length;
   }, [modules]);
 
-  // Filtered modules
+  // Filtered modules (only official restructured catalog)
   const filteredModules = useMemo(() => {
     const q = search.trim().toLowerCase();
     return modules.filter((m) => {
+      if (!VISIBLE_OFFICIAL_MODULES.has(String(m.module_code || "").toUpperCase())) return false;
       const meta = MODULE_DEFINITIONS[m.module_code];
       const name = meta?.name || m.module_code;
       const desc = meta?.description || "";

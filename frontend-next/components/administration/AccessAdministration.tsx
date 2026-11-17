@@ -63,24 +63,24 @@ type DepartmentItem = {
 type AccessMode = "inherit" | "blocked" | "read" | "write";
 type SuperAdminTab = "tenants" | "companies" | "modules" | "departments" | "users" | "hierarchy";
 
+const OFFICIAL_ADMIN_MODULES = new Set([
+  "CORE",
+  "FINANCE",
+  "PROJECTS",
+  "CRM",
+  "INVENTORY",
+  "HRMS",
+  "MARBOT",
+]);
+
 const MODULE_LABELS: Record<string, { name: string; description: string }> = {
   CORE: { name: "Core Workspace", description: "Dashboard, company context, dan aktivitas utama" },
-  REQUESTS: { name: "Requests", description: "Permintaan, review, dan approval card" },
-  CRM: { name: "CRM", description: "Inquiry, opportunity, dan customer pipeline" },
-  SALES: { name: "Sales", description: "Quotation, sales order, dan aktivitas komersial" },
+  FINANCE: { name: "Finance & Accounting", description: "Transaksi, jurnal, billing, pajak, anggaran, dan reporting" },
   PROJECTS: { name: "Project Management", description: "WBS, task, timeline, dan delivery proyek" },
-  FINANCE: { name: "Finance & Accounting", description: "Transaksi, jurnal, billing, pajak, dan reporting" },
-  PROCUREMENT: { name: "Procurement", description: "Purchase request, vendor, dan purchasing" },
-  INVENTORY: { name: "Inventory", description: "Stok, warehouse, dan pergerakan barang" },
-  MANUFACTURING: { name: "Manufacturing", description: "Produksi dan kebutuhan material" },
-  QUALITY: { name: "Quality", description: "Inspection dan quality control" },
-  ASSETS: { name: "Assets", description: "Aset, pemeliharaan, dan lifecycle" },
-  SERVICE: { name: "Service", description: "Service operation dan customer support" },
-  LOGISTICS: { name: "Logistics", description: "Delivery dan distribusi" },
-  ANALYTICS: { name: "Analytics", description: "Analisis lintas modul" },
-  IMPLEMENTATION: { name: "Implementation", description: "Implementasi dan handover" },
-  REPORTING: { name: "Reporting", description: "Laporan operasional dan eksekutif" },
-  MARBOT: { name: "Marka Plus Assistant", description: "Asisten ERP dengan akses baca sesuai modul, role, dan scope data user" },
+  CRM: { name: "CRM & Sales", description: "Lead, pipeline opportunity, quotation, sales order, dan kontrak" },
+  INVENTORY: { name: "Inventory & Asset Management", description: "Gudang, stok kanonis, transfer transit, opname, dan aset tetap" },
+  HRMS: { name: "HRMS (People, Meeting & Lembur)", description: "Meeting, lembur, absensi, dan pengajuan karyawan" },
+  MARBOT: { name: "Marka Plus (AI Assistant)", description: "Asisten ERP dengan akses baca sesuai modul, role, dan scope data user" },
 };
 
 /** Extracts the backend's stable error detail across validation/error shapes. */
@@ -277,7 +277,13 @@ export function AccessAdministration() {
   const displayedUsers = loadedContextCompany === contextCompany ? users : [];
   const displayedOverrides = loadedContextCompany === contextCompany ? overrides : [];
   const loadError = baseError || contextError;
-  const approvedModules = useMemo(() => displayedModules.filter((item) => item.enabled), [displayedModules]);
+  const approvedModules = useMemo(
+    () =>
+      displayedModules.filter(
+        (item) => item.enabled && OFFICIAL_ADMIN_MODULES.has(String(item.module_code || "").toUpperCase()),
+      ),
+    [displayedModules],
+  );
   const selectedUser = displayedUsers.find((item) => item.id === selectedUserId);
   const visibleUsers = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -285,14 +291,14 @@ export function AccessAdministration() {
   }, [search, displayedUsers]);
 
   const ASSIGNABLE_ROLES = [
-    { code: "ROLE-STAFF", label: "Staff" },
-    { code: "ROLE-FINANCE", label: "Finance" },
+    { code: "ROLE-DIRECTOR", label: "Director (Eksekutif)" },
     { code: "ROLE-OM", label: "Operational Manager" },
     { code: "ROLE-PM", label: "Project Manager" },
-    { code: "ROLE-SUPERVISOR", label: "Supervisor" },
     { code: "ROLE-CRM-LEAD", label: "CRM Lead" },
+    { code: "ROLE-FINANCE", label: "Finance" },
+    { code: "ROLE-SUPERVISOR", label: "Supervisor" },
     { code: "ROLE-SALES", label: "Sales" },
-    { code: "ROLE-DIRECTOR", label: "Director" },
+    { code: "ROLE-STAFF", label: "Staff" },
   ];
 
   const [userRolesData, setUserRolesData] = useState<{

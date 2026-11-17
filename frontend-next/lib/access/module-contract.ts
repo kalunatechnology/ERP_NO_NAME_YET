@@ -5,9 +5,18 @@
  */
 
 export const MODULE_CODES = [
-  "CORE", "REQUESTS", "CRM", "SALES", "PROJECTS", "FINANCE",
-  "PROCUREMENT", "INVENTORY", "MANUFACTURING", "QUALITY", "ASSETS",
-  "SERVICE", "LOGISTICS", "ANALYTICS", "IMPLEMENTATION", "REPORTING", "MARBOT",
+  "CORE", "FINANCE", "PROJECTS", "CRM", "INVENTORY", "HRMS", "MARBOT",
+  "REQUESTS", "SALES", "PROCUREMENT", "MANUFACTURING", "QUALITY",
+  "ASSETS", "SERVICE", "LOGISTICS", "ANALYTICS", "IMPLEMENTATION", "REPORTING",
+] as const;
+
+export const OFFICIAL_CORE_MODULES = [
+  "FINANCE",
+  "PROJECTS",
+  "CRM",
+  "INVENTORY",
+  "HRMS",
+  "MARBOT",
 ] as const;
 
 export type ModuleCode = typeof MODULE_CODES[number];
@@ -103,7 +112,12 @@ export function hasModuleEntitlement(
   isSuperAdmin = false,
 ): boolean {
   if (!module || isSuperAdmin) return true;
-  return normalizeModuleCodes(enabledModules).has(module);
+  const set = normalizeModuleCodes(enabledModules);
+  if (set.has(module)) return true;
+  if (module === "REQUESTS" && set.has("HRMS")) return true;
+  if (module === "SALES" && set.has("CRM")) return true;
+  if (module === "ASSETS" && set.has("INVENTORY")) return true;
+  return false;
 }
 
 export function canAccessRoute(input: {
