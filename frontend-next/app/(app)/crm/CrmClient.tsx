@@ -4504,14 +4504,27 @@ export default function CrmClient() {
               <option value="UNASSIGNED">Tanpa Brand / Umum</option>
             </select>
             {canOperateCrm && (
-              <button
-                type="button"
-                onClick={() => setIsBrandModalOpen(true)}
-                className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-[#0876CD] hover:bg-blue-50"
-                title="Tambah / Kelola Brand"
-              >
-                + Brand
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => setIsBrandModalOpen(true)}
+                  className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-[#0876CD] hover:bg-blue-50"
+                  title="Tambah / Kelola & Hapus Brand"
+                >
+                  + / Kelola Brand
+                </button>
+                {activeBrands.length > 0 && brandFilter === "ALL" && (
+                  <button
+                    type="button"
+                    onClick={() => setIsBrandModalOpen(true)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-100"
+                    title="Pilih & Hapus Brand"
+                  >
+                    <Trash2 size={11} />
+                    Hapus Brand
+                  </button>
+                )}
+              </>
             )}
             {canOperateCrm && brandFilter !== "ALL" && brandFilter !== "UNASSIGNED" && (() => {
               const selectedBrand = activeBrands.find((b: any) => String(b.id) === brandFilter);
@@ -5139,9 +5152,10 @@ export default function CrmClient() {
                         onClick={() => void handleDeleteBrand(b)}
                         title={`Hapus Brand ${b.brand_name}`}
                         aria-label={`Hapus Brand ${b.brand_name}`}
-                        className="ml-0.5 rounded p-0.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                        className="ml-1 inline-flex items-center gap-0.5 rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50"
                       >
-                        <Trash2 size={11} />
+                        <Trash2 size={10} />
+                        Hapus
                       </button>
                     )}
                   </span>

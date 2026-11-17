@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { approveCrmProjectHandoff, fetchNotifications, fetchPendingCrmHandoffs, markNotificationAsRead, markAllNotificationsAsRead, publishNotificationStateChange, rejectCrmProjectHandoff } from '@/lib/api/feed.api';
+import { approveCrmProjectHandoff, canSeeProjectHandoffAlerts, fetchNotifications, fetchPendingCrmHandoffs, markNotificationAsRead, markAllNotificationsAsRead, publishNotificationStateChange, rejectCrmProjectHandoff } from '@/lib/api/feed.api';
+import { useAuth } from '@/contexts/AuthContext';
 import { formatMoney } from '@/lib/utils';
 import { Bell, CheckCheck, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -11,6 +12,7 @@ import { getUserFacingApiError } from '@/lib/api/error-message';
 
 export function NotificationList({ onItemClick }: { onItemClick?: () => void }) {
   const router = useRouter();
+  const { user, userRole } = useAuth();
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -20,9 +22,16 @@ export function NotificationList({ onItemClick }: { onItemClick?: () => void }) 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
+      const access = {
+        enabledModules: user?.enabled_modules,
+        delegatedModules: user?.delegated_modules,
+        activeRoleCode: user?.active_role_code,
+        isSuperAdmin: userRole === 'super_admin',
+      };
+      const canSeeHandoffs = canSeeProjectHandoffAlerts(access);
       const [res, handoffs] = await Promise.all([
         fetchNotifications(filter),
-        fetchPendingCrmHandoffs(),
+        canSeeHandoffs ? fetchPendingCrmHandoffs(access) : Promise.resolve([]),
       ]);
       const baseItems = res.items || [];
       const seenHandoffIds = new Set(
@@ -56,7 +65,7 @@ export function NotificationList({ onItemClick }: { onItemClick?: () => void }) 
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, [filter, user?.active_role_code, user?.delegated_modules, user?.enabled_modules, userRole]);
 
   const handleApproveHandoff = async (e: React.MouseEvent, handoffId: string) => {
     e.stopPropagation();

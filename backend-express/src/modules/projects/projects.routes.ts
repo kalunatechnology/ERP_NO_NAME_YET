@@ -1,3 +1,4 @@
+
 /**
  * File: backend-express/src/modules/projects/projects.routes.ts
  *
@@ -218,6 +219,10 @@ function canManageProjectHandoff(req: Request): boolean {
 
 projectsRouter.get('/crm-handoffs', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!canManageProjectHandoff(req)) {
+      res.json({ results: [] });
+      return;
+    }
     const companyId = activeCompanyId(req);
     const handoffs = await prisma.crm_deal_handoff.findMany({
       where: { company_id: companyId, decision: 'PENDING_PM_APPROVAL', project_id: null },

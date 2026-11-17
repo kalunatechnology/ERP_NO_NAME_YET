@@ -9,7 +9,7 @@
 import api from "./axios";
 import { normalizeList } from "./auth.api";
 import { formatMoney } from "../utils";
-import { canRequestApi, FrontendAccessContext } from "@/lib/access/module-contract";
+import { canAccessRoute, canRequestApi, FrontendAccessContext } from "@/lib/access/module-contract";
 import { getProjectLifecycleLabel } from "@/lib/projects/lifecycle";
 
 export interface NotificationItem {
@@ -636,7 +636,23 @@ export interface PendingCrmHandoffItem {
   created_at?: string;
 }
 
-export async function fetchPendingCrmHandoffs(): Promise<PendingCrmHandoffItem[]> {
+export function canSeeProjectHandoffAlerts(access: FrontendAccessContext = {}): boolean {
+  const activeRole = String(access.activeRoleCode ?? "").trim().toUpperCase().replace(/^ROLE-/, "");
+  const isSuper = Boolean(access.isSuperAdmin || activeRole === "SUPER_ADMIN");
+  if (isSuper) return true;
+  const hasProjectsRoute = canAccessRoute({
+    pathname: "/projects",
+    enabledModules: access.enabledModules,
+    delegatedModules: access.delegatedModules,
+    activeRoleCode: access.activeRoleCode,
+    isSuperAdmin: access.isSuperAdmin,
+  });
+  if (!hasProjectsRoute) return false;
+  return ["PROJECT_MANAGER", "OPERATIONAL_MANAGER", "COMPANY_ADMIN", "DIRECTOR"].includes(activeRole);
+}
+
+export async function fetchPendingCrmHandoffs(access?: FrontendAccessContext): Promise<PendingCrmHandoffItem[]> {
+  if (access && !canSeeProjectHandoffAlerts(access)) return [];
   try {
     const response = await api.get("/api/v1/projects/crm-handoffs");
     const rows = response.data?.results ?? response.data?.data?.results ?? response.data?.data ?? [];
@@ -722,12 +738,13 @@ export async function fetchRealAlertsList(access: FrontendAccessContext = {}): P
       try { const response = await api.get("/api/v1/core/sidebar-feed"); successfulSources += 1; return response; }
       catch { return { data: { notifications: [], activities: [] }, failed: true }; }
     };
+    const canSeeHandoffs = canSeeProjectHandoffAlerts(access);
     const [feedRes, projectsRes, costRes, oppsRes, handoffs] = await Promise.all([
       feedGet(),
       canReadProjects ? sourceGet("/api/v1/projects/projects/?page_size=10") : emptyResponse(),
       canReadFinance ? sourceGet("/api/v1/finance/project-cost-entries/?page_size=10") : emptyResponse(),
       canReadCrm ? sourceGet("/api/v1/crm/opportunities/?page_size=10") : emptyResponse(),
-      canReadProjects ? fetchPendingCrmHandoffs() : Promise.resolve([]),
+      canSeeHandoffs ? fetchPendingCrmHandoffs(access) : Promise.resolve([]),
     ]);
     if (attemptedSources > 0 && successfulSources === 0 && handoffs.length === 0) throw new Error('Seluruh sumber alert gagal dimuat.');
 
