@@ -392,6 +392,11 @@ export async function createCRMBrand(payload: {
   return data?.data ?? data;
 }
 
+export async function deleteCRMBrand(id: string | number) {
+  const { data } = await api.delete(`/api/v1/master-data/brands/${id}`);
+  return data?.data ?? data;
+}
+
 export async function updateOpportunityCustomer(id: string | number, customerPartyId: string | number) {
   const { data } = await api.patch(`/api/v1/crm/opportunities/${id}/`, { customer_party_id: customerPartyId });
   return data;

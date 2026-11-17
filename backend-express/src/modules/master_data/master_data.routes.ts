@@ -959,6 +959,56 @@ masterDataRouter.get('/brands', async (req: Request, _res: Response, next: NextF
   }
 });
 
+masterDataRouter.delete('/brands/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = req.companyId || (req.headers['x-company-id'] as string) || '';
+    const brandId = String(req.params.id || '').trim();
+    if (!companyId || !brandId) {
+      throw new ValidationError('ID Brand dan Company wajib tersedia.');
+    }
+
+    const existing = await (prisma as any).master_brand.findFirst({
+      where: { id: brandId, company_id: companyId },
+      select: { id: true, brand_code: true, brand_name: true },
+    });
+    if (!existing) {
+      throw new NotFoundError('Brand tidak ditemukan.');
+    }
+
+    await prisma.$transaction(async (tx: any) => {
+      const cleanupTargets = [
+        'crm_inquiry',
+        'crm_lead',
+        'crm_opportunity',
+        'crm_cost_estimate',
+        'sales_quotation',
+        'sales_contract',
+        'sales_order',
+        'crm_conversation',
+        'service_case',
+        'master_party',
+      ];
+      for (const model of cleanupTargets) {
+        if (tx[model]?.updateMany) {
+          await tx[model].updateMany({
+            where: { company_id: companyId, brand_id: brandId },
+            data: { brand_id: null },
+          });
+        }
+      }
+      await tx.master_brand.delete({ where: { id: brandId } });
+    });
+
+    res.json({
+      success: true,
+      data: existing,
+      message: `Brand ${existing.brand_code} (${existing.brand_name}) berhasil dihapus.`,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 masterDataRouter.use('/brands', createCrudRouter({
   modelName: 'master_brand',
   searchFields: ['brand_code', 'brand_name', 'origin_domain', 'description'],

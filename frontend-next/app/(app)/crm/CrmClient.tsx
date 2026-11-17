@@ -26,7 +26,7 @@ import {
   loadCRMData, CRMData, CRMDashboard,
   processDealWon, executiveOverrideCredit, qualifyInquiry, convertCRMProspect,
   createOpportunity, updateOpportunityCustomer, moveCRMOpportunityStage, deleteOpportunity,
-  createCRMBrand,
+  createCRMBrand, deleteCRMBrand,
   serializeStageMetadata,
   createCRMActivity, getOpportunityCustomer360, markOpportunityLost, createServiceWorkOrder,
   createCustomerInquiry, updateCustomerInquiry, updateCRMInquiryLeadStatus, deleteCustomerInquiry,
@@ -4001,6 +4001,7 @@ export default function CrmClient() {
   const [brandFilter, setBrandFilter] = useState("ALL");
   const [isBrandModalOpen, setIsBrandModalOpen] = useState(false);
   const [savingBrand, setSavingBrand] = useState(false);
+  const [deletingBrandId, setDeletingBrandId] = useState<string | null>(null);
   const [brandForm, setBrandForm] = useState({
     brand_code: "",
     brand_name: "",
@@ -4221,6 +4222,26 @@ export default function CrmClient() {
       toast.error(err?.response?.data?.detail || err?.response?.data?.error?.message || "Gagal menyimpan Brand.");
     } finally {
       setSavingBrand(false);
+    }
+  };
+
+  const handleDeleteBrand = async (brand: { id: string; brand_code?: string; brand_name?: string }) => {
+    const label = brand.brand_code ? `[${brand.brand_code}] ${brand.brand_name || ""}` : (brand.brand_name || brand.id);
+    if (!window.confirm(`Hapus Brand ${label}? Data CRM yang terkait akan tetap aman dan dilepas dari brand ini.`)) {
+      return;
+    }
+    setDeletingBrandId(String(brand.id));
+    try {
+      await deleteCRMBrand(brand.id);
+      if (brandFilter === String(brand.id)) {
+        setBrandFilter("ALL");
+      }
+      toast.success(`Brand ${label} berhasil dihapus.`);
+      await loadData(true);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || err?.response?.data?.error?.message || "Gagal menghapus Brand.");
+    } finally {
+      setDeletingBrandId(null);
     }
   };
 
@@ -4487,11 +4508,27 @@ export default function CrmClient() {
                 type="button"
                 onClick={() => setIsBrandModalOpen(true)}
                 className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-[#0876CD] hover:bg-blue-50"
-                title="Tambah / Definisikan Brand Baru"
+                title="Tambah / Kelola Brand"
               >
                 + Brand
               </button>
             )}
+            {canOperateCrm && brandFilter !== "ALL" && brandFilter !== "UNASSIGNED" && (() => {
+              const selectedBrand = activeBrands.find((b: any) => String(b.id) === brandFilter);
+              if (!selectedBrand) return null;
+              return (
+                <button
+                  type="button"
+                  disabled={deletingBrandId === String(selectedBrand.id)}
+                  onClick={() => void handleDeleteBrand(selectedBrand)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-100 disabled:opacity-50"
+                  title={`Hapus Brand ${selectedBrand.brand_name}`}
+                >
+                  <Trash2 size={12} />
+                  Hapus Brand
+                </button>
+              );
+            })()}
           </div>
 
           {(roleLevel === "SPV" || roleLevel === "GM" || canDelegateCrm) && (
@@ -5092,9 +5129,21 @@ export default function CrmClient() {
               <div className="mb-1.5 font-semibold text-slate-700">Daftar Brand Aktif ({activeBrands.length})</div>
               <div className="flex flex-wrap gap-1.5">
                 {activeBrands.map((b: any) => (
-                  <span key={b.id} className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                  <span key={b.id} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700">
                     <span className="h-2 w-2 rounded-full" style={{ backgroundColor: b.color_hex || "#0876CD" }} />
-                    <b>{b.brand_code}</b> · {b.brand_name}
+                    <span><b>{b.brand_code}</b> · {b.brand_name}</span>
+                    {canOperateCrm && (
+                      <button
+                        type="button"
+                        disabled={deletingBrandId === String(b.id)}
+                        onClick={() => void handleDeleteBrand(b)}
+                        title={`Hapus Brand ${b.brand_name}`}
+                        aria-label={`Hapus Brand ${b.brand_name}`}
+                        className="ml-0.5 rounded p-0.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    )}
                   </span>
                 ))}
               </div>
