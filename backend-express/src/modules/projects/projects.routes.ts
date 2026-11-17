@@ -6,6 +6,7 @@
  * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
  * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
  */
+import crypto from 'crypto';
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { hasModuleOverride, hasUserModuleWrite } from '../../utils/module-permissions';
@@ -203,6 +204,267 @@ async function currentEmployee(
 
   return employee;
 }
+
+function canManageProjectHandoff(req: Request): boolean {
+  if (!req.user) return false;
+  if (isSuperAdmin(req.user.roles)) return true;
+  const allowed = new Set<string>([RoleCode.PROJECT_MANAGER, RoleCode.COMPANY_ADMIN, RoleCode.DIRECTOR]);
+  const active = String(req.user.active_role_code ?? '').trim().toUpperCase().replace(/^ROLE-/, '');
+  if (allowed.has(active)) return true;
+  return hasUserModuleWrite(req.user, 'PROJECTS') && (req.user.roles || []).some((r: string) =>
+    allowed.has(String(r).toUpperCase().replace(/^ROLE-/, ''))
+  );
+}
+
+projectsRouter.get('/crm-handoffs', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const handoffs = await prisma.crm_deal_handoff.findMany({
+      where: { company_id: companyId, decision: 'PENDING_PM_APPROVAL', project_id: null },
+      orderBy: { created_at: 'desc' },
+    });
+    if (!handoffs.length) {
+      res.json({ results: [] });
+      return;
+    }
+    const oppIds = [...new Set(handoffs.map((h) => h.opportunity_id).filter(Boolean))];
+    const orderIds = [...new Set(handoffs.map((h) => h.sales_order_id).filter((id): id is string => Boolean(id)))];
+    const brandIds = [...new Set(handoffs.map((h) => (h as any).brand_id).filter((id): id is string => Boolean(id)))];
+    const creatorIds = [...new Set(handoffs.map((h) => h.created_by_id).filter((id): id is string => Boolean(id)))];
+
+    const [opps, orders, brands, creators] = await Promise.all([
+      oppIds.length ? prisma.crm_opportunity.findMany({ where: { id: { in: oppIds }, company_id: companyId } }) : [],
+      orderIds.length ? prisma.sales_order.findMany({ where: { id: { in: orderIds }, company_id: companyId } }) : [],
+      brandIds.length ? (prisma as any).master_brand.findMany({ where: { id: { in: brandIds }, company_id: companyId } }) : [],
+      creatorIds.length ? prisma.iam_user.findMany({ where: { id: { in: creatorIds } }, select: { id: true, full_name: true, email: true } }) : [],
+    ]);
+    const partyIds = [...new Set(opps.map((o) => o.customer_party_id).filter((id): id is string => Boolean(id)))];
+    const parties = partyIds.length
+      ? await prisma.master_party.findMany({ where: { id: { in: partyIds }, company_id: companyId }, select: { id: true, display_name: true, legal_name: true, party_code: true } })
+      : [];
+
+    const oppMap = new Map(opps.map((o) => [o.id, o]));
+    const orderMap = new Map(orders.map((o) => [o.id, o]));
+    const brandMap = new Map<string, any>(brands.map((b: any) => [b.id, b]));
+    const creatorMap = new Map(creators.map((u) => [u.id, u]));
+    const partyMap = new Map(parties.map((p) => [p.id, p]));
+
+    const results = handoffs.map((h) => {
+      const opp = oppMap.get(h.opportunity_id);
+      const order = h.sales_order_id ? orderMap.get(h.sales_order_id) : null;
+      const party = opp?.customer_party_id ? partyMap.get(opp.customer_party_id) : null;
+      const brand = (h as any).brand_id ? brandMap.get((h as any).brand_id) : (opp as any)?.brand_id ? brandMap.get((opp as any).brand_id) : null;
+      const creator = h.created_by_id ? creatorMap.get(h.created_by_id) : null;
+      return {
+        id: h.id,
+        opportunity_id: h.opportunity_id,
+        sales_order_id: h.sales_order_id,
+        brand_id: (h as any).brand_id ?? (opp as any)?.brand_id ?? null,
+        brand_name: brand ? `${brand.brand_code} · ${brand.brand_name}` : null,
+        opportunity_name: opp?.opportunity_name || 'Proyek dari CRM',
+        customer_name: party?.display_name || party?.legal_name || 'Pelanggan',
+        customer_code: party?.party_code || '',
+        deal_amount: Number(order?.total_amount ?? opp?.expected_amount ?? 0),
+        requested_by_name: creator?.full_name || creator?.email || 'Tim CRM',
+        created_at: h.created_at,
+        decision: h.decision,
+      };
+    });
+    res.json({ results });
+  } catch (err) {
+    next(err);
+  }
+});
+
+projectsRouter.post('/crm-handoffs/:id/approve', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user?.id) throw new ForbiddenError('Autentikasi diperlukan.');
+    if (!canManageProjectHandoff(req)) {
+      throw new ForbiddenError('Hanya Project Manager yang dapat meng-ACC permintaan proyek dari CRM.');
+    }
+    const companyId = activeCompanyId(req);
+    const handoffId = String(req.params.id);
+    const pmUserId = req.user.id;
+    const pmDisplayName = req.user.full_name || req.user.email || 'Project Manager';
+
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM crm_deal_handoff WHERE id = ${handoffId} AND company_id = ${companyId} FOR UPDATE`;
+      const handoff = await tx.crm_deal_handoff.findFirst({ where: { id: handoffId, company_id: companyId } });
+      if (!handoff) throw new NotFoundError('CRM Deal Handoff');
+      if (handoff.project_id) {
+        const existingProject = await tx.project_project.findFirst({ where: { id: handoff.project_id, company_id: companyId } });
+        return { project: existingProject, already_approved: true };
+      }
+      if (handoff.decision !== 'PENDING_PM_APPROVAL') {
+        throw new ConflictError(`Permintaan proyek sudah berstatus ${handoff.decision}.`);
+      }
+
+      const opportunity = await tx.crm_opportunity.findFirst({ where: { id: handoff.opportunity_id, company_id: companyId } });
+      if (!opportunity) throw new NotFoundError('Opportunity');
+      const salesOrder = handoff.sales_order_id
+        ? await tx.sales_order.findFirst({ where: { id: handoff.sales_order_id, company_id: companyId } })
+        : null;
+      const customerParty = opportunity.customer_party_id
+        ? await tx.master_party.findFirst({ where: { id: opportunity.customer_party_id, company_id: companyId } })
+        : null;
+
+      const dealAmount = Number(salesOrder?.total_amount ?? opportunity.expected_amount ?? 0);
+      const now = new Date();
+      let project = salesOrder
+        ? await tx.project_project.findFirst({ where: { sales_order_id: salesOrder.id, company_id: companyId } })
+        : null;
+
+      if (!project) {
+        project = await tx.project_project.create({
+          data: {
+            id: crypto.randomUUID(),
+            tenant_id: handoff.tenant_id,
+            company_id: companyId,
+            brand_id: (handoff as any).brand_id ?? (opportunity as any).brand_id ?? null,
+            created_by_id: pmUserId,
+            customer_party_id: opportunity.customer_party_id,
+            customer_name: customerParty?.display_name ?? customerParty?.legal_name ?? opportunity.opportunity_name,
+            description: opportunity.opportunity_name,
+            sales_order_id: salesOrder?.id ?? null,
+            project_manager_id: pmUserId,
+            manager_name: pmDisplayName,
+            project_code: `PRJ-CRM-${opportunity.id.replace(/-/g, '').toUpperCase()}`,
+            project_name: opportunity.opportunity_name ?? 'New Project from CRM',
+            budget_amount: dealAmount,
+            contract_amount: dealAmount,
+            status: 'PLANNED',
+            lifecycle_status: 'INCOMING',
+            stage_entered_at: now,
+            verified_at: now,
+            verified_by: pmUserId,
+            health_status: 'GOOD',
+            source_type: 'CRM',
+          },
+        });
+      }
+
+      const existingMember = await tx.project_member.findFirst({
+        where: { project_id: project.id, user_id: pmUserId, company_id: companyId },
+        select: { id: true },
+      });
+      if (!existingMember) {
+        await tx.project_member.create({
+          data: {
+            id: crypto.randomUUID(),
+            tenant_id: handoff.tenant_id,
+            company_id: companyId,
+            created_by_id: pmUserId,
+            project_id: project.id,
+            user_id: pmUserId,
+            project_role: 'PROJECT_MANAGER',
+            status: 'ACTIVE',
+            permissions_json: '{}',
+          },
+        });
+      }
+
+      await tx.crm_deal_handoff.update({
+        where: { id: handoff.id },
+        data: { decision: 'APPROVED_BY_PM', project_id: project.id },
+      });
+
+      await tx.core_app_notification.updateMany({
+        where: { company_id: companyId, reference_type: 'CRM_DEAL_HANDOFF', reference_id: handoff.id, is_read: false },
+        data: { is_read: true, read_at: now, updated_at: now },
+      });
+
+      const crmOwnerId = opportunity.owner_user_id || handoff.created_by_id;
+      if (crmOwnerId && crmOwnerId !== pmUserId) {
+        await tx.core_app_notification.create({
+          data: {
+            id: crypto.randomUUID(),
+            tenant_id: handoff.tenant_id,
+            company_id: companyId,
+            created_by_id: pmUserId,
+            recipient_id: crmOwnerId,
+            actor_id: pmUserId,
+            category: 'CRM_PROJECT_HANDOFF',
+            title: 'Proyek CRM Disetujui PM',
+            description: `Permintaan proyek "${project.project_name}" telah di-ACC oleh ${pmDisplayName}.`,
+            target_url: `/projects?project=${encodeURIComponent(project.id)}`,
+            is_read: false,
+            read_at: null,
+            reference_type: 'PROJECT',
+            reference_id: project.id,
+            created_at: now,
+            updated_at: now,
+          },
+        });
+      }
+
+      return { project, already_approved: false };
+    });
+
+    await invalidateDashboardCache();
+    res.status(201).json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+projectsRouter.post('/crm-handoffs/:id/reject', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user?.id) throw new ForbiddenError('Autentikasi diperlukan.');
+    if (!canManageProjectHandoff(req)) {
+      throw new ForbiddenError('Hanya Project Manager yang dapat menolak permintaan proyek dari CRM.');
+    }
+    const companyId = activeCompanyId(req);
+    const handoffId = String(req.params.id);
+    const reason = String(req.body?.reason ?? '').trim() || 'Ditolak oleh Project Manager';
+    const pmUserId = req.user.id;
+    const pmDisplayName = req.user.full_name || req.user.email || 'Project Manager';
+
+    await prisma.$transaction(async (tx) => {
+      const handoff = await tx.crm_deal_handoff.findFirst({ where: { id: handoffId, company_id: companyId } });
+      if (!handoff) throw new NotFoundError('CRM Deal Handoff');
+      if (handoff.project_id || handoff.decision !== 'PENDING_PM_APPROVAL') {
+        throw new ConflictError(`Permintaan proyek sudah diproses (${handoff.decision}).`);
+      }
+      const opportunity = await tx.crm_opportunity.findFirst({ where: { id: handoff.opportunity_id, company_id: companyId } });
+      const now = new Date();
+      await tx.crm_deal_handoff.update({
+        where: { id: handoff.id },
+        data: { decision: 'REJECTED_BY_PM' },
+      });
+      await tx.core_app_notification.updateMany({
+        where: { company_id: companyId, reference_type: 'CRM_DEAL_HANDOFF', reference_id: handoff.id, is_read: false },
+        data: { is_read: true, read_at: now, updated_at: now },
+      });
+      const crmOwnerId = opportunity?.owner_user_id || handoff.created_by_id;
+      if (crmOwnerId && crmOwnerId !== pmUserId) {
+        await tx.core_app_notification.create({
+          data: {
+            id: crypto.randomUUID(),
+            tenant_id: handoff.tenant_id,
+            company_id: companyId,
+            created_by_id: pmUserId,
+            recipient_id: crmOwnerId,
+            actor_id: pmUserId,
+            category: 'CRM_PROJECT_HANDOFF',
+            title: 'Permintaan Proyek CRM Ditolak PM',
+            description: `Permintaan proyek "${opportunity?.opportunity_name || 'CRM'}" ditolak oleh ${pmDisplayName}. Alasan: ${reason}`,
+            target_url: '/crm?tab=pipeline',
+            is_read: false,
+            read_at: null,
+            reference_type: 'CRM_DEAL_HANDOFF',
+            reference_id: handoff.id,
+            created_at: now,
+            updated_at: now,
+          },
+        });
+      }
+    });
+
+    res.json({ success: true, decision: 'REJECTED_BY_PM' });
+  } catch (err) {
+    next(err);
+  }
+});
 
 projectsRouter.get(
   '/task-participants',

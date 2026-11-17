@@ -1661,9 +1661,11 @@ function TabDeals({
                 <div className="font-semibold">Langkah berikutnya</div>
                 {resultModal.data.handoff.project_id
                   ? <p>Sales Order dan project incoming sudah dibuat. Tim project perlu membuka project tersebut dan melengkapi verifikasi sebelum pekerjaan dimulai.</p>
-                  : resultModal.data.handoff.proforma_invoice_id
-                    ? <p>Deal tertahan pemeriksaan kredit. Proforma sudah dibuat; minta tim Finance menindaklanjuti pembayaran. Setelah pembayaran lunas, jalankan Deal Won kembali untuk membuat Sales Order dan project.</p>
-                    : <p>{resultModal.data.handoff.note || "Periksa hasil handoff dan tindak lanjuti dengan tim terkait."}</p>}
+                  : resultModal.data.handoff.sales_order_id
+                    ? <p>Sales Order berhasil dibuat. Notifikasi permintaan proyek telah dikirim ke Project Manager untuk di-ACC sebelum proyek aktif.</p>
+                    : resultModal.data.handoff.proforma_invoice_id
+                      ? <p>Deal tertahan pemeriksaan kredit. Proforma sudah dibuat; minta tim Finance menindaklanjuti pembayaran. Setelah pembayaran lunas, jalankan Deal Won kembali untuk membuat Sales Order dan project.</p>
+                      : <p>{resultModal.data.handoff.note || "Periksa hasil handoff dan tindak lanjuti dengan tim terkait."}</p>}
               </div>
             )}
             <button onClick={() => setResultModal(null)} className="btn-primary self-end">Tutup</button>
@@ -1958,7 +1960,7 @@ function TabEstimate({ data, approvals, onRefresh, onNavigate, readOnly = false,
         try {
           const result = await convertQuotationToOrder(q.id);
           if (result?.handoff?.sales_order_id) {
-            toast.success(result.handoff.project_id ? "Quotation dikonversi menjadi Sales Order dan diteruskan ke Project." : "Quotation berhasil dikonversi menjadi Sales Order.");
+            toast.success(result.handoff.project_id ? "Quotation dikonversi menjadi Sales Order dan diteruskan ke Project." : "Sales Order dibuat & notifikasi permintaan proyek dikirim ke Project Manager untuk di-ACC.");
           } else {
             const customer = (data.parties || []).find((party: any) => String(party.id) === String(quotationPartyId));
             setCreditHoldResult({

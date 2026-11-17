@@ -409,7 +409,7 @@ export class ProjectsService {
           user_id: user.id, status: 'ACTIVE', project_role: 'PROJECT_MANAGER' },
         select: { project_id: true },
       });
-      return { OR: [{ project_manager_id: user.id },
+      return { OR: [{ project_manager_id: user.id }, { created_by_id: user.id },
         { id: { in: memberships.map((row: { project_id: string }) => row.project_id) } }],
         ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}) };
     }

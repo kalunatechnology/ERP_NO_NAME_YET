@@ -808,66 +808,9 @@ export class CRMService {
           data: { status: 'CONVERTED' },
         });
 
-        const pmRoles = await tx.iam_role.findMany({
-          where: { tenant_id: opportunity.tenant_id, company_id: companyId, role_code: RoleCode.PROJECT_MANAGER },
-          select: { id: true },
-        });
-        const pmAssignments = pmRoles.length ? await tx.iam_user_role.findMany({
-          where: { tenant_id: opportunity.tenant_id, company_id: companyId, role_id: { in: pmRoles.map((role) => role.id) } },
-          select: { user_id: true },
-        }) : [];
-        const pmIds = [...new Set(pmAssignments.flatMap((assignment) => assignment.user_id ? [assignment.user_id] : []))];
-        const pmUser = pmIds.length ? await tx.iam_user.findFirst({
-          where: { id: { in: pmIds }, tenant_id: opportunity.tenant_id, status: 'ACTIVE', is_active: true },
-          orderBy: { date_joined: 'asc' },
-        }) : null;
-
         createdProject = await tx.project_project.findFirst({
           where: { sales_order_id: createdOrder.id, company_id: companyId },
         });
-        if (!createdProject) {
-          createdProject = await tx.project_project.create({
-            data: {
-              id: crypto.randomUUID(),
-              tenant_id: opportunity.tenant_id,
-              company_id: companyId,
-              brand_id: (opportunity as any).brand_id ?? null,
-              customer_party_id: customerPartyId,
-              customer_name: customerParty.display_name ?? customerParty.legal_name ?? opportunity.opportunity_name,
-              description: opportunity.opportunity_name,
-              sales_order_id: createdOrder.id,
-              project_manager_id: pmUser?.id,
-              manager_name: pmUser?.full_name ?? pmUser?.username ?? '',
-              project_code: `PRJ-CRM-${opportunity.id.replace(/-/g, '').toUpperCase()}`,
-              project_name: opportunity.opportunity_name ?? 'New Project from CRM',
-              budget_amount: dealAmount,
-              contract_amount: dealAmount,
-              status: 'PLANNED',
-              lifecycle_status: 'INCOMING',
-              stage_entered_at: new Date(),
-              verified_at: null,
-              verified_by: null,
-              health_status: 'GOOD',
-              source_type: 'CRM',
-            },
-          });
-
-        if (pmUser && createdProject) {
-          await tx.project_member.create({
-            data: {
-              id: crypto.randomUUID(),
-              tenant_id: opportunity.tenant_id,
-              company_id: companyId,
-              created_by_id: user?.id,
-              project_id: createdProject.id,
-              user_id: pmUser.id,
-              project_role: 'PROJECT_MANAGER',
-              status: 'ACTIVE',
-              permissions_json: '{}',
-            },
-          });
-        }
-        }
       } else {
         const invoiceNumber = `PROFORMA-${opportunity.id.replace(/-/g, '').toUpperCase()}`;
         proformaBilling = await tx.fin_billing_document.findFirst({ where: { invoice_number: invoiceNumber, company_id: companyId } });
@@ -890,22 +833,41 @@ export class CRMService {
         }
       }
 
+      const handoffDecision = isSafe
+        ? (createdProject ? 'APPROVED_BY_PM' : 'PENDING_PM_APPROVAL')
+        : 'SEND_BILL_TO_CLIENT_MANUALLY';
       const handoffData = {
-        decision: isSafe ? 'SEND_TO_PROJECT_MANAGEMENT' : 'SEND_BILL_TO_CLIENT_MANUALLY',
+        decision: handoffDecision,
+        brand_id: (opportunity as any).brand_id ?? null,
         credit_snapshot_id: snapshot.id,
         sales_order_id: createdOrder?.id ?? null,
         project_id: createdProject?.id ?? null,
         proforma_invoice_id: isSafe ? null : proformaBilling?.id ?? previousHandoff?.proforma_invoice_id ?? null,
       };
-      if (previousHandoff) await tx.crm_deal_handoff.update({ where: { id: previousHandoff.id }, data: handoffData });
-      else await tx.crm_deal_handoff.create({ data: {
-        id: crypto.randomUUID(), tenant_id: opportunity.tenant_id, company_id: companyId,
-        opportunity_id: opportunity.id, ...handoffData, created_by_id: user?.id,
-      } });
+      const savedHandoff = previousHandoff
+        ? await tx.crm_deal_handoff.update({ where: { id: previousHandoff.id }, data: handoffData })
+        : await tx.crm_deal_handoff.create({
+            data: {
+              id: crypto.randomUUID(), tenant_id: opportunity.tenant_id, company_id: companyId,
+              opportunity_id: opportunity.id, ...handoffData, created_by_id: user?.id,
+            },
+          });
+
+      if (isSafe && !createdProject) {
+        await this.notifyProjectManagersOfCrmHandoff(tx, {
+          tenantId: opportunity.tenant_id,
+          companyId,
+          handoffId: savedHandoff.id,
+          opportunityName: opportunity.opportunity_name ?? 'Project dari CRM',
+          customerName: customerParty.display_name ?? customerParty.legal_name ?? '',
+          dealAmount,
+          actorUserId: user?.id ?? null,
+        });
+      }
 
       await queueWebhookEvent(tx, companyId, 'deal.won', {
         opportunity_id: opportunity.id,
-        decision: isSafe ? 'SEND_TO_PROJECT_MANAGEMENT' : 'SEND_BILL_TO_CLIENT_MANUALLY',
+        decision: handoffDecision,
         handoff: {
           sales_order_id: createdOrder?.id ?? null,
           project_id: createdProject?.id ?? null,
@@ -928,18 +890,93 @@ export class CRMService {
           risk_category: snapshot.risk_category,
           is_safe: isSafe,
         },
-        decision: isSafe ? 'SEND_TO_PROJECT_MANAGEMENT' : 'SEND_BILL_TO_CLIENT_MANUALLY',
+        decision: handoffDecision,
         handoff: {
+          id: savedHandoff.id,
           sales_order_id: createdOrder?.id ?? null,
           project_id: createdProject?.id ?? null,
           proforma_invoice_id: proformaBilling?.id ?? null,
           note: isSafe
-            ? 'Proyek siap dijalankan di Project Management Workspace.'
+            ? (createdProject
+                ? 'Proyek siap dijalankan di Project Management Workspace.'
+                : 'Sales Order berhasil dibuat. Notifikasi permintaan proyek dikirim ke Project Manager untuk di-ACC.')
             : 'Batas kredit terlampaui. Minta Executive Override.',
         },
       };
     };
     return db === prisma ? prisma.$transaction(execute, CRM_TRANSACTION_OPTIONS) : execute(db as Prisma.TransactionClient);
+  }
+
+  static async notifyProjectManagersOfCrmHandoff(
+    tx: Prisma.TransactionClient,
+    params: {
+      tenantId: string;
+      companyId: string;
+      handoffId: string;
+      opportunityName: string;
+      customerName: string;
+      dealAmount: number;
+      actorUserId: string | null;
+    },
+  ) {
+    const pmRoles = await tx.iam_role.findMany({
+      where: { tenant_id: params.tenantId, company_id: params.companyId, role_code: RoleCode.PROJECT_MANAGER },
+      select: { id: true },
+    });
+    const pmAssignments = pmRoles.length
+      ? await tx.iam_user_role.findMany({
+          where: { tenant_id: params.tenantId, company_id: params.companyId, role_id: { in: pmRoles.map((r) => r.id) } },
+          select: { user_id: true },
+        })
+      : [];
+    const pmIds = [...new Set(pmAssignments.flatMap((a) => (a.user_id ? [a.user_id] : [])))];
+    if (!pmIds.length) return;
+
+    const activePms = await tx.iam_user.findMany({
+      where: { id: { in: pmIds }, tenant_id: params.tenantId, status: 'ACTIVE', is_active: true },
+      select: { id: true },
+    });
+    if (!activePms.length) return;
+
+    const now = new Date();
+    const formattedAmount = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(params.dealAmount || 0);
+    const title = 'Permintaan Proyek Baru dari CRM';
+    const description = `Deal "${params.opportunityName}" (${params.customerName || 'Pelanggan'}, ${formattedAmount}) menunggu ACC Project Manager untuk dijadikan Proyek.`;
+    const targetUrl = `/projects?handoff=${encodeURIComponent(params.handoffId)}`;
+
+    for (const pm of activePms) {
+      const existing = await tx.core_app_notification.findFirst({
+        where: {
+          company_id: params.companyId,
+          recipient_id: pm.id,
+          reference_type: 'CRM_DEAL_HANDOFF',
+          reference_id: params.handoffId,
+          is_read: false,
+        },
+        select: { id: true },
+      });
+      if (existing) continue;
+      await tx.core_app_notification.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenant_id: params.tenantId,
+          company_id: params.companyId,
+          created_by_id: params.actorUserId,
+          recipient_id: pm.id,
+          actor_id: params.actorUserId,
+          category: 'CRM_PROJECT_HANDOFF',
+          title,
+          description,
+          target_url: targetUrl,
+          is_read: false,
+          read_at: null,
+          reference_type: 'CRM_DEAL_HANDOFF',
+          reference_id: params.handoffId,
+          created_at: now,
+          updated_at: now,
+        },
+      });
+    }
   }
 
 /**
@@ -1017,33 +1054,7 @@ export class CRMService {
         });
       }
 
-      let project = await tx.project_project.findFirst({ where: { sales_order_id: salesOrder.id, company_id: company } });
-      if (!project) {
-        const pmRoles = await tx.iam_role.findMany({ where: { tenant_id: opportunity.tenant_id, company_id: company, role_code: RoleCode.PROJECT_MANAGER }, select: { id: true } });
-        const pmAssignments = pmRoles.length ? await tx.iam_user_role.findMany({ where: { tenant_id: opportunity.tenant_id, company_id: company, role_id: { in: pmRoles.map((role) => role.id) } }, select: { user_id: true } }) : [];
-        const pmIds = [...new Set(pmAssignments.flatMap((assignment) => assignment.user_id ? [assignment.user_id] : []))];
-        const pmUser = pmIds.length ? await tx.iam_user.findFirst({ where: { id: { in: pmIds }, tenant_id: opportunity.tenant_id, status: 'ACTIVE', is_active: true }, orderBy: { date_joined: 'asc' } }) : null;
-        project = await tx.project_project.create({
-          data: {
-            id: crypto.randomUUID(), tenant_id: opportunity.tenant_id, company_id: company,
-            customer_party_id: customer.id, customer_name: customer.display_name ?? customer.legal_name ?? '',
-            description: opportunity.opportunity_name, sales_order_id: salesOrder.id,
-            project_manager_id: pmUser?.id, manager_name: pmUser?.full_name ?? pmUser?.username ?? '',
-            project_code: `PRJ-CRM-OVR-${opportunity.id.replace(/-/g, '').slice(0, 8).toUpperCase()}`,
-            project_name: opportunity.opportunity_name || 'Project dari CRM', budget_amount: dealAmount,
-            contract_amount: dealAmount, status: 'PLANNED', lifecycle_status: 'INCOMING',
-            stage_entered_at: new Date(), verified_at: null, verified_by: null,
-            health_status: 'GOOD', source_type: 'CRM',
-          },
-        });
-        if (pmUser) await tx.project_member.create({
-          data: {
-            id: crypto.randomUUID(), tenant_id: opportunity.tenant_id, company_id: company,
-            created_by_id: user?.id, project_id: project.id, user_id: pmUser.id,
-            project_role: 'PROJECT_MANAGER', status: 'ACTIVE', permissions_json: '{}',
-          },
-        });
-      }
+      const existingProject = await tx.project_project.findFirst({ where: { sales_order_id: salesOrder.id, company_id: company } });
 
       await tx.sales_quotation.update({ where: { id: quotation.id }, data: { status: 'CONVERTED' } });
       const approval = await tx.crm_executive_approval.create({
@@ -1055,25 +1066,48 @@ export class CRMService {
           decision: 'APPROVED', remarks: reason, requested_at: new Date(), decided_at: new Date(),
         },
       });
+      const handoffDecision = existingProject ? 'APPROVED_BY_PM' : 'PENDING_PM_APPROVAL';
       const handoffData = {
-        decision: 'EXECUTIVE_OVERRIDE', credit_snapshot_id: creditSnapshot.id,
-        sales_order_id: salesOrder.id, project_id: project.id, proforma_invoice_id: null,
+        decision: handoffDecision,
+        brand_id: (opportunity as any).brand_id ?? null,
+        credit_snapshot_id: creditSnapshot.id,
+        sales_order_id: salesOrder.id,
+        project_id: existingProject?.id ?? null,
+        proforma_invoice_id: null,
       };
-      if (priorHandoff) await tx.crm_deal_handoff.update({ where: { id: priorHandoff.id }, data: handoffData });
-      else await tx.crm_deal_handoff.create({
-        data: {
-          id: crypto.randomUUID(), tenant_id: opportunity.tenant_id, company_id: company,
-          opportunity_id: opportunity.id, ...handoffData, created_by_id: user?.id,
-        },
-      });
+      const savedHandoff = priorHandoff
+        ? await tx.crm_deal_handoff.update({ where: { id: priorHandoff.id }, data: handoffData })
+        : await tx.crm_deal_handoff.create({
+            data: {
+              id: crypto.randomUUID(), tenant_id: opportunity.tenant_id, company_id: company,
+              opportunity_id: opportunity.id, ...handoffData, created_by_id: user?.id,
+            },
+          });
+
+      if (!existingProject) {
+        await this.notifyProjectManagersOfCrmHandoff(tx, {
+          tenantId: opportunity.tenant_id,
+          companyId: company,
+          handoffId: savedHandoff.id,
+          opportunityName: opportunity.opportunity_name || 'Project dari CRM',
+          customerName: customer.display_name ?? customer.legal_name ?? '',
+          dealAmount,
+          actorUserId: user?.id ?? null,
+        });
+      }
 
       await queueWebhookEvent(tx, company, 'deal.won', {
-        opportunity_id: opportunity.id, decision: 'EXECUTIVE_OVERRIDE',
-        handoff: { sales_order_id: salesOrder.id, project_id: project.id, proforma_invoice_id: null },
+        opportunity_id: opportunity.id, decision: handoffDecision,
+        handoff: { sales_order_id: salesOrder.id, project_id: existingProject?.id ?? null, proforma_invoice_id: null },
       });
       return {
-        success: true, message: 'Executive override dicatat dan project masuk antrean verifikasi.',
-        approval_id: approval.id, sales_order_id: salesOrder.id, project_id: project.id,
+        success: true,
+        message: existingProject
+          ? 'Executive override dicatat dan project sudah tersedia.'
+          : 'Executive override dicatat. Notifikasi permintaan proyek dikirim ke Project Manager untuk di-ACC.',
+        approval_id: approval.id,
+        sales_order_id: salesOrder.id,
+        project_id: existingProject?.id ?? null,
       };
     }, CRM_TRANSACTION_OPTIONS);
   }

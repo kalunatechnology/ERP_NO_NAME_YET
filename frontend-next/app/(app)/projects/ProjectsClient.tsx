@@ -35,7 +35,7 @@ import {
   ProjectResourceDocument, fetchProjectResources, createProjectResource, deleteProjectResource
 } from "@/lib/api/project.api";
 import { useAuth } from "@/contexts/AuthContext";
-import { cn, formatDate, localDateKey } from "@/lib/utils";
+import { cn, formatDate, formatMoney, localDateKey } from "@/lib/utils";
 import { creationWeeklyPeriod, resolveTargetCalendarWeek } from "@/lib/weekly-dashboard";
 import { Modal } from "@/components/ui/Modal";
 import { IDRInput } from "@/components/ui/IDRInput";
@@ -430,6 +430,9 @@ export default function ProjectsClient() {
     + (main.weekly_tasks || main.weekly_plans || []).filter((weekly) => weekly.status === "PENDING_APPROVAL").length, 0), [selectedProject?.main_tasks]);
   const completedChecklistCount = checklistItems.filter((item) => ['DONE', 'COMPLETED', 'CHECKED', 'APPROVED'].includes(String(item.status).toUpperCase())).length;
   const checklistProgress = checklistItems.length > 0 ? Math.round((completedChecklistCount / checklistItems.length) * 100) : 0;
+  const [crmHandoffs, setCrmHandoffs] = useState<any[]>([]);
+  const [handoffActionId, setHandoffActionId] = useState<string | null>(null);
+  const highlightedHandoffId = searchParams.get("handoff") || "";
 
   useEffect(() => {
     if (!isEditDailyOpen || !activeDailyTask) return;
@@ -536,6 +539,42 @@ export default function ProjectsClient() {
       toast.error(getApiErrorDetail(error, "Gagal menyimpan rekanan proyek."));
     } finally {
       setProjectPartiesSaving(false);
+    }
+  };
+
+  const handleApproveCrmHandoff = async (handoffId: string) => {
+    if (handoffActionId) return;
+    setHandoffActionId(handoffId);
+    try {
+      const { data: res } = await api.post(`/api/v1/projects/crm-handoffs/${handoffId}/approve`, {});
+      const createdProj = res?.project ?? res?.data?.project;
+      setCrmHandoffs((prev) => prev.filter((h) => String(h.id) !== String(handoffId)));
+      toast.success("Permintaan proyek dari CRM berhasil di-ACC dan dibuat atas nama Anda!");
+      await fetchProjects(true);
+      if (createdProj?.id) {
+        selectedIdRef.current = String(createdProj.id);
+        setSelectedId(String(createdProj.id));
+      }
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Gagal meng-ACC permintaan proyek dari CRM."));
+    } finally {
+      setHandoffActionId(null);
+    }
+  };
+
+  const handleRejectCrmHandoff = async (handoffId: string) => {
+    if (handoffActionId) return;
+    const reason = window.prompt("Masukkan alasan penolakan permintaan proyek ini:", "Belum siap dikerjakan / data belum lengkap");
+    if (reason === null) return;
+    setHandoffActionId(handoffId);
+    try {
+      await api.post(`/api/v1/projects/crm-handoffs/${handoffId}/reject`, { reason: reason.trim() });
+      setCrmHandoffs((prev) => prev.filter((h) => String(h.id) !== String(handoffId)));
+      toast.success("Permintaan proyek dari CRM telah ditolak.");
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Gagal menolak permintaan proyek dari CRM."));
+    } finally {
+      setHandoffActionId(null);
     }
   };
 
@@ -722,6 +761,10 @@ export default function ProjectsClient() {
             : [];
         }),
         fetchProjectPartyOptions(),
+        api.get('/api/v1/projects/crm-handoffs').then((response) => {
+          const rows = response.data?.results ?? response.data?.data ?? [];
+          return Array.isArray(rows) ? rows : [];
+        }).catch(() => []),
       ]);
       // Render the primary project/WBS dataset as soon as it is ready. Slow
       // supporting lookups must never hold the entire workspace behind a
@@ -750,6 +793,8 @@ export default function ProjectsClient() {
         const custList = valueOrEmpty(auxiliary[2]);
         const divisions = valueOrEmpty(auxiliary[3]);
         const relatedPartyOptions = valueOrEmpty(auxiliary[4]);
+        const handoffList = valueOrEmpty(auxiliary[5]);
+        setCrmHandoffs(Array.isArray(handoffList) ? handoffList : []);
         const normalizedDepts = (Array.isArray(rawDepts) ? rawDepts : [])
           .filter((d: any) => d && d.id && d.is_active !== false)
           .map((d: any) => ({
@@ -1742,6 +1787,76 @@ export default function ProjectsClient() {
 
   return (
     <div className="workspace-container flex min-w-0 w-full max-w-full flex-col gap-5">
+
+      {allowsProjectManagement && crmHandoffs.length > 0 && (
+        <section className="rounded-[24px] border border-amber-300 bg-amber-50/70 p-4 shadow-sm sm:p-5" aria-label="Permintaan proyek dari CRM menunggu ACC">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200/80 pb-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex h-2.5 w-2.5 rounded-full bg-amber-500 animate-pulse" />
+                <h2 className="text-sm font-extrabold text-amber-950">
+                  Permintaan Proyek Baru dari CRM ({crmHandoffs.length} Menunggu ACC)
+                </h2>
+              </div>
+              <p className="mt-0.5 text-xs text-amber-900/80">
+                Deal dari CRM telah berstatus Won &amp; Sales Order terbuat. Proyek baru hanya akan aktif jika Anda ACC (proyek otomatis tercatat atas nama Anda sebagai PM pembuat).
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {crmHandoffs.map((h) => {
+              const isHighlighted = highlightedHandoffId && String(h.id) === String(highlightedHandoffId);
+              const isBusy = handoffActionId === h.id;
+              return (
+                <div
+                  key={h.id}
+                  className={cn(
+                    "flex flex-col justify-between gap-3 rounded-2xl border bg-white p-4 shadow-2xs transition",
+                    isHighlighted ? "border-[#0876CD] ring-2 ring-[#0876CD]/25" : "border-amber-200"
+                  )}
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-sm font-extrabold text-[#111827]">{h.opportunity_name}</span>
+                      {h.brand_name && (
+                        <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[10px] font-bold text-indigo-800">
+                          {h.brand_name}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-slate-600">
+                      Customer: <b className="text-slate-900">{h.customer_name}</b>
+                      {h.customer_code ? ` (${h.customer_code})` : ""}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
+                      <span>Nilai Deal: <b className="text-[#0876CD]">{formatMoney(h.deal_amount)}</b></span>
+                      <span>Diajukan oleh: <b>{h.requested_by_name}</b></span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-2.5">
+                    <button
+                      type="button"
+                      disabled={Boolean(handoffActionId)}
+                      onClick={() => void handleRejectCrmHandoff(h.id)}
+                      className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                    >
+                      Tolak
+                    </button>
+                    <button
+                      type="button"
+                      disabled={Boolean(handoffActionId)}
+                      onClick={() => void handleApproveCrmHandoff(h.id)}
+                      className="rounded-xl bg-[#0876CD] px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-[#163D64] disabled:opacity-50"
+                    >
+                      {isBusy ? "Memproses..." : "✓ ACC & Buat Proyek"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* ── Project Workspace Header, Selector & Filters ── */}
       <section className="flex min-w-0 flex-col gap-3.5 rounded-[24px] border border-[#E2E8F0] bg-white p-4 shadow-sm sm:p-5" aria-label="Filter dan navigasi proyek">
