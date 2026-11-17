@@ -286,6 +286,15 @@ export function createApp(): Express {
   apiV1.use('/dashboard', dashboardRouter);
 
   app.use('/api/v1', apiV1);
+  app.use(
+    '/accounts',
+    authenticate,
+    resolveTenant,
+    enforceSuperAdminReadOnly,
+    enforceTransactionIdempotency,
+    auditLog,
+    accountsRouter,
+  );
 
   // 5. Error & 404 handling
   app.use(notFound);

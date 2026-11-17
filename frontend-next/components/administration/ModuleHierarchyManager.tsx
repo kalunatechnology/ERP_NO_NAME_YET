@@ -179,7 +179,7 @@ export function ModuleHierarchyManager({
     if (!companyId) return;
     setLoading(true);
     try {
-      const res = await api.get("/accounts/module-hierarchy", {
+      const res = await api.get("/api/v1/accounts/module-hierarchy", {
         params: { company_id: companyId },
         headers: { "X-Company-ID": companyId },
       });
@@ -210,7 +210,7 @@ export function ModuleHierarchyManager({
     setSubmittingAssign(true);
     try {
       await api.post(
-        "/accounts/module-assignments",
+        "/api/v1/accounts/module-assignments",
         {
           company_id: companyId,
           ...assignForm,
@@ -230,7 +230,7 @@ export function ModuleHierarchyManager({
 
   const handleDeleteAssignment = async (id: string) => {
     try {
-      await api.delete(`/accounts/module-assignments/${id}`, {
+      await api.delete(`/api/v1/accounts/module-assignments/${id}`, {
         headers: { "X-Company-ID": companyId },
       });
       toast.success("Penugasan modul dihapus.");
@@ -247,7 +247,7 @@ export function ModuleHierarchyManager({
   ) => {
     try {
       await api.post(
-        "/accounts/module-tiers",
+        "/api/v1/accounts/module-tiers",
         {
           company_id: companyId,
           module_code: cfg.module_code,
@@ -274,7 +274,7 @@ export function ModuleHierarchyManager({
     e.preventDefault();
     try {
       await api.post(
-        "/accounts/cross-module-capabilities",
+        "/api/v1/accounts/cross-module-capabilities",
         { company_id: companyId, ...capForm },
         { headers: { "X-Company-ID": companyId } },
       );
@@ -293,7 +293,7 @@ export function ModuleHierarchyManager({
     }
     try {
       await api.post(
-        "/accounts/approval-delegations",
+        "/api/v1/accounts/approval-delegations",
         {
           company_id: companyId,
           ...doaForm,
@@ -311,7 +311,7 @@ export function ModuleHierarchyManager({
   const handleRevokeDoa = async (id: string) => {
     try {
       await api.post(
-        `/accounts/approval-delegations/${id}/revoke`,
+        `/api/v1/accounts/approval-delegations/${id}/revoke`,
         {},
         { headers: { "X-Company-ID": companyId } },
       );
@@ -955,3 +955,4 @@ export function ModuleHierarchyManager({
     </div>
   );
 }
+

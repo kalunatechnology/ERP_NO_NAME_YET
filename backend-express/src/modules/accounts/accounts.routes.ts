@@ -1160,6 +1160,7 @@ async function getModuleHierarchy(req: Request, res: Response, next: NextFunctio
 
 async function upsertModuleTier(req: Request, res: Response, next: NextFunction) {
   try {
+    await ensureModuleHierarchyTables();
     const companyId = req.companyId || String(req.header('X-Company-ID') || req.body.company_id || '').trim();
     const tenantId = req.user?.tenant_id || null;
     if (!companyId) throw new ForbiddenError('Pilih company terlebih dahulu.');
@@ -1246,6 +1247,7 @@ async function upsertModuleTier(req: Request, res: Response, next: NextFunction)
 
 async function upsertModuleAssignment(req: Request, res: Response, next: NextFunction) {
   try {
+    await ensureModuleHierarchyTables();
     const companyId = req.companyId || String(req.header('X-Company-ID') || req.body.company_id || '').trim();
     const tenantId = req.user?.tenant_id || null;
     if (!companyId) throw new ForbiddenError('Pilih company terlebih dahulu.');
@@ -1331,6 +1333,7 @@ async function upsertModuleAssignment(req: Request, res: Response, next: NextFun
 
 async function deleteModuleAssignment(req: Request, res: Response, next: NextFunction) {
   try {
+    await ensureModuleHierarchyTables();
     const companyId = req.companyId || String(req.header('X-Company-ID') || '').trim();
     const tenantId = req.user?.tenant_id || null;
     const { id } = req.params;
@@ -1366,6 +1369,7 @@ async function deleteModuleAssignment(req: Request, res: Response, next: NextFun
 
 async function upsertCrossModuleCapability(req: Request, res: Response, next: NextFunction) {
   try {
+    await ensureModuleHierarchyTables();
     const companyId = req.companyId || String(req.header('X-Company-ID') || req.body.company_id || '').trim();
     const tenantId = req.user?.tenant_id || null;
     if (!companyId) throw new ForbiddenError('Pilih company terlebih dahulu.');
@@ -1420,6 +1424,7 @@ async function upsertCrossModuleCapability(req: Request, res: Response, next: Ne
 
 async function createApprovalDelegation(req: Request, res: Response, next: NextFunction) {
   try {
+    await ensureModuleHierarchyTables();
     const companyId = req.companyId || String(req.header('X-Company-ID') || req.body.company_id || '').trim();
     const tenantId = req.user?.tenant_id || null;
     if (!companyId) throw new ForbiddenError('Pilih company terlebih dahulu.');
@@ -1457,6 +1462,7 @@ async function createApprovalDelegation(req: Request, res: Response, next: NextF
 
 async function revokeApprovalDelegation(req: Request, res: Response, next: NextFunction) {
   try {
+    await ensureModuleHierarchyTables();
     const { id } = req.params;
     const record = await (prisma as any).iam_approval_delegation.update({
       where: { id },
