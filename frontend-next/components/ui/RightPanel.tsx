@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, Check, Copy, Mail, PanelRightClose, RefreshCw, Users, X } from "lucide-react";
-import { DynamicContact, RealAlertItem, fetchDynamicRightPanelData, fetchRealAlertsList, markNotificationAsRead, publishNotificationStateChange, subscribeToNotificationStateChange } from "@/lib/api/feed.api";
+import { DynamicContact, RealAlertItem, approveCrmProjectHandoff, fetchDynamicRightPanelData, fetchRealAlertsList, markNotificationAsRead, publishNotificationStateChange, rejectCrmProjectHandoff, subscribeToNotificationStateChange } from "@/lib/api/feed.api";
 import { NotificationList } from "@/components/notifications/NotificationList";
 import { canAccessRoute } from "@/lib/access/module-contract";
 import { useAuth } from "@/contexts/AuthContext";
@@ -31,6 +31,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [handoffActionId, setHandoffActionId] = useState<string | null>(null);
   const closeNotifications = useCallback(() => setShowNotifications(false), []);
   useEffect(() => {
     closeNotifications();
@@ -110,6 +111,40 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
     closeNotifications();
     router.push(item.href);
     if (isMobile) onClose?.();
+  };
+
+  const handleApproveHandoff = async (e: React.MouseEvent, handoffId: string) => {
+    e.stopPropagation();
+    if (handoffActionId) return;
+    setHandoffActionId(handoffId);
+    try {
+      await approveCrmProjectHandoff(handoffId);
+      setAlerts(prev => prev.filter(a => a.handoffId !== handoffId));
+      toast.success("Permintaan proyek dari CRM berhasil di-ACC dan dibuat!");
+      void loadFeed(true);
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, "Gagal meng-ACC permintaan proyek dari CRM."));
+    } finally {
+      setHandoffActionId(null);
+    }
+  };
+
+  const handleRejectHandoff = async (e: React.MouseEvent, handoffId: string) => {
+    e.stopPropagation();
+    if (handoffActionId) return;
+    const reason = window.prompt("Masukkan alasan penolakan permintaan proyek ini:", "Belum siap dikerjakan / data belum lengkap");
+    if (reason === null) return;
+    setHandoffActionId(handoffId);
+    try {
+      await rejectCrmProjectHandoff(handoffId, reason.trim());
+      setAlerts(prev => prev.filter(a => a.handoffId !== handoffId));
+      toast.success("Permintaan proyek dari CRM telah ditolak.");
+      void loadFeed(true);
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, "Gagal menolak permintaan proyek dari CRM."));
+    } finally {
+      setHandoffActionId(null);
+    }
   };
 
   const copyContactEmail = (email?: string) => {
@@ -217,13 +252,21 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
                 </div>
               ) : alerts.map((item) => {
                 const isMention = item.category?.toLowerCase().includes("mention");
+                const isBusyHandoff = Boolean(item.handoffId && handoffActionId === item.handoffId);
                 return (
-                  <button
+                  <div
                     key={item.id}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => void openAlert(item)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        void openAlert(item);
+                      }
+                    }}
                     className={cn(
-                      "flex min-h-[72px] w-full flex-col justify-center rounded-[10px] border px-3.5 py-2.5 text-left transition-all hover:-translate-y-0.5 hover:border-[#BAE6FD] hover:shadow-xs",
+                      "flex min-h-[72px] w-full cursor-pointer flex-col justify-center rounded-[10px] border px-3.5 py-2.5 text-left transition-all hover:-translate-y-0.5 hover:border-[#BAE6FD] hover:shadow-xs",
                       item.isHighlighted ? "border-blue-200 border-l-4 border-l-[#163D64] bg-blue-50/70" : "border-[#E5E7EB] border-l-4 border-l-transparent bg-white"
                     )}
                     title={item.title}
@@ -242,7 +285,27 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
                     </span>
                     <strong className={cn("mt-1 truncate text-xs leading-tight font-bold", item.isHighlighted ? "text-slate-900" : "text-[#64748B]")}>{item.title}</strong>
                     <span className="mt-1 truncate text-[10px] leading-relaxed text-[#64748B]">{item.snippet}</span>
-                  </button>
+                    {item.handoffId && (
+                      <div className="mt-2 flex items-center justify-end gap-1.5 border-t border-blue-100/80 pt-2">
+                        <button
+                          type="button"
+                          disabled={Boolean(handoffActionId)}
+                          onClick={(e) => void handleRejectHandoff(e, item.handoffId!)}
+                          className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                        >
+                          Tolak
+                        </button>
+                        <button
+                          type="button"
+                          disabled={Boolean(handoffActionId)}
+                          onClick={(e) => void handleApproveHandoff(e, item.handoffId!)}
+                          className="rounded-md bg-[#0876CD] px-2.5 py-1 text-[10px] font-bold text-white hover:bg-[#163D64] disabled:opacity-50"
+                        >
+                          {isBusyHandoff ? "Memproses..." : "✓ ACC & Buat Proyek"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>

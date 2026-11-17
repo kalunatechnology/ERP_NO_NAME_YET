@@ -919,21 +919,47 @@ export class CRMService {
       actorUserId: string | null;
     },
   ) {
-    const pmRoles = await tx.iam_role.findMany({
-      where: { tenant_id: params.tenantId, company_id: params.companyId, role_code: RoleCode.PROJECT_MANAGER },
+    const targetRoles = await tx.iam_role.findMany({
+      where: {
+        tenant_id: params.tenantId,
+        company_id: params.companyId,
+        role_code: {
+          in: [
+            RoleCode.PROJECT_MANAGER,
+            RoleCode.PROJECT_ADMIN,
+            RoleCode.COMPANY_ADMIN,
+            RoleCode.DIRECTOR,
+            RoleCode.GM,
+          ],
+        },
+      },
       select: { id: true },
     });
-    const pmAssignments = pmRoles.length
+    const roleAssignments = targetRoles.length
       ? await tx.iam_user_role.findMany({
-          where: { tenant_id: params.tenantId, company_id: params.companyId, role_id: { in: pmRoles.map((r) => r.id) } },
+          where: { tenant_id: params.tenantId, company_id: params.companyId, role_id: { in: targetRoles.map((r) => r.id) } },
           select: { user_id: true },
         })
       : [];
-    const pmIds = [...new Set(pmAssignments.flatMap((a) => (a.user_id ? [a.user_id] : [])))];
-    if (!pmIds.length) return;
+    const moduleAssignments = await tx.iam_user_module_assignment.findMany({
+      where: {
+        tenant_id: params.tenantId,
+        company_id: params.companyId,
+        module_code: 'PROJECTS',
+        is_active: true,
+      },
+      select: { user_id: true },
+    });
+    const recipientIds = [
+      ...new Set([
+        ...roleAssignments.flatMap((a) => (a.user_id ? [a.user_id] : [])),
+        ...moduleAssignments.flatMap((a) => (a.user_id ? [a.user_id] : [])),
+      ]),
+    ];
+    if (!recipientIds.length) return;
 
     const activePms = await tx.iam_user.findMany({
-      where: { id: { in: pmIds }, tenant_id: params.tenantId, status: 'ACTIVE', is_active: true },
+      where: { id: { in: recipientIds }, tenant_id: params.tenantId, status: 'ACTIVE', is_active: true },
       select: { id: true },
     });
     if (!activePms.length) return;

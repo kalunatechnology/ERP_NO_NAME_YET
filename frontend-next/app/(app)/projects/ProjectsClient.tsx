@@ -949,6 +949,21 @@ export default function ProjectsClient() {
   }, [activeRoleCode, company, delegatedModulesKey, enabledModulesKey, moduleAccessKey, fetchProjects, requestedProjectId, requestedWeeklyId, userRole]);
 
   useEffect(() => {
+    const onHandoffUpdated = (event: Event) => {
+      const custom = event as CustomEvent<{ project?: { id?: string } }>;
+      void fetchProjects(true).then(() => {
+        const createdId = custom.detail?.project?.id;
+        if (createdId) {
+          selectedIdRef.current = String(createdId);
+          setSelectedId(String(createdId));
+        }
+      });
+    };
+    window.addEventListener("crm-handoff-updated", onHandoffUpdated);
+    return () => window.removeEventListener("crm-handoff-updated", onHandoffUpdated);
+  }, [fetchProjects]);
+
+  useEffect(() => {
     const projectId = selectedProjectId;
     const version = ++authorityFetchVersionRef.current;
     setProjectAuthority(null);
@@ -1787,76 +1802,6 @@ export default function ProjectsClient() {
 
   return (
     <div className="workspace-container flex min-w-0 w-full max-w-full flex-col gap-5">
-
-      {allowsProjectManagement && crmHandoffs.length > 0 && (
-        <section className="rounded-[24px] border border-amber-300 bg-amber-50/70 p-4 shadow-sm sm:p-5" aria-label="Permintaan proyek dari CRM menunggu ACC">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200/80 pb-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="inline-flex h-2.5 w-2.5 rounded-full bg-amber-500 animate-pulse" />
-                <h2 className="text-sm font-extrabold text-amber-950">
-                  Permintaan Proyek Baru dari CRM ({crmHandoffs.length} Menunggu ACC)
-                </h2>
-              </div>
-              <p className="mt-0.5 text-xs text-amber-900/80">
-                Deal dari CRM telah berstatus Won &amp; Sales Order terbuat. Proyek baru hanya akan aktif jika Anda ACC (proyek otomatis tercatat atas nama Anda sebagai PM pembuat).
-              </p>
-            </div>
-          </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            {crmHandoffs.map((h) => {
-              const isHighlighted = highlightedHandoffId && String(h.id) === String(highlightedHandoffId);
-              const isBusy = handoffActionId === h.id;
-              return (
-                <div
-                  key={h.id}
-                  className={cn(
-                    "flex flex-col justify-between gap-3 rounded-2xl border bg-white p-4 shadow-2xs transition",
-                    isHighlighted ? "border-[#0876CD] ring-2 ring-[#0876CD]/25" : "border-amber-200"
-                  )}
-                >
-                  <div className="space-y-1.5">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-sm font-extrabold text-[#111827]">{h.opportunity_name}</span>
-                      {h.brand_name && (
-                        <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[10px] font-bold text-indigo-800">
-                          {h.brand_name}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-slate-600">
-                      Customer: <b className="text-slate-900">{h.customer_name}</b>
-                      {h.customer_code ? ` (${h.customer_code})` : ""}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
-                      <span>Nilai Deal: <b className="text-[#0876CD]">{formatMoney(h.deal_amount)}</b></span>
-                      <span>Diajukan oleh: <b>{h.requested_by_name}</b></span>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-2.5">
-                    <button
-                      type="button"
-                      disabled={Boolean(handoffActionId)}
-                      onClick={() => void handleRejectCrmHandoff(h.id)}
-                      className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
-                    >
-                      Tolak
-                    </button>
-                    <button
-                      type="button"
-                      disabled={Boolean(handoffActionId)}
-                      onClick={() => void handleApproveCrmHandoff(h.id)}
-                      className="rounded-xl bg-[#0876CD] px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-[#163D64] disabled:opacity-50"
-                    >
-                      {isBusy ? "Memproses..." : "✓ ACC & Buat Proyek"}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
 
       {/* ── Project Workspace Header, Selector & Filters ── */}
       <section className="flex min-w-0 flex-col gap-3.5 rounded-[24px] border border-[#E2E8F0] bg-white p-4 shadow-sm sm:p-5" aria-label="Filter dan navigasi proyek">

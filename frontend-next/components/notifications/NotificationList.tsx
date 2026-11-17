@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { fetchNotifications, markNotificationAsRead, markAllNotificationsAsRead, publishNotificationStateChange } from '@/lib/api/feed.api';
+import { approveCrmProjectHandoff, fetchNotifications, fetchPendingCrmHandoffs, markNotificationAsRead, markAllNotificationsAsRead, publishNotificationStateChange, rejectCrmProjectHandoff } from '@/lib/api/feed.api';
+import { formatMoney } from '@/lib/utils';
 import { Bell, CheckCheck, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -14,19 +15,80 @@ export function NotificationList({ onItemClick }: { onItemClick?: () => void }) 
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [handoffActionId, setHandoffActionId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetchNotifications(filter);
-      setNotifications(res.items || []);
-      setUnreadCount(res.unreadCount || 0);
+      const [res, handoffs] = await Promise.all([
+        fetchNotifications(filter),
+        fetchPendingCrmHandoffs(),
+      ]);
+      const baseItems = res.items || [];
+      const seenHandoffIds = new Set(
+        baseItems
+          .filter((n: any) => n.reference_type === 'CRM_DEAL_HANDOFF' && n.reference_id)
+          .map((n: any) => String(n.reference_id))
+      );
+      const handoffNotifs = (handoffs || [])
+        .filter((h) => !seenHandoffIds.has(String(h.id)))
+        .map((h) => ({
+          id: `crm-handoff-${h.id}`,
+          handoffId: String(h.id),
+          category: 'CRM_PROJECT_HANDOFF',
+          title: `Permintaan Proyek Baru dari CRM: ${h.opportunity_name}`,
+          description: `${h.customer_name || 'Pelanggan'} · ${formatMoney(h.deal_amount || 0)} · Diajukan ${h.requested_by_name || 'CRM'}`,
+          target_url: `/projects?handoff=${encodeURIComponent(h.id)}`,
+          is_read: false,
+          created_at: h.created_at,
+        }));
+      const mergedItems = [
+        ...handoffNotifs,
+        ...baseItems.map((n: any) => ({
+          ...n,
+          handoffId: n.reference_type === 'CRM_DEAL_HANDOFF' && n.reference_id ? String(n.reference_id) : undefined,
+        })),
+      ];
+      setNotifications(mergedItems);
+      setUnreadCount((res.unreadCount || 0) + handoffNotifs.length);
     } catch (e) {
       console.warn('Failed to load notifications:', e);
     } finally {
       setLoading(false);
     }
   }, [filter]);
+
+  const handleApproveHandoff = async (e: React.MouseEvent, handoffId: string) => {
+    e.stopPropagation();
+    if (handoffActionId) return;
+    setHandoffActionId(handoffId);
+    try {
+      await approveCrmProjectHandoff(handoffId);
+      toast.success("Permintaan proyek dari CRM berhasil di-ACC dan dibuat!");
+      await loadData();
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, "Gagal meng-ACC permintaan proyek dari CRM."));
+    } finally {
+      setHandoffActionId(null);
+    }
+  };
+
+  const handleRejectHandoff = async (e: React.MouseEvent, handoffId: string) => {
+    e.stopPropagation();
+    if (handoffActionId) return;
+    const reason = window.prompt("Masukkan alasan penolakan permintaan proyek ini:", "Belum siap dikerjakan / data belum lengkap");
+    if (reason === null) return;
+    setHandoffActionId(handoffId);
+    try {
+      await rejectCrmProjectHandoff(handoffId, reason.trim());
+      toast.success("Permintaan proyek dari CRM telah ditolak.");
+      await loadData();
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, "Gagal menolak permintaan proyek dari CRM."));
+    } finally {
+      setHandoffActionId(null);
+    }
+  };
 
   useEffect(() => {
     void loadData();
@@ -175,6 +237,26 @@ export function NotificationList({ onItemClick }: { onItemClick?: () => void }) 
                   <p className="text-xs mt-1 line-clamp-2 leading-relaxed text-slate-600">
                     {notif.description || notif.message}
                   </p>
+                  {notif.handoffId && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={Boolean(handoffActionId)}
+                        onClick={(e) => void handleRejectHandoff(e, notif.handoffId)}
+                        className="rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                      >
+                        Tolak
+                      </button>
+                      <button
+                        type="button"
+                        disabled={Boolean(handoffActionId)}
+                        onClick={(e) => void handleApproveHandoff(e, notif.handoffId)}
+                        className="rounded-md bg-[#0876CD] px-3 py-1 text-[11px] font-bold text-white hover:bg-[#163D64] disabled:opacity-50"
+                      >
+                        {handoffActionId === notif.handoffId ? "Memproses..." : "✓ ACC & Buat Proyek"}
+                      </button>
+                    </div>
+                  )}
                   {notif.created_at && (
                     <span className="text-[10px] text-slate-400 mt-1 block">
                       {new Date(notif.created_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}

@@ -622,6 +622,45 @@ export interface RealAlertItem {
   isHighlighted?: boolean;
   categoryColor?: string;
   href?: string;
+  handoffId?: string;
+}
+
+export interface PendingCrmHandoffItem {
+  id: string;
+  opportunity_name: string;
+  customer_name?: string;
+  customer_code?: string;
+  brand_name?: string;
+  deal_amount?: number;
+  requested_by_name?: string;
+  created_at?: string;
+}
+
+export async function fetchPendingCrmHandoffs(): Promise<PendingCrmHandoffItem[]> {
+  try {
+    const response = await api.get("/api/v1/projects/crm-handoffs");
+    const rows = response.data?.results ?? response.data?.data?.results ?? response.data?.data ?? [];
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function approveCrmProjectHandoff(handoffId: string): Promise<{ project?: any }> {
+  const { data } = await api.post(`/api/v1/projects/crm-handoffs/${handoffId}/approve`, {});
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("crm-handoff-updated", { detail: { handoffId, action: "approved", project: data?.project ?? data?.data?.project } }));
+  }
+  publishNotificationStateChange(undefined, "refresh");
+  return data?.data ?? data ?? {};
+}
+
+export async function rejectCrmProjectHandoff(handoffId: string, reason: string): Promise<void> {
+  await api.post(`/api/v1/projects/crm-handoffs/${handoffId}/reject`, { reason });
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("crm-handoff-updated", { detail: { handoffId, action: "rejected" } }));
+  }
+  publishNotificationStateChange(undefined, "refresh");
 }
 
 function appNotificationAlert(n: any): RealAlertItem {
@@ -629,10 +668,20 @@ function appNotificationAlert(n: any): RealAlertItem {
   if (n.category === "ACCESS_REQUEST") category = "Otorisasi WBS";
   else if (n.category === "STATUS_UPDATE") category = "Pembaruan Proyek";
   else if (n.category === "DOCUMENT") category = "Dokumen Keuangan";
+  else if (n.category === "CRM_PROJECT_HANDOFF") category = "Permintaan Proyek CRM";
   else if (String(n.category).startsWith("WEEKLY_TARGET_")) category = "Target Mingguan";
   else if (n.category) category = n.category;
-  return { id: n.id, category, time: n.created_at ? timeAgo(n.created_at) : "Baru saja", title: n.title || "Notifikasi Baru",
-    snippet: n.description || n.title, isHighlighted: !n.is_read, categoryColor: n.is_read ? "#9CA3AF" : "#294BB2", href: n.target_url || "/projects" };
+  return {
+    id: n.id,
+    category,
+    time: n.created_at ? timeAgo(n.created_at) : "Baru saja",
+    title: n.title || "Notifikasi Baru",
+    snippet: n.description || n.title,
+    isHighlighted: !n.is_read,
+    categoryColor: n.is_read ? "#9CA3AF" : "#294BB2",
+    href: n.target_url || "/projects",
+    handoffId: n.reference_type === "CRM_DEAL_HANDOFF" && n.reference_id ? String(n.reference_id) : undefined,
+  };
 }
 
 export async function fetchAppNotifications(cursor?: string): Promise<{ results: RealAlertItem[]; nextCursor: string | null }> {
@@ -673,13 +722,14 @@ export async function fetchRealAlertsList(access: FrontendAccessContext = {}): P
       try { const response = await api.get("/api/v1/core/sidebar-feed"); successfulSources += 1; return response; }
       catch { return { data: { notifications: [], activities: [] }, failed: true }; }
     };
-    const [feedRes, projectsRes, costRes, oppsRes] = await Promise.all([
+    const [feedRes, projectsRes, costRes, oppsRes, handoffs] = await Promise.all([
       feedGet(),
       canReadProjects ? sourceGet("/api/v1/projects/projects/?page_size=10") : emptyResponse(),
       canReadFinance ? sourceGet("/api/v1/finance/project-cost-entries/?page_size=10") : emptyResponse(),
       canReadCrm ? sourceGet("/api/v1/crm/opportunities/?page_size=10") : emptyResponse(),
+      canReadProjects ? fetchPendingCrmHandoffs() : Promise.resolve([]),
     ]);
-    if (attemptedSources > 0 && successfulSources === 0) throw new Error('Seluruh sumber alert gagal dimuat.');
+    if (attemptedSources > 0 && successfulSources === 0 && handoffs.length === 0) throw new Error('Seluruh sumber alert gagal dimuat.');
 
     const notifs = feedRes.data?.notifications || [];
     const projects = normalizeList<any>(projectsRes.data).rows;
@@ -687,10 +737,34 @@ export async function fetchRealAlertsList(access: FrontendAccessContext = {}): P
     const opps = normalizeList<any>(oppsRes.data).rows;
 
     const alerts: RealAlertItem[] = [];
+    const seenHandoffIds = new Set<string>();
+
+    // 0. Prioritize live pending CRM-to-Project handoffs (Menunggu ACC)
+    if (Array.isArray(handoffs) && handoffs.length > 0) {
+      handoffs.slice(0, 5).forEach((h) => {
+        const hid = String(h.id);
+        seenHandoffIds.add(hid);
+        alerts.push({
+          id: `crm-handoff-${hid}`,
+          handoffId: hid,
+          category: "Permintaan Proyek CRM",
+          time: "Menunggu ACC",
+          title: h.opportunity_name || "Permintaan Proyek Baru dari CRM",
+          snippet: `${h.customer_name || "Pelanggan"} · ${formatMoney(h.deal_amount || 0)} · Diajukan ${h.requested_by_name || "CRM"}`,
+          isHighlighted: true,
+          categoryColor: "#0876CD",
+          href: `/projects?handoff=${encodeURIComponent(hid)}`,
+        });
+      });
+    }
 
     // 1. Prioritize real database app notifications
     if (Array.isArray(notifs) && notifs.length > 0) {
-      notifs.slice(0, 5).forEach((n: any) => alerts.push(appNotificationAlert(n)));
+      notifs.slice(0, 5).forEach((n: any) => {
+        const mapped = appNotificationAlert(n);
+        if (mapped.handoffId && seenHandoffIds.has(mapped.handoffId)) return;
+        alerts.push(mapped);
+      });
     }
 
     // 2. Add real active project alerts if needed
