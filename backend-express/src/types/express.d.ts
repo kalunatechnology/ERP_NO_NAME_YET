@@ -17,6 +17,9 @@ export interface AuthenticatedUser {
   /** Module codes granted directly to this user by its Company Admin or Department. */
   delegated_modules?: string[];
   module_access?: ModulePermission[];
+  module_assignments?: any[];
+  permission_overrides?: any[];
+  cross_module_capabilities?: any[];
   department_id?: string | null;
   department_code?: string | null;
   department_name?: string | null;
