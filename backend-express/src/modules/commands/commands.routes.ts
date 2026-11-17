@@ -20,7 +20,7 @@ import { RoleCode } from '../../types/roles';
 
 export const commandsRouter = Router();
 
-commandsRouter.use('/sales', requireModuleAccess('SALES'), requireRole(RoleCode.CRM_LEAD, RoleCode.SALES, RoleCode.PROJECT_MANAGER));
+commandsRouter.use('/sales', requireModuleAccess('SALES'), requireRole(RoleCode.COMPANY_ADMIN, RoleCode.CRM_LEAD, RoleCode.SALES, RoleCode.DIRECTOR));
 commandsRouter.use('/projects', requireModuleAccess('PROJECTS'), requireRole(RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.DIRECTOR, RoleCode.SUPERVISOR, RoleCode.STAFF));
 commandsRouter.use('/finance', requireModuleAccess('FINANCE'), requireRole(RoleCode.FINANCE, RoleCode.DIRECTOR));
 
@@ -514,7 +514,7 @@ commandsRouter.get('/finance/flow-status', (_req: Request, res: Response) => {
  * Data/side effects: Uses Prisma model(s) `crm_opportunity` in the handler path.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-commandsRouter.get('/reporting/crm-sales-dashboard', requireModuleAccess('CRM'), requireRole(RoleCode.CRM_LEAD, RoleCode.SALES, RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR), async (req: Request, res: Response, next: NextFunction) => {
+commandsRouter.get('/reporting/crm-sales-dashboard', requireModuleAccess('CRM'), requireRole(RoleCode.COMPANY_ADMIN, RoleCode.CRM_LEAD, RoleCode.SALES, RoleCode.DIRECTOR), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyWhere = { company_id: activeCompanyId(req) };
     const [oppCount, wonCount, totalPipeline, wonOpportunities] = await Promise.all([

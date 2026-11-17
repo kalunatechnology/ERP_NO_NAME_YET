@@ -151,7 +151,7 @@ const API_ACCESS_CONTRACTS: readonly ApiAccessContract[] = [
   { prefix: "/api/v1/commands/reporting/crm-sales-dashboard", module: "CRM", roles: CRM_ROLES },
   { prefix: "/api/v1/commands/reporting/finance-main-dashboard", module: "FINANCE", roles: FINANCE_ROLES },
   { prefix: "/api/v1/commands/reporting/portfolio-financial-performance", module: "PROJECTS", roles: [ROLE_CODES.projectManager, ROLE_CODES.operationalManager, ROLE_CODES.director, ROLE_CODES.finance] },
-  { prefix: "/api/v1/commands/sales", module: "SALES", roles: [ROLE_CODES.crmLead, ROLE_CODES.sales, ROLE_CODES.projectManager] },
+  { prefix: "/api/v1/commands/sales", module: "SALES", roles: CRM_ROLES },
   { prefix: "/api/v1/commands/projects", module: "PROJECTS", roles: PROJECT_ROLES },
   { prefix: "/api/v1/commands/finance", module: "FINANCE", roles: FINANCE_ROLES },
   { prefix: "/api/v1/requests", module: "REQUESTS" },
