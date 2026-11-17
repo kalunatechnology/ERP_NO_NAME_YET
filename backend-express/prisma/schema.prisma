@@ -1285,25 +1285,38 @@ model master_uom {
 }
 
 model master_product {
-  company_id        String?   @map("company_id")
-  created_by_id     String?   @map("created_by_id")
-  created_at        DateTime? @default(now())
-  updated_at        DateTime? @updatedAt
-  id                String    @id @default(uuid())
-  tenant_id         String?   @map("tenant_id")
-  category_id       String?   @map("category_id")
-  base_uom_id       String?   @map("base_uom_id")
-  product_code      String
-  product_name      String
-  product_type      String
-  costing_method    String
-  stock_item        Boolean
-  purchase_item     Boolean
-  sales_item        Boolean
-  manufactured_item Boolean
-  lot_controlled    Boolean
-  serial_controlled Boolean
-  status            String
+  company_id                String?   @map("company_id")
+  created_by_id             String?   @map("created_by_id")
+  created_at                DateTime? @default(now())
+  updated_at                DateTime? @updatedAt
+  id                        String    @id @default(uuid())
+  tenant_id                 String?   @map("tenant_id")
+  category_id               String?   @map("category_id")
+  base_uom_id               String?   @map("base_uom_id")
+  purchase_uom_id           String?   @map("purchase_uom_id")
+  sales_uom_id              String?   @map("sales_uom_id")
+  inventory_uom_id          String?   @map("inventory_uom_id")
+  product_code              String
+  product_name              String
+  product_type              String
+  costing_method            String
+  barcode                   String?   @map("barcode")
+  qr_code                   String?   @map("qr_code")
+  rfid_tag_prefix           String?   @map("rfid_tag_prefix")
+  stock_item                Boolean
+  purchase_item             Boolean
+  sales_item                Boolean
+  manufactured_item         Boolean
+  lot_controlled            Boolean
+  serial_controlled         Boolean
+  is_asset_capitalizable    Boolean   @default(false) @map("is_asset_capitalizable")
+  capitalization_min_cost   Decimal   @default(0) @map("capitalization_min_cost")
+  default_asset_category_id String?   @map("default_asset_category_id")
+  standard_cost             Decimal   @default(0) @map("standard_cost")
+  min_stock_level           Decimal   @default(0) @map("min_stock_level")
+  reorder_point             Decimal   @default(0) @map("reorder_point")
+  reorder_quantity          Decimal   @default(0) @map("reorder_quantity")
+  status                    String
 
   @@index([tenant_id, company_id])
   @@map("master_product")
@@ -1453,19 +1466,25 @@ model master_warehouse {
 }
 
 model master_warehouse_location {
-  tenant_id     String?   @map("tenant_id")
-  company_id    String?   @map("company_id")
-  created_by_id String?   @map("created_by_id")
-  created_at    DateTime? @default(now())
-  updated_at    DateTime? @updatedAt
-  id            String    @id @default(uuid())
-  warehouse_id  String?   @map("warehouse_id")
-  parent_id     String?   @map("parent_id")
-  location_code String
-  location_name String
-  location_type String
-  quality_hold  Boolean
-  active        Boolean
+  tenant_id             String?   @map("tenant_id")
+  company_id            String?   @map("company_id")
+  created_by_id         String?   @map("created_by_id")
+  created_at            DateTime? @default(now())
+  updated_at            DateTime? @updatedAt
+  id                    String    @id @default(uuid())
+  warehouse_id          String?   @map("warehouse_id")
+  branch_id             String?   @map("branch_id")
+  parent_id             String?   @map("parent_id")
+  location_code         String
+  location_name         String
+  location_type         String
+  location_purpose      String    @default("STORAGE") @map("location_purpose")
+  is_virtual            Boolean   @default(false) @map("is_virtual")
+  is_allocatable        Boolean   @default(true) @map("is_allocatable")
+  allow_negative_stock  Boolean   @default(false) @map("allow_negative_stock")
+  reference_transfer_id String?   @map("reference_transfer_id")
+  quality_hold          Boolean
+  active                Boolean
 
   @@index([tenant_id, company_id])
   @@map("master_warehouse_location")
@@ -3978,11 +3997,19 @@ model inv_stock_reservation {
   id                    String    @id @default(uuid())
   product_id            String?   @map("product_id")
   warehouse_location_id String?   @map("warehouse_location_id")
+  inventory_owner_id    String?   @map("inventory_owner_id")
+  lot_id                String?   @map("lot_id")
+  serial_number_id      String?   @map("serial_number_id")
   project_id            String?   @map("project_id")
   sales_order_line_id   String?   @map("sales_order_line_id")
   production_order_id   String?   @map("production_order_id")
+  source_type           String    @default("INTERNAL_REQUEST") @map("source_type")
+  source_reference_id   String?   @map("source_reference_id")
   reserved_quantity     Decimal?
+  allocated_quantity    Decimal   @default(0) @map("allocated_quantity")
+  fulfilled_quantity    Decimal   @default(0) @map("fulfilled_quantity")
   required_date         DateTime?
+  expires_at            DateTime? @map("expires_at")
   status                String
 
   @@index([tenant_id, company_id])
@@ -3998,6 +4025,10 @@ model inv_stock_ledger_entry {
   company_id            String?   @map("company_id")
   product_id            String?   @map("product_id")
   warehouse_location_id String?   @map("warehouse_location_id")
+  inventory_owner_id    String?   @map("inventory_owner_id")
+  condition_status      String    @default("GOOD") @map("condition_status")
+  transaction_type      String    @default("RECEIPT") @map("transaction_type")
+  idempotency_key       String?   @unique @map("idempotency_key")
   lot_id                String?   @map("lot_id")
   serial_number_id      String?   @map("serial_number_id")
   source_document_id    String?   @map("source_document_id")
@@ -4025,12 +4056,19 @@ model inv_stock_balance {
   company_id            String?   @map("company_id")
   product_id            String?   @map("product_id")
   warehouse_location_id String?   @map("warehouse_location_id")
+  inventory_owner_id    String?   @map("inventory_owner_id")
+  condition_status      String    @default("GOOD") @map("condition_status")
+  balance_identity_key  String?   @unique @map("balance_identity_key")
   lot_id                String?   @map("lot_id")
   serial_number_id      String?   @map("serial_number_id")
   on_hand_quantity      Decimal?
   reserved_quantity     Decimal?
+  allocated_quantity    Decimal   @default(0) @map("allocated_quantity")
+  blocked_quantity      Decimal   @default(0) @map("blocked_quantity")
   available_quantity    Decimal?
+  unit_average_cost     Decimal   @default(0) @map("unit_average_cost")
   inventory_value       Decimal?
+  version               Int       @default(1) @map("version")
   last_ledger_entry_id  String?   @map("last_ledger_entry_id")
 
   @@index([tenant_id, company_id])
@@ -5515,27 +5553,33 @@ model asset_category {
 }
 
 model asset_asset {
-  tenant_id              String?   @map("tenant_id")
-  created_by_id          String?   @map("created_by_id")
-  created_at             DateTime? @default(now())
-  updated_at             DateTime? @updatedAt
-  id                     String    @id @default(uuid())
-  document_id            String?   @map("document_id")
-  company_id             String?   @map("company_id")
-  category_id            String?   @map("category_id")
-  supplier_party_id      String?   @map("supplier_party_id")
-  warehouse_location_id  String?   @map("warehouse_location_id")
-  department_id          String?   @map("department_id")
-  project_id             String?   @map("project_id")
-  asset_code             String
-  asset_name             String
-  serial_number          String
-  acquisition_date       DateTime?
-  available_for_use_date DateTime?
-  acquisition_cost       Decimal?
-  salvage_value          Decimal?
-  useful_life_months     Int?
-  status                 String
+  tenant_id                    String?   @map("tenant_id")
+  created_by_id                String?   @map("created_by_id")
+  created_at                   DateTime? @default(now())
+  updated_at                   DateTime? @updatedAt
+  id                           String    @id @default(uuid())
+  document_id                  String?   @map("document_id")
+  company_id                   String?   @map("company_id")
+  category_id                  String?   @map("category_id")
+  product_id                   String?   @map("product_id")
+  serial_number_id             String?   @unique @map("serial_number_id")
+  source_goods_receipt_id      String?   @map("source_goods_receipt_id")
+  source_goods_receipt_line_id String?   @map("source_goods_receipt_line_id")
+  current_custodian_user_id    String?   @map("current_custodian_user_id")
+  current_custodian_emp_id     String?   @map("current_custodian_emp_id")
+  supplier_party_id            String?   @map("supplier_party_id")
+  warehouse_location_id        String?   @map("warehouse_location_id")
+  department_id                String?   @map("department_id")
+  project_id                   String?   @map("project_id")
+  asset_code                   String
+  asset_name                   String
+  serial_number                String
+  acquisition_date             DateTime?
+  available_for_use_date       DateTime?
+  acquisition_cost             Decimal?
+  salvage_value                Decimal?
+  useful_life_months           Int?
+  status                       String
 
   @@index([tenant_id, company_id])
   @@map("asset_asset")
@@ -6465,4 +6509,169 @@ model iam_cross_module_capability {
   @@unique([company_id, user_id, source_module_code, target_module_code, capability_code], map: "uq_iam_cross_module_capability")
   @@index([company_id, user_id, status], map: "idx_iam_cross_module_capability_user")
   @@map("iam_cross_module_capability")
+}
+
+// =============================================================================
+// UNIVERSAL INVENTORY & ASSET MANAGEMENT V2
+// =============================================================================
+
+model inv_inventory_owner {
+  id           String   @id @default(uuid())
+  tenant_id    String?  @map("tenant_id")
+  company_id   String   @map("company_id")
+  owner_code   String   @map("owner_code")
+  owner_name   String   @map("owner_name")
+  owner_type   String   @default("COMPANY_OWNED") @map("owner_type")
+  party_id     String?  @map("party_id")
+  project_id   String?  @map("project_id")
+  is_default   Boolean  @default(false) @map("is_default")
+  status       String   @default("ACTIVE") @map("status")
+  created_by_id String? @map("created_by_id")
+  created_at   DateTime @default(now()) @map("created_at")
+  updated_at   DateTime @updatedAt @map("updated_at")
+
+  @@unique([company_id, owner_code], map: "uq_inv_inventory_owner_code")
+  @@index([company_id, owner_type, status], map: "idx_inv_inventory_owner_company")
+  @@map("inv_inventory_owner")
+}
+
+model master_uom_conversion {
+  id                String    @id @default(uuid())
+  tenant_id         String?   @map("tenant_id")
+  company_id        String    @map("company_id")
+  product_id        String?   @map("product_id")
+  from_uom_id       String    @map("from_uom_id")
+  to_uom_id         String    @map("to_uom_id")
+  conversion_factor Decimal   @map("conversion_factor")
+  precision_scale   Int       @default(4) @map("precision_scale")
+  rounding_mode     String    @default("HALF_UP") @map("rounding_mode")
+  effective_from    DateTime? @map("effective_from")
+  effective_until   DateTime? @map("effective_until")
+  status            String    @default("ACTIVE") @map("status")
+  created_by_id     String?   @map("created_by_id")
+  created_at        DateTime  @default(now()) @map("created_at")
+  updated_at        DateTime  @updatedAt @map("updated_at")
+
+  @@index([company_id, product_id, from_uom_id, to_uom_id], map: "idx_master_uom_conversion_lookup")
+  @@map("master_uom_conversion")
+}
+
+model inv_costing_policy {
+  id                        String    @id @default(uuid())
+  tenant_id                 String?   @map("tenant_id")
+  company_id                String    @map("company_id")
+  category_id               String?   @map("category_id")
+  costing_method            String    @default("FIFO") @map("costing_method")
+  inventory_gl_account_id   String?   @map("inventory_gl_account_id")
+  cogs_gl_account_id        String?   @map("cogs_gl_account_id")
+  variance_gl_account_id    String?   @map("variance_gl_account_id")
+  write_off_gl_account_id   String?   @map("write_off_gl_account_id")
+  effective_from            DateTime  @default(now()) @map("effective_from")
+  effective_until           DateTime? @map("effective_until")
+  status                    String    @default("ACTIVE") @map("status")
+  created_by_id             String?   @map("created_by_id")
+  created_at                DateTime  @default(now()) @map("created_at")
+  updated_at                DateTime  @updatedAt @map("updated_at")
+
+  @@index([company_id, category_id, status], map: "idx_inv_costing_policy_company")
+  @@map("inv_costing_policy")
+}
+
+model inv_transfer_order {
+  id                        String    @id @default(uuid())
+  tenant_id                 String?   @map("tenant_id")
+  company_id                String    @map("company_id")
+  transfer_number           String    @map("transfer_number")
+  source_warehouse_id       String?   @map("source_warehouse_id")
+  source_location_id        String    @map("source_location_id")
+  transit_location_id       String?   @map("transit_location_id")
+  destination_warehouse_id  String?   @map("destination_warehouse_id")
+  destination_location_id   String    @map("destination_location_id")
+  inventory_owner_id        String?   @map("inventory_owner_id")
+  project_id                String?   @map("project_id")
+  status                    String    @default("DRAFT") @map("status")
+  notes                     String    @default("") @map("notes")
+  requested_by_id           String?   @map("requested_by_id")
+  approved_by_id            String?   @map("approved_by_id")
+  dispatched_by_id          String?   @map("dispatched_by_id")
+  received_by_id            String?   @map("received_by_id")
+  resolved_by_id            String?   @map("resolved_by_id")
+  approved_at               DateTime? @map("approved_at")
+  dispatched_at             DateTime? @map("dispatched_at")
+  received_at               DateTime? @map("received_at")
+  resolved_at               DateTime? @map("resolved_at")
+  created_by_id             String?   @map("created_by_id")
+  created_at                DateTime  @default(now()) @map("created_at")
+  updated_at                DateTime  @updatedAt @map("updated_at")
+
+  @@unique([company_id, transfer_number], map: "uq_inv_transfer_order_number")
+  @@index([company_id, status], map: "idx_inv_transfer_order_status")
+  @@map("inv_transfer_order")
+}
+
+model inv_transfer_order_line {
+  id                        String   @id @default(uuid())
+  tenant_id                 String?  @map("tenant_id")
+  company_id                String   @map("company_id")
+  transfer_order_id         String   @map("transfer_order_id")
+  product_id                String   @map("product_id")
+  uom_id                    String?  @map("uom_id")
+  lot_id                    String?  @map("lot_id")
+  serial_number_id          String?  @map("serial_number_id")
+  requested_quantity        Decimal  @default(0) @map("requested_quantity")
+  shipped_quantity          Decimal  @default(0) @map("shipped_quantity")
+  received_good_quantity    Decimal  @default(0) @map("received_good_quantity")
+  received_damaged_quantity Decimal  @default(0) @map("received_damaged_quantity")
+  written_off_quantity      Decimal  @default(0) @map("written_off_quantity")
+  remaining_transit_qty     Decimal  @default(0) @map("remaining_transit_qty")
+  unit_cost                 Decimal  @default(0) @map("unit_cost")
+  notes                     String   @default("") @map("notes")
+  created_at                DateTime @default(now()) @map("created_at")
+  updated_at                DateTime @updatedAt @map("updated_at")
+
+  @@index([company_id, transfer_order_id], map: "idx_inv_transfer_order_line_order")
+  @@map("inv_transfer_order_line")
+}
+
+model asset_assignment_history {
+  id                String    @id @default(uuid())
+  tenant_id         String?   @map("tenant_id")
+  company_id        String    @map("company_id")
+  asset_id          String    @map("asset_id")
+  assignment_type   String    @default("HANDOVER") @map("assignment_type")
+  custodian_user_id String?   @map("custodian_user_id")
+  custodian_emp_id  String?   @map("custodian_emp_id")
+  department_id     String?   @map("department_id")
+  project_id        String?   @map("project_id")
+  location_id       String?   @map("location_id")
+  condition_status  String    @default("GOOD") @map("condition_status")
+  is_current        Boolean   @default(true) @map("is_current")
+  assigned_at       DateTime  @default(now()) @map("assigned_at")
+  returned_at       DateTime? @map("returned_at")
+  notes             String    @default("") @map("notes")
+  assigned_by_id    String?   @map("assigned_by_id")
+  created_at        DateTime  @default(now()) @map("created_at")
+
+  @@index([company_id, asset_id, is_current], map: "idx_asset_assignment_history_asset")
+  @@map("asset_assignment_history")
+}
+
+model inv_outbox_event {
+  id              String    @id @default(uuid())
+  tenant_id       String?   @map("tenant_id")
+  company_id      String    @map("company_id")
+  aggregate_type  String    @map("aggregate_type")
+  aggregate_id    String    @map("aggregate_id")
+  event_type      String    @map("event_type")
+  idempotency_key String    @unique @map("idempotency_key")
+  payload_json    String    @default("{}") @map("payload_json")
+  status          String    @default("PENDING") @map("status")
+  attempt_count   Int       @default(0) @map("attempt_count")
+  last_error      String?   @map("last_error")
+  processed_at    DateTime? @map("processed_at")
+  created_at      DateTime  @default(now()) @map("created_at")
+  updated_at      DateTime  @updatedAt @map("updated_at")
+
+  @@index([company_id, status, created_at], map: "idx_inv_outbox_event_status")
+  @@map("inv_outbox_event")
 }

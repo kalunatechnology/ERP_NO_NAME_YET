@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { canAccessRoute } from "@/lib/access/module-contract";
 import { AccessDeniedState } from "@/components/ui/AccessDeniedState";
+import { UniversalInventoryV2Workspace } from "@/components/inventory/UniversalInventoryV2Workspace";
 import {
   createSerialNumber,
   downloadInventoryDocument,
@@ -28,7 +29,7 @@ import {
   uploadInventoryDocument,
 } from "@/lib/api/inventory.api";
 
-type TabKey = "warehouse" | "files";
+type TabKey = "overview" | "transfers" | "reservations" | "assets" | "warehouse" | "files";
 type ProductForm = {
   product_code: string; product_name: string; product_type: string; category_id: string; costing_method: string;
   stock_item: boolean; purchase_item: boolean; sales_item: boolean; manufactured_item: boolean;
@@ -90,7 +91,7 @@ export default function InventoryClient() {
     pathname: "/inventory", enabledModules: user?.enabled_modules, delegatedModules: user?.delegated_modules,
     moduleAccess: user?.module_access, activeRoleCode: user?.active_role_code, isSuperAdmin: userRole === "super_admin",
   });
-  const [tab, setTab] = useState<TabKey>("warehouse");
+  const [tab, setTab] = useState<TabKey>("overview");
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<InventoryProductCategory[]>([]);
@@ -289,20 +290,28 @@ export default function InventoryClient() {
   };
 
   const tabs: Array<{ id: TabKey; label: string; icon: typeof Package }> = [
-    { id: "warehouse", label: `Manajemen Gudang (${warehouses.length})`, icon: WarehouseIcon },
+    { id: "overview", label: "Overview & Saldo Kanonis (K)", icon: Package },
+    { id: "transfers", label: "Transfer 3-Peristiwa (Transit)", icon: WarehouseIcon },
+    { id: "reservations", label: "Reservasi & Alokasi 2-Tahap", icon: Barcode },
+    { id: "assets", label: "Kapitalisasi Aset & Custodian", icon: Archive },
+    { id: "warehouse", label: `Master Gudang & Produk (${warehouses.length})`, icon: WarehouseIcon },
     { id: "files", label: `Manajemen File (${documents.length})`, icon: FolderOpen },
   ];
 
   return (
     <div className="mx-auto max-w-7xl space-y-5 p-4 md:p-6">
       <div className="flex flex-col gap-3 rounded-2xl border border-[#DCE3EB] bg-white p-5 md:flex-row md:items-center md:justify-between">
-        <div><p className="text-xs font-bold uppercase tracking-wide text-blue-700">Inventory</p><h1 className="mt-1 text-xl font-extrabold text-[#172033]">Manajemen Gudang & File</h1><p className="mt-1 max-w-2xl text-sm text-text-secondary">Kelola gudang, katalog produk, dan nomor seri secara terpisah dari ruang file internal untuk dokumen, gambar, video, serta audio.</p></div>
+        <div><p className="text-xs font-bold uppercase tracking-wide text-blue-700">Universal Inventory & Asset Management V2</p><h1 className="mt-1 text-xl font-extrabold text-[#172033]">Pusat Kendali Inventori, Gudang, Transfer Transit & Aset Tetap</h1><p className="mt-1 max-w-2xl text-sm text-text-secondary">Mendukung Canonical Stock Identity (K), FIFO/Moving Avg/Standard Cost, 3-Event Transit Transfer, 2-Stage Exclusive Reservation, Kapitalisasi Aset Idempoten, dan Rekonsiliasi Ledger.</p></div>
         <button onClick={() => void reload()} className="btn-ghost flex items-center gap-2 self-start text-xs md:self-auto"><RefreshCw size={14} /> Muat ulang</button>
       </div>
 
       <div className="flex flex-wrap gap-2 border-b border-[#DCE3EB]">
         {tabs.map(({ id, label, icon: Icon }) => <button key={id} onClick={() => { setTab(id); setSearch(""); }} className={`inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-semibold ${tab === id ? "border-blue-700 text-blue-800" : "border-transparent text-text-secondary hover:text-text-primary"}`}><Icon size={15} />{label}</button>)}
       </div>
+
+      {(tab === "overview" || tab === "transfers" || tab === "reservations" || tab === "assets") && (
+        <UniversalInventoryV2Workspace mode={tab} onRefreshParent={() => void reload()} />
+      )}
 
       {tab === "warehouse" && <>
         <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">

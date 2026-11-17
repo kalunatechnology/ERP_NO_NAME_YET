@@ -11,9 +11,359 @@ import crypto from 'crypto';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
-import { postStockMove } from './stock-posting.service';
+import { postStockMove, reverseStockMove } from './stock-posting.service';
+import { getInventoryOverviewAndBalances } from './stock-query.service';
+import { verifyInventoryReconciliation } from './inventory-reconciliation.service';
+import {
+  allocateStockReservation,
+  createStockReservation,
+  fulfillStockReservation,
+  releaseStockReservation,
+} from './reservation.service';
+import {
+  approveTransferOrder,
+  createTransferOrder,
+  dispatchTransferOrder,
+  receiveTransferOrder,
+  resolveTransferDiscrepancy,
+} from './transfer.service';
+import { approveStockCount } from './stock-opname.service';
+import { assignAssetCustodian, capitalizeAssetIdempotent } from './asset-bridge.service';
 
 export const inventoryRouter = Router();
+
+function requireCompany(req: Request): string {
+  const cid = req.companyId || String(req.header('X-Company-ID') || '').trim();
+  if (!cid) throw new ForbiddenError('Pilih company sebelum mengakses inventory.');
+  return cid;
+}
+
+// =============================================================================
+// UNIVERSAL INVENTORY V2 OVERVIEW & CANONICAL BALANCES
+// =============================================================================
+
+inventoryRouter.get('/overview', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const data = await getInventoryOverviewAndBalances(companyId, req.user?.tenant_id);
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.get('/balances', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const data = await getInventoryOverviewAndBalances(companyId, req.user?.tenant_id);
+    res.json({ results: data.balances, kpis: data.kpis });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// =============================================================================
+// STOCK MOVEMENTS POST & REVERSAL
+// =============================================================================
+
+inventoryRouter.post('/movements/:id/post', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const updated = await postStockMove(req.params.id, companyId, req.user!.id, undefined, {
+      inventoryOwnerId: req.body?.inventory_owner_id,
+      conditionStatus: req.body?.condition_status,
+    });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/movements/:id/reverse', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await reverseStockMove(req.params.id, companyId, req.user!.id, req.body?.reason);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/stock-moves/:id/reverse', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await reverseStockMove(req.params.id, companyId, req.user!.id, req.body?.reason);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// =============================================================================
+// 2-STAGE EXCLUSIVE RESERVATIONS (RESERVE -> ALLOCATE -> FULFILL / RELEASE)
+// =============================================================================
+
+inventoryRouter.post('/reservations/reserve', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await createStockReservation({
+      companyId,
+      tenantId: req.user?.tenant_id,
+      userId: req.user!.id,
+      productId: String(req.body.product_id || '').trim(),
+      warehouseLocationId: String(req.body.warehouse_location_id || '').trim(),
+      quantity: req.body.quantity ?? req.body.reserved_quantity ?? 0,
+      sourceType: req.body.source_type,
+      sourceReferenceId: req.body.source_reference_id,
+      projectId: req.body.project_id,
+      salesOrderLineId: req.body.sales_order_line_id,
+      productionOrderId: req.body.production_order_id,
+      lotId: req.body.lot_id,
+      serialNumberId: req.body.serial_number_id,
+      requiredDate: req.body.required_date,
+      expiresAt: req.body.expires_at,
+    });
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/reservations/:id/allocate', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await allocateStockReservation({
+      id: req.params.id,
+      companyId,
+      quantity: req.body?.quantity,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/reservations/:id/fulfill', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await fulfillStockReservation({
+      id: req.params.id,
+      companyId,
+      userId: req.user!.id,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/reservations/:id/release', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await releaseStockReservation({
+      id: req.params.id,
+      companyId,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// =============================================================================
+// 3-EVENT INTER-WAREHOUSE TRANSFERS (DISPATCH -> RECEIVE -> DISCREPANCY)
+// =============================================================================
+
+inventoryRouter.get('/transfers', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const data = await getInventoryOverviewAndBalances(companyId, req.user?.tenant_id);
+    res.json({ results: data.transfers });
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/transfers', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await createTransferOrder({
+      companyId,
+      tenantId: req.user?.tenant_id,
+      userId: req.user!.id,
+      sourceLocationId: String(req.body.source_location_id || '').trim(),
+      destinationLocationId: String(req.body.destination_location_id || '').trim(),
+      projectId: req.body.project_id,
+      notes: req.body.notes,
+      lines: Array.isArray(req.body.lines) ? req.body.lines : [],
+    });
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/transfers/:id/approve', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await approveTransferOrder({
+      id: req.params.id,
+      companyId,
+      userId: req.user!.id,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/transfers/:id/dispatch', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await dispatchTransferOrder({
+      id: req.params.id,
+      companyId,
+      userId: req.user!.id,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/transfers/:id/receive', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await receiveTransferOrder({
+      id: req.params.id,
+      companyId,
+      userId: req.user!.id,
+      receiptLines: req.body?.receipt_lines,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/transfers/:id/resolve-discrepancy', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await resolveTransferDiscrepancy({
+      id: req.params.id,
+      companyId,
+      userId: req.user!.id,
+      notes: req.body?.notes,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// =============================================================================
+// STOCK OPNAME APPROVAL (WITH SOD) & ASSET CAPITALIZATION / CUSTODIAN BRIDGE
+// =============================================================================
+
+inventoryRouter.post('/opname/:id/approve', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await approveStockCount({
+      id: req.params.id,
+      companyId,
+      userId: req.user!.id,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/stock-counts/:id/approve', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await approveStockCount({
+      id: req.params.id,
+      companyId,
+      userId: req.user!.id,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/assets/capitalize', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await capitalizeAssetIdempotent({
+      companyId,
+      tenantId: req.user?.tenant_id,
+      userId: req.user!.id,
+      productId: String(req.body.product_id || '').trim(),
+      serialNumberId: req.body.serial_number_id,
+      serialNumberText: req.body.serial_number,
+      sourceGoodsReceiptId: req.body.source_goods_receipt_id,
+      sourceGoodsReceiptLineId: req.body.source_goods_receipt_line_id,
+      warehouseLocationId: req.body.warehouse_location_id,
+      departmentId: req.body.department_id,
+      projectId: req.body.project_id,
+      acquisitionCost: req.body.acquisition_cost ?? 0,
+      usefulLifeMonths: req.body.useful_life_months ? Number(req.body.useful_life_months) : undefined,
+    });
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/assets/:id/assign-custodian', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await assignAssetCustodian({
+      assetId: req.params.id,
+      companyId,
+      tenantId: req.user?.tenant_id,
+      actorUserId: req.user!.id,
+      assignmentType: req.body.assignment_type,
+      custodianUserId: req.body.custodian_user_id,
+      custodianEmpId: req.body.custodian_emp_id,
+      departmentId: req.body.department_id,
+      projectId: req.body.project_id,
+      locationId: req.body.location_id,
+      conditionStatus: req.body.condition_status,
+      notes: req.body.notes,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.get('/reconcile/verify', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await verifyInventoryReconciliation(companyId);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/reconcile/verify', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await verifyInventoryReconciliation(companyId);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.use('/uom-conversions', createCrudRouter({ modelName: 'master_uom_conversion' }));
+inventoryRouter.use('/inventory-owners', createCrudRouter({ modelName: 'inv_inventory_owner', searchFields: ['owner_code', 'owner_name'] }));
+inventoryRouter.use('/costing-policies', createCrudRouter({ modelName: 'inv_costing_policy' }));
+inventoryRouter.use('/outbox-events', createCrudRouter({ modelName: 'inv_outbox_event', readOnly: true }));
 
 inventoryRouter.get('/internal-documents', async (req, res, next) => {
   try {
