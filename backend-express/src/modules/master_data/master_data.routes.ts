@@ -13,6 +13,7 @@ import { createCrudRouter } from '../../utils/crud-factory';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { requireModuleAccess } from '../../middlewares/entitlement.middleware';
 import { isCompanyAdmin, isSuperAdmin, RoleCode } from '../../types/roles';
+import { CRMService } from '../crm/crm.service';
 
 export const masterDataRouter = Router();
 
@@ -295,6 +296,14 @@ masterDataRouter.post('/customer-profiles/set-credit-limit', async (req: Request
     } else {
       res.status(400).json({ detail: 'Pilih pelanggan atau profil pelanggan sebelum melanjutkan.' });
       return;
+    }
+
+    if (profile?.party_id) {
+      try {
+        await CRMService.calculateCreditSnapshot(profile.party_id, companyId);
+      } catch {
+        // Non-blocking if CRM snapshot recalculation isn't applicable
+      }
     }
 
     res.json(profile);

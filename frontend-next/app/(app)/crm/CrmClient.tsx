@@ -707,7 +707,7 @@ function TabDeals({
   const latestCreditByCustomer = [...(data.credit || [])]
     .sort((a: any, b: any) => new Date(b.snapshot_at || 0).getTime() - new Date(a.snapshot_at || 0).getTime())
     .reduce((latest: Map<string, any>, snapshot: any) => {
-      const customerId = String(snapshot.customer_party || "");
+      const customerId = String(snapshot.customer_party_id || snapshot.customer_party || snapshot.customer || "");
       if (customerId && !latest.has(customerId)) latest.set(customerId, snapshot);
       return latest;
     }, new Map<string, any>());
@@ -1082,6 +1082,11 @@ function TabDeals({
     setSavingCreditLimit(true);
     try {
       await updateCustomerCreditLimit({ party_id: creditLimitParty.id, credit_limit: parsedLimit });
+      try {
+        await calculateCreditSnapshot(creditLimitParty.id);
+      } catch {
+        // Non-blocking: backend set-credit-limit also recalculates snapshot
+      }
       toast.success("Credit limit diperbarui!");
       setCreditLimitParty(null);
       onRefresh();
@@ -1328,10 +1333,10 @@ function TabDeals({
               <tbody className="divide-y divide-text-tertiary/40 bg-white">
                 {filteredCreditCustomers.map((p: any, customerIndex: number) => {
               const snap = latestCreditByCustomer.get(String(p.id));
-              const limit = snap?.credit_limit || 0;
-              const outstanding = snap?.outstanding_receivable || 0;
-              const overdue = snap?.overdue_amount || 0;
-              const available = snap?.available_credit ?? limit;
+              const limit = Number(snap?.credit_limit || 0);
+              const outstanding = Number(snap?.outstanding_receivable || 0);
+              const overdue = Number(snap?.overdue_amount || 0);
+              const available = snap?.available_credit !== undefined && snap?.available_credit !== null ? Number(snap.available_credit) : limit;
               const isNoLimit = limit <= 0;
               const isHeld = !isNoLimit && (snap?.credit_status === "HOLD" || available < 0 || overdue > 0);
               const status = isNoLimit ? "NO_LIMIT" : isHeld ? "HOLD" : "AVAILABLE";
