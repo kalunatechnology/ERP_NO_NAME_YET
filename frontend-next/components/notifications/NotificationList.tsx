@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { approveCrmProjectHandoff, canSeeProjectHandoffAlerts, fetchNotifications, fetchPendingCrmHandoffs, markNotificationAsRead, markAllNotificationsAsRead, publishNotificationStateChange, rejectCrmProjectHandoff } from '@/lib/api/feed.api';
+import { approveCrmProjectHandoff, canAccessNotificationTarget, canSeeProjectHandoffAlerts, fetchNotifications, fetchPendingCrmHandoffs, markNotificationAsRead, markAllNotificationsAsRead, publishNotificationStateChange, rejectCrmProjectHandoff } from '@/lib/api/feed.api';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatMoney } from '@/lib/utils';
 import { Bell, CheckCheck, Loader2 } from 'lucide-react';
@@ -51,15 +51,18 @@ export function NotificationList({ onItemClick }: { onItemClick?: () => void }) 
           is_read: false,
           created_at: h.created_at,
         }));
+      const visibleBaseItems = baseItems.filter((n: any) =>
+        canAccessNotificationTarget(n.target_url || n.action_url, n.category, access)
+      );
       const mergedItems = [
         ...handoffNotifs,
-        ...baseItems.map((n: any) => ({
+        ...visibleBaseItems.map((n: any) => ({
           ...n,
           handoffId: n.reference_type === 'CRM_DEAL_HANDOFF' && n.reference_id ? String(n.reference_id) : undefined,
         })),
       ];
       setNotifications(mergedItems);
-      setUnreadCount((res.unreadCount || 0) + handoffNotifs.length);
+      setUnreadCount(visibleBaseItems.filter((n: any) => !n.is_read).length + handoffNotifs.length);
     } catch (e) {
       console.warn('Failed to load notifications:', e);
     } finally {

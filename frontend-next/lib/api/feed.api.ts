@@ -656,6 +656,27 @@ export function canSeeProjectHandoffAlerts(access: FrontendAccessContext = {}): 
   ].includes(activeRole as any);
 }
 
+export function canAccessNotificationTarget(
+  targetUrl: string | undefined,
+  category: string | undefined,
+  access: FrontendAccessContext = {},
+): boolean {
+  const cat = String(category ?? "").trim().toUpperCase();
+  const url = String(targetUrl ?? "").trim();
+  if (cat === "CRM_PROJECT_HANDOFF" || cat === "PERMINTAAN PROYEK CRM" || url.includes("handoff=")) {
+    return canSeeProjectHandoffAlerts(access);
+  }
+  if (!url || !url.startsWith("/")) return true;
+  const pathname = url.split("?")[0];
+  return canAccessRoute({
+    pathname,
+    enabledModules: access.enabledModules,
+    delegatedModules: access.delegatedModules,
+    activeRoleCode: access.activeRoleCode,
+    isSuperAdmin: access.isSuperAdmin,
+  });
+}
+
 export async function fetchPendingCrmHandoffs(access?: FrontendAccessContext): Promise<PendingCrmHandoffItem[]> {
   if (access && !canSeeProjectHandoffAlerts(access)) return [];
   try {
@@ -728,9 +749,12 @@ export interface RealInventoryCheckData {
  */
 export async function fetchRealAlertsList(access: FrontendAccessContext = {}): Promise<RealAlertItem[]> {
   try {
-    const canReadProjects = canRequestApi("/api/v1/projects/projects/", access);
-    const canReadFinance = canRequestApi("/api/v1/finance/project-cost-entries/", access);
-    const canReadCrm = canRequestApi("/api/v1/crm/opportunities/", access);
+    const canReadProjects = canRequestApi("/api/v1/projects/projects/", access)
+      && canAccessRoute({ pathname: "/projects", ...access });
+    const canReadFinance = canRequestApi("/api/v1/finance/project-cost-entries/", access)
+      && canAccessRoute({ pathname: "/finance", ...access });
+    const canReadCrm = canRequestApi("/api/v1/crm/opportunities/", access)
+      && canAccessRoute({ pathname: "/crm", ...access });
     const emptyResponse = () => Promise.resolve({ data: [], skipped: true });
     let attemptedSources = 1;
     let successfulSources = 0;
@@ -780,12 +804,13 @@ export async function fetchRealAlertsList(access: FrontendAccessContext = {}): P
       });
     }
 
-    // 1. Prioritize real database app notifications
+    // 1. Prioritize real database app notifications (filtered by active role & module route access)
     if (Array.isArray(notifs) && notifs.length > 0) {
-      notifs.slice(0, 5).forEach((n: any) => {
+      notifs.slice(0, 10).forEach((n: any) => {
+        if (!canAccessNotificationTarget(n.target_url, n.category, access)) return;
         const mapped = appNotificationAlert(n);
         if (mapped.handoffId && seenHandoffIds.has(mapped.handoffId)) return;
-        alerts.push(mapped);
+        if (alerts.length < 5) alerts.push(mapped);
       });
     }
 
