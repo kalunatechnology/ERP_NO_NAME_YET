@@ -697,23 +697,25 @@ export class CRMService {
       const previousHandoff = await tx.crm_deal_handoff.findUnique({ where: { opportunity_id: opportunity.id } });
       let depositSettled = false;
       if (previousHandoff) {
+        if (previousHandoff.sales_order_id) {
+          return {
+            opportunity_id: opportunity.id,
+            opportunity_name: opportunity.opportunity_name,
+            stage: 'WON',
+            decision: previousHandoff.decision,
+            handoff: {
+              sales_order_id: previousHandoff.sales_order_id,
+              project_id: previousHandoff.project_id,
+              proforma_invoice_id: previousHandoff.proforma_invoice_id,
+              note: 'Handoff CRM sebelumnya dikembalikan; transaksi tidak dibuat ulang.',
+            },
+          };
+        }
         const proforma = previousHandoff.proforma_invoice_id ? await tx.fin_billing_document.findFirst({
           where: { id: previousHandoff.proforma_invoice_id, company_id: opportunity.company_id ?? explicitCompanyId, billing_type: 'PROFORMA_INVOICE' },
           select: { payment_status: true, outstanding_amount: true },
         }) : null;
         depositSettled = Boolean(proforma && proforma.payment_status === 'PAID' && Number(proforma.outstanding_amount ?? 0) <= 0);
-        if (!depositSettled) return {
-          opportunity_id: opportunity.id,
-          opportunity_name: opportunity.opportunity_name,
-          stage: 'WON',
-          decision: previousHandoff.decision,
-          handoff: {
-            sales_order_id: previousHandoff.sales_order_id,
-            project_id: previousHandoff.project_id,
-            proforma_invoice_id: previousHandoff.proforma_invoice_id,
-            note: 'Handoff CRM sebelumnya dikembalikan; transaksi tidak dibuat ulang.',
-          },
-        };
       }
 
       const customerPartyId = opportunity.customer_party_id;
