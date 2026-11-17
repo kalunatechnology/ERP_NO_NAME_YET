@@ -9,7 +9,7 @@
 import api from "./axios";
 import { normalizeList } from "./auth.api";
 import { formatMoney } from "../utils";
-import { canAccessRoute, canRequestApi, FrontendAccessContext } from "@/lib/access/module-contract";
+import { canAccessRoute, canRequestApi, FrontendAccessContext, normalizeRoleCode, ROLE_CODES } from "@/lib/access/module-contract";
 import { getProjectLifecycleLabel } from "@/lib/projects/lifecycle";
 
 export interface NotificationItem {
@@ -637,8 +637,8 @@ export interface PendingCrmHandoffItem {
 }
 
 export function canSeeProjectHandoffAlerts(access: FrontendAccessContext = {}): boolean {
-  const activeRole = String(access.activeRoleCode ?? "").trim().toUpperCase().replace(/^ROLE-/, "");
-  const isSuper = Boolean(access.isSuperAdmin || activeRole === "SUPER_ADMIN");
+  const activeRole = normalizeRoleCode(access.activeRoleCode);
+  const isSuper = Boolean(access.isSuperAdmin || activeRole === ROLE_CODES.superAdmin);
   if (isSuper) return true;
   const hasProjectsRoute = canAccessRoute({
     pathname: "/projects",
@@ -648,7 +648,12 @@ export function canSeeProjectHandoffAlerts(access: FrontendAccessContext = {}): 
     isSuperAdmin: access.isSuperAdmin,
   });
   if (!hasProjectsRoute) return false;
-  return ["PROJECT_MANAGER", "OPERATIONAL_MANAGER", "COMPANY_ADMIN", "DIRECTOR"].includes(activeRole);
+  return [
+    ROLE_CODES.projectManager,
+    ROLE_CODES.operationalManager,
+    ROLE_CODES.companyAdmin,
+    ROLE_CODES.director,
+  ].includes(activeRole as any);
 }
 
 export async function fetchPendingCrmHandoffs(access?: FrontendAccessContext): Promise<PendingCrmHandoffItem[]> {

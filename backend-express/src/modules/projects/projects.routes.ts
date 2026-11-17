@@ -14,7 +14,7 @@ import { hasModuleOverride, hasUserModuleWrite } from '../../utils/module-permis
 import { ProjectsService } from './projects.service';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
-import { isSuperAdmin, RoleCode } from '../../types/roles';
+import { isSuperAdmin, parseRoleCode, RoleCode } from '../../types/roles';
 import {
   EmployeeProvisioningService,
 } from '../master_data/employee-provisioning.service';
@@ -209,12 +209,21 @@ async function currentEmployee(
 function canManageProjectHandoff(req: Request): boolean {
   if (!req.user) return false;
   if (isSuperAdmin(req.user.roles)) return true;
-  const allowed = new Set<string>([RoleCode.PROJECT_MANAGER, RoleCode.COMPANY_ADMIN, RoleCode.DIRECTOR]);
-  const active = String(req.user.active_role_code ?? '').trim().toUpperCase().replace(/^ROLE-/, '');
-  if (allowed.has(active)) return true;
-  return hasUserModuleWrite(req.user, 'PROJECTS') && (req.user.roles || []).some((r: string) =>
-    allowed.has(String(r).toUpperCase().replace(/^ROLE-/, ''))
-  );
+  const allowed = new Set<RoleCode>([
+    RoleCode.PROJECT_MANAGER,
+    RoleCode.OPERATIONAL_MANAGER,
+    RoleCode.COMPANY_ADMIN,
+    RoleCode.DIRECTOR,
+  ]);
+  const rawActive = String(req.user.active_role_code ?? '').trim();
+  if (rawActive) {
+    const parsedActive = parseRoleCode(rawActive);
+    return Boolean(parsedActive && allowed.has(parsedActive));
+  }
+  return hasUserModuleWrite(req.user, 'PROJECTS') && (req.user.roles || []).some((r: string) => {
+    const parsed = parseRoleCode(String(r));
+    return Boolean(parsed && allowed.has(parsed));
+  });
 }
 
 projectsRouter.get('/crm-handoffs', async (req: Request, res: Response, next: NextFunction) => {
