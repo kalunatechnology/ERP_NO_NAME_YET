@@ -14,6 +14,21 @@ import { effectiveModuleOverrides, ModulePermission } from '../../utils/module-p
 
 export type DepartmentRoleLevelType = 'GM' | 'SPV' | 'STAFF';
 
+export interface UserModuleAssignmentContext {
+  id: string;
+  module_code: string;
+  tier_level: number;
+  position_title: string;
+  data_scope: string;
+  reports_to_user_id: string | null;
+  status: string;
+  allow_read: boolean;
+  allow_write: boolean;
+  allow_approve: boolean;
+  allow_delete: boolean;
+  allow_manage_users: boolean;
+}
+
 export interface UserAccessContext {
   roles: RoleCode[];
   activeRoleId: string | null;
@@ -24,6 +39,7 @@ export interface UserAccessContext {
   enabledModules: string[];
   delegatedModules: string[];
   moduleAccess: ModulePermission[];
+  moduleAssignments?: UserModuleAssignmentContext[];
   departmentId: string | null;
   departmentCode: string | null;
   departmentName: string | null;
@@ -341,20 +357,75 @@ export async function loadUserAccessContext(
     });
   }
 
-  // 2. GM role level cross-department visibility & access
+  // 2. Dynamic 3-Tier Module Assignments (iam_user_module_assignment) + Tier Permissions
+  const activeCompanyId = superAdmin ? null : companyIds[0] ?? null;
+  const [rawModuleAssignments, rawTierPermissions] = activeCompanyId
+    ? await Promise.all([
+        (prisma as any).iam_user_module_assignment?.findMany?.({
+          where: { company_id: activeCompanyId, user_id: userId, status: 'ACTIVE' },
+        }).catch(() => []) ?? [],
+        (prisma as any).iam_module_tier_permission?.findMany?.({
+          where: { company_id: activeCompanyId },
+        }).catch(() => []) ?? [],
+      ])
+    : [[], []];
+
+  const tierPermMap = new Map<string, any>(
+    (Array.isArray(rawTierPermissions) ? rawTierPermissions : []).map((tp: any) => [
+      `${String(tp.module_code || '').toUpperCase()}:${Number(tp.tier_level)}`,
+      tp,
+    ])
+  );
+
+  const moduleAssignments: UserModuleAssignmentContext[] = (Array.isArray(rawModuleAssignments) ? rawModuleAssignments : []).map((ma: any) => {
+    const code = String(ma.module_code || '').trim().toUpperCase();
+    const tier = Number(ma.tier_level ?? 3);
+    const tp = tierPermMap.get(`${code}:${tier}`);
+    const allowRead = tp ? Boolean(tp.allow_read) : true;
+    const allowWrite = tp ? Boolean(tp.allow_write) : tier >= 1;
+    const allowApprove = tp ? Boolean(tp.allow_approve) : tier <= 2;
+    const allowDelete = tp ? Boolean(tp.allow_delete) : tier === 1;
+    const allowManageUsers = tp ? Boolean(tp.allow_manage_users) : tier <= 1;
+    return {
+      id: String(ma.id),
+      module_code: code,
+      tier_level: tier,
+      position_title: String(ma.position_title || (tier === 0 ? 'General Manager Oversight' : tier === 1 ? 'Module Head' : tier === 2 ? 'Supervisor / Lead' : 'Staff / Executor')),
+      data_scope: String(ma.data_scope || (tier <= 1 ? 'ALL' : tier === 2 ? 'TEAM' : 'OWN')),
+      reports_to_user_id: ma.reports_to_user_id ?? null,
+      status: String(ma.status || 'ACTIVE'),
+      allow_read: allowRead,
+      allow_write: allowWrite,
+      allow_approve: allowApprove,
+      allow_delete: allowDelete,
+      allow_manage_users: allowManageUsers,
+    };
+  });
+
+  // 3. GM role level cross-department visibility & access (Finance write requires explicit assignment)
   if (roleLevel === 'GM') {
     for (const gmMod of ['REPORTING', 'PROJECTS', 'FINANCE', 'CRM', 'SALES', 'REQUESTS']) {
       if (!mergedOverridesMap.has(gmMod)) {
         mergedOverridesMap.set(gmMod, {
           module_code: gmMod,
           allow_read: true,
-          allow_write: activeRoleCode !== RoleCode.DIRECTOR,
+          allow_write: gmMod !== 'FINANCE' && activeRoleCode !== RoleCode.DIRECTOR,
         });
       }
     }
   }
 
-  // 3. Explicit per-user overrides take highest precedence over department defaults
+  // 4. Apply Dynamic Module Assignments into module overrides
+  for (const ma of moduleAssignments) {
+    if (!ma.module_code) continue;
+    mergedOverridesMap.set(ma.module_code, {
+      module_code: ma.module_code,
+      allow_read: ma.allow_read,
+      allow_write: ma.allow_write,
+    });
+  }
+
+  // 5. Explicit per-user overrides take highest precedence over department defaults
   for (const uo of userModuleAccess) {
     const code = uo.module_code.toUpperCase();
     mergedOverridesMap.set(code, {
@@ -398,12 +469,13 @@ export async function loadUserAccessContext(
     enabledModules,
     delegatedModules: [...delegatedModules],
     moduleAccess: effectiveModuleOverrides(moduleAccess, combinedUserAndDeptOverrides),
+    moduleAssignments,
     departmentId: userWithDept?.department_id ?? null,
     departmentCode: deptRecord?.code ?? null,
     departmentName: deptRecord?.name ?? null,
     departmentUnitType: deptRecord?.unit_type ?? null,
     roleLevel,
-    canApproveDivisionScope: roleLevel === 'SPV' || roleLevel === 'GM',
+    canApproveDivisionScope: roleLevel === 'SPV' || roleLevel === 'GM' || moduleAssignments.some((m) => m.allow_approve),
     canOverrideBudget: roleLevel === 'GM',
   };
 }

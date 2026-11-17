@@ -1395,6 +1395,50 @@ export default function DashboardClient() {
         </div>
       </div>
 
+      {/* ── General Manager (GM) & Multi-Module 3-Tier Leadership Banner ── */}
+      {(user?.role_level === "GM" ||
+        Object.keys(((user as any)?.module_assignments || {}) as Record<string, any>).length > 0) && (
+        <div className="rounded-[20px] border border-[#DCE8F8] bg-gradient-to-r from-[#F0F7FF] via-white to-[#F8FAFC] p-4 shadow-2xs">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-[#163D64] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                <Layers size={11} />{" "}
+                {user?.role_level === "GM"
+                  ? "General Manager (GM) Operational Umbrella"
+                  : "Multi-Module 3-Tier Position"}
+              </div>
+              <h2 className="mt-1 text-sm font-bold text-[#0F172A]">
+                Cakupan Kepemimpinan & Penugasan Modul Aktif
+              </h2>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {Object.values(((user as any)?.module_assignments || {}) as Record<string, any>).map(
+                (assignment: any) => (
+                  <span
+                    key={assignment.module_code}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 py-1.5 text-xs font-semibold text-[#163D64]"
+                  >
+                    <span className="font-extrabold">{assignment.module_code}</span>
+                    <span className="text-[#64748B]">•</span>
+                    <span>
+                      {assignment.tier_level === 0
+                        ? "GM Oversight"
+                        : `Level ${assignment.tier_level}${assignment.position_title ? ` (${assignment.position_title})` : ""}`}
+                    </span>
+                  </span>
+                ),
+              )}
+              {user?.role_level === "GM" &&
+                Object.keys(((user as any)?.module_assignments || {}) as Record<string, any>).length === 0 && (
+                  <span className="inline-flex items-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-semibold text-purple-900">
+                    Payung Koordinasi Lintas Modul ({user?.department_name || "General Manager"})
+                  </span>
+                )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Role-Based Dashboard Content ── */}
       {userRole === "executive" && (
         <ExecutiveDashboard projects={projects} finData={finData} loading={loading} />

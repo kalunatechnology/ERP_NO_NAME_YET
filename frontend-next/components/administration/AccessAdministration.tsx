@@ -38,6 +38,7 @@ import Link from "next/link";
 import { TenantManagement, TenantItem } from "./TenantManagement";
 import { CompanyManagement, CompanyDetail } from "./CompanyManagement";
 import { ModuleEntitlements, ModuleAccessItem } from "./ModuleEntitlements";
+import { ModuleHierarchyManager } from "./ModuleHierarchyManager";
 
 type Company = { id: string; legal_name?: string; company_code?: string; name?: string; tenant_id?: string; business_category?: string; tax_number?: string; status?: string };
 type ModuleAccess = ModuleAccessItem;
@@ -60,7 +61,7 @@ type DepartmentItem = {
   modules: string[];
 };
 type AccessMode = "inherit" | "blocked" | "read" | "write";
-type SuperAdminTab = "tenants" | "companies" | "modules" | "departments" | "users";
+type SuperAdminTab = "tenants" | "companies" | "modules" | "departments" | "users" | "hierarchy";
 
 const MODULE_LABELS: Record<string, { name: string; description: string }> = {
   CORE: { name: "Core Workspace", description: "Dashboard, company context, dan aktivitas utama" },
@@ -126,7 +127,7 @@ export function AccessAdministration() {
   const contextCompany = isSuper ? selectedCompany : (company || "");
 
   // Departments & Divisions (Cost Center) state
-  const [companyViewTab, setCompanyViewTab] = useState<"members" | "departments">("members");
+  const [companyViewTab, setCompanyViewTab] = useState<"members" | "departments" | "hierarchy">("members");
   const [departments, setDepartments] = useState<DepartmentItem[]>([]);
   const [deptFormOpen, setDeptFormOpen] = useState(false);
   const [deptSubmitting, setDeptSubmitting] = useState(false);
@@ -656,6 +657,17 @@ export function AccessAdministration() {
             >
               <Users size={16} /> Manajemen User ({users.length})
             </button>
+
+            <button
+              onClick={() => setActiveTab("hierarchy")}
+              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                activeTab === "hierarchy"
+                  ? "bg-[#163D64] text-white shadow-sm"
+                  : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
+              }`}
+            >
+              <ShieldCheck size={16} /> Hirarki Modul 3-Level & GM 360°
+            </button>
           </div>
         )}
 
@@ -684,6 +696,17 @@ export function AccessAdministration() {
                 }`}
               >
                 <Building2 size={16} /> Departemen, Divisi & Cost Center ({departments.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setCompanyViewTab("hierarchy")}
+                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                  companyViewTab === "hierarchy"
+                    ? "bg-[#163D64] text-white shadow-sm"
+                    : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
+                }`}
+              >
+                <ShieldCheck size={16} /> Hirarki Modul 3-Level & GM 360°
               </button>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -983,7 +1006,21 @@ export function AccessAdministration() {
               </div>
             </div>
           )}
+
+          {activeTab === "hierarchy" && (
+            <ModuleHierarchyManager
+              companyId={selectedCompany}
+              users={users}
+              departments={departments}
+            />
+          )}
         </>
+      ) : companyViewTab === "hierarchy" ? (
+        <ModuleHierarchyManager
+          companyId={contextCompany}
+          users={displayedUsers}
+          departments={departments}
+        />
       ) : companyViewTab === "departments" ? (
         /* Company Admin: Departments, Divisions & Cost Centers Management */
         <div className="rounded-2xl border border-[#EFEFEF] bg-white p-6 space-y-5">

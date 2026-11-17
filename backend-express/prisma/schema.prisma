@@ -6328,3 +6328,141 @@ model master_brand {
   @@index([tenant_id, company_id, status], map: "idx_master_brand_company_status")
   @@map("master_brand")
 }
+
+model iam_module_tier_config {
+  id           String   @id @default(uuid())
+  tenant_id    String?  @map("tenant_id")
+  company_id   String   @map("company_id")
+  module_code  String   @map("module_code")
+  tier_level   Int      @map("tier_level")
+  custom_title String   @map("custom_title")
+  description  String   @default("") @map("description")
+  is_active    Boolean  @default(true) @map("is_active")
+  created_at   DateTime @default(now()) @map("created_at")
+  updated_at   DateTime @updatedAt @map("updated_at")
+
+  @@unique([company_id, module_code, tier_level], map: "uq_iam_module_tier_config")
+  @@index([tenant_id, company_id, module_code], map: "idx_iam_module_tier_config_company")
+  @@map("iam_module_tier_config")
+}
+
+model iam_user_module_assignment {
+  id                 String    @id @default(uuid())
+  tenant_id          String?   @map("tenant_id")
+  company_id         String    @map("company_id")
+  user_id            String    @map("user_id")
+  module_code        String    @map("module_code")
+  tier_level         Int       @default(3) @map("tier_level")
+  tier_config_id     String?   @map("tier_config_id")
+  position_title     String    @default("") @map("position_title")
+  department_id      String?   @map("department_id")
+  reports_to_user_id String?   @map("reports_to_user_id")
+  data_scope         String    @default("OWN") @map("data_scope")
+  permission_profile String    @default("STANDARD") @map("permission_profile")
+  is_primary         Boolean   @default(false) @map("is_primary")
+  status             String    @default("ACTIVE") @map("status")
+  effective_from     DateTime? @map("effective_from")
+  effective_until    DateTime? @map("effective_until")
+  created_by_id      String?   @map("created_by_id")
+  created_at         DateTime  @default(now()) @map("created_at")
+  updated_at         DateTime  @updatedAt @map("updated_at")
+
+  @@unique([company_id, user_id, module_code], map: "uq_iam_user_module_assignment")
+  @@index([company_id, module_code, tier_level, status], map: "idx_iam_user_module_assignment_lookup")
+  @@index([user_id, status], map: "idx_iam_user_module_assignment_user")
+  @@map("iam_user_module_assignment")
+}
+
+model iam_module_tier_permission {
+  id                 String   @id @default(uuid())
+  tenant_id          String?  @map("tenant_id")
+  company_id         String   @map("company_id")
+  module_code        String   @map("module_code")
+  tier_level         Int      @map("tier_level")
+  allow_read         Boolean  @default(true) @map("allow_read")
+  allow_write        Boolean  @default(true) @map("allow_write")
+  allow_approve      Boolean  @default(false) @map("allow_approve")
+  allow_delete       Boolean  @default(false) @map("allow_delete")
+  allow_manage_users Boolean  @default(false) @map("allow_manage_users")
+  allow_export       Boolean  @default(true) @map("allow_export")
+  created_at         DateTime @default(now()) @map("created_at")
+  updated_at         DateTime @updatedAt @map("updated_at")
+
+  @@unique([company_id, module_code, tier_level], map: "uq_iam_module_tier_permission")
+  @@index([company_id, module_code], map: "idx_iam_module_tier_permission_company")
+  @@map("iam_module_tier_permission")
+}
+
+model iam_user_permission_override {
+  id            String   @id @default(uuid())
+  tenant_id     String?  @map("tenant_id")
+  company_id    String   @map("company_id")
+  user_id       String   @map("user_id")
+  module_code   String   @map("module_code")
+  action_code   String   @map("action_code")
+  effect        String   @default("ALLOW") @map("effect")
+  reason        String   @default("") @map("reason")
+  created_by_id String?  @map("created_by_id")
+  created_at    DateTime @default(now()) @map("created_at")
+  updated_at    DateTime @updatedAt @map("updated_at")
+
+  @@unique([company_id, user_id, module_code, action_code], map: "uq_iam_user_permission_override")
+  @@index([company_id, user_id], map: "idx_iam_user_permission_override_user")
+  @@map("iam_user_permission_override")
+}
+
+model iam_approval_delegation {
+  id                String    @id @default(uuid())
+  tenant_id         String?   @map("tenant_id")
+  company_id        String    @map("company_id")
+  delegator_user_id String    @map("delegator_user_id")
+  delegate_user_id  String    @map("delegate_user_id")
+  module_code       String    @map("module_code")
+  max_amount        Decimal   @default(0) @map("max_amount")
+  reason            String    @default("") @map("reason")
+  valid_from        DateTime  @map("valid_from")
+  valid_until       DateTime  @map("valid_until")
+  revoked_at        DateTime? @map("revoked_at")
+  created_by_id     String?   @map("created_by_id")
+  created_at        DateTime  @default(now()) @map("created_at")
+  updated_at        DateTime  @updatedAt @map("updated_at")
+
+  @@index([company_id, delegate_user_id, module_code], map: "idx_iam_approval_delegation_delegate")
+  @@map("iam_approval_delegation")
+}
+
+model iam_assignment_history {
+  id             String   @id @default(uuid())
+  tenant_id      String?  @map("tenant_id")
+  company_id     String   @map("company_id")
+  actor_id       String?  @map("actor_id")
+  target_user_id String   @map("target_user_id")
+  module_code    String   @default("") @map("module_code")
+  change_type    String   @map("change_type")
+  before_json    String   @default("{}") @map("before_json")
+  after_json     String   @default("{}") @map("after_json")
+  reason         String   @default("") @map("reason")
+  created_at     DateTime @default(now()) @map("created_at")
+
+  @@index([company_id, target_user_id, created_at], map: "idx_iam_assignment_history_user")
+  @@map("iam_assignment_history")
+}
+
+model iam_cross_module_capability {
+  id                 String   @id @default(uuid())
+  tenant_id          String?  @map("tenant_id")
+  company_id         String   @map("company_id")
+  user_id            String   @map("user_id")
+  source_module_code String   @map("source_module_code")
+  target_module_code String   @map("target_module_code")
+  capability_code    String   @map("capability_code")
+  allowed_actions    String   @default("[]") @map("allowed_actions")
+  status             String   @default("ACTIVE") @map("status")
+  created_by_id      String?  @map("created_by_id")
+  created_at         DateTime @default(now()) @map("created_at")
+  updated_at         DateTime @updatedAt @map("updated_at")
+
+  @@unique([company_id, user_id, source_module_code, target_module_code, capability_code], map: "uq_iam_cross_module_capability")
+  @@index([company_id, user_id, status], map: "idx_iam_cross_module_capability_user")
+  @@map("iam_cross_module_capability")
+}

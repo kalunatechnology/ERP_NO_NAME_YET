@@ -236,3 +236,56 @@ export function enforceSuperAdminReadOnly(req: Request, _res: Response, next: Ne
 
   return next(new ForbiddenError('Super Admin hanya memiliki akses baca untuk data operasional.'));
 }
+
+export function requireModulePermission(
+  moduleCode: string,
+  action: 'read' | 'write' | 'approve' | 'delete' | 'manage_users' = 'read',
+) {
+  const normalizedModule = String(moduleCode || '').trim().toUpperCase();
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    if (!req.user) return next(new UnauthorizedError());
+    if (isSuperAdmin(req.user.roles)) return next();
+
+    const assignments: any[] = (req.user as any)?.module_assignments ?? [];
+    const match = assignments.find(
+      (a) => String(a.module_code || '').toUpperCase() === normalizedModule && a.status === 'ACTIVE'
+    );
+    if (match) {
+      const ok =
+        action === 'read' ? match.allow_read !== false
+        : action === 'write' ? Boolean(match.allow_write)
+        : action === 'approve' ? Boolean(match.allow_approve)
+        : action === 'delete' ? Boolean(match.allow_delete)
+        : Boolean(match.allow_manage_users);
+      if (ok) return next();
+    }
+
+    if (hasModuleOverride(req, normalizedModule)) {
+      if (action === 'read' || action === 'write') return next();
+    }
+
+    return next(
+      new ForbiddenError(`Akses ditolak: Anda tidak memiliki izin '${action}' pada modul ${normalizedModule}.`),
+    );
+  };
+}
+
+export function requireModuleTier(moduleCode: string, maxTierLevel: 1 | 2 | 3) {
+  const normalizedModule = String(moduleCode || '').trim().toUpperCase();
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    if (!req.user) return next(new UnauthorizedError());
+    if (isSuperAdmin(req.user.roles) || req.user.active_role_code === RoleCode.COMPANY_ADMIN) return next();
+
+    const assignments: any[] = (req.user as any)?.module_assignments ?? [];
+    const match = assignments.find(
+      (a) => String(a.module_code || '').toUpperCase() === normalizedModule && a.status === 'ACTIVE'
+    );
+    if (match && Number(match.tier_level) >= 0 && Number(match.tier_level) <= maxTierLevel) {
+      return next();
+    }
+
+    return next(
+      new ForbiddenError(`Akses ditolak: Diperlukan minimal Level ${maxTierLevel} pada modul ${normalizedModule}.`),
+    );
+  };
+}

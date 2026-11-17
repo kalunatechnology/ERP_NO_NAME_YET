@@ -120,18 +120,26 @@ export function enforceSoD(options: {
  */
 export function requireFinanceRole(roles: string[]) {
   return (req: Request, _res: Response, next: NextFunction) => {
-    if (hasModuleOverride(req, 'FINANCE')) return next();
     const assignedRoles = req.user?.roles ?? [];
     const activeRole = req.user?.active_role_code ?? assignedRoles[0] ?? '';
-    if (!roles.includes(activeRole)) {
-      return next(
-        new ForbiddenError(
-          `Aksi ini membutuhkan salah satu dari role berikut: ${roles.join(', ')}. ` +
-          `Role aktif Anda: ${activeRole || 'tidak terdeteksi'}.`,
-        ),
-      );
+    if (roles.includes(activeRole) || isSuperAdmin(assignedRoles)) {
+      return next();
     }
-    return next();
+    const financeAssignment = (req.user as any)?.module_assignments?.find(
+      (a: any) => String(a.module_code || '').toUpperCase() === 'FINANCE' && a.status === 'ACTIVE' && Number(a.tier_level) >= 1 && a.allow_write !== false
+    );
+    if (financeAssignment) {
+      return next();
+    }
+    if (hasModuleOverride(req, 'FINANCE') && String((req.user as any)?.role_level || '').toUpperCase() !== 'GM') {
+      return next();
+    }
+    return next(
+      new ForbiddenError(
+        `Aksi ini membutuhkan salah satu dari role berikut: ${roles.join(', ')}. ` +
+        `Role aktif Anda: ${activeRole || 'tidak terdeteksi'}.`,
+      ),
+    );
   };
 }
 
@@ -182,7 +190,7 @@ export function requireCompanyAdmin() {
 export function requireSuperadmin() {
   return (req: Request, _res: Response, next: NextFunction) => {
     const roles = req.user?.roles ?? [];
-    if (isSuperAdmin(roles) || req.user?.active_role_code === RoleCode.DIRECTOR || hasModuleOverride(req, 'FINANCE')) {
+    if (isSuperAdmin(roles) || req.user?.active_role_code === RoleCode.DIRECTOR) {
       return next();
     }
     return next(
