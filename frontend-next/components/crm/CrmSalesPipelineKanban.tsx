@@ -378,7 +378,49 @@ export function CrmSalesPipelineShell({
     <div className="flex flex-col gap-4">
       <CRMKpiRow items={kpiItems} columns={5} />
 
-      <CRMFilterBar
+      {canEditAll && (
+        <div className="inline-flex flex-wrap items-center gap-1.5 self-start rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-1">
+          <button
+            type="button"
+            onClick={() => onViewModeChange(viewMode === "LIST" ? "LIST" : "PIPELINE")}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+              viewMode === "PIPELINE" || viewMode === "LIST"
+                ? "bg-white text-[#163D64] shadow-2xs font-bold"
+                : "text-[#64748B] hover:text-[#0F172A]"
+            }`}
+          >
+            <Kanban size={13} /> Deals &amp; Pipeline
+          </button>
+          <button
+            type="button"
+            onClick={() => onViewModeChange("ESTIMATE")}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+              viewMode === "ESTIMATE"
+                ? "bg-white text-[#163D64] shadow-2xs font-bold"
+                : "text-[#64748B] hover:text-[#0F172A]"
+            }`}
+          >
+            <Calculator size={13} /> Estimating &amp; Quotations
+            <span className="rounded-full bg-[#E7F2FF] px-1.5 py-0.2 text-[10px] font-bold text-[#163D64]">
+              {(data.quotations || []).length}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onViewModeChange("CREDIT")}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+              viewMode === "CREDIT"
+                ? "bg-white text-[#163D64] shadow-2xs font-bold"
+                : "text-[#64748B] hover:text-[#0F172A]"
+            }`}
+          >
+            <ShieldAlert size={13} /> Credit Control
+          </button>
+        </div>
+      )}
+
+      {(viewMode === "PIPELINE" || viewMode === "LIST") && (
+        <CRMFilterBar
         searchValue={search}
         onSearchChange={setSearch}
         searchPlaceholder="Cari opportunity, customer, brand, atau PIC..."
@@ -428,8 +470,7 @@ export function CrmSalesPipelineShell({
         activeView={viewMode}
         onViewChange={(v) => onViewModeChange(v as PipelineViewMode)}
         rightActions={
-          !readOnly &&
-          (viewMode === "PIPELINE" || viewMode === "LIST") && (
+          !readOnly && (
             <button
               type="button"
               onClick={onOpenNewOpp}
@@ -440,6 +481,7 @@ export function CrmSalesPipelineShell({
           )
         }
       />
+      )}
 
       {viewMode === "PIPELINE" && (
         <CRMKanbanBoard

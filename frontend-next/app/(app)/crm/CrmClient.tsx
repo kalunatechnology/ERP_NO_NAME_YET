@@ -58,14 +58,12 @@ import { CrmSalesPipelineShell, type PipelineViewMode } from "@/components/crm/C
 
 /* ── Tabs Configuration (Marka CRM Navigation) ─── */
 const CRM_TABS = [
-  { id: "pipeline",  label: "Sales Pipeline",           icon: TrendingUp },
-  { id: "leads",     label: "Lead Management",          icon: FileText   },
-  { id: "inbox",     label: "Customer Inbox",           icon: Inbox      },
-  { id: "estimate",  label: "Estimating & Quotations",  icon: Calculator, leadOnly: true },
-  { id: "credit",    label: "Credit Control",           icon: ShieldAlert, leadOnly: true },
-  { id: "companies", label: "Company Management",       icon: Building2  },
-  { id: "contacts",  label: "Contact Management",       icon: Users      },
-  { id: "contracts", label: "Contract Management",      icon: FileCheck  },
+  { id: "pipeline",  label: "Sales Pipeline",      icon: TrendingUp },
+  { id: "leads",     label: "Lead Management",     icon: FileText   },
+  { id: "inbox",     label: "Customer Inbox",      icon: Inbox      },
+  { id: "companies", label: "Company Management",  icon: Building2  },
+  { id: "contacts",  label: "Contact Management",  icon: Users      },
+  { id: "contracts", label: "Contract Management", icon: FileCheck  },
 ];
 
 /* ── Shared Helpers ──────────────────────────────── */
@@ -4126,8 +4124,7 @@ export default function CrmClient() {
     activeRoleCode: user?.active_role_code,
     isSuperAdmin: isSuper,
   });
-  const isLeadOrExec = isSuper || ["ROLE-CRM-LEAD", "CRM_LEAD", "ROLE-COMPANY-ADMIN", "COMPANY_ADMIN", "ROLE-DIRECTOR", "DIRECTOR"].includes(String(user?.active_role_code ?? "").toUpperCase());
-  const visibleTabs = CRM_TABS.filter((t) => !t.leadOnly || isLeadOrExec);
+  const visibleTabs = CRM_TABS;
 
   useEffect(() => {
     const requestedTab = (new URLSearchParams(window.location.search).get("tab") || "").toLowerCase();
@@ -4724,54 +4721,6 @@ export default function CrmClient() {
               canMatchIdentity={["ROLE-CRM-LEAD", "CRM_LEAD"].includes(String(user?.active_role_code ?? "").toUpperCase())}
               parties={data.parties}
               onRefresh={() => loadData(true)}
-            />
-          )}
-          {activeTab === "estimate" && (
-            <TabEstimate
-              data={data}
-              approvals={data.approvals}
-              onRefresh={() => loadData(true)}
-              onNavigate={(target) => {
-                if (target === "deals" || target === "pipeline") {
-                  setActiveTab("pipeline");
-                  setPipelineSubView("PIPELINE");
-                } else {
-                  setActiveTab(target);
-                }
-              }}
-              readOnly={!canOperateCrm}
-              canApproveQuotation={canApproveCrmQuotation}
-              currentUserId={user?.id == null ? undefined : String(user.id)}
-              canEditAll={canEditAllCrmData}
-            />
-          )}
-          {activeTab === "credit" && (
-            <TabDeals
-              data={data}
-              approvals={data.approvals}
-              isNewOppOpen={isNewOppOpen}
-              setIsNewOppOpen={setIsNewOppOpen}
-              onRefresh={() => loadData(true)}
-              onOpportunityCreated={handleOpportunityCreated}
-              onOpportunityUpdated={handleOpportunityUpdated}
-              onOpportunityDeleted={handleOpportunityDeleted}
-              onPartyCreated={handlePartyCreated}
-              readOnly={!canOperateCrm}
-              canEditAll={canEditAllCrmData}
-              currentUserId={user?.id == null ? undefined : String(user.id)}
-              canOverride={userRole === "super_admin" || activeRoleCode === "DIRECTOR" || roleLevel === "GM"}
-              canDelegate={canDelegateCrm}
-              onOpenDelegate={openDelegateModal}
-              onOpenStageDetail={openStageDetailModal}
-              teamUsers={teamUsers}
-              pipelineViewMode="CREDIT"
-              onPipelineViewModeChange={(m) => {
-                if (m === "PIPELINE" || m === "LIST") {
-                  setActiveTab("pipeline");
-                  setPipelineSubView(m);
-                }
-              }}
-              estimateSlot={null}
             />
           )}
           {activeTab === "companies" && (
