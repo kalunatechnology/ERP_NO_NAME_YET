@@ -10,6 +10,7 @@ import { Request, Response, NextFunction } from 'express';
 import { ForbiddenError } from '../utils/errors';
 import { isSuperAdmin, RoleCode } from '../types/roles';
 import { hasModuleOverride } from '../utils/module-permissions';
+import prisma from '../config/database';
 
 // =============================================================================
 // SEGREGATION OF DUTIES (SoD) MIDDLEWARE — Enterprise Edition
@@ -43,11 +44,39 @@ const DEFAULT_SOD_THRESHOLD_AMOUNT = Number(process.env.SOD_THRESHOLD_AMOUNT ?? 
  * Security intent: The check runs before protected business handlers so unauthenticated, cross-company, unauthorized, or invalid requests cannot reach persistence mutations.
  * Data/side effects: May mutate request metadata or the response, as shown in the implementation.
  */
+export async function findActiveDelegationOfAuthority(params: {
+  companyId: string;
+  delegateUserId: string;
+  moduleCode?: string;
+  amount?: number | null;
+}) {
+  try {
+    const now = new Date();
+    const rows = await (prisma as any).iam_approval_delegation?.findMany?.({
+      where: {
+        company_id: params.companyId,
+        delegate_user_id: params.delegateUserId,
+        ...(params.moduleCode ? { module_code: params.moduleCode.toUpperCase() } : {}),
+        revoked_at: null,
+        valid_from: { lte: now },
+        valid_until: { gte: now },
+      },
+      orderBy: { max_amount: 'desc' },
+    });
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    if (params.amount === undefined || params.amount === null) return rows[0];
+    return rows.find((d: any) => Number(d.max_amount ?? 0) === 0 || Number(params.amount) <= Number(d.max_amount ?? 0)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function enforceSoD(options: {
   getCreatorId:     (req: Request) => Promise<string | null | undefined>;
   getAmountValue?:  (req: Request) => Promise<number | null>;
   thresholdAmount?: number;
   action?:          string;
+  moduleCode?:      string;
 }) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -65,19 +94,33 @@ export function enforceSoD(options: {
       // ==== SOD THRESHOLD CHECK ====
       // Transaksi di bawah ambang batas tidak memerlukan Maker-Checker ketat
       const threshold = options.thresholdAmount ?? DEFAULT_SOD_THRESHOLD_AMOUNT;
+      let resolvedAmount: number | null = null;
       if (options.getAmountValue) {
-        const amount = await options.getAmountValue(req);
-        if (amount !== null && amount <= threshold) {
+        resolvedAmount = await options.getAmountValue(req);
+        if (resolvedAmount !== null && resolvedAmount <= threshold) {
           res.setHeader('X-SoD-Status',   'BYPASSED_THRESHOLD');
           res.setHeader('X-SoD-Threshold', String(threshold));
-          res.setHeader('X-SoD-Amount',    String(amount));
+          res.setHeader('X-SoD-Amount',    String(resolvedAmount));
           return next();
         }
       }
 
       // ==== MAKER === CHECKER CHECK ====
       if (currentUserId !== creatorId) {
-        // Berbeda user — SoD terpenuhi
+        // Berbeda user — SoD terpenuhi; cek apakah bertindak di bawah DoA aktif
+        const companyId = req.companyId || (req.user as any)?.company_id;
+        if (companyId) {
+          const activeDoa = await findActiveDelegationOfAuthority({
+            companyId: String(companyId),
+            delegateUserId: currentUserId,
+            moduleCode: options.moduleCode,
+            amount: resolvedAmount,
+          });
+          if (activeDoa) {
+            (req as any).activeDelegation = activeDoa;
+            res.setHeader('X-SoD-DoA', 'ACTIVE');
+          }
+        }
         res.setHeader('X-SoD-Maker',   creatorId);
         res.setHeader('X-SoD-Checker', currentUserId);
         res.setHeader('X-SoD-Status',  'PASSED');

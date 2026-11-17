@@ -29,6 +29,21 @@ export interface UserModuleAssignmentContext {
   allow_manage_users: boolean;
 }
 
+export interface UserPermissionOverrideContext {
+  module_code: string;
+  action_code: string;
+  effect: 'ALLOW' | 'DENY' | string;
+}
+
+export interface CrossModuleCapabilityContext {
+  id: string;
+  source_module_code: string;
+  target_module_code: string;
+  capability_code: string;
+  allowed_actions: string[];
+  status: string;
+}
+
 export interface UserAccessContext {
   roles: RoleCode[];
   activeRoleId: string | null;
@@ -40,6 +55,8 @@ export interface UserAccessContext {
   delegatedModules: string[];
   moduleAccess: ModulePermission[];
   moduleAssignments?: UserModuleAssignmentContext[];
+  permissionOverrides?: UserPermissionOverrideContext[];
+  crossModuleCapabilities?: CrossModuleCapabilityContext[];
   departmentId: string | null;
   departmentCode: string | null;
   departmentName: string | null;
@@ -358,18 +375,63 @@ export async function loadUserAccessContext(
     });
   }
 
-  // 2. Dynamic 3-Tier Module Assignments (iam_user_module_assignment) + Tier Permissions
+  // 2. Dynamic 3-Tier Module Assignments (iam_user_module_assignment) + Tier Permissions + Overrides + Cross-Module Capabilities
   const activeCompanyId = superAdmin ? null : companyIds[0] ?? null;
-  const [rawModuleAssignments, rawTierPermissions] = activeCompanyId
+  const [rawModuleAssignments, rawTierPermissions, rawPermOverrides, rawCrossCapabilities] = activeCompanyId
     ? await Promise.all([
         (prisma as any).iam_user_module_assignment?.findMany?.({
-          where: { company_id: activeCompanyId, user_id: userId, status: 'ACTIVE' },
+          where: {
+            company_id: activeCompanyId,
+            user_id: userId,
+            status: 'ACTIVE',
+            AND: [
+              { OR: [{ effective_from: null }, { effective_from: { lte: now } }] },
+              { OR: [{ effective_until: null }, { effective_until: { gte: now } }] },
+            ],
+          },
         }).catch(() => []) ?? [],
         (prisma as any).iam_module_tier_permission?.findMany?.({
           where: { company_id: activeCompanyId },
         }).catch(() => []) ?? [],
+        (prisma as any).iam_user_permission_override?.findMany?.({
+          where: { company_id: activeCompanyId, user_id: userId },
+        }).catch(() => []) ?? [],
+        (prisma as any).iam_cross_module_capability?.findMany?.({
+          where: { company_id: activeCompanyId, user_id: userId, status: 'ACTIVE' },
+        }).catch(() => []) ?? [],
       ])
-    : [[], []];
+    : [[], [], [], []];
+
+  const permissionOverrides: UserPermissionOverrideContext[] = (Array.isArray(rawPermOverrides) ? rawPermOverrides : []).map((po: any) => ({
+    module_code: String(po.module_code || '').trim().toUpperCase(),
+    action_code: String(po.action_code || '').trim().toUpperCase(),
+    effect: String(po.effect || 'ALLOW').trim().toUpperCase(),
+  }));
+
+  const overrideEffectMap = new Map<string, string>();
+  for (const po of permissionOverrides) {
+    if (po.module_code && po.action_code) {
+      overrideEffectMap.set(`${po.module_code}:${po.action_code}`, po.effect);
+    }
+  }
+
+  const crossModuleCapabilities: CrossModuleCapabilityContext[] = (Array.isArray(rawCrossCapabilities) ? rawCrossCapabilities : []).map((cc: any) => {
+    let actions: string[] = [];
+    try {
+      const parsed = JSON.parse(cc.allowed_actions || '[]');
+      if (Array.isArray(parsed)) actions = parsed.map((a) => String(a).trim().toUpperCase());
+    } catch {
+      actions = [];
+    }
+    return {
+      id: String(cc.id),
+      source_module_code: String(cc.source_module_code || '').trim().toUpperCase(),
+      target_module_code: String(cc.target_module_code || '').trim().toUpperCase(),
+      capability_code: String(cc.capability_code || '').trim().toUpperCase(),
+      allowed_actions: actions,
+      status: String(cc.status || 'ACTIVE'),
+    };
+  });
 
   const tierPermMap = new Map<string, any>(
     (Array.isArray(rawTierPermissions) ? rawTierPermissions : []).map((tp: any) => [
@@ -378,15 +440,22 @@ export async function loadUserAccessContext(
     ])
   );
 
+  const applyOverride = (modCode: string, actionKey: string, base: boolean): boolean => {
+    const eff = overrideEffectMap.get(`${modCode}:${actionKey}`);
+    if (eff === 'DENY') return false;
+    if (eff === 'ALLOW') return true;
+    return base;
+  };
+
   const moduleAssignments: UserModuleAssignmentContext[] = (Array.isArray(rawModuleAssignments) ? rawModuleAssignments : []).map((ma: any) => {
     const code = String(ma.module_code || '').trim().toUpperCase();
     const tier = Number(ma.tier_level ?? 3);
     const tp = tierPermMap.get(`${code}:${tier}`);
-    const allowRead = tp ? Boolean(tp.allow_read) : true;
-    const allowWrite = tp ? Boolean(tp.allow_write) : (tier === 0 ? code !== 'FINANCE' : tier >= 1);
-    const allowApprove = tp ? Boolean(tp.allow_approve) : tier <= 2;
-    const allowDelete = tp ? Boolean(tp.allow_delete) : tier === 1;
-    const allowManageUsers = tp ? Boolean(tp.allow_manage_users) : tier <= 1;
+    const allowRead = applyOverride(code, 'READ', tp ? Boolean(tp.allow_read) : true);
+    const allowWrite = applyOverride(code, 'WRITE', tp ? Boolean(tp.allow_write) : (tier === 0 ? code !== 'FINANCE' : tier >= 1));
+    const allowApprove = applyOverride(code, 'APPROVE', tp ? Boolean(tp.allow_approve) : tier <= 2);
+    const allowDelete = applyOverride(code, 'DELETE', tp ? Boolean(tp.allow_delete) : tier === 1);
+    const allowManageUsers = applyOverride(code, 'MANAGE_USERS', tp ? Boolean(tp.allow_manage_users) : tier <= 1);
     return {
       id: String(ma.id),
       module_code: code,
@@ -471,6 +540,8 @@ export async function loadUserAccessContext(
     delegatedModules: [...delegatedModules],
     moduleAccess: effectiveModuleOverrides(moduleAccess, combinedUserAndDeptOverrides),
     moduleAssignments,
+    permissionOverrides,
+    crossModuleCapabilities,
     departmentId: userWithDept?.department_id ?? null,
     departmentCode: deptRecord?.code ?? null,
     departmentName: deptRecord?.name ?? null,

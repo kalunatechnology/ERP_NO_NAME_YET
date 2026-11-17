@@ -242,9 +242,23 @@ export function requireModulePermission(
   action: 'read' | 'write' | 'approve' | 'delete' | 'manage_users' = 'read',
 ) {
   const normalizedModule = String(moduleCode || '').trim().toUpperCase();
+  const normalizedAction = action.toUpperCase();
   return (req: Request, _res: Response, next: NextFunction): void => {
     if (!req.user) return next(new UnauthorizedError());
     if (isSuperAdmin(req.user.roles)) return next();
+
+    const overrides: any[] = (req.user as any)?.permission_overrides ?? [];
+    const explicitOverride = overrides.find(
+      (o) => String(o.module_code || '').toUpperCase() === normalizedModule && String(o.action_code || '').toUpperCase() === normalizedAction
+    );
+    if (explicitOverride) {
+      if (String(explicitOverride.effect).toUpperCase() === 'DENY') {
+        return next(new ForbiddenError(`Akses ditolak secara eksplisit untuk aksi '${action}' pada modul ${normalizedModule}.`));
+      }
+      if (String(explicitOverride.effect).toUpperCase() === 'ALLOW') {
+        return next();
+      }
+    }
 
     const assignments: any[] = (req.user as any)?.module_assignments ?? [];
     const match = assignments.find(
@@ -259,6 +273,16 @@ export function requireModulePermission(
         : Boolean(match.allow_manage_users);
       if (ok) return next();
     }
+
+    const capabilities: any[] = (req.user as any)?.cross_module_capabilities ?? [];
+    const hasCrossBridge = capabilities.some(
+      (c) =>
+        String(c.target_module_code || '').toUpperCase() === normalizedModule
+        && c.status === 'ACTIVE'
+        && Array.isArray(c.allowed_actions)
+        && (c.allowed_actions.includes(normalizedAction) || (action !== 'read' && c.allowed_actions.includes('ACTION')))
+    );
+    if (hasCrossBridge) return next();
 
     if (hasModuleOverride(req, normalizedModule)) {
       if (action === 'read' || action === 'write') return next();
