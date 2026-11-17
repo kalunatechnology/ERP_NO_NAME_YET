@@ -338,6 +338,28 @@ export class CRMService {
         },
       });
 
+      if (estimate.opportunity_id) {
+        const opp = await tx.crm_opportunity.findFirst({
+          where: { id: estimate.opportunity_id, company_id: companyId },
+          select: { id: true, status: true, pipeline_stage: true },
+        });
+        const oppStatus = String(opp?.status || '').toUpperCase();
+        const oppStage = String(opp?.pipeline_stage || '').toUpperCase();
+        const isClosedOpp = ['WON', 'CLOSED_WON', 'LOST', 'CLOSED_LOST', 'CANCELLED', 'CANCEL', 'BATAL'].includes(oppStatus)
+          || ['WON', 'CLOSED_WON', 'LOST', 'CLOSED_LOST', 'CANCELLED', 'CANCEL', 'BATAL'].includes(oppStage);
+        if (opp && !isClosedOpp) {
+          const totalWithTax = offered * (1 + Number(estimate.tax_percent ?? 0) / 100);
+          await tx.crm_opportunity.update({
+            where: { id: opp.id },
+            data: {
+              expected_amount: totalWithTax,
+              expected_margin: marginPercent,
+              updated_at: new Date(),
+            },
+          });
+        }
+      }
+
       return updated;
     };
     return db

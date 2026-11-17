@@ -111,6 +111,22 @@ export function CrmSalesPipelineShell({
     [data.brands]
   );
 
+  const latestCalculatedEstimateByOpp = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const est of data.estimates || []) {
+      const oppId = String(est.opportunity_id || est.opportunity || "");
+      const status = String(est.status || "").toUpperCase();
+      if (!oppId || !["CALCULATED", "QUOTED"].includes(status)) continue;
+      const offered = Number(est.offered_amount || 0);
+      const taxPct = Number(est.tax_percent || 0);
+      const total = offered * (1 + taxPct / 100);
+      if (Number.isFinite(total) && total > 0 && !map.has(oppId)) {
+        map.set(oppId, total);
+      }
+    }
+    return map;
+  }, [data.estimates]);
+
   const enrichedOpps = useMemo(() => {
     return (data.opportunities || []).map((o: any) => {
       const idStr = String(o.id);
@@ -122,6 +138,8 @@ export function CrmSalesPipelineShell({
       const ownerId = String(o.owner_user_id || o.created_by_id || "");
       const ownerUser = userById.get(ownerId);
       const rawProb = optimisticProbs[idStr] !== undefined ? optimisticProbs[idStr] : Number(o.probability_percent || 0);
+      const baseAmount = Number(o.expected_amount || 0);
+      const resolvedAmount = baseAmount > 0 ? baseAmount : (latestCalculatedEstimateByOpp.get(idStr) ?? 0);
       return {
         ...o,
         _bucket: bucket,
@@ -131,11 +149,11 @@ export function CrmSalesPipelineShell({
         _party: party,
         _ownerId: ownerId,
         _ownerName: ownerUser?.full_name || ownerUser?.email || "Unassigned",
-        _amount: Number(o.expected_amount || 0),
+        _amount: resolvedAmount,
         _prob: Math.max(0, Math.min(100, rawProb)),
       };
     });
-  }, [data.opportunities, partyById, brandById, userById, optimisticBuckets, optimisticProbs]);
+  }, [data.opportunities, partyById, brandById, userById, latestCalculatedEstimateByOpp, optimisticBuckets, optimisticProbs]);
 
   const brandScopedOpps = useMemo(() => {
     if (brandFilter === "ALL") return enrichedOpps;
