@@ -221,11 +221,11 @@ export function CrmLeadsView({
 
     return [
       { id: "ALL", label: "Total Leads", value: total, tone: "blue", icon: FileText, active: statusFilter === "ALL", onClick: () => setStatusFilter("ALL") },
-      { id: "ACTIVE", label: "Active Leads", value: active, tone: "blue", icon: Clock, active: statusFilter === "ACTIVE", onClick: () => setStatusFilter(statusFilter === "ACTIVE" ? "ALL" : "ACTIVE") },
-      { id: "INTERESTED", label: "Interested", value: interested, tone: "blue", icon: Sparkles, active: statusFilter === "INTERESTED", onClick: () => setStatusFilter(statusFilter === "INTERESTED" ? "ALL" : "INTERESTED") },
-      { id: "CONVERTED", label: "Converted to Pipeline", value: converted, tone: "blue", icon: ArrowRight, active: statusFilter === "CONVERTED", onClick: () => setStatusFilter(statusFilter === "CONVERTED" ? "ALL" : "CONVERTED") },
-      { id: "WON", label: "Won (from Leads)", value: won, tone: "blue", icon: Award, active: statusFilter === "WON", onClick: () => setStatusFilter(statusFilter === "WON" ? "ALL" : "WON") },
-      { id: "UNQUALIFIED", label: "Not Interested", value: notInterested, tone: "blue", icon: XCircle, active: statusFilter === "UNQUALIFIED", onClick: () => setStatusFilter(statusFilter === "UNQUALIFIED" ? "ALL" : "UNQUALIFIED") },
+      { id: "ACTIVE", label: "Active Leads", value: active, tone: "purple", icon: Clock, active: statusFilter === "ACTIVE", onClick: () => setStatusFilter(statusFilter === "ACTIVE" ? "ALL" : "ACTIVE") },
+      { id: "INTERESTED", label: "Interested", value: interested, tone: "amber", icon: Sparkles, active: statusFilter === "INTERESTED", onClick: () => setStatusFilter(statusFilter === "INTERESTED" ? "ALL" : "INTERESTED") },
+      { id: "CONVERTED", label: "Converted to Pipeline", value: converted, tone: "pink", icon: ArrowRight, active: statusFilter === "CONVERTED", onClick: () => setStatusFilter(statusFilter === "CONVERTED" ? "ALL" : "CONVERTED") },
+      { id: "WON", label: "Won (from Leads)", value: won, tone: "green", icon: Award, active: statusFilter === "WON", onClick: () => setStatusFilter(statusFilter === "WON" ? "ALL" : "WON") },
+      { id: "UNQUALIFIED", label: "Not Interested", value: notInterested, tone: "red", icon: XCircle, active: statusFilter === "UNQUALIFIED", onClick: () => setStatusFilter(statusFilter === "UNQUALIFIED" ? "ALL" : "UNQUALIFIED") },
     ];
   }, [enrichedLeads, statusFilter]);
 
@@ -617,7 +617,6 @@ export function CrmLeadsView({
         viewOptions={[
           { id: "PIPELINE", label: "Pipeline", icon: Kanban },
           { id: "LIST", label: "List", icon: Table2 },
-          { id: "INBOX", label: "Customer Inbox", icon: Inbox, badge: (data.conversations || []).length },
         ]}
         activeView={subView}
         onViewChange={(v) => setSubView(v as any)}
@@ -653,36 +652,35 @@ export function CrmLeadsView({
             >
               <div className="flex items-start justify-between gap-2 pr-4">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 truncate">
-                    <Building2 size={13} className="shrink-0 text-[#0876CD]" />
+                  <div className="flex items-center gap-1.5 text-[13px] font-extrabold text-slate-900 truncate">
+                    <Building2 size={14} className="shrink-0 text-[#0876CD]" />
                     <span className="truncate">{lead.customer_name || "Calon Customer"}</span>
                   </div>
-                  <div className="mt-0.5 text-[11px] font-medium text-slate-600 line-clamp-2">
+                  <div className="mt-1 text-[11px] font-medium text-slate-500 line-clamp-2 leading-snug">
                     {lead.subject}
                   </div>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-1.5">
-                {lead._brandName && (
-                  <span className="rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-800">
-                    {lead._brandName}
-                  </span>
-                )}
-                {lead._service && (
-                  <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-[#0876CD]">
-                    {lead._service}
-                  </span>
-                )}
-                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
-                  {lead._source}
-                </span>
-                {lead._isConverted && (
-                  <span className="inline-flex items-center gap-0.5 rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                    <CheckCircle2 size={10} /> Pipeline
-                  </span>
-                )}
-              </div>
+              {(lead._brandName || lead._service || lead._isConverted) && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {lead._brandName && (
+                    <span className="rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-800">
+                      {lead._brandName}
+                    </span>
+                  )}
+                  {lead._service && (
+                    <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-[#0876CD]">
+                      {lead._service}
+                    </span>
+                  )}
+                  {lead._isConverted && (
+                    <span className="inline-flex items-center gap-0.5 rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                      <CheckCircle2 size={10} /> Pipeline
+                    </span>
+                  )}
+                </div>
+              )}
 
               <div className="flex items-center justify-between border-t border-slate-100 pt-2">
                 <CRMAvatarBadge name={lead._ownerName} size="xs" />

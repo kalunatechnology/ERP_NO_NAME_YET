@@ -272,10 +272,12 @@ export function LeadStagePopupModal({
     }
   };
 
-  const handleLinkParty = async () => {
-    if (!linkingPartyId) return;
+  const handleLinkParty = async (partyIdOverride?: string, contactIdOverride?: string | null) => {
+    const pid = partyIdOverride ?? linkingPartyId;
+    const cid = contactIdOverride !== undefined ? contactIdOverride : (linkingContactId || null);
+    if (!pid) return;
     try {
-      await linkInquiryCustomer(lead.id, linkingPartyId, linkingContactId || null);
+      await linkInquiryCustomer(lead.id, pid, cid);
       toast.success("Perusahaan berhasil ditautkan.");
       setLinkingPartyId("");
       setLinkingContactId("");
@@ -301,7 +303,32 @@ export function LeadStagePopupModal({
           {editing ? (
             <input className="input mt-0.5 w-full text-xs" value={companyForm.company_name} onChange={(e) => setCompanyForm((f) => ({ ...f, company_name: e.target.value }))} />
           ) : (
-            <div className="mt-0.5 text-sm font-semibold text-[#0F172A]">{companyForm.company_name || "—"}</div>
+            <div className="mt-0.5 space-y-1">
+              <div className="text-sm font-semibold text-[#0F172A]">{companyForm.company_name || "—"}</div>
+              {!lead.customer_party_id && !readOnly && (
+                <select
+                  aria-label="Tautkan ke Master Company"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 focus:border-[#0876CD] focus:bg-white focus:outline-none"
+                  value={linkingPartyId}
+                  onChange={(e) => {
+                    const pid = e.target.value;
+                    setLinkingPartyId(pid);
+                    const primary = (data.contacts || []).find((c: any) => String(c.party_id) === pid && c.primary_contact);
+                    setLinkingContactId(primary ? String(primary.id) : "");
+                    if (pid) {
+                      void handleLinkParty(pid, primary ? String(primary.id) : undefined);
+                    }
+                  }}
+                >
+                  <option value="">-- Tautkan Master Company --</option>
+                  {(data.parties || [])
+                    .filter((p: any) => ["CUSTOMER", "PROSPECT"].includes(String(p.party_type || "").toUpperCase()) && p.status === "ACTIVE")
+                    .map((p: any) => (
+                      <option key={p.id} value={String(p.id)}>{p.display_name || p.legal_name}</option>
+                    ))}
+                </select>
+              )}
+            </div>
           )}
         </div>
         <div>
@@ -338,33 +365,6 @@ export function LeadStagePopupModal({
           )}
         </div>
       </div>
-      {!lead.customer_party_id && !readOnly && (
-        <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50/70 p-2.5 space-y-1.5 text-xs">
-          <div className="font-semibold text-amber-900">Tautkan ke Master Company:</div>
-          <div className="flex gap-1.5">
-            <select
-              className="input flex-1 text-xs bg-white"
-              value={linkingPartyId}
-              onChange={(e) => {
-                const pid = e.target.value;
-                setLinkingPartyId(pid);
-                const primary = (data.contacts || []).find((c: any) => String(c.party_id) === pid && c.primary_contact);
-                setLinkingContactId(primary ? String(primary.id) : "");
-              }}
-            >
-              <option value="">-- Pilih Company --</option>
-              {(data.parties || [])
-                .filter((p: any) => ["CUSTOMER", "PROSPECT"].includes(String(p.party_type || "").toUpperCase()) && p.status === "ACTIVE")
-                .map((p: any) => (
-                  <option key={p.id} value={String(p.id)}>{p.display_name || p.legal_name}</option>
-                ))}
-            </select>
-            <button type="button" disabled={!linkingPartyId} onClick={() => void handleLinkParty()} className="rounded-lg bg-[#163D64] px-2.5 py-1 font-semibold text-white disabled:opacity-50">
-              Tautkan
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 
@@ -443,7 +443,7 @@ export function LeadStagePopupModal({
             </select>
           ) : (
             <div className="mt-0.5 text-sm font-semibold text-[#0876CD]">
-              {(data.brands || []).find((b: any) => String(b.id) === String(leadInfoForm.brand_id))?.brand_name || "Umum / Lintas Brand"}
+              {(data.brands || []).find((b: any) => String(b.id) === String(leadInfoForm.brand_id))?.brand_name || "Lintas Brand"}
             </div>
           )}
         </div>
@@ -1143,7 +1143,7 @@ export function OpportunityStagePopupModal({
                     </select>
                   ) : (
                     <div className="mt-0.5 text-sm font-semibold text-[#0876CD]">
-                      {(data.brands || []).find((b: any) => String(b.id) === String(leadInfoForm.brand_id))?.brand_name || "Umum / Lintas Brand"}
+                      {(data.brands || []).find((b: any) => String(b.id) === String(leadInfoForm.brand_id))?.brand_name || "Lintas Brand"}
                     </div>
                   )}
                 </div>

@@ -22,78 +22,78 @@ export const CRM_TONE_STYLES: Record<
   }
 > = {
   blue: {
-    cardBg: "bg-white",
-    cardBorder: "border-[#E2E8F0]",
-    iconBg: "bg-[#E7F2FF]",
-    text: "text-[#0876CD]",
-    colBg: "bg-[#F8FAFC]",
-    colHeaderBg: "bg-[#F1F5F9]",
-    colBorder: "border-[#E2E8F0]",
+    cardBg: "bg-gradient-to-br from-white to-[#F0F7FF]",
+    cardBorder: "border-[#BFDBFE]",
+    iconBg: "bg-[#DBEAFE]",
+    text: "text-[#0868B5]",
+    colBg: "bg-[#F4F7FB]",
+    colHeaderBg: "bg-white border-t-2 border-t-[#0876CD]",
+    colBorder: "border-[#DCE6F2]",
     badgeBg: "bg-[#DBEAFE] text-[#0868B5]",
     dot: "bg-[#0876CD]",
   },
   purple: {
-    cardBg: "bg-white",
-    cardBorder: "border-[#E2E8F0]",
-    iconBg: "bg-[#EEF2FF]",
-    text: "text-[#4338CA]",
-    colBg: "bg-[#F8FAFC]",
-    colHeaderBg: "bg-[#F1F5F9]",
-    colBorder: "border-[#E2E8F0]",
+    cardBg: "bg-gradient-to-br from-white to-[#F5F3FF]",
+    cardBorder: "border-[#DDD6FE]",
+    iconBg: "bg-[#EDE9FE]",
+    text: "text-[#5B21B6]",
+    colBg: "bg-[#F5F4FB]",
+    colHeaderBg: "bg-white border-t-2 border-t-[#6366F1]",
+    colBorder: "border-[#E0DDF5]",
     badgeBg: "bg-[#E0E7FF] text-[#3730A3]",
     dot: "bg-[#4F46E5]",
   },
   amber: {
-    cardBg: "bg-white",
-    cardBorder: "border-[#E2E8F0]",
+    cardBg: "bg-gradient-to-br from-white to-[#FFFBEB]",
+    cardBorder: "border-[#FDE68A]",
     iconBg: "bg-[#FEF3C7]",
     text: "text-[#B45309]",
-    colBg: "bg-[#F8FAFC]",
-    colHeaderBg: "bg-[#F1F5F9]",
-    colBorder: "border-[#E2E8F0]",
+    colBg: "bg-[#FAF8F3]",
+    colHeaderBg: "bg-white border-t-2 border-t-[#D97706]",
+    colBorder: "border-[#EFE7D4]",
     badgeBg: "bg-[#FEF3C7] text-[#92400E]",
     dot: "bg-[#D97706]",
   },
   pink: {
-    cardBg: "bg-white",
-    cardBorder: "border-[#E2E8F0]",
+    cardBg: "bg-gradient-to-br from-white to-[#F0F9FF]",
+    cardBorder: "border-[#BAE6FD]",
     iconBg: "bg-[#E0F2FE]",
     text: "text-[#0369A1]",
-    colBg: "bg-[#F8FAFC]",
-    colHeaderBg: "bg-[#F1F5F9]",
-    colBorder: "border-[#E2E8F0]",
+    colBg: "bg-[#F3F8FB]",
+    colHeaderBg: "bg-white border-t-2 border-t-[#0284C7]",
+    colBorder: "border-[#DAE8F2]",
     badgeBg: "bg-[#E0F2FE] text-[#075985]",
     dot: "bg-[#0284C7]",
   },
   green: {
-    cardBg: "bg-white",
-    cardBorder: "border-[#E2E8F0]",
-    iconBg: "bg-[#ECFDF5]",
+    cardBg: "bg-gradient-to-br from-white to-[#ECFDF5]",
+    cardBorder: "border-[#A7F3D0]",
+    iconBg: "bg-[#D1FAE5]",
     text: "text-[#047857]",
-    colBg: "bg-[#F8FAFC]",
-    colHeaderBg: "bg-[#F1F5F9]",
-    colBorder: "border-[#E2E8F0]",
+    colBg: "bg-[#F2FAF6]",
+    colHeaderBg: "bg-white border-t-2 border-t-[#059669]",
+    colBorder: "border-[#D4EDE1]",
     badgeBg: "bg-[#D1FAE5] text-[#065F46]",
     dot: "bg-[#059669]",
   },
   red: {
-    cardBg: "bg-white",
-    cardBorder: "border-[#E2E8F0]",
-    iconBg: "bg-[#FEF2F2]",
+    cardBg: "bg-gradient-to-br from-white to-[#FEF2F2]",
+    cardBorder: "border-[#FECACA]",
+    iconBg: "bg-[#FEE2E2]",
     text: "text-[#B91C1C]",
-    colBg: "bg-[#F8FAFC]",
-    colHeaderBg: "bg-[#F1F5F9]",
-    colBorder: "border-[#E2E8F0]",
+    colBg: "bg-[#FBF4F4]",
+    colHeaderBg: "bg-white border-t-2 border-t-[#DC2626]",
+    colBorder: "border-[#F2DCDC]",
     badgeBg: "bg-[#FEE2E2] text-[#991B1B]",
     dot: "bg-[#DC2626]",
   },
   slate: {
-    cardBg: "bg-white",
+    cardBg: "bg-gradient-to-br from-white to-[#F8FAFC]",
     cardBorder: "border-[#E2E8F0]",
     iconBg: "bg-[#F1F5F9]",
     text: "text-[#334155]",
-    colBg: "bg-[#F8FAFC]",
-    colHeaderBg: "bg-[#F1F5F9]",
+    colBg: "bg-[#F4F6F9]",
+    colHeaderBg: "bg-white border-t-2 border-t-[#64748B]",
     colBorder: "border-[#E2E8F0]",
     badgeBg: "bg-[#E2E8F0] text-[#334155]",
     dot: "bg-[#64748B]",
@@ -261,23 +261,42 @@ export function CRMFilterBar({
   onViewChange?: (viewId: string) => void;
   rightActions?: React.ReactNode;
 }) {
+  const [searchOpen, setSearchOpen] = useState(false);
+  const showSearchInput = searchOpen || Boolean(searchValue);
+
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border border-[#E2E8F0] bg-white p-3 shadow-2xs">
-      <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[240px]">
-        <label className="relative min-w-[200px] flex-1 max-w-xs">
-          <span className="sr-only">{searchPlaceholder}</span>
-          <Search
-            size={14}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]"
-          />
-          <input
-            type="search"
-            value={searchValue}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder={searchPlaceholder}
-            className="w-full rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] py-2 pl-9 pr-3 text-xs text-[#0F172A] placeholder:text-[#64748B] focus:border-[#0876CD] focus:bg-white focus:outline-none transition-colors"
-          />
-        </label>
+    <div className="flex flex-wrap lg:flex-nowrap items-center justify-between gap-2 rounded-2xl border border-[#E2E8F0] bg-white px-3 py-2.5 shadow-2xs">
+      <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 flex-1 min-w-0">
+        {showSearchInput ? (
+          <label className="relative w-48 xl:w-56 shrink-0">
+            <span className="sr-only">{searchPlaceholder}</span>
+            <Search
+              size={14}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]"
+            />
+            <input
+              type="search"
+              autoFocus={searchOpen && !searchValue}
+              value={searchValue}
+              onBlur={() => {
+                if (!searchValue) setSearchOpen(false);
+              }}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder={searchPlaceholder}
+              className="w-full rounded-xl border border-[#0876CD] bg-white py-1.5 pl-8 pr-2.5 text-xs text-[#0F172A] placeholder:text-[#64748B] focus:outline-none transition-all"
+            />
+          </label>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setSearchOpen(true)}
+            title={searchPlaceholder}
+            aria-label={searchPlaceholder}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] text-[#475569] hover:border-[#0876CD] hover:text-[#163D64] transition-colors"
+          >
+            <Search size={14} />
+          </button>
+        )}
 
         {filters.map((filter) => (
           <select
@@ -285,7 +304,7 @@ export function CRMFilterBar({
             aria-label={filter.ariaLabel || filter.id}
             value={filter.value}
             onChange={(e) => filter.onChange(e.target.value)}
-            className="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 text-xs font-medium text-[#334155] focus:border-[#0876CD] focus:outline-none transition-colors"
+            className="max-w-[155px] truncate rounded-xl border border-[#E2E8F0] bg-white px-2.5 py-1.5 text-xs font-medium text-[#334155] focus:border-[#0876CD] focus:outline-none transition-colors"
           >
             {filter.options.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -296,7 +315,7 @@ export function CRMFilterBar({
         ))}
 
         {viewOptions && viewOptions.length > 0 && onViewChange && (
-          <div className="inline-flex items-center rounded-xl border border-[#E2E8F0] bg-[#F1F5F9]/80 p-0.5">
+          <div className="inline-flex shrink-0 items-center rounded-xl border border-[#E2E8F0] bg-[#F1F5F9]/80 p-0.5">
             {viewOptions.map((opt) => {
               const Icon = opt.icon;
               const active = activeView === opt.id;
@@ -306,7 +325,7 @@ export function CRMFilterBar({
                   type="button"
                   onClick={() => onViewChange(opt.id)}
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all",
+                    "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all whitespace-nowrap",
                     active
                       ? "bg-white text-[#163D64] shadow-2xs font-bold"
                       : "text-[#64748B] hover:text-[#0F172A]"
@@ -332,7 +351,7 @@ export function CRMFilterBar({
       </div>
 
       {rightActions && (
-        <div className="flex items-center gap-2">{rightActions}</div>
+        <div className="flex shrink-0 items-center gap-2">{rightActions}</div>
       )}
     </div>
   );

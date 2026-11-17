@@ -837,7 +837,7 @@ export function CrmCompaniesView({
           <label className="font-medium text-slate-600 sm:col-span-2">
             Brand / Unit Bisnis
             <select className="input mt-1 w-full bg-white" value={partyForm.brand_id} onChange={(e) => setPartyForm((f) => ({ ...f, brand_id: e.target.value }))}>
-              <option value="">-- Umum / Lintas Brand --</option>
+              <option value="">-- Lintas Brand --</option>
               {(data.brands || []).map((b: any) => (
                 <option key={b.id} value={String(b.id)}>
                   [{b.brand_code}] {b.brand_name}

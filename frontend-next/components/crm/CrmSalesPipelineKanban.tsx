@@ -424,8 +424,6 @@ export function CrmSalesPipelineShell({
         viewOptions={[
           { id: "PIPELINE", label: "Pipeline", icon: Kanban },
           { id: "LIST", label: "List", icon: Table2 },
-          { id: "ESTIMATE", label: "Estimating & Quotations", icon: Calculator, badge: (data.quotations || []).length },
-          { id: "CREDIT", label: "Credit Control", icon: ShieldAlert },
         ]}
         activeView={viewMode}
         onViewChange={(v) => onViewModeChange(v as PipelineViewMode)}

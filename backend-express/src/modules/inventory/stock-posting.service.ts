@@ -286,15 +286,27 @@ export async function postStockMove(
           serialNumberId: line.serial_number_id ?? null,
         });
 
-        const balances = await (tx as any).inv_stock_balance.findMany({
+        let balances = await (tx as any).inv_stock_balance.findMany({
           where: {
             company_id: companyId,
-            product_id: product.id,
-            warehouse_location_id: location,
-            lot_id: line.lot_id ?? null,
-            serial_number_id: line.serial_number_id ?? null,
+            balance_identity_key: identityKey,
           },
         });
+        if (balances.length === 0) {
+          balances = await (tx as any).inv_stock_balance.findMany({
+            where: {
+              company_id: companyId,
+              product_id: product.id,
+              warehouse_location_id: location,
+              lot_id: line.lot_id ?? null,
+              serial_number_id: line.serial_number_id ?? null,
+              OR: [
+                { inventory_owner_id: defaultOwnerId, condition_status: conditionStatus },
+                { balance_identity_key: null },
+              ],
+            },
+          });
+        }
         if (balances.length > 1) {
           throw new ValidationError('Duplikasi stock balance perlu direkonsiliasi.');
         }
@@ -314,10 +326,27 @@ export async function postStockMove(
         }
 
         // Serial Number Global Uniqueness Invariant: sum(on_hand) across company must be 0 or 1
-        if (line.serial_number_id && sign === 1 && onHand.gt(1)) {
-          throw new ValidationError(
-            'Invariant Nomor Seri dilanggar: 1 Serial Number tidak boleh memiliki saldo > 1.',
-          );
+        if (line.serial_number_id && sign === 1) {
+          if (onHand.gt(1)) {
+            throw new ValidationError(
+              'Invariant Nomor Seri dilanggar: 1 Serial Number tidak boleh memiliki saldo > 1.',
+            );
+          }
+          if (move.move_type === 'RECEIPT') {
+            const globalSerialAgg = await tx.inv_stock_balance.aggregate({
+              where: {
+                company_id: companyId,
+                serial_number_id: line.serial_number_id,
+              },
+              _sum: { on_hand_quantity: true },
+            });
+            const existingGlobalQty = new Prisma.Decimal(globalSerialAgg._sum.on_hand_quantity ?? 0);
+            if (existingGlobalQty.gte(1)) {
+              throw new ValidationError(
+                'Invariant Nomor Seri dilanggar: Nomor seri ini sudah aktif di lokasi lain pada company ini.',
+              );
+            }
+          }
         }
 
         const eligibility = evaluateStockEligibility({
@@ -563,6 +592,27 @@ export async function reverseStockMove(
       const postedReversal = await postStockMove(reversalMove.id, companyId, userId, tx, {
         idempotencyKeyPrefix: 'REVERSAL',
       });
+
+      // Link reversal ledger entries to original ledger entries via reversal_of_id
+      const origLedgers = await tx.inv_stock_ledger_entry.findMany({
+        where: { company_id: companyId, source_document_id: originalMove.id },
+        orderBy: { created_at: 'asc' },
+      });
+      const revLedgers = await tx.inv_stock_ledger_entry.findMany({
+        where: { company_id: companyId, source_document_id: reversalMove.id },
+        orderBy: { created_at: 'asc' },
+      });
+      for (const revLedger of revLedgers) {
+        const matchOrig = origLedgers.find(
+          (ol) => ol.product_id === revLedger.product_id && ol.warehouse_location_id === revLedger.warehouse_location_id,
+        ) || origLedgers[0];
+        if (matchOrig) {
+          await tx.inv_stock_ledger_entry.update({
+            where: { id: revLedger.id },
+            data: { reversal_of_id: matchOrig.id },
+          });
+        }
+      }
 
       await tx.inv_stock_move.update({
         where: { id: originalMove.id },

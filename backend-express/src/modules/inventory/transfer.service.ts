@@ -143,6 +143,11 @@ export async function approveTransferOrder(input: {
   if (!['DRAFT', 'SUBMITTED'].includes(order.status)) {
     throw new ValidationError(`Transfer berstatus ${order.status} tidak dapat di-approve.`);
   }
+  if (order.requested_by_id && order.requested_by_id === input.userId) {
+    throw new ForbiddenError(
+      'Segregation of Duties (SoD): Pembuat permintaan transfer tidak dapat menyetujui dokumennya sendiri.',
+    );
+  }
   return (prisma as any).inv_transfer_order.update({
     where: { id: order.id },
     data: {
@@ -234,6 +239,19 @@ export async function dispatchTransferOrder(input: {
       await postStockMove(move.id, input.companyId, input.userId, tx, {
         idempotencyKeyPrefix: 'TRF_DISPATCH',
       });
+
+      const postedMoveLines = await tx.inv_stock_move_line.findMany({
+        where: { stock_move_id: move.id, company_id: input.companyId },
+      });
+      for (const line of lines) {
+        const matched = postedMoveLines.find((ml) => ml.product_id === line.product_id);
+        if (matched?.unit_cost != null) {
+          await (tx as any).inv_transfer_order_line.update({
+            where: { id: line.id },
+            data: { unit_cost: matched.unit_cost },
+          });
+        }
+      }
 
       return (tx as any).inv_transfer_order.update({
         where: { id: order.id },
@@ -397,6 +415,14 @@ export async function receiveTransferOrder(input: {
             idempotencyKeyPrefix: `TRF_DMG_OUT_${Date.now()}`,
           });
 
+          const postedOutLine = await tx.inv_stock_move_line.findFirst({
+            where: { stock_move_id: outTransitMove.id, company_id: input.companyId },
+          });
+          const actualDamagedUnitCost =
+            postedOutLine?.unit_cost != null
+              ? postedOutLine.unit_cost
+              : line.unit_cost ?? 0;
+
           const inDamagedMove = await tx.inv_stock_move.create({
             data: {
               id: crypto.randomUUID(),
@@ -424,7 +450,7 @@ export async function receiveTransferOrder(input: {
               serial_number_id: line.serial_number_id,
               quantity: damagedDelta,
               uom_id: line.uom_id || product?.base_uom_id,
-              unit_cost: line.unit_cost ?? 0,
+              unit_cost: actualDamagedUnitCost,
             },
           });
           await postStockMove(inDamagedMove.id, input.companyId, input.userId, tx, {
@@ -575,3 +601,4 @@ export async function resolveTransferDiscrepancy(input: {
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
   );
 }
+

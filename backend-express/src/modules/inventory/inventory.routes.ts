@@ -11,6 +11,7 @@ import crypto from 'crypto';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
+import { requireModulePermission, requireModuleTier } from '../../middlewares/rbac.middleware';
 import { postStockMove, reverseStockMove } from './stock-posting.service';
 import { getInventoryOverviewAndBalances } from './stock-query.service';
 import { verifyInventoryReconciliation } from './inventory-reconciliation.service';
@@ -66,7 +67,7 @@ inventoryRouter.get('/balances', async (req: Request, res: Response, next: NextF
 // STOCK MOVEMENTS POST & REVERSAL
 // =============================================================================
 
-inventoryRouter.post('/movements/:id/post', async (req: Request, res: Response, next: NextFunction) => {
+inventoryRouter.post('/movements/:id/post', requireModulePermission('INVENTORY', 'write'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = requireCompany(req);
     const updated = await postStockMove(req.params.id, companyId, req.user!.id, undefined, {
@@ -79,7 +80,7 @@ inventoryRouter.post('/movements/:id/post', async (req: Request, res: Response, 
   }
 });
 
-inventoryRouter.post('/movements/:id/reverse', async (req: Request, res: Response, next: NextFunction) => {
+inventoryRouter.post('/movements/:id/reverse', requireModulePermission('INVENTORY', 'approve'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = requireCompany(req);
     const result = await reverseStockMove(req.params.id, companyId, req.user!.id, req.body?.reason);
@@ -89,7 +90,7 @@ inventoryRouter.post('/movements/:id/reverse', async (req: Request, res: Respons
   }
 });
 
-inventoryRouter.post('/stock-moves/:id/reverse', async (req: Request, res: Response, next: NextFunction) => {
+inventoryRouter.post('/stock-moves/:id/reverse', requireModulePermission('INVENTORY', 'approve'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = requireCompany(req);
     const result = await reverseStockMove(req.params.id, companyId, req.user!.id, req.body?.reason);
@@ -203,7 +204,7 @@ inventoryRouter.post('/transfers', async (req: Request, res: Response, next: Nex
   }
 });
 
-inventoryRouter.post('/transfers/:id/approve', async (req: Request, res: Response, next: NextFunction) => {
+inventoryRouter.post('/transfers/:id/approve', requireModulePermission('INVENTORY', 'approve'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = requireCompany(req);
     const result = await approveTransferOrder({
@@ -246,7 +247,7 @@ inventoryRouter.post('/transfers/:id/receive', async (req: Request, res: Respons
   }
 });
 
-inventoryRouter.post('/transfers/:id/resolve-discrepancy', async (req: Request, res: Response, next: NextFunction) => {
+inventoryRouter.post('/transfers/:id/resolve-discrepancy', requireModulePermission('INVENTORY', 'approve'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = requireCompany(req);
     const result = await resolveTransferDiscrepancy({
@@ -265,7 +266,7 @@ inventoryRouter.post('/transfers/:id/resolve-discrepancy', async (req: Request, 
 // STOCK OPNAME APPROVAL (WITH SOD) & ASSET CAPITALIZATION / CUSTODIAN BRIDGE
 // =============================================================================
 
-inventoryRouter.post('/opname/:id/approve', async (req: Request, res: Response, next: NextFunction) => {
+inventoryRouter.post('/opname/:id/approve', requireModulePermission('INVENTORY', 'approve'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = requireCompany(req);
     const result = await approveStockCount({
@@ -279,7 +280,7 @@ inventoryRouter.post('/opname/:id/approve', async (req: Request, res: Response, 
   }
 });
 
-inventoryRouter.post('/stock-counts/:id/approve', async (req: Request, res: Response, next: NextFunction) => {
+inventoryRouter.post('/stock-counts/:id/approve', requireModulePermission('INVENTORY', 'approve'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = requireCompany(req);
     const result = await approveStockCount({
@@ -350,7 +351,7 @@ inventoryRouter.get('/reconcile/verify', async (req: Request, res: Response, nex
   }
 });
 
-inventoryRouter.post('/reconcile/verify', async (req: Request, res: Response, next: NextFunction) => {
+inventoryRouter.post('/reconcile/verify', requireModuleTier('INVENTORY', 1), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = requireCompany(req);
     const result = await verifyInventoryReconciliation(companyId);
