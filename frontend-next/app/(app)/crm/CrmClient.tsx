@@ -1402,226 +1402,126 @@ function TabDeals({
         </div>
       </Modal>
 
-      {/* Modal: Buat Opportunity Baru (Selaras dengan Kartu Popup Stage Marka) */}
-      <Modal isOpen={isNewOppOpen} onClose={() => setIsNewOppOpen(false)} title="Buat Opportunity Baru" size="lg">
-        <div className="flex flex-col gap-4 p-4 text-xs">
-          <div className="rounded-2xl border border-slate-200 p-3.5 space-y-3">
-            <div className="font-bold text-sm text-[#163D64]">Project &amp; Deal Information</div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="font-medium text-slate-600 mb-1 block">Brand / Unit Bisnis</label>
-                <select
-                  className="input w-full bg-white"
-                  value={form.brand_id}
-                  onChange={e => setForm(f => ({ ...f, brand_id: e.target.value }))}
+      {/* Modal: Buat Opportunity Baru (Ringkas & Rapi) */}
+      <Modal isOpen={isNewOppOpen} onClose={() => setIsNewOppOpen(false)} title="Buat Opportunity Baru" size="md">
+        <div className="flex flex-col gap-3.5 p-4 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="font-medium text-slate-600">Pilih Pelanggan *</label>
+                <button
+                  type="button"
+                  onClick={() => setIsQuickPartyOpen(true)}
+                  className="text-2xs font-semibold text-[#0876CD] hover:underline flex items-center gap-1"
                 >
-                  <option value="">-- Pilih Brand --</option>
-                  {(data.brands || []).map((b: any) => (
-                    <option key={b.id} value={String(b.id)}>
-                      [{b.brand_code}] {b.brand_name}
-                    </option>
-                  ))}
-                </select>
+                  <UserPlus size={12} /> + Pelanggan Baru
+                </button>
               </div>
-              <div>
-                <label className="font-medium text-slate-600 mb-1 block">Project Name / Nama Opportunity *</label>
-                <input
-                  className="input w-full"
-                  value={form.opportunity_name}
-                  onChange={e => setForm(f => ({ ...f, opportunity_name: e.target.value }))}
-                  placeholder="Contoh: Booth Exhibition Pameran..."
-                />
-              </div>
-              <div>
-                <label className="font-medium text-slate-600 mb-1 block">Project Type / Jenis Proyek</label>
-                <input
-                  className="input w-full"
-                  value={form.project_type}
-                  onChange={e => setForm(f => ({ ...f, project_type: e.target.value }))}
-                  placeholder="Contoh: Booth Exhibition / Event Management"
-                />
-              </div>
+              <select
+                className="input w-full bg-white"
+                value={form.customer_party}
+                onChange={e => setForm(f => ({ ...f, customer_party: e.target.value }))}
+              >
+                <option value="">-- Pilih customer aktif --</option>
+                {(data.parties || []).filter((party: any) => ["CUSTOMER", "PROSPECT"].includes(String(party.party_type || "").toUpperCase()) && party.status === "ACTIVE").map(p => (
+                  <option key={p.id} value={String(p.id)}>
+                    {p.display_name || p.legal_name} {p.party_code ? `(${p.party_code})` : ""}
+                  </option>
+                ))}
+              </select>
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="font-medium text-slate-600">Pilih Pelanggan * (Customer / Prospect)</label>
-                  <button
-                    type="button"
-                    onClick={() => setIsQuickPartyOpen(true)}
-                    className="text-2xs font-semibold text-[#0876CD] hover:underline flex items-center gap-1"
-                  >
-                    <UserPlus size={12} /> + Pelanggan Baru
-                  </button>
-                </div>
-                <select
-                  className="input w-full bg-white"
-                  value={form.customer_party}
-                  onChange={e => setForm(f => ({ ...f, customer_party: e.target.value }))}
-                >
-                  <option value="">-- Pilih customer aktif --</option>
-                  {(data.parties || []).filter((party: any) => ["CUSTOMER", "PROSPECT"].includes(String(party.party_type || "").toUpperCase()) && party.status === "ACTIVE").map(p => (
-                    <option key={p.id} value={String(p.id)}>
-                      {p.display_name || p.legal_name} {p.party_code ? `(${p.party_code})` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="font-medium text-slate-600 mb-1 block">Internal PIC / Sales Owner</label>
-                <select
-                  className="input w-full bg-white"
-                  value={form.owner_user_id}
-                  onChange={e => setForm(f => ({ ...f, owner_user_id: e.target.value }))}
-                >
-                  <option value="">-- Default (Pembuat Opportunity) --</option>
-                  {teamUsers.map((u: any) => (
-                    <option key={u.id} value={String(u.id)}>
-                      {u.full_name || u.email}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="font-medium text-slate-600 mb-1 block">Expected Amount (Rp)</label>
-                <IDRInput aria-label="Expected Amount dalam rupiah" value={form.expected_amount} onChange={(digits) => setForm((current) => ({ ...current, expected_amount: digits }))} />
-              </div>
-              <div>
-                <label className="font-medium text-slate-600 mb-1 block">Probabilitas (%)</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  className="input w-full"
-                  value={form.probability_percent}
-                  onChange={e => setForm(f => ({ ...f, probability_percent: Number(e.target.value) }))}
-                />
-              </div>
-              <div>
-                <label className="font-medium text-slate-600 mb-1 block">Tahap Pipeline</label>
-                <select
-                  className="input w-full bg-white"
-                  value={form.pipeline_stage}
-                  onChange={e => setForm(f => ({ ...f, pipeline_stage: e.target.value }))}
-                >
-                  {["PROSPECT", "DISCOVERY", "PROPOSAL_SENT", "NEGOTIATION", "FOLLOW_UP"].map(s => (
-                    <option key={s} value={s}>{CRM_PIPELINE_STAGE_LABELS[s] || s}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="font-medium text-slate-600 mb-1 block">Event Date / Target Closing</label>
-                <input
-                  type="date"
-                  className="input w-full"
-                  value={form.expected_close_date}
-                  onChange={e => setForm(f => ({ ...f, expected_close_date: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="font-medium text-slate-600 mb-1 block">Follow-Up Date</label>
-                <input
-                  type="date"
-                  className="input w-full"
-                  value={form.next_follow_up_at}
-                  onChange={e => setForm(f => ({ ...f, next_follow_up_at: e.target.value }))}
-                />
-              </div>
+            <div>
+              <label className="font-medium text-slate-600 mb-1 block">Brand / Unit Bisnis</label>
+              <select
+                className="input w-full bg-white"
+                value={form.brand_id}
+                onChange={e => setForm(f => ({ ...f, brand_id: e.target.value }))}
+              >
+                <option value="">-- Lintas Brand --</option>
+                {(data.brands || []).map((b: any) => (
+                  <option key={b.id} value={String(b.id)}>
+                    [{b.brand_code}] {b.brand_name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
-          {/* Stage-Specific Details (Sesuai Kartu Popup Stage Marka) */}
-          <div className="rounded-2xl border border-blue-200 bg-blue-50/30 p-3.5 space-y-3">
-            <div className="font-bold text-sm text-[#163D64]">
-              Detail Tahap: {CRM_PIPELINE_STAGE_LABELS[form.pipeline_stage] || form.pipeline_stage}
+          <div>
+            <label className="font-medium text-slate-600 mb-1 block">Nama Opportunity / Project *</label>
+            <input
+              className="input w-full"
+              value={form.opportunity_name}
+              onChange={e => setForm(f => ({ ...f, opportunity_name: e.target.value }))}
+              placeholder="Contoh: Booth Exhibition Pameran / Implementasi Sistem..."
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="font-medium text-slate-600 mb-1 block">Expected Amount (Rp)</label>
+              <IDRInput aria-label="Expected Amount dalam rupiah" value={form.expected_amount} onChange={(digits) => setForm((current) => ({ ...current, expected_amount: digits }))} />
             </div>
-            {form.pipeline_stage === "PROSPECT" && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <label className="font-medium text-slate-600">
-                  Meeting Date
-                  <input type="date" className="input mt-1 w-full bg-white" value={form.meeting_date} onChange={e => setForm(f => ({ ...f, meeting_date: e.target.value }))} />
-                </label>
-                <label className="font-medium text-slate-600">
-                  Project Brief
-                  <input className="input mt-1 w-full bg-white" value={form.project_brief} onChange={e => setForm(f => ({ ...f, project_brief: e.target.value }))} placeholder="Ringkasan brief / link file..." />
-                </label>
-                <label className="font-medium text-slate-600 sm:col-span-2">
-                  Initial Discussion Notes
-                  <textarea className="input mt-1 w-full bg-white min-h-14" value={form.initial_discussion_notes} onChange={e => setForm(f => ({ ...f, initial_discussion_notes: e.target.value }))} placeholder="Hasil diskusi awal dengan klien..." />
-                </label>
-              </div>
-            )}
-            {form.pipeline_stage === "DISCOVERY" && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <label className="font-medium text-slate-600 sm:col-span-2">
-                  Concept Summary
-                  <textarea className="input mt-1 w-full bg-white min-h-14" value={form.concept_summary} onChange={e => setForm(f => ({ ...f, concept_summary: e.target.value }))} placeholder="Ringkasan konsep yang ditawarkan..." />
-                </label>
-                <label className="font-medium text-slate-600">
-                  Key Deliverables
-                  <input className="input mt-1 w-full bg-white" value={form.key_deliverables} onChange={e => setForm(f => ({ ...f, key_deliverables: e.target.value }))} placeholder="3D Design, Booth Production, Audio..." />
-                </label>
-                <label className="font-medium text-slate-600">
-                  Proposal / Concept Deck Status
-                  <input className="input mt-1 w-full bg-white" value={form.proposal_deck_status} onChange={e => setForm(f => ({ ...f, proposal_deck_status: e.target.value }))} placeholder="In Progress / Ready / Sent" />
-                </label>
-              </div>
-            )}
-            {form.pipeline_stage === "PROPOSAL_SENT" && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <label className="font-medium text-slate-600">
-                  Quotation Number
-                  <input className="input mt-1 w-full bg-white" value={form.quotation_number} onChange={e => setForm(f => ({ ...f, quotation_number: e.target.value }))} placeholder="QUO-2026-001" />
-                </label>
-                <label className="font-medium text-slate-600">
-                  Sent Date
-                  <input type="date" className="input mt-1 w-full bg-white" value={form.sent_date} onChange={e => setForm(f => ({ ...f, sent_date: e.target.value }))} />
-                </label>
-                <label className="font-medium text-slate-600">
-                  Quotation Status
-                  <input className="input mt-1 w-full bg-white" value={form.quotation_status} onChange={e => setForm(f => ({ ...f, quotation_status: e.target.value }))} placeholder="Sent / Reviewed" />
-                </label>
-              </div>
-            )}
-            {form.pipeline_stage === "NEGOTIATION" && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <label className="font-medium text-slate-600">
-                  Revision Count
-                  <input className="input mt-1 w-full bg-white" value={form.revision_count} onChange={e => setForm(f => ({ ...f, revision_count: e.target.value }))} placeholder="0" />
-                </label>
-                <label className="font-medium text-slate-600">
-                  Client Feedback
-                  <input className="input mt-1 w-full bg-white" value={form.client_feedback} onChange={e => setForm(f => ({ ...f, client_feedback: e.target.value }))} placeholder="Masukan dari klien..." />
-                </label>
-                <label className="font-medium text-slate-600 sm:col-span-2">
-                  Negotiation Notes
-                  <textarea className="input mt-1 w-full bg-white min-h-14" value={form.negotiation_notes} onChange={e => setForm(f => ({ ...f, negotiation_notes: e.target.value }))} placeholder="Catatan negosiasi harga/scope..." />
-                </label>
-              </div>
-            )}
-            {form.pipeline_stage === "FOLLOW_UP" && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <label className="font-medium text-slate-600">
-                  Deal Status
-                  <input className="input mt-1 w-full bg-white" value={form.deal_status} onChange={e => setForm(f => ({ ...f, deal_status: e.target.value }))} placeholder="Pending PO / Approval" />
-                </label>
-                <label className="font-medium text-slate-600">
-                  Payment Terms
-                  <input className="input mt-1 w-full bg-white" value={form.payment_terms} onChange={e => setForm(f => ({ ...f, payment_terms: e.target.value }))} placeholder="50% DP, 50% Pelunasan" />
-                </label>
-              </div>
-            )}
-            <label className="block font-medium text-slate-600">
-              Notes Tambahan
-              <textarea className="input mt-1 w-full bg-white min-h-12" value={form.plain_notes} onChange={e => setForm(f => ({ ...f, plain_notes: e.target.value }))} placeholder="Catatan internal tambahan..." />
-            </label>
+            <div>
+              <label className="font-medium text-slate-600 mb-1 block">Probabilitas (%)</label>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                className="input w-full"
+                value={form.probability_percent}
+                onChange={e => setForm(f => ({ ...f, probability_percent: Number(e.target.value) }))}
+              />
+            </div>
+            <div>
+              <label className="font-medium text-slate-600 mb-1 block">Tahap Pipeline</label>
+              <select
+                className="input w-full bg-white"
+                value={form.pipeline_stage}
+                onChange={e => setForm(f => ({ ...f, pipeline_stage: e.target.value }))}
+              >
+                {["PROSPECT", "DISCOVERY", "PROPOSAL_SENT", "NEGOTIATION", "FOLLOW_UP"].map(s => (
+                  <option key={s} value={s}>{CRM_PIPELINE_STAGE_LABELS[s] || s}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="font-medium text-slate-600 mb-1 block">Internal PIC / Sales Owner</label>
+              <select
+                className="input w-full bg-white"
+                value={form.owner_user_id}
+                onChange={e => setForm(f => ({ ...f, owner_user_id: e.target.value }))}
+              >
+                <option value="">-- Default (Pembuat Opportunity) --</option>
+                {teamUsers.map((u: any) => (
+                  <option key={u.id} value={String(u.id)}>
+                    {u.full_name || u.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="font-medium text-slate-600 mb-1 block">Target Closing</label>
+              <input
+                type="date"
+                className="input w-full"
+                value={form.expected_close_date}
+                onChange={e => setForm(f => ({ ...f, expected_close_date: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="font-medium text-slate-600 mb-1 block">Catatan (Opsional)</label>
+            <textarea
+              className="input w-full min-h-16"
+              value={form.plain_notes}
+              onChange={e => setForm(f => ({ ...f, plain_notes: e.target.value }))}
+              placeholder="Ringkasan kebutuhan klien..."
+            />
           </div>
 
           <div className="flex gap-2 pt-1 justify-end">
