@@ -32,8 +32,11 @@ export const DEFAULT_COA = [
   { code: '1110', name: 'Kas Operasional', type: 'ASSET', balance: 'DEBIT', parent_code: null },
   { code: '1120', name: 'Bank Perusahaan', type: 'ASSET', balance: 'DEBIT', parent_code: null },
   { code: '1130', name: 'Piutang Usaha (AR)', type: 'ASSET', balance: 'DEBIT', parent_code: null },
+  { code: '1135', name: 'Piutang Intercompany (IC AR)', type: 'ASSET', balance: 'DEBIT', parent_code: null },
   { code: '1140', name: 'Uang Muka & Cash in Transit', type: 'ASSET', balance: 'DEBIT', parent_code: null },
   { code: '1150', name: 'Persediaan Pekerjaan Dalam Proses (WIP)', type: 'ASSET', balance: 'DEBIT', parent_code: null },
+  { code: '1151', name: 'Persediaan Barang & Material Gudang', type: 'ASSET', balance: 'DEBIT', parent_code: null },
+  { code: '1152', name: 'Persediaan Barang Dalam Perjalanan (In-Transit)', type: 'ASSET', balance: 'DEBIT', parent_code: null },
   { code: '1160', name: 'Pajak Dibayar Dimuka (PPh 23 / Final)', type: 'ASSET', balance: 'DEBIT', parent_code: null },
   { code: '1161', name: 'PPN Masukan (Input VAT)', type: 'ASSET', balance: 'DEBIT', parent_code: null },
   { code: '1200', name: 'Aset Tetap (Fixed Assets)', type: 'ASSET', balance: 'DEBIT', parent_code: null },
@@ -42,10 +45,12 @@ export const DEFAULT_COA = [
   { code: '2110', name: 'Hutang Usaha (AP)', type: 'LIABILITY', balance: 'CREDIT', parent_code: null },
   { code: '2120', name: 'Hutang Pajak (PPN / PPh)', type: 'LIABILITY', balance: 'CREDIT', parent_code: null },
   { code: '2130', name: 'Beban Yang Masih Harus Dibayar (Accrued)', type: 'LIABILITY', balance: 'CREDIT', parent_code: null },
+  { code: '2131', name: 'Hutang Penerimaan Barang Belum Difakturkan (GR/IR Clearing)', type: 'LIABILITY', balance: 'CREDIT', parent_code: null },
   { code: '2140', name: 'Uang Muka Pelanggan', type: 'LIABILITY', balance: 'CREDIT', parent_code: null },
   { code: '2150', name: 'Utang Gaji Bersih', type: 'LIABILITY', balance: 'CREDIT', parent_code: null },
   { code: '2160', name: 'Utang PPh 21 Karyawan', type: 'LIABILITY', balance: 'CREDIT', parent_code: null },
   { code: '2170', name: 'Utang BPJS Karyawan & Perusahaan', type: 'LIABILITY', balance: 'CREDIT', parent_code: null },
+  { code: '2180', name: 'Hutang Intercompany (IC AP)', type: 'LIABILITY', balance: 'CREDIT', parent_code: null },
   // 3000 - EKUITAS
   { code: '3100', name: 'Modal Disetor (Capital Stock)', type: 'EQUITY', balance: 'CREDIT', parent_code: null },
   { code: '3200', name: 'Laba Ditahan (Retained Earnings)', type: 'EQUITY', balance: 'CREDIT', parent_code: null },
@@ -55,9 +60,11 @@ export const DEFAULT_COA = [
   // 5000 - HPP / COGS
   { code: '5100', name: 'Biaya Langsung Proyek (Direct Cost)', type: 'EXPENSE', balance: 'DEBIT', parent_code: null },
   { code: '5101', name: 'Beban Pokok Proyek (HPP Material & Upah)', type: 'EXPENSE', balance: 'DEBIT', parent_code: null },
+  { code: '5102', name: 'Selisih Harga Perolehan & Revaluasi Material (PPV / PUP)', type: 'EXPENSE', balance: 'DEBIT', parent_code: null },
   // 6000 - BEBAN OPERASIONAL
   { code: '6100', name: 'Beban Gaji & SDM', type: 'EXPENSE', balance: 'DEBIT', parent_code: null },
   { code: '6200', name: 'Beban Operasional Kantor', type: 'EXPENSE', balance: 'DEBIT', parent_code: null },
+  { code: '6210', name: 'Beban Selisih Opname & Penghapusan Persediaan (Write-Off)', type: 'EXPENSE', balance: 'DEBIT', parent_code: null },
 ];
 
 export class FinanceService {
@@ -1269,9 +1276,33 @@ export class FinanceService {
       if (journal) {
         if (doc.billing_type === 'SUPPLIER_INVOICE') {
           const apAccount = coaMap.get('2110');
-          const costAccount = projectId
-            ? coaMap.get('1150')
-            : selectedExpenseAccount || coaMap.get('5100') || coaMap.get('1150');
+          const grIrAccount = coaMap.get('2131');
+          const varianceAccount = coaMap.get('5102');
+          const linkedReceipts = doc.purchase_order_id
+            ? await tx.proc_goods_receipt.findMany({
+                where: {
+                  company_id: doc.company_id,
+                  purchase_order_id: doc.purchase_order_id,
+                  status: { in: ['POSTED', 'COMPLETED'] },
+                },
+                select: { id: true },
+              })
+            : [];
+          const isInventoryBackedInvoice = linkedReceipts.length > 0 && Boolean(grIrAccount);
+          const threeWayMatch = isInventoryBackedInvoice && doc.purchase_order_id
+            ? await tx.proc_three_way_match.findFirst({
+                where: { company_id: doc.company_id, purchase_order_id: doc.purchase_order_id },
+                orderBy: { created_at: 'desc' },
+              })
+            : null;
+          const priceVariance = isInventoryBackedInvoice ? Number(threeWayMatch?.price_variance ?? 0) : 0;
+          const grClearingAmount = isInventoryBackedInvoice ? subtotal - priceVariance : subtotal;
+
+          const costAccount = isInventoryBackedInvoice
+            ? grIrAccount
+            : projectId
+              ? coaMap.get('1150')
+              : selectedExpenseAccount || coaMap.get('5100') || coaMap.get('1150');
           const inputTaxAccount = coaMap.get('1161') || coaMap.get('2120');
 
           if (apAccount && costAccount) {
@@ -1284,7 +1315,9 @@ export class FinanceService {
                 journal_id: journal.id,
                 entry_number: `JE-AP-${doc.invoice_number}`,
                 posting_date: new Date(),
-                description: `Pengakuan Hutang & PPN Masukan Tagihan ${doc.invoice_number}`,
+                description: isInventoryBackedInvoice
+                  ? `Kliring GR/IR & Pengakuan Hutang Tagihan ${doc.invoice_number}`
+                  : `Pengakuan Hutang & PPN Masukan Tagihan ${doc.invoice_number}`,
                 source_document_id: sourceDocument.id,
                 status: 'POSTED',
               },
@@ -1302,11 +1335,29 @@ export class FinanceService {
                 project_id: projectId,
                 cost_center_id: billingLines.find((line) => line.cost_center_id)?.cost_center_id ?? null,
                 party_id: doc.party_id,
-                debit_base: subtotal,
-                credit_base: 0,
-                transaction_amount: subtotal,
+                debit_base: grClearingAmount > 0 ? grClearingAmount : 0,
+                credit_base: grClearingAmount < 0 ? Math.abs(grClearingAmount) : 0,
+                transaction_amount: Math.abs(grClearingAmount),
               },
             });
+
+            if (isInventoryBackedInvoice && Math.abs(priceVariance) > 0.001 && varianceAccount) {
+              await tx.fin_journal_line.create({
+                data: {
+                  id: crypto.randomUUID(),
+                  tenant_id: doc.tenant_id,
+                  company_id: doc.company_id,
+                  created_by_id: userId,
+                  journal_entry_id: entry.id,
+                  account_id: varianceAccount.id,
+                  project_id: projectId,
+                  party_id: doc.party_id,
+                  debit_base: priceVariance > 0 ? priceVariance : 0,
+                  credit_base: priceVariance < 0 ? Math.abs(priceVariance) : 0,
+                  transaction_amount: Math.abs(priceVariance),
+                },
+              });
+            }
 
             if (taxAmount > 0 && inputTaxAccount) {
               await tx.fin_journal_line.create({

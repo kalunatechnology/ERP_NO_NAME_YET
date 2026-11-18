@@ -45,7 +45,7 @@ import { postPosSaleDeduction } from './extensions/retail-pos.service';
 import { evaluateDdmrpBuffers, upsertDdmrpBuffer } from './advanced/ddmrp.service';
 import { dispatchPendingOutboxWebhooks } from './advanced/webhook.service';
 import { exportEpcis2Document } from './advanced/epcis.service';
-import { calculatePeriodicUnitPrice } from './advanced/material-ledger.service';
+import { calculatePeriodicUnitPrice, postPeriodicUnitPriceRevaluation } from './advanced/material-ledger.service';
 import { INVENTORY_OPENAPI_SPEC } from './advanced/inventory-openapi';
 
 export const inventoryRouter = Router();
@@ -692,6 +692,27 @@ inventoryRouter.get('/material-ledger/pup', async (req: Request, res: Response, 
       varianceAmount: req.query.variance_amount ? Number(req.query.variance_amount) : undefined,
     });
     res.json({ period_start: periodStart, period_end: periodEnd, results });
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/material-ledger/pup/post', requireModuleTier('INVENTORY', 1), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const now = new Date();
+    const defaultStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const periodStart = req.body?.period_start ? new Date(String(req.body.period_start)) : defaultStart;
+    const periodEnd = req.body?.period_end ? new Date(String(req.body.period_end)) : now;
+    const result = await postPeriodicUnitPriceRevaluation({
+      companyId,
+      tenantId: req.user?.tenant_id,
+      userId: req.user!.id,
+      periodStart,
+      periodEnd,
+      varianceAmount: req.body?.variance_amount ? Number(req.body.variance_amount) : undefined,
+    });
+    res.status(201).json(result);
   } catch (err) {
     next(err);
   }

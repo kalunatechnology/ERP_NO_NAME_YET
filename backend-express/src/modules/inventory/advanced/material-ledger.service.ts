@@ -7,6 +7,7 @@
  * ending inventory / COGS revaluation deltas.
  */
 import prisma from '../../../config/database';
+import { emitInventoryOutboxEvent } from '../inventory-event.service';
 
 export async function calculatePeriodicUnitPrice(input: {
   companyId: string;
@@ -94,6 +95,47 @@ export async function calculatePeriodicUnitPrice(input: {
       periodic_unit_price: Number(pup.toFixed(4)),
       cogs_revaluation_delta: Number((revaluedCogs - agg.issueValue).toFixed(2)),
       ending_inventory_revaluation_delta: Number((revaluedEndingValue - endingBookValue).toFixed(2)),
+    };
+  });
+}
+
+export async function postPeriodicUnitPriceRevaluation(input: {
+  companyId: string;
+  tenantId?: string | null;
+  userId: string;
+  periodStart: Date;
+  periodEnd: Date;
+  varianceAmount?: number;
+}) {
+  const rows = await calculatePeriodicUnitPrice(input);
+  const activeRows = rows.filter(
+    (r) => Math.abs(r.cogs_revaluation_delta) > 0.01 || Math.abs(r.ending_inventory_revaluation_delta) > 0.01,
+  );
+  const periodKey = `${input.periodStart.toISOString().slice(0, 10)}_${input.periodEnd.toISOString().slice(0, 10)}`;
+
+  return prisma.$transaction(async (tx) => {
+    const evt = await emitInventoryOutboxEvent(
+      {
+        tenantId: input.tenantId ?? null,
+        companyId: input.companyId,
+        aggregateType: 'MATERIAL_LEDGER_PUP',
+        aggregateId: periodKey,
+        eventType: 'inventory.valuation.pup_posted',
+        idempotencyKey: `PUP_${input.companyId}_${periodKey}`,
+        payload: {
+          period_start: input.periodStart.toISOString(),
+          period_end: input.periodEnd.toISOString(),
+          posted_by_id: input.userId,
+          items: activeRows,
+        },
+      },
+      tx,
+    );
+    return {
+      period_key: periodKey,
+      item_count: activeRows.length,
+      outbox_event_id: evt?.id ?? null,
+      items: activeRows,
     };
   });
 }

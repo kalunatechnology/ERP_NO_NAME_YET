@@ -28,6 +28,8 @@ import { BudgetingService } from './budgeting.service';
 import { hasModuleOverride } from '../../utils/module-permissions';
 import { PayrollService } from './payroll.service';
 import { RecurringExpenseService } from './recurring-expense.service';
+import { InventoryGlBridgeService } from './inventory-gl-bridge.service';
+import { getInventoryCashflowIntelligence } from './inventory-cashflow-forecast.service';
 
 export const financeRouter = Router();
 
@@ -2062,3 +2064,52 @@ financeRouter.use('/project-fundings', createCrudRouter({ modelName: 'fin_projec
 financeRouter.use('/credit-facilities', createCrudRouter({ modelName: 'fin_credit_facility' }));
 financeRouter.use('/recurring-payment-rules', createCrudRouter({ modelName: 'fin_recurring_payment_rule' }));
 financeRouter.use('/overhead-rules', createCrudRouter({ modelName: 'fin_overhead_rule' }));
+
+// =============================================================================
+// INVENTORY-TO-FINANCE GL BRIDGE & DDMRP CASH FLOW INTELLIGENCE
+// =============================================================================
+financeRouter.post('/inventory-bridge/sync', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const userId = authenticatedFinanceUserId(req);
+    const result = await InventoryGlBridgeService.syncCompanyOutboxToGl(
+      companyId,
+      userId,
+      Number(req.body?.limit ?? 50),
+    );
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+financeRouter.get('/inventory-bridge/status', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const status = await InventoryGlBridgeService.getBridgeStatus(companyId);
+    sendSuccess(res, status);
+  } catch (err) {
+    next(err);
+  }
+});
+
+financeRouter.post('/inventory-bridge/retry/:eventId', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const userId = authenticatedFinanceUserId(req);
+    const result = await InventoryGlBridgeService.retryOutboxEvent(req.params.eventId, companyId, userId);
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+financeRouter.get('/cashflow/inventory-forecast', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const forecast = await getInventoryCashflowIntelligence(companyId);
+    sendSuccess(res, forecast);
+  } catch (err) {
+    next(err);
+  }
+});

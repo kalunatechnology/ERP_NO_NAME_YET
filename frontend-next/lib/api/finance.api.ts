@@ -352,3 +352,52 @@ export async function fetchRealMonthlyStackedData(params?: {
     endDate: params?.endDate,
   });
 }
+
+export interface InventoryBridgeStatusResponse {
+  counts: { PENDING: number; POSTED: number; SKIPPED: number; FAILED: number; [key: string]: number };
+  recent_events: Array<{
+    id: string;
+    event_type: string;
+    aggregate_id: string;
+    gl_status: string;
+    gl_journal_entry_id?: string | null;
+    gl_processed_at?: string | null;
+    gl_error?: string | null;
+    created_at?: string;
+  }>;
+}
+
+export interface InventoryCashflowForecastResponse {
+  working_capital: {
+    total_inventory_value: number;
+    damaged_or_non_good_value: number;
+    overstock_trapped_cash: number;
+  };
+  cash_outflow_forecast: {
+    immediate_red_zone_outflow: number;
+    upcoming_yellow_zone_outflow: number;
+    total_ddmrp_restock_outflow: number;
+    committed_unpaid_po_invoices: number;
+  };
+  replenishment_items: any[];
+}
+
+export async function fetchInventoryBridgeStatus(): Promise<InventoryBridgeStatusResponse> {
+  const { data } = await api.get("/api/v1/finance/inventory-bridge/status");
+  return data?.data ?? data;
+}
+
+export async function syncInventoryOutboxToGl(limit = 50): Promise<{ processed: number; skipped: number; failed: number; journal_entry_ids: string[] }> {
+  const { data } = await api.post("/api/v1/finance/inventory-bridge/sync", { limit });
+  return data?.data ?? data;
+}
+
+export async function retryInventoryBridgeEvent(eventId: string) {
+  const { data } = await api.post(`/api/v1/finance/inventory-bridge/retry/${eventId}`, {});
+  return data?.data ?? data;
+}
+
+export async function fetchInventoryCashflowForecast(): Promise<InventoryCashflowForecastResponse> {
+  const { data } = await api.get("/api/v1/finance/cashflow/inventory-forecast");
+  return data?.data ?? data;
+}

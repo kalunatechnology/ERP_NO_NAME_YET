@@ -301,6 +301,7 @@ export async function postStockMove(
     }
 
     const scope = { company_id: companyId, tenant_id: move.tenant_id, created_by_id: userId };
+    let moveTotalValue = new Prisma.Decimal(0);
 
     for (const line of lines) {
       const product = await tx.master_product.findFirst({
@@ -681,6 +682,7 @@ export async function postStockMove(
         }
       }
 
+      moveTotalValue = moveTotalValue.plus(totalValue);
       await tx.inv_stock_move_line.update({
         where: { id: line.id },
         data: {
@@ -704,9 +706,12 @@ export async function postStockMove(
         eventType: 'inventory.stock.posted',
         payload: {
           stock_move_id: id,
+          document_id: move.document_id ?? null,
           move_type: move.move_type,
           source_location_id: sourceId,
           destination_location_id: destinationId,
+          counterpart_kind: resolvedCounterpartKind,
+          total_value: Number(moveTotalValue.toFixed(2)),
           project_id: move.project_id,
           posted_by_id: userId,
         },

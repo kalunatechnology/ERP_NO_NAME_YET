@@ -36,6 +36,7 @@ import { ProjectTaxWorkspace } from "@/components/finance/ProjectTaxWorkspace";
 import { CompanyMasterWorkspace } from "@/components/finance/CompanyMasterWorkspace";
 import { FinanceSummarySection } from "@/components/finance/FinanceSummarySection";
 import { BudgetingWorkspace } from "@/components/finance/BudgetingWorkspace";
+import { InventoryBridgePanel } from "@/components/finance/InventoryBridgePanel";
 import { AccessDeniedState, isForbiddenError } from "@/components/ui/AccessDeniedState";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
@@ -1251,6 +1252,7 @@ export default function FinanceClient() {
                   </div>
                 </div>
               </div>
+              <InventoryBridgePanel canOperate={canOperateFinance} />
             </div>
           )}
 
