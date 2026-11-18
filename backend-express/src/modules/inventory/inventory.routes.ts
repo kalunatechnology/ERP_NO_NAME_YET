@@ -31,6 +31,12 @@ import {
 import { approveStockCount } from './stock-opname.service';
 import { assignAssetCustodian, capitalizeAssetIdempotent } from './asset-bridge.service';
 import { ensureAllVirtualLocations, VIRTUAL_COUNTERPART_PURPOSE } from './virtual-location.service';
+import {
+  approveIntercompanySto,
+  createIntercompanySto,
+  dispatchIntercompanySto,
+  receiveIntercompanySto,
+} from './intercompany-sto.service';
 
 export const inventoryRouter = Router();
 
@@ -212,6 +218,7 @@ inventoryRouter.post('/transfers/:id/approve', requireModulePermission('INVENTOR
       id: req.params.id,
       companyId,
       userId: req.user!.id,
+      actorUser: req.user,
     });
     res.json(result);
   } catch (err) {
@@ -226,6 +233,7 @@ inventoryRouter.post('/transfers/:id/dispatch', requireModulePermission('INVENTO
       id: req.params.id,
       companyId,
       userId: req.user!.id,
+      actorUser: req.user,
     });
     res.json(result);
   } catch (err) {
@@ -240,6 +248,7 @@ inventoryRouter.post('/transfers/:id/receive', requireModulePermission('INVENTOR
       id: req.params.id,
       companyId,
       userId: req.user!.id,
+      actorUser: req.user,
       receiptLines: req.body?.receipt_lines,
     });
     res.json(result);
@@ -381,6 +390,83 @@ inventoryRouter.post('/locations/ensure-virtual', requireModulePermission('INVEN
     const companyId = requireCompany(req);
     const locations = await ensureAllVirtualLocations(prisma, companyId, req.user?.tenant_id);
     res.json({ results: locations });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// =============================================================================
+// PHASE 2: CONFIGURABLE WORKFLOW RULES, WAREHOUSE ABAC SCOPES & INTERCOMPANY STO
+// =============================================================================
+
+inventoryRouter.use('/workflow-rules', createCrudRouter({
+  modelName: 'inv_workflow_rule',
+  searchFields: ['document_type', 'from_status', 'to_status', 'action_name'],
+}));
+inventoryRouter.use('/warehouse-scopes', createCrudRouter({
+  modelName: 'inv_warehouse_user_scope',
+}));
+
+inventoryRouter.get('/intercompany-stos', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const rows = await (prisma as any).inv_intercompany_sto.findMany({
+      where: {
+        OR: [{ requesting_company_id: companyId }, { supplying_company_id: companyId }],
+      },
+      orderBy: { created_at: 'desc' },
+      take: 100,
+    });
+    res.json({ results: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/intercompany-stos', requireModulePermission('INVENTORY', 'write'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await createIntercompanySto({
+      tenantId: req.user?.tenant_id,
+      userId: req.user!.id,
+      requestingCompanyId: String(req.body?.requesting_company_id || companyId),
+      requestingLocationId: String(req.body?.requesting_location_id || ''),
+      supplyingCompanyId: String(req.body?.supplying_company_id || ''),
+      supplyingLocationId: String(req.body?.supplying_location_id || ''),
+      notes: req.body?.notes,
+      lines: Array.isArray(req.body?.lines) ? req.body.lines : [],
+    });
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/intercompany-stos/:id/approve', requireModulePermission('INVENTORY', 'approve'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await approveIntercompanySto(req.params.id, companyId, req.user!.id);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/intercompany-stos/:id/dispatch', requireModulePermission('INVENTORY', 'write'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await dispatchIntercompanySto(req.params.id, companyId, req.user!.id);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/intercompany-stos/:id/receive', requireModulePermission('INVENTORY', 'write'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await receiveIntercompanySto(req.params.id, companyId, req.user!.id);
+    res.json(result);
   } catch (err) {
     next(err);
   }

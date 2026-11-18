@@ -6700,3 +6700,90 @@ model inv_outbox_event {
   @@index([company_id, status, created_at], map: "idx_inv_outbox_event_status")
   @@map("inv_outbox_event")
 }
+
+model inv_workflow_rule {
+  id                      String   @id @default(uuid())
+  tenant_id               String?  @map("tenant_id")
+  company_id              String   @map("company_id")
+  document_type           String   @map("document_type")
+  from_status             String   @map("from_status")
+  to_status               String   @map("to_status")
+  action_name             String   @default("APPROVE") @map("action_name")
+  min_amount_threshold    Decimal  @default(0) @map("min_amount_threshold")
+  required_tier_level     Int      @default(2) @map("required_tier_level")
+  enforce_sod             Boolean  @default(true) @map("enforce_sod")
+  require_expiry_min_days Int      @default(0) @map("require_expiry_min_days")
+  is_active               Boolean  @default(true) @map("is_active")
+  created_by_id           String?  @map("created_by_id")
+  created_at              DateTime @default(now()) @map("created_at")
+  updated_at              DateTime @updatedAt @map("updated_at")
+
+  @@index([company_id, document_type, from_status, is_active], map: "idx_inv_workflow_rule_lookup")
+  @@map("inv_workflow_rule")
+}
+
+model inv_warehouse_user_scope {
+  id            String   @id @default(uuid())
+  tenant_id     String?  @map("tenant_id")
+  company_id    String   @map("company_id")
+  user_id       String   @map("user_id")
+  warehouse_id  String   @map("warehouse_id")
+  can_read      Boolean  @default(true) @map("can_read")
+  can_write     Boolean  @default(true) @map("can_write")
+  can_approve   Boolean  @default(false) @map("can_approve")
+  is_active     Boolean  @default(true) @map("is_active")
+  created_by_id String?  @map("created_by_id")
+  created_at    DateTime @default(now()) @map("created_at")
+  updated_at    DateTime @updatedAt @map("updated_at")
+
+  @@unique([company_id, user_id, warehouse_id], map: "uq_inv_warehouse_user_scope")
+  @@index([company_id, user_id, is_active], map: "idx_inv_warehouse_user_scope_user")
+  @@map("inv_warehouse_user_scope")
+}
+
+model inv_intercompany_sto {
+  id                     String    @id @default(uuid())
+  tenant_id              String?   @map("tenant_id")
+  sto_number             String    @unique @map("sto_number")
+  requesting_company_id  String    @map("requesting_company_id")
+  requesting_location_id String    @map("requesting_location_id")
+  supplying_company_id   String    @map("supplying_company_id")
+  supplying_location_id  String    @map("supplying_location_id")
+  status                 String    @default("DRAFT") @map("status")
+  total_amount           Decimal   @default(0) @map("total_amount")
+  notes                  String    @default("") @map("notes")
+  requested_by_id        String?   @map("requested_by_id")
+  approved_by_id         String?   @map("approved_by_id")
+  dispatched_by_id       String?   @map("dispatched_by_id")
+  received_by_id         String?   @map("received_by_id")
+  approved_at            DateTime? @map("approved_at")
+  dispatched_at          DateTime? @map("dispatched_at")
+  received_at            DateTime? @map("received_at")
+  created_by_id          String?   @map("created_by_id")
+  created_at             DateTime  @default(now()) @map("created_at")
+  updated_at             DateTime  @updatedAt @map("updated_at")
+
+  @@index([requesting_company_id, status], map: "idx_inv_ic_sto_req")
+  @@index([supplying_company_id, status], map: "idx_inv_ic_sto_sup")
+  @@map("inv_intercompany_sto")
+}
+
+model inv_intercompany_sto_line {
+  id                 String   @id @default(uuid())
+  tenant_id          String?  @map("tenant_id")
+  sto_id             String   @map("sto_id")
+  product_id         String   @map("product_id")
+  uom_id             String?  @map("uom_id")
+  lot_id             String?  @map("lot_id")
+  serial_number_id   String?  @map("serial_number_id")
+  requested_quantity Decimal  @default(0) @map("requested_quantity")
+  shipped_quantity   Decimal  @default(0) @map("shipped_quantity")
+  received_quantity  Decimal  @default(0) @map("received_quantity")
+  unit_cost          Decimal  @default(0) @map("unit_cost")
+  total_value        Decimal  @default(0) @map("total_value")
+  created_at         DateTime @default(now()) @map("created_at")
+  updated_at         DateTime @updatedAt @map("updated_at")
+
+  @@index([sto_id], map: "idx_inv_ic_sto_line_order")
+  @@map("inv_intercompany_sto_line")
+}

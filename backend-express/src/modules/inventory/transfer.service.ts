@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client';
 import prisma from '../../config/database';
 import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { postStockMove } from './stock-posting.service';
+import { evaluateWorkflowTransition } from './workflow-engine.service';
+import { assertWarehouseScopeAccess } from './warehouse-scope.service';
 import { emitInventoryOutboxEvent } from './inventory-event.service';
 
 /**
@@ -135,6 +137,7 @@ export async function approveTransferOrder(input: {
   id: string;
   companyId: string;
   userId: string;
+  actorUser?: { id: string; roles?: string[]; active_role_code?: string | null };
 }) {
   const order = await (prisma as any).inv_transfer_order.findFirst({
     where: { id: input.id, company_id: input.companyId },
@@ -143,6 +146,29 @@ export async function approveTransferOrder(input: {
   if (!['DRAFT', 'SUBMITTED'].includes(order.status)) {
     throw new ValidationError(`Transfer berstatus ${order.status} tidak dapat di-approve.`);
   }
+  await assertWarehouseScopeAccess({
+    companyId: input.companyId,
+    user: input.actorUser || { id: input.userId },
+    warehouseId: order.source_warehouse_id,
+    action: 'approve',
+  });
+  const lines: any[] = await (prisma as any).inv_transfer_order_line.findMany({
+    where: { transfer_order_id: order.id, company_id: input.companyId },
+  });
+  const estimatedValue = lines.reduce(
+    (sum, l) => sum + Number(l.requested_quantity ?? 0) * Number(l.unit_cost ?? 0),
+    0,
+  );
+  await evaluateWorkflowTransition({
+    companyId: input.companyId,
+    documentType: 'TRANSFER_ORDER',
+    fromStatus: order.status,
+    toStatus: 'APPROVED',
+    transactionAmount: estimatedValue,
+    requesterId: order.requested_by_id,
+    actorUser: input.actorUser || { id: input.userId },
+    lotIds: lines.map((l) => l.lot_id).filter(Boolean),
+  });
   if (order.requested_by_id && order.requested_by_id === input.userId) {
     throw new ForbiddenError(
       'Segregation of Duties (SoD): Pembuat permintaan transfer tidak dapat menyetujui dokumennya sendiri.',
@@ -166,6 +192,7 @@ export async function dispatchTransferOrder(input: {
   id: string;
   companyId: string;
   userId: string;
+  actorUser?: { id: string; roles?: string[]; active_role_code?: string | null };
 }) {
   return prisma.$transaction(
     async (tx) => {
@@ -176,6 +203,12 @@ export async function dispatchTransferOrder(input: {
       if (!['SUBMITTED', 'APPROVED'].includes(order.status)) {
         throw new ValidationError(`Transfer berstatus ${order.status} belum siap di-dispatch.`);
       }
+      await assertWarehouseScopeAccess({
+        companyId: input.companyId,
+        user: input.actorUser || { id: input.userId },
+        warehouseId: order.source_warehouse_id,
+        action: 'write',
+      });
 
       const lines = await (tx as any).inv_transfer_order_line.findMany({
         where: { transfer_order_id: order.id, company_id: input.companyId },
@@ -277,6 +310,7 @@ export async function receiveTransferOrder(input: {
   id: string;
   companyId: string;
   userId: string;
+  actorUser?: { id: string; roles?: string[]; active_role_code?: string | null };
   receiptLines?: Array<{
     line_id: string;
     received_good_quantity: number | string;
@@ -292,6 +326,12 @@ export async function receiveTransferOrder(input: {
       if (!['IN_TRANSIT', 'PARTIALLY_RECEIVED', 'DISCREPANCY_REVIEW'].includes(order.status)) {
         throw new ValidationError(`Transfer berstatus ${order.status} tidak dapat diterima.`);
       }
+      await assertWarehouseScopeAccess({
+        companyId: input.companyId,
+        user: input.actorUser || { id: input.userId },
+        warehouseId: order.destination_warehouse_id,
+        action: 'write',
+      });
       if (!order.transit_location_id) {
         throw new ValidationError('Lokasi transit tidak ditemukan pada dokumen transfer ini.');
       }
