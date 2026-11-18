@@ -162,10 +162,15 @@ export function errorHandler(
       }
       // Foreign key constraint violation → 400
       case 'P2003': {
+        const fkField = String(err.meta?.field_name || err.meta?.constraint || '').trim();
+        console.error('[prisma-p2003]', fkField, err.message);
         res.status(400).json({
           success: false,
           error: 'FOREIGN_KEY_ERROR',
-          detail: 'Data belum dapat disimpan karena salah satu pilihan terkait sudah tidak tersedia. Muat ulang halaman, pilih data yang masih tersedia, lalu coba lagi.',
+          field: fkField || undefined,
+          detail: fkField
+            ? `Data belum dapat disimpan karena referensi "${fkField}" tidak ditemukan atau tidak valid.`
+            : 'Data belum dapat disimpan karena salah satu pilihan terkait sudah tidak tersedia. Muat ulang halaman, pilih data yang masih tersedia, lalu coba lagi.',
           request_id: req.requestId,
         });
         return;
@@ -227,10 +232,22 @@ export function errorHandler(
     console.error('[prisma-driver-adapter]', driverAdapterErrorKind);
 
     if (driverAdapterErrorKind.includes('ForeignKeyConstraintViolation')) {
+      const adapterCause = (err as DriverAdapterErrorLike).cause;
+      const constraintInfo = String(
+        (adapterCause?.constraint as any)?.index ||
+        (adapterCause?.constraint as any)?.fields?.join?.(',') ||
+        adapterCause?.constraint ||
+        adapterCause?.originalMessage ||
+        ''
+      ).trim();
+      console.error('[prisma-driver-adapter:fk]', constraintInfo, adapterCause?.originalMessage);
       res.status(400).json({
         success: false,
         error: 'FOREIGN_KEY_ERROR',
-        detail: 'Data belum dapat disimpan karena salah satu pilihan terkait sudah tidak tersedia. Muat ulang halaman, pilih data yang masih tersedia, lalu coba lagi.',
+        constraint: constraintInfo || undefined,
+        detail: constraintInfo
+          ? `Data belum dapat disimpan karena referensi relasi (${constraintInfo}) tidak ditemukan atau tidak valid.`
+          : 'Data belum dapat disimpan karena salah satu pilihan terkait sudah tidak tersedia. Muat ulang halaman, pilih data yang masih tersedia, lalu coba lagi.',
         request_id: req.requestId,
       });
       return;
