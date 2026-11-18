@@ -1289,14 +1289,38 @@ export class FinanceService {
               })
             : [];
           const isInventoryBackedInvoice = linkedReceipts.length > 0 && Boolean(grIrAccount);
-          const threeWayMatch = isInventoryBackedInvoice && doc.purchase_order_id
-            ? await tx.proc_three_way_match.findFirst({
-                where: { company_id: doc.company_id, purchase_order_id: doc.purchase_order_id },
-                orderBy: { created_at: 'desc' },
-              })
-            : null;
-          const priceVariance = isInventoryBackedInvoice ? Number(threeWayMatch?.price_variance ?? 0) : 0;
-          const grClearingAmount = isInventoryBackedInvoice ? subtotal - priceVariance : subtotal;
+          let grExpectedValue = subtotal;
+          if (isInventoryBackedInvoice && doc.purchase_order_id && billingLines.length > 0) {
+            const poLines = await tx.proc_purchase_order_line.findMany({
+              where: { company_id: doc.company_id, purchase_order_id: doc.purchase_order_id },
+            });
+            const poById = new Map<string, any>(poLines.map((pl: any) => [String(pl.id), pl]));
+            const poByProduct = new Map<string, any>();
+            for (const pl of poLines) {
+              if (pl.product_id && !poByProduct.has(String(pl.product_id))) {
+                poByProduct.set(String(pl.product_id), pl);
+              }
+            }
+            let matchedCount = 0;
+            let computedExpected = 0;
+            for (const bl of billingLines as any[]) {
+              const matchedPo =
+                (bl.purchase_order_line_id ? poById.get(String(bl.purchase_order_line_id)) : null) ||
+                (bl.product_id ? poByProduct.get(String(bl.product_id)) : null);
+              if (matchedPo) {
+                matchedCount += 1;
+                const qty = Number(bl.quantity ?? 0);
+                computedExpected += qty * Number(matchedPo.unit_price ?? 0);
+              } else {
+                computedExpected += Number(bl.line_total ?? Number(bl.quantity ?? 0) * Number(bl.unit_price ?? 0));
+              }
+            }
+            if (matchedCount > 0) {
+              grExpectedValue = Number(computedExpected.toFixed(2));
+            }
+          }
+          const priceVariance = isInventoryBackedInvoice ? Number((subtotal - grExpectedValue).toFixed(2)) : 0;
+          const grClearingAmount = isInventoryBackedInvoice ? grExpectedValue : subtotal;
 
           const costAccount = isInventoryBackedInvoice
             ? grIrAccount

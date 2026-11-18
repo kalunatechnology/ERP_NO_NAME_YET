@@ -621,6 +621,7 @@ export async function resolveTransferDiscrepancy(input: {
           payload: {
             transfer_order_id: order.id,
             transfer_number: order.transfer_number,
+            project_id: order.project_id ?? null,
             resolved_by_id: input.userId,
             notes: input.notes ?? '',
           },
