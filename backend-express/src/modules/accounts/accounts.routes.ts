@@ -1107,7 +1107,7 @@ async function getModuleHierarchy(req: Request, res: Response, next: NextFunctio
       });
     }
 
-    const [tierPermissions, assignments, crossModuleCapabilities, delegations, history] = await Promise.all([
+    const [tierPermissions, assignments, crossModuleCapabilities, delegations, history, userModuleAccess] = await Promise.all([
       (prisma as any).iam_module_tier_permission.findMany({
         where: { company_id: companyId },
         orderBy: [{ module_code: 'asc' }, { tier_level: 'asc' }],
@@ -1130,6 +1130,10 @@ async function getModuleHierarchy(req: Request, res: Response, next: NextFunctio
         orderBy: { created_at: 'desc' },
         take: 60,
       }),
+      prisma.iam_user_module_access.findMany({
+        where: { company_id: companyId },
+        orderBy: [{ module_code: 'asc' }],
+      }),
     ]);
 
     res.json({
@@ -1140,6 +1144,7 @@ async function getModuleHierarchy(req: Request, res: Response, next: NextFunctio
       cross_module_capabilities: crossModuleCapabilities,
       delegations,
       history,
+      user_module_access: userModuleAccess,
     });
   } catch (err) {
     console.error('[getModuleHierarchy]', err);
@@ -1332,6 +1337,14 @@ async function deleteModuleAssignment(req: Request, res: Response, next: NextFun
     }
 
     await (prisma as any).iam_user_module_assignment.delete({ where: { id: existing.id } });
+    // Also revoke any direct delegated module override (iam_user_module_access) for this user+module
+    await prisma.iam_user_module_access.deleteMany({
+      where: {
+        company_id: existing.company_id,
+        user_id: existing.user_id,
+        module_code: existing.module_code,
+      },
+    });
     await (prisma as any).iam_assignment_history.create({
       data: {
         tenant_id: tenantId || existing.tenant_id,

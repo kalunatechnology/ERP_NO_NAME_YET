@@ -126,6 +126,7 @@ export function ModuleHierarchyManager({
   const [tierConfigs, setTierConfigs] = useState<TierConfigRow[]>([]);
   const [tierPermissions, setTierPermissions] = useState<TierPermissionRow[]>([]);
   const [assignments, setAssignments] = useState<ModuleAssignmentRow[]>([]);
+  const [userModuleAccess, setUserModuleAccess] = useState<Array<{ id?: string; user_id: string; module_code: string; allow_read: boolean; allow_write: boolean }>>([]);
   const [capabilities, setCapabilities] = useState<CrossModuleCapabilityRow[]>([]);
   const [delegations, setDelegations] = useState<ApprovalDelegationRow[]>([]);
   const [history, setHistory] = useState<AssignmentHistoryRow[]>([]);
@@ -185,6 +186,7 @@ export function ModuleHierarchyManager({
       setCapabilities(Array.isArray(data.cross_module_capabilities) ? data.cross_module_capabilities : []);
       setDelegations(Array.isArray(data.delegations) ? data.delegations : []);
       setHistory(Array.isArray(data.history) ? data.history : []);
+      setUserModuleAccess(Array.isArray(data.user_module_access) ? data.user_module_access : []);
     } catch (error) {
       toast.error(getUserFacingApiError(error, "Gagal memuat konfigurasi hirarki modul 3-tingkat."));
     } finally {
@@ -235,10 +237,22 @@ export function ModuleHierarchyManager({
       await api.delete(`/api/v1/accounts/module-assignments/${id}`, {
         headers: { "X-Company-ID": companyId },
       });
-      toast.success("Penugasan modul dihapus.");
+      toast.success("Penugasan modul & delegasi akses terkait dihapus.");
       await loadHierarchy();
     } catch (error) {
       toast.error(getUserFacingApiError(error, "Gagal menghapus penugasan modul."));
+    }
+  };
+
+  const handleRevokeDirectModuleAccess = async (userId: string, moduleCode: string) => {
+    try {
+      await api.delete(`/api/v1/accounts/users/${userId}/module-access/${moduleCode}`, {
+        headers: { "X-Company-ID": companyId },
+      });
+      toast.success(`Akses langsung modul ${moduleCode} dicabut.`);
+      await loadHierarchy();
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, "Gagal mencabut akses modul."));
     }
   };
 
@@ -675,6 +689,50 @@ export function ModuleHierarchyManager({
                   </table>
                 </div>
               )}
+
+              {(() => {
+                const visibleDirectAccess = userModuleAccess.filter(
+                  (uma) =>
+                    (uma.allow_read || uma.allow_write) &&
+                    (selectedModuleFilter === "ALL" || String(uma.module_code).toUpperCase() === selectedModuleFilter),
+                );
+                if (visibleDirectAccess.length === 0) return null;
+                return (
+                  <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h4 className="text-xs font-bold text-amber-950">
+                          Delegasi / Akses Modul Langsung yang Masih Aktif ({visibleDirectAccess.length})
+                        </h4>
+                        <p className="text-[11px] text-amber-800">
+                          User di bawah ini masih memiliki akses baca/tulis modul (di luar penugasan 3-tingkat). Cabut jika tidak lagi diperlukan.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="divide-y divide-amber-200/70 rounded-xl border border-amber-200 bg-white">
+                      {visibleDirectAccess.map((uma) => (
+                        <div key={`${uma.user_id}-${uma.module_code}`} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-bold text-slate-900">{userMap.get(uma.user_id) || uma.user_id}</span>
+                            <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-[#163D64]">{uma.module_code}</span>
+                            <span className="text-[11px] text-slate-600">
+                              {uma.allow_read ? "Read" : ""}{uma.allow_read && uma.allow_write ? " + " : ""}{uma.allow_write ? "Write" : ""}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleRevokeDirectModuleAccess(uma.user_id, uma.module_code)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-bold text-red-700 hover:bg-red-100"
+                          >
+                            <Trash2 size={12} />
+                            Cabut Akses
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
