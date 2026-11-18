@@ -30,6 +30,7 @@ import {
 } from './transfer.service';
 import { approveStockCount } from './stock-opname.service';
 import { assignAssetCustodian, capitalizeAssetIdempotent } from './asset-bridge.service';
+import { ensureAllVirtualLocations, VIRTUAL_COUNTERPART_PURPOSE } from './virtual-location.service';
 
 export const inventoryRouter = Router();
 
@@ -362,6 +363,28 @@ inventoryRouter.post('/reconcile/verify', requireModuleTier('INVENTORY', 1), asy
 });
 
 inventoryRouter.use('/uom-conversions', createCrudRouter({ modelName: 'master_uom_conversion' }));
+inventoryRouter.use('/product-variants', createCrudRouter({
+  modelName: 'master_product_variant',
+  searchFields: ['variant_sku', 'variant_name', 'barcode'],
+}));
+inventoryRouter.get('/locations/virtual', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const locations = await ensureAllVirtualLocations(prisma, companyId, req.user?.tenant_id);
+    res.json({ results: locations, purpose: VIRTUAL_COUNTERPART_PURPOSE });
+  } catch (err) {
+    next(err);
+  }
+});
+inventoryRouter.post('/locations/ensure-virtual', requireModulePermission('INVENTORY', 'write'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const locations = await ensureAllVirtualLocations(prisma, companyId, req.user?.tenant_id);
+    res.json({ results: locations });
+  } catch (err) {
+    next(err);
+  }
+});
 inventoryRouter.use('/inventory-owners', createCrudRouter({ modelName: 'inv_inventory_owner', searchFields: ['owner_code', 'owner_name'] }));
 inventoryRouter.use(
   '/costing-policies',

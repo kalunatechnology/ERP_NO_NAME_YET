@@ -10,14 +10,15 @@ export interface CanonicalIdentityInput {
   conditionStatus?: string | null;
   lotId?: string | null;
   serialNumberId?: string | null;
+  variantId?: string | null;
 }
 
 /**
  * Deterministic SHA-256 identity key for Canonical Stock Identity (K):
- * K = (company_id, product_id, location_id, inventory_owner_id, condition_status, lot_id, serial_number_id)
+ * K = (company_id, product_id, location_id, inventory_owner_id, condition_status, lot_id, serial_number_id[, variant_id])
  */
 export function buildBalanceIdentityKey(input: CanonicalIdentityInput): string {
-  const raw = [
+  const parts = [
     String(input.companyId || '').trim(),
     String(input.productId || '').trim(),
     String(input.locationId || '').trim(),
@@ -25,8 +26,11 @@ export function buildBalanceIdentityKey(input: CanonicalIdentityInput): string {
     String(input.conditionStatus || 'GOOD').trim().toUpperCase(),
     input.lotId ? String(input.lotId).trim() : '-',
     input.serialNumberId ? String(input.serialNumberId).trim() : '-',
-  ].join(':');
-  return crypto.createHash('sha256').update(raw).digest('hex');
+  ];
+  if (input.variantId) {
+    parts.push(`V:${String(input.variantId).trim()}`);
+  }
+  return crypto.createHash('sha256').update(parts.join(':')).digest('hex');
 }
 
 export interface EligibilityCheckInput {
@@ -133,6 +137,26 @@ export async function ensureInventoryV2SchemaAndBackfill(
         `ALTER TABLE "inv_stock_ledger_entry" ADD COLUMN IF NOT EXISTS "condition_status" TEXT NOT NULL DEFAULT 'GOOD'`,
         `ALTER TABLE "inv_stock_ledger_entry" ADD COLUMN IF NOT EXISTS "transaction_type" TEXT NOT NULL DEFAULT 'RECEIPT'`,
         `ALTER TABLE "inv_stock_ledger_entry" ADD COLUMN IF NOT EXISTS "idempotency_key" TEXT`,
+        `ALTER TABLE "inv_stock_ledger_entry" ADD COLUMN IF NOT EXISTS "counterpart_location_id" TEXT`,
+        `ALTER TABLE "inv_stock_ledger_entry" ADD COLUMN IF NOT EXISTS "variant_id" TEXT`,
+        `ALTER TABLE "inv_stock_move_line" ADD COLUMN IF NOT EXISTS "variant_id" TEXT`,
+        `ALTER TABLE "inv_stock_balance" ADD COLUMN IF NOT EXISTS "variant_id" TEXT`,
+        `CREATE TABLE IF NOT EXISTS "master_product_variant" (
+          "id" TEXT NOT NULL PRIMARY KEY,
+          "tenant_id" TEXT,
+          "company_id" TEXT NOT NULL,
+          "created_by_id" TEXT,
+          "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "product_id" TEXT NOT NULL,
+          "variant_sku" TEXT NOT NULL,
+          "variant_name" TEXT NOT NULL,
+          "attributes_json" TEXT NOT NULL DEFAULT '{}',
+          "barcode" TEXT,
+          "standard_cost" DECIMAL(65,30) NOT NULL DEFAULT 0,
+          "price_delta" DECIMAL(65,30) NOT NULL DEFAULT 0,
+          "status" TEXT NOT NULL DEFAULT 'ACTIVE'
+        )`,
         `ALTER TABLE "inv_stock_balance" ADD COLUMN IF NOT EXISTS "inventory_owner_id" TEXT`,
         `ALTER TABLE "inv_stock_balance" ADD COLUMN IF NOT EXISTS "condition_status" TEXT NOT NULL DEFAULT 'GOOD'`,
         `ALTER TABLE "inv_stock_balance" ADD COLUMN IF NOT EXISTS "balance_identity_key" TEXT`,
@@ -373,3 +397,4 @@ export async function resolveDefaultInventoryOwnerId(
   const ensured = await ensureInventoryV2SchemaAndBackfill(companyId, tenantId);
   return ensured.defaultOwnerId;
 }
+

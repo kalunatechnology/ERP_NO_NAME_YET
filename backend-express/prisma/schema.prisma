@@ -1322,6 +1322,27 @@ model master_product {
   @@map("master_product")
 }
 
+model master_product_variant {
+  id              String    @id @default(uuid())
+  tenant_id       String?   @map("tenant_id")
+  company_id      String    @map("company_id")
+  created_by_id   String?   @map("created_by_id")
+  created_at      DateTime  @default(now()) @map("created_at")
+  updated_at      DateTime  @updatedAt @map("updated_at")
+  product_id      String    @map("product_id")
+  variant_sku     String    @map("variant_sku")
+  variant_name    String    @map("variant_name")
+  attributes_json String    @default("{}") @map("attributes_json")
+  barcode         String?   @map("barcode")
+  standard_cost   Decimal   @default(0) @map("standard_cost")
+  price_delta     Decimal   @default(0) @map("price_delta")
+  status          String    @default("ACTIVE") @map("status")
+
+  @@unique([company_id, variant_sku], map: "uq_master_product_variant_sku")
+  @@index([company_id, product_id, status], map: "idx_master_product_variant_product")
+  @@map("master_product_variant")
+}
+
 model master_currency {
   id             String @id @default(uuid())
   currency_code  String @unique
@@ -3977,6 +3998,7 @@ model inv_stock_move_line {
   id               String    @id @default(uuid())
   stock_move_id    String?   @map("stock_move_id")
   product_id       String?   @map("product_id")
+  variant_id       String?   @map("variant_id")
   lot_id           String?   @map("lot_id")
   serial_number_id String?   @map("serial_number_id")
   quantity         Decimal?
@@ -4042,6 +4064,8 @@ model inv_stock_ledger_entry {
   balance_quantity      Decimal?
   balance_value         Decimal?
   reversal_of_id        String?   @map("reversal_of_id")
+  counterpart_location_id String? @map("counterpart_location_id")
+  variant_id            String?   @map("variant_id")
 
   @@index([tenant_id, company_id])
   @@map("inv_stock_ledger_entry")
@@ -4059,6 +4083,7 @@ model inv_stock_balance {
   inventory_owner_id    String?   @map("inventory_owner_id")
   condition_status      String    @default("GOOD") @map("condition_status")
   balance_identity_key  String?   @unique @map("balance_identity_key")
+  variant_id            String?   @map("variant_id")
   lot_id                String?   @map("lot_id")
   serial_number_id      String?   @map("serial_number_id")
   on_hand_quantity      Decimal?
