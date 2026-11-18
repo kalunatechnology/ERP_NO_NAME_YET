@@ -311,12 +311,12 @@ export async function postStockMove(
       }
 
       const rawQuantity = line.quantity;
-      if (rawQuantity == null || rawQuantity.lte(0)) {
+      let quantity = rawQuantity == null ? new Prisma.Decimal(0) : new Prisma.Decimal(rawQuantity);
+      if (rawQuantity == null || quantity.lte(0)) {
         throw new ValidationError('Kuantitas movement harus positif.');
       }
 
       // Resolve UOM conversion to Base UOM if needed
-      let quantity = new Prisma.Decimal(rawQuantity);
       if (line.uom_id && product.base_uom_id && line.uom_id !== product.base_uom_id) {
         const conv = await convertUomQuantity(
           {
