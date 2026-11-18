@@ -307,6 +307,7 @@ export async function ensureInventoryV2SchemaAndBackfill(
         `ALTER TABLE "inv_outbox_event" ADD COLUMN IF NOT EXISTS "gl_processed_at" TIMESTAMP(3)`,
         `ALTER TABLE "inv_outbox_event" ADD COLUMN IF NOT EXISTS "gl_error" TEXT`,
         `CREATE INDEX IF NOT EXISTS "idx_inv_outbox_event_gl_status" ON "inv_outbox_event"("company_id", "gl_status", "created_at")`,
+        `ALTER TABLE "inv_stock_ledger_entry" DROP CONSTRAINT IF EXISTS "inv_stock_ledger_ent_source_document_id_190ee411_fk_core_busi"`,
       ];
       for (const sql of statements) {
         await prisma.$executeRawUnsafe(sql);
