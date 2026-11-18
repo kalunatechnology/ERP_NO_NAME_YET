@@ -135,9 +135,9 @@ export function UniversalInventoryV2Workspace({
         source_location_id: moveForm.move_type === "RECEIPT" ? null : moveForm.source_location_id || null,
         destination_location_id: moveForm.move_type === "ISSUE" ? null : moveForm.destination_location_id || null,
         scheduled_at: new Date().toISOString(),
-        status: "READY",
+        status: "DRAFT",
       });
-      const moveId = moveRes.data?.id;
+      const moveId = moveRes.data?.data?.id ?? moveRes.data?.id;
       const prod = (data?.products || []).find((p: any) => p.id === moveForm.product_id);
       await api.post("/api/v1/inventory/stock-move-lines", {
         stock_move_id: moveId,
