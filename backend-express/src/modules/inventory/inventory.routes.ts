@@ -37,6 +37,11 @@ import {
   dispatchIntercompanySto,
   receiveIntercompanySto,
 } from './intercompany-sto.service';
+import { listCompanyExtensions, setCompanyExtension } from './extensions/extension-registry.service';
+import { consumeOrReturnProjectSiteMaterial, transferToProjectSite } from './extensions/project-site.service';
+import { postProductionBackflush } from './extensions/manufacturing-backflush.service';
+import { generateWavePickList, suggestPutawayBins } from './extensions/wms.service';
+import { postPosSaleDeduction } from './extensions/retail-pos.service';
 
 export const inventoryRouter = Router();
 
@@ -467,6 +472,136 @@ inventoryRouter.post('/intercompany-stos/:id/receive', requireModulePermission('
     const companyId = requireCompany(req);
     const result = await receiveIntercompanySto(req.params.id, companyId, req.user!.id);
     res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// =============================================================================
+// PHASE 3: COMPOSABLE INDUSTRY EXTENSIONS (FEATURE-FLAGGED PER COMPANY)
+// =============================================================================
+
+inventoryRouter.get('/extensions', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const results = await listCompanyExtensions(companyId);
+    res.json({ results });
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.put('/extensions/:code', requireModuleTier('INVENTORY', 1), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await setCompanyExtension({
+      companyId,
+      tenantId: req.user?.tenant_id,
+      userId: req.user!.id,
+      extensionCode: req.params.code,
+      isEnabled: Boolean(req.body?.is_enabled),
+      configJson: req.body?.config_json !== undefined ? String(req.body.config_json) : undefined,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/extensions/project-site/transfer', requireModulePermission('INVENTORY', 'write'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await transferToProjectSite({
+      companyId,
+      tenantId: req.user?.tenant_id,
+      userId: req.user!.id,
+      projectId: String(req.body?.project_id || ''),
+      sourceLocationId: String(req.body?.source_location_id || ''),
+      lines: Array.isArray(req.body?.lines) ? req.body.lines : [],
+    });
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/extensions/project-site/consume-or-return', requireModulePermission('INVENTORY', 'write'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await consumeOrReturnProjectSiteMaterial({
+      companyId,
+      tenantId: req.user?.tenant_id,
+      userId: req.user!.id,
+      projectId: String(req.body?.project_id || ''),
+      mode: req.body?.mode === 'RETURN_EXCESS' ? 'RETURN_EXCESS' : 'CONSUME',
+      destinationLocationId: req.body?.destination_location_id ?? null,
+      lines: Array.isArray(req.body?.lines) ? req.body.lines : [],
+    });
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/extensions/manufacturing/backflush', requireModulePermission('INVENTORY', 'write'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await postProductionBackflush({
+      companyId,
+      tenantId: req.user?.tenant_id,
+      userId: req.user!.id,
+      productionOrderId: String(req.body?.production_order_id || ''),
+      outputQuantity: req.body?.output_quantity ?? 0,
+      componentSourceLocationId: String(req.body?.component_source_location_id || ''),
+      finishedGoodsLocationId: String(req.body?.finished_goods_location_id || ''),
+      lotId: req.body?.lot_id ?? null,
+    });
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.get('/extensions/wms/putaway-suggestions', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const results = await suggestPutawayBins({
+      companyId,
+      warehouseId: req.query.warehouse_id ? String(req.query.warehouse_id) : null,
+      productId: String(req.query.product_id || ''),
+    });
+    res.json({ results });
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/extensions/wms/pick-list', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await generateWavePickList({
+      companyId,
+      warehouseId: req.body?.warehouse_id ?? null,
+      items: Array.isArray(req.body?.items) ? req.body.items : [],
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.post('/extensions/retail-pos/deduct', requireModulePermission('INVENTORY', 'write'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await postPosSaleDeduction({
+      companyId,
+      tenantId: req.user?.tenant_id,
+      userId: req.user!.id,
+      storeLocationId: String(req.body?.store_location_id || ''),
+      receiptNumber: String(req.body?.receipt_number || ''),
+      lines: Array.isArray(req.body?.lines) ? req.body.lines : [],
+    });
+    res.status(201).json(result);
   } catch (err) {
     next(err);
   }

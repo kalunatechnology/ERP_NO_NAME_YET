@@ -6787,3 +6787,19 @@ model inv_intercompany_sto_line {
   @@index([sto_id], map: "idx_inv_ic_sto_line_order")
   @@map("inv_intercompany_sto_line")
 }
+
+model inv_company_extension {
+  id             String   @id @default(uuid())
+  tenant_id      String?  @map("tenant_id")
+  company_id     String   @map("company_id")
+  extension_code String   @map("extension_code")
+  is_enabled     Boolean  @default(false) @map("is_enabled")
+  config_json    String   @default("{}") @map("config_json")
+  updated_by_id  String?  @map("updated_by_id")
+  created_at     DateTime @default(now()) @map("created_at")
+  updated_at     DateTime @updatedAt @map("updated_at")
+
+  @@unique([company_id, extension_code], map: "uq_inv_company_extension")
+  @@index([company_id, is_enabled], map: "idx_inv_company_extension_lookup")
+  @@map("inv_company_extension")
+}
