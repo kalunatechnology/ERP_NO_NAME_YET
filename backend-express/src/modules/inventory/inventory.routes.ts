@@ -42,6 +42,11 @@ import { consumeOrReturnProjectSiteMaterial, transferToProjectSite } from './ext
 import { postProductionBackflush } from './extensions/manufacturing-backflush.service';
 import { generateWavePickList, suggestPutawayBins } from './extensions/wms.service';
 import { postPosSaleDeduction } from './extensions/retail-pos.service';
+import { evaluateDdmrpBuffers, upsertDdmrpBuffer } from './advanced/ddmrp.service';
+import { dispatchPendingOutboxWebhooks } from './advanced/webhook.service';
+import { exportEpcis2Document } from './advanced/epcis.service';
+import { calculatePeriodicUnitPrice } from './advanced/material-ledger.service';
+import { INVENTORY_OPENAPI_SPEC } from './advanced/inventory-openapi';
 
 export const inventoryRouter = Router();
 
@@ -605,6 +610,95 @@ inventoryRouter.post('/extensions/retail-pos/deduct', requireModulePermission('I
   } catch (err) {
     next(err);
   }
+});
+
+// =============================================================================
+// PHASE 4: DDMRP, OUTBOUND WEBHOOKS, GS1 EPCIS 2.0, MATERIAL LEDGER & OPENAPI
+// =============================================================================
+
+inventoryRouter.get('/ddmrp/buffers', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const results = await evaluateDdmrpBuffers(companyId);
+    res.json({ results });
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.put('/ddmrp/buffers/:productId', requireModulePermission('INVENTORY', 'write'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await upsertDdmrpBuffer({
+      companyId,
+      tenantId: req.user?.tenant_id,
+      productId: req.params.productId,
+      warehouseId: req.body?.warehouse_id ?? null,
+      adu: Number(req.body?.adu ?? 0),
+      dltDays: Number(req.body?.dlt_days ?? 0),
+      ltf: req.body?.ltf !== undefined ? Number(req.body.ltf) : undefined,
+      vf: req.body?.vf !== undefined ? Number(req.body.vf) : undefined,
+      moq: req.body?.moq !== undefined ? Number(req.body.moq) : undefined,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.use('/webhooks', createCrudRouter({
+  modelName: 'inv_webhook_subscription',
+  searchFields: ['name', 'target_url', 'event_types'],
+}));
+
+inventoryRouter.post('/outbox-events/dispatch-webhooks', requireModulePermission('INVENTORY', 'write'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const result = await dispatchPendingOutboxWebhooks(companyId, Number(req.body?.limit ?? 25));
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.get('/epcis/events', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const doc = await exportEpcis2Document({
+      companyId,
+      productId: req.query.product_id ? String(req.query.product_id) : undefined,
+      lotId: req.query.lot_id ? String(req.query.lot_id) : undefined,
+      serialNumberId: req.query.serial_number_id ? String(req.query.serial_number_id) : undefined,
+      limit: req.query.limit ? Number(req.query.limit) : undefined,
+    });
+    res.json(doc);
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.get('/material-ledger/pup', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = requireCompany(req);
+    const now = new Date();
+    const defaultStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const periodStart = req.query.period_start ? new Date(String(req.query.period_start)) : defaultStart;
+    const periodEnd = req.query.period_end ? new Date(String(req.query.period_end)) : now;
+    const results = await calculatePeriodicUnitPrice({
+      companyId,
+      productId: req.query.product_id ? String(req.query.product_id) : undefined,
+      periodStart,
+      periodEnd,
+      varianceAmount: req.query.variance_amount ? Number(req.query.variance_amount) : undefined,
+    });
+    res.json({ period_start: periodStart, period_end: periodEnd, results });
+  } catch (err) {
+    next(err);
+  }
+});
+
+inventoryRouter.get('/openapi.json', (_req: Request, res: Response) => {
+  res.json(INVENTORY_OPENAPI_SPEC);
 });
 inventoryRouter.use('/inventory-owners', createCrudRouter({ modelName: 'inv_inventory_owner', searchFields: ['owner_code', 'owner_name'] }));
 inventoryRouter.use(

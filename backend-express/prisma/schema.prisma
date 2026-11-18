@@ -6803,3 +6803,40 @@ model inv_company_extension {
   @@index([company_id, is_enabled], map: "idx_inv_company_extension_lookup")
   @@map("inv_company_extension")
 }
+
+model inv_ddmrp_buffer {
+  id           String   @id @default(uuid())
+  tenant_id    String?  @map("tenant_id")
+  company_id   String   @map("company_id")
+  product_id   String   @map("product_id")
+  warehouse_id String?  @map("warehouse_id")
+  adu          Decimal  @default(0) @map("adu")
+  dlt_days     Decimal  @default(0) @map("dlt_days")
+  ltf          Decimal  @default(0.4) @map("ltf")
+  vf           Decimal  @default(0.5) @map("vf")
+  moq          Decimal  @default(0) @map("moq")
+  is_active    Boolean  @default(true) @map("is_active")
+  created_at   DateTime @default(now()) @map("created_at")
+  updated_at   DateTime @updatedAt @map("updated_at")
+
+  @@unique([company_id, product_id, warehouse_id], map: "uq_inv_ddmrp_buffer")
+  @@index([company_id, is_active], map: "idx_inv_ddmrp_buffer_company")
+  @@map("inv_ddmrp_buffer")
+}
+
+model inv_webhook_subscription {
+  id            String   @id @default(uuid())
+  tenant_id     String?  @map("tenant_id")
+  company_id    String   @map("company_id")
+  name          String   @map("name")
+  target_url    String   @map("target_url")
+  event_types   String   @default("*") @map("event_types")
+  secret_hmac   String   @default("") @map("secret_hmac")
+  is_active     Boolean  @default(true) @map("is_active")
+  created_by_id String?  @map("created_by_id")
+  created_at    DateTime @default(now()) @map("created_at")
+  updated_at    DateTime @updatedAt @map("updated_at")
+
+  @@index([company_id, is_active], map: "idx_inv_webhook_sub_company")
+  @@map("inv_webhook_subscription")
+}
