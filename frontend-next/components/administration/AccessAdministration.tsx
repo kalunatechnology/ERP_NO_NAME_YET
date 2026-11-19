@@ -13,6 +13,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TablePagination, TableSearchBar, useTablePagination } from "@/components/ui/TablePagination";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import {
   Building2,
   Check,
@@ -168,6 +169,8 @@ export function AccessAdministration() {
   });
   const [savingDeptRole, setSavingDeptRole] = useState(false);
   const [deptSectionExpanded, setDeptSectionExpanded] = useState(true);
+  const [deptMemberSearch, setDeptMemberSearch] = useState("");
+  const [deptMemberLimit, setDeptMemberLimit] = useState(15);
 
   // Super Admin invite user state
   const [superInviteOpen, setSuperInviteOpen] = useState(false);
@@ -405,8 +408,7 @@ export function AccessAdministration() {
       }
       await loadCompanyContext();
       toast.success(
-        `${MODULE_LABELS[moduleCode]?.name || moduleCode}: akses ${
-          mode === "inherit" ? "dikembalikan ke role" : "diperbarui"
+        `${MODULE_LABELS[moduleCode]?.name || moduleCode}: akses ${mode === "inherit" ? "dikembalikan ke role" : "diperbarui"
         }.`
       );
     } catch (error: any) {
@@ -486,6 +488,8 @@ export function AccessAdministration() {
 
   function openEditDepartmentModal(dept: DepartmentItem) {
     setEditingDeptId(dept.id);
+    setDeptMemberSearch("");
+    setDeptMemberLimit(15);
     setDeptForm({
       code: dept.code,
       name: dept.name,
@@ -637,55 +641,50 @@ export function AccessAdministration() {
           <div className="mt-6 flex flex-wrap gap-2 border-t border-[#EFEFEF] pt-5">
             <button
               onClick={() => setActiveTab("tenants")}
-              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                activeTab === "tenants"
-                  ? "bg-[#163D64] text-white shadow-sm"
-                  : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
-              }`}
+              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${activeTab === "tenants"
+                ? "bg-[#163D64] text-white shadow-sm"
+                : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
+                }`}
             >
               <Building size={16} /> Manajemen Tenant ({tenants.length})
             </button>
 
             <button
               onClick={() => setActiveTab("companies")}
-              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                activeTab === "companies"
-                  ? "bg-[#163D64] text-white shadow-sm"
-                  : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
-              }`}
+              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${activeTab === "companies"
+                ? "bg-[#163D64] text-white shadow-sm"
+                : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
+                }`}
             >
               <Building2 size={16} /> Entitas Company ({companies.length})
             </button>
 
             <button
               onClick={() => setActiveTab("modules")}
-              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                activeTab === "modules"
-                  ? "bg-[#163D64] text-white shadow-sm"
-                  : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
-              }`}
+              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${activeTab === "modules"
+                ? "bg-[#163D64] text-white shadow-sm"
+                : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
+                }`}
             >
               <Sliders size={16} /> Pemberian Modul (Commercial Entitlements)
             </button>
 
             <button
               onClick={() => setActiveTab("users")}
-              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                activeTab === "users" || activeTab === "departments"
-                  ? "bg-[#163D64] text-white shadow-sm"
-                  : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
-              }`}
+              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${activeTab === "users" || activeTab === "departments"
+                ? "bg-[#163D64] text-white shadow-sm"
+                : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
+                }`}
             >
               <Users size={16} /> Manajemen User &amp; Departemen ({users.length} User · {departments.length} Unit)
             </button>
 
             <button
               onClick={() => setActiveTab("hierarchy")}
-              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                activeTab === "hierarchy"
-                  ? "bg-[#163D64] text-white shadow-sm"
-                  : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
-              }`}
+              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${activeTab === "hierarchy"
+                ? "bg-[#163D64] text-white shadow-sm"
+                : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
+                }`}
             >
               <ShieldCheck size={16} /> Hirarki Modul 3-Level & GM 360°
             </button>
@@ -865,9 +864,8 @@ export function AccessAdministration() {
                       {departmentsTable.paginatedItems.map((d) => (
                         <tr key={d.id} className="hover:bg-[#FDFDFD]">
                           <td className="px-4 py-3">
-                            <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
-                              d.unit_type === "DIVISION" ? "bg-purple-50 text-purple-700" : "bg-[#E7F2FF] text-[#163D64]"
-                            }`}>
+                            <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${d.unit_type === "DIVISION" ? "bg-purple-50 text-purple-700" : "bg-[#E7F2FF] text-[#163D64]"
+                              }`}>
                               {d.unit_type === "DIVISION" ? "DIVISI" : "DEPARTEMEN"}
                             </span>
                           </td>
@@ -877,9 +875,8 @@ export function AccessAdministration() {
                           </td>
                           <td className="px-4 py-3 text-xs text-[#64748B]">{d.parent_name || "—"}</td>
                           <td className="px-4 py-3">
-                            <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
-                              d.is_cost_center ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"
-                            }`}>
+                            <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${d.is_cost_center ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"
+                              }`}>
                               {d.is_cost_center ? "Ya (Cost Center)" : "Non-Cost Center"}
                             </span>
                           </td>
@@ -980,42 +977,41 @@ export function AccessAdministration() {
                         filteredAllUsers
                           .slice((userPage - 1) * userPageSize, userPage * userPageSize)
                           .map((u) => {
-                          const tenant = tenants.find((t) => t.id === u.tenant_id);
-                          const userCompany = companies.find((c) => c.tenant_id === u.tenant_id);
-                          return (
-                            <tr key={u.id} className="transition hover:bg-[#FDFDFD]">
-                              <td className="px-6 py-3">
-                                <div className="flex items-center gap-2.5">
-                                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#E7F2FF] text-xs font-bold text-[#163D64]">
-                                    {getCleanInitials(u.full_name || u.email)}
-                                  </span>
-                                  <div>
-                                    <p className="font-semibold text-[#0F172A]">{u.full_name || "-"}</p>
-                                    <p className="text-xs text-[#64748B]">{u.email}</p>
+                            const tenant = tenants.find((t) => t.id === u.tenant_id);
+                            const userCompany = companies.find((c) => c.tenant_id === u.tenant_id);
+                            return (
+                              <tr key={u.id} className="transition hover:bg-[#FDFDFD]">
+                                <td className="px-6 py-3">
+                                  <div className="flex items-center gap-2.5">
+                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#E7F2FF] text-xs font-bold text-[#163D64]">
+                                      {getCleanInitials(u.full_name || u.email)}
+                                    </span>
+                                    <div>
+                                      <p className="font-semibold text-[#0F172A]">{u.full_name || "-"}</p>
+                                      <p className="text-xs text-[#64748B]">{u.email}</p>
+                                    </div>
                                   </div>
-                                </div>
-                              </td>
-                              <td className="px-6 py-3 text-xs text-[#64748B]">{tenant?.name || u.tenant_id?.slice(0, 8) || "-"}</td>
-                              <td className="px-6 py-3 text-xs text-[#64748B]">{userCompany?.legal_name || "-"}</td>
-                              <td className="px-6 py-3">
-                                {u.roles && u.roles.length > 0 ? (
-                                  <span className="rounded-full bg-[#E7F2FF] px-2.5 py-0.5 text-xs font-medium text-[#163D64]">
-                                    {u.roles[0].role_name || u.roles[0].role_code}
+                                </td>
+                                <td className="px-6 py-3 text-xs text-[#64748B]">{tenant?.name || u.tenant_id?.slice(0, 8) || "-"}</td>
+                                <td className="px-6 py-3 text-xs text-[#64748B]">{userCompany?.legal_name || "-"}</td>
+                                <td className="px-6 py-3">
+                                  {u.roles && u.roles.length > 0 ? (
+                                    <span className="rounded-full bg-[#E7F2FF] px-2.5 py-0.5 text-xs font-medium text-[#163D64]">
+                                      {u.roles[0].role_name || u.roles[0].role_code}
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-[#64748B]">-</span>
+                                  )}
+                                </td>
+                                <td className="px-6 py-3">
+                                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${u.is_active !== false ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+                                    }`}>
+                                    {u.is_active !== false ? "Aktif" : "Nonaktif"}
                                   </span>
-                                ) : (
-                                  <span className="text-xs text-[#64748B]">-</span>
-                                )}
-                              </td>
-                              <td className="px-6 py-3">
-                                <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                                  u.is_active !== false ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
-                                }`}>
-                                  {u.is_active !== false ? "Aktif" : "Nonaktif"}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })
+                                </td>
+                              </tr>
+                            );
+                          })
                       )}
                     </tbody>
                   </table>
@@ -1097,18 +1093,16 @@ export function AccessAdministration() {
                     <button
                       key={member.id}
                       onClick={() => setSelectedUserId(member.id)}
-                      className={`flex w-full items-center gap-3 rounded-xl p-2.5 text-left transition ${
-                        active
-                          ? "border border-[#BFDBFE] bg-white text-[#163D64] shadow-xs"
-                          : "border border-transparent hover:border-slate-200 hover:bg-white/80 text-slate-700"
-                      }`}
+                      className={`flex w-full items-center gap-3 rounded-xl p-2.5 text-left transition ${active
+                        ? "border border-[#BFDBFE] bg-white text-[#163D64] shadow-xs"
+                        : "border border-transparent hover:border-slate-200 hover:bg-white/80 text-slate-700"
+                        }`}
                     >
                       <span
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-extrabold transition ${
-                          active
-                            ? "bg-[#163D64] text-white shadow-2xs"
-                            : "bg-slate-200/80 text-slate-700"
-                        }`}
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-extrabold transition ${active
+                          ? "bg-[#163D64] text-white shadow-2xs"
+                          : "bg-slate-200/80 text-slate-700"
+                          }`}
                       >
                         {getCleanInitials(member.full_name || member.email)}
                       </span>
@@ -1250,59 +1244,84 @@ export function AccessAdministration() {
                             {(d.modules || []).length > 0 ? (d.modules || []).join(", ") : "—"}
                           </td>
                           <td className="px-4 py-2.5">
-                            <div className="space-y-1.5 min-w-[220px]">
-                              <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700">
-                                <span>{unitMembers.length} anggota:</span>
-                              </div>
-                              {unitMembers.length > 0 ? (
-                                <div className="flex flex-wrap gap-1 max-w-[320px]">
-                                  {unitMembers.map((member) => (
-                                    <span
-                                      key={member.id}
-                                      className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50/80 px-2 py-0.5 text-[11px] font-medium text-[#163D64]"
-                                      title={`${member.full_name || member.email} (${member.email})`}
-                                    >
-                                      <span className="truncate max-w-[120px]">
-                                        {member.full_name || member.email}
-                                      </span>
+                            {(() => {
+                              const availableForUnit = displayedUsers.filter(
+                                (u) => String(u.department_id || "") !== String(d.id)
+                              );
+                              const visibleMembers = unitMembers.slice(0, 3);
+                              const hiddenCount = unitMembers.length - visibleMembers.length;
+                              return (
+                                <div className="space-y-1.5 min-w-[230px] max-w-[320px]">
+                                  <div className="flex items-center justify-between gap-2 text-[11px] font-bold text-slate-700">
+                                    <span>{unitMembers.length} anggota</span>
+                                    {unitMembers.length > 0 && (
                                       <button
                                         type="button"
-                                        disabled={savingDeptRole}
-                                        onClick={() => void handleSaveUserDepartmentRole(null, undefined, member.id)}
-                                        className="text-slate-400 hover:text-red-600 transition-colors ml-0.5"
-                                        title={`Lepas ${member.full_name || member.email} dari unit ini`}
-                                        aria-label={`Lepas ${member.full_name || member.email}`}
+                                        onClick={() => openEditDepartmentModal(d)}
+                                        className="font-semibold text-[#0876CD] hover:underline"
                                       >
-                                        ✕
+                                        Kelola semua
                                       </button>
-                                    </span>
-                                  ))}
-                                </div>
-                              ) : (
-                                <span className="text-[11px] text-slate-400 italic">Belum ada anggota</span>
-                              )}
+                                    )}
+                                  </div>
+                                  {unitMembers.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1">
+                                      {visibleMembers.map((member) => (
+                                        <span
+                                          key={member.id}
+                                          className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50/80 px-2 py-0.5 text-[11px] font-medium text-[#163D64]"
+                                          title={`${member.full_name || member.email} (${member.email})`}
+                                        >
+                                          <span className="truncate max-w-[115px]">
+                                            {member.full_name || member.email}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            disabled={savingDeptRole}
+                                            onClick={() => void handleSaveUserDepartmentRole(null, undefined, member.id)}
+                                            className="text-slate-400 hover:text-red-600 transition-colors ml-0.5"
+                                            title={`Lepas ${member.full_name || member.email} dari unit ini`}
+                                            aria-label={`Lepas ${member.full_name || member.email}`}
+                                          >
+                                            ✕
+                                          </button>
+                                        </span>
+                                      ))}
+                                      {hiddenCount > 0 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => openEditDepartmentModal(d)}
+                                          className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-200"
+                                        >
+                                          +{hiddenCount} lainnya
+                                        </button>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="block text-[11px] text-slate-400 italic">Belum ada anggota</span>
+                                  )}
 
-                              <div className="flex items-center gap-1.5 pt-0.5">
-                                <select
-                                  disabled={savingDeptRole}
-                                  value=""
-                                  onChange={(e) => {
-                                    if (!e.target.value) return;
-                                    void handleSaveUserDepartmentRole(d.id, undefined, e.target.value);
-                                  }}
-                                  className="h-7 w-full max-w-[210px] rounded border border-slate-300 bg-white px-2 text-[11px] text-slate-700 outline-none focus:border-[#163D64]"
-                                >
-                                  <option value="">+ Assign User ({displayedUsers.filter((u) => String(u.department_id || "") !== String(d.id)).length} tersedia)</option>
-                                  {displayedUsers
-                                    .filter((u) => String(u.department_id || "") !== String(d.id))
-                                    .map((u) => (
-                                      <option key={u.id} value={u.id}>
-                                        {u.full_name || u.email}
-                                      </option>
-                                    ))}
-                                </select>
-                              </div>
-                            </div>
+                                  <div className="pt-0.5">
+                                    <SearchableSelect
+                                      value=""
+                                      disabled={savingDeptRole}
+                                      onChange={(val) => {
+                                        if (!val) return;
+                                        void handleSaveUserDepartmentRole(d.id, undefined, val);
+                                      }}
+                                      placeholder={`+ Assign User (${availableForUnit.length} tersedia)`}
+                                      searchPlaceholder="Cari nama atau email..."
+                                      emptyMessage="User tidak ditemukan"
+                                      options={availableForUnit.map((u) => ({
+                                        value: u.id,
+                                        label: u.full_name || u.email,
+                                        sublabel: u.email,
+                                      }))}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="px-4 py-2.5 text-right whitespace-nowrap">
                             <div className="inline-flex gap-1.5">
@@ -1654,92 +1673,138 @@ export function AccessAdministration() {
               </div>
 
               {/* DAFTAR ANGGOTA / USER YANG DITUGASKAN */}
-              {editingDeptId && (
-                <div className="border-t border-[#EFEFEF] pt-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
-                    <div>
-                      <label className="block text-xs font-bold text-[#163D64]">
-                        Daftar Anggota / User yang Ditugaskan ({displayedUsers.filter((u) => String(u.department_id || "") === String(editingDeptId)).length} orang)
-                      </label>
-                      <p className="text-[11px] text-[#64748B]">
-                        Pengguna yang saat ini ditempatkan pada {deptForm.unit_type === "DIVISION" ? "divisi" : "departemen"} ini.
-                      </p>
+              {editingDeptId && (() => {
+                const allDeptMembers = displayedUsers.filter(
+                  (u) => String(u.department_id || "") === String(editingDeptId)
+                );
+                const availableUsers = displayedUsers.filter(
+                  (u) => String(u.department_id || "") !== String(editingDeptId)
+                );
+                const memberQuery = deptMemberSearch.trim().toLowerCase();
+                const filteredDeptMembers = memberQuery
+                  ? allDeptMembers.filter((m) =>
+                      `${m.full_name || ""} ${m.email || ""} ${m.job_title || ""}`.toLowerCase().includes(memberQuery)
+                    )
+                  : allDeptMembers;
+                const visibleDeptMembers = filteredDeptMembers.slice(0, deptMemberLimit);
+
+                return (
+                  <div className="border-t border-[#EFEFEF] pt-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+                      <div>
+                        <label className="block text-xs font-bold text-[#163D64]">
+                          Daftar Anggota / User yang Ditugaskan ({allDeptMembers.length} orang)
+                        </label>
+                        <p className="text-[11px] text-[#64748B]">
+                          Pengguna yang saat ini ditempatkan pada {deptForm.unit_type === "DIVISION" ? "divisi" : "departemen"} ini.
+                        </p>
+                      </div>
+
+                      {/* Quick Assign dengan SearchableSelect di dalam Modal */}
+                      <div className="w-full sm:w-64">
+                        <SearchableSelect
+                          value=""
+                          disabled={savingDeptRole}
+                          onChange={(val) => {
+                            if (!val) return;
+                            void handleSaveUserDepartmentRole(editingDeptId, undefined, val);
+                          }}
+                          placeholder={`+ Assign User Baru (${availableUsers.length} tersedia)`}
+                          searchPlaceholder="Cari nama atau email user..."
+                          emptyMessage="User tidak ditemukan"
+                          options={availableUsers.map((u) => ({
+                            value: u.id,
+                            label: u.full_name || u.email,
+                            sublabel: u.email,
+                          }))}
+                        />
+                      </div>
                     </div>
 
-                    {/* Quick Assign di dalam Modal */}
-                    <div className="flex items-center gap-1.5">
-                      <select
-                        disabled={savingDeptRole}
-                        value=""
-                        onChange={(e) => {
-                          if (!e.target.value) return;
-                          void handleSaveUserDepartmentRole(editingDeptId, undefined, e.target.value);
-                        }}
-                        className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-slate-700 outline-none focus:border-[#163D64]"
-                      >
-                        <option value="">+ Assign User Baru</option>
-                        {displayedUsers
-                          .filter((u) => String(u.department_id || "") !== String(editingDeptId))
-                          .map((u) => (
-                            <option key={u.id} value={u.id}>
-                              {u.full_name || u.email} ({u.email})
-                            </option>
-                          ))}
-                      </select>
-                    </div>
-                  </div>
+                    {allDeptMembers.length > 0 && (
+                      <div className="relative mb-2">
+                        <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="search"
+                          value={deptMemberSearch}
+                          onChange={(e) => {
+                            setDeptMemberSearch(e.target.value);
+                            setDeptMemberLimit(15);
+                          }}
+                          placeholder={`Cari di antara ${allDeptMembers.length} anggota...`}
+                          className="h-8 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-700 outline-none focus:border-[#163D64]"
+                        />
+                      </div>
+                    )}
 
-                  {displayedUsers.filter((u) => String(u.department_id || "") === String(editingDeptId)).length > 0 ? (
-                    <div className="max-h-52 overflow-y-auto divide-y divide-slate-100 rounded-xl border border-[#E2E8F0] bg-slate-50/50 p-1">
-                      {displayedUsers
-                        .filter((u) => String(u.department_id || "") === String(editingDeptId))
-                        .map((member) => (
-                          <div
-                            key={member.id}
-                            className="flex items-center justify-between px-3 py-2 hover:bg-white rounded-lg transition-colors"
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#163D64] text-[11px] font-bold text-white">
-                                {(member.full_name || member.email || "?")
-                                  .split(" ")
-                                  .slice(0, 2)
-                                  .map((p) => p[0]?.toUpperCase() || "")
-                                  .join("")}
+                    {allDeptMembers.length > 0 ? (
+                      filteredDeptMembers.length > 0 ? (
+                        <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 rounded-xl border border-[#E2E8F0] bg-slate-50/50 p-1">
+                          {visibleDeptMembers.map((member) => (
+                            <div
+                              key={member.id}
+                              className="flex items-center justify-between px-3 py-2 hover:bg-white rounded-lg transition-colors"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#163D64] text-[11px] font-bold text-white">
+                                  {(member.full_name || member.email || "?")
+                                    .split(" ")
+                                    .slice(0, 2)
+                                    .map((p) => p[0]?.toUpperCase() || "")
+                                    .join("")}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-xs font-semibold text-slate-800 truncate">
+                                    {member.full_name || member.email}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 truncate">
+                                    {member.email} {member.job_title ? `• ${member.job_title}` : ""}
+                                  </div>
+                                </div>
                               </div>
-                              <div className="min-w-0">
-                                <div className="text-xs font-semibold text-slate-800 truncate">
-                                  {member.full_name || member.email}
-                                </div>
-                                <div className="text-[10px] text-slate-500 truncate">
-                                  {member.email} {member.job_title ? `• ${member.job_title}` : ""}
-                                </div>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="rounded bg-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-700">
+                                  {member.role_level || "STAFF"}
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={savingDeptRole}
+                                  onClick={() => void handleSaveUserDepartmentRole(null, undefined, member.id)}
+                                  className="rounded px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors"
+                                  title="Lepas user dari departemen ini"
+                                >
+                                  Lepas
+                                </button>
                               </div>
                             </div>
+                          ))}
 
-                            <div className="flex items-center gap-2">
-                              <span className="rounded bg-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-700">
-                                {member.role_level || "STAFF"}
-                              </span>
+                          {filteredDeptMembers.length > visibleDeptMembers.length && (
+                            <div className="p-2 text-center">
                               <button
                                 type="button"
-                                disabled={savingDeptRole}
-                                onClick={() => void handleSaveUserDepartmentRole(null, undefined, member.id)}
-                                className="rounded px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors"
-                                title="Lepas user dari departemen ini"
+                                onClick={() => setDeptMemberLimit((prev) => prev + 20)}
+                                className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-[#163D64] hover:bg-slate-50"
                               >
-                                Lepas
+                                Tampilkan lebih banyak ({filteredDeptMembers.length - visibleDeptMembers.length} lagi)
                               </button>
                             </div>
-                          </div>
-                        ))}
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400">
-                      Belum ada anggota yang ditugaskan pada unit ini. Pilih user pada dropdown di atas untuk menambahkan anggota.
-                    </div>
-                  )}
-                </div>
-              )}
+                          )}
+                        </div>
+                      ) : (
+                        <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400">
+                          Tidak ada anggota yang cocok dengan pencarian &ldquo;{deptMemberSearch}&rdquo;.
+                        </div>
+                      )
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400">
+                        Belum ada anggota yang ditugaskan pada unit ini. Gunakan pencarian di atas untuk menambahkan anggota.
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               <div className="border-t border-[#EFEFEF] pt-3">
                 <label className="mb-2 block text-xs font-bold text-[#163D64]">
@@ -1754,11 +1819,10 @@ export function AccessAdministration() {
                     return (
                       <label
                         key={modCode}
-                        className={`flex items-center gap-2 rounded-xl border p-2.5 text-xs cursor-pointer transition ${
-                          checked
-                            ? "border-[#163D64] bg-[#E7F2FF]/60 font-semibold text-[#163D64]"
-                            : "border-[#EFEFEF] bg-white text-[#0F172A]"
-                        }`}
+                        className={`flex items-center gap-2 rounded-xl border p-2.5 text-xs cursor-pointer transition ${checked
+                          ? "border-[#163D64] bg-[#E7F2FF]/60 font-semibold text-[#163D64]"
+                          : "border-[#EFEFEF] bg-white text-[#0F172A]"
+                          }`}
                       >
                         <input
                           type="checkbox"

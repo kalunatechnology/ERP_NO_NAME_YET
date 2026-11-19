@@ -149,6 +149,8 @@ export function SearchableSelect({
     setOpen(false);
   };
 
+  const visibleOptions = useMemo(() => filteredOptions.slice(0, 80), [filteredOptions]);
+
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Escape") {
       event.preventDefault();
@@ -157,7 +159,7 @@ export function SearchableSelect({
     }
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setActiveIndex((prev) => Math.min(prev + 1, Math.max(0, filteredOptions.length - 1)));
+      setActiveIndex((prev) => Math.min(prev + 1, Math.max(0, visibleOptions.length - 1)));
       return;
     }
     if (event.key === "ArrowUp") {
@@ -167,7 +169,7 @@ export function SearchableSelect({
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      const target = filteredOptions[activeIndex];
+      const target = visibleOptions[activeIndex];
       if (target && !target.disabled) {
         handleSelect(target.value);
       }
@@ -229,12 +231,12 @@ export function SearchableSelect({
                 </button>
               )}
 
-              {filteredOptions.length === 0 ? (
+              {visibleOptions.length === 0 ? (
                 <div className="px-3 py-4 text-center text-xs text-slate-400">
                   {emptyMessage}
                 </div>
               ) : (
-                filteredOptions.map((opt, idx) => {
+                visibleOptions.map((opt, idx) => {
                   const isSelected = opt.value === value;
                   const isActive = idx === activeIndex;
                   return (
@@ -268,7 +270,8 @@ export function SearchableSelect({
             </div>
 
             <div className="border-t border-slate-100 bg-slate-50 px-3 py-1.5 text-[10px] text-slate-500">
-              Menampilkan {filteredOptions.length} dari {options.length} pilihan
+              Menampilkan {visibleOptions.length} dari {filteredOptions.length} hasil
+              {filteredOptions.length > visibleOptions.length && " · ketik untuk mencari lebih spesifik"}
             </div>
           </div>,
           document.body
