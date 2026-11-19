@@ -496,25 +496,30 @@ export function QuickAccessPanel({
       </div>
 
       <div className="p-5 space-y-6">
-        {/* Bagian 1: Tabel Informasi Organisasi & Jabatan */}
-        <div>
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-700">
-              1. Penempatan Unit &amp; Jabatan
-            </h3>
+        {/* Bagian 1: Form Informasi Organisasi & Jabatan */}
+        <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wide text-slate-800">
+                1. Penempatan Unit &amp; Jabatan
+              </h3>
+              <p className="mt-0.5 text-[11px] text-slate-500">
+                Atur penempatan departemen, tingkat wewenang, jabatan bisnis, dan garis pelaporan.
+              </p>
+            </div>
             {onCreateUnit && !isSelfSelected && (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => onCreateUnit("DEPARTMENT")}
-                  className="rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                 >
                   + Departemen Baru
                 </button>
                 <button
                   type="button"
                   onClick={() => onCreateUnit("DIVISION")}
-                  className="rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                 >
                   + Divisi Baru
                 </button>
@@ -522,91 +527,103 @@ export function QuickAccessPanel({
             )}
           </div>
 
-          <div className="overflow-x-auto rounded-lg border border-slate-200">
-            <table className="w-full text-left text-xs">
-              <tbody className="divide-y divide-slate-200">
-                <tr>
-                  <th className="w-48 bg-slate-50 px-3.5 py-2.5 font-semibold text-slate-700">
-                    Template / Preset Cepat
-                  </th>
-                  <td className="px-3.5 py-2" colSpan={3}>
-                    <select
-                      disabled={isSelfSelected || saving}
-                      value={activePresetKey}
-                      onChange={(e) => handlePresetChange(e.target.value)}
-                      className="h-9 w-full max-w-md rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-slate-800 outline-none focus:border-[#163D64]"
-                    >
-                      <option value="">-- Pilih Template Jabatan (Mengisi Otomatis Modul &amp; Dashboard) --</option>
-                      {presets.map((p) => (
-                        <option key={p.preset_key} value={p.preset_key}>
-                          {p.label} ({p.role_level})
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                </tr>
-                <tr>
-                  <th className="w-48 bg-slate-50 px-3.5 py-2.5 font-semibold text-slate-700">
-                    Departemen / Divisi
-                  </th>
-                  <td className="w-1/3 px-3.5 py-2 min-w-[220px]">
-                    <SearchableSelect
-                      disabled={isSelfSelected || saving}
-                      value={departmentId}
-                      onChange={(val) => setDepartmentId(val)}
-                      placeholder="-- Pilih Unit --"
-                      emptyOptionLabel="-- Belum Ditempatkan --"
-                      searchPlaceholder="Cari unit..."
-                      options={departmentOptions}
-                    />
-                  </td>
-                  <th className="w-44 bg-slate-50 px-3.5 py-2.5 font-semibold text-slate-700">
-                    Level di Unit
-                  </th>
-                  <td className="px-3.5 py-2 min-w-[200px]">
-                    <select
-                      disabled={isSelfSelected || saving}
-                      value={roleLevel}
-                      onChange={(e) => setRoleLevel(e.target.value as "GM" | "SPV" | "STAFF")}
-                      className="h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-slate-800 outline-none focus:border-[#163D64]"
-                    >
-                      <option value="STAFF">STAFF (Pelaksana)</option>
-                      <option value="SPV">SPV (Supervisor / Lead)</option>
-                      <option value="GM">GM (Manager / Direksi)</option>
-                    </select>
-                  </td>
-                </tr>
-                <tr>
-                  <th className="bg-slate-50 px-3.5 py-2.5 font-semibold text-slate-700">
-                    Nama Jabatan (Job Title)
-                  </th>
-                  <td className="px-3.5 py-2">
-                    <input
-                      type="text"
-                      disabled={isSelfSelected || saving}
-                      value={jobTitle}
-                      onChange={(e) => setJobTitle(e.target.value)}
-                      placeholder="Contoh: Staff Finance / Project Manager"
-                      className="h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-slate-800 outline-none focus:border-[#163D64]"
-                    />
-                  </td>
-                  <th className="bg-slate-50 px-3.5 py-2.5 font-semibold text-slate-700">
-                    Atasan Langsung
-                  </th>
-                  <td className="px-3.5 py-2">
-                    <SearchableSelect
-                      disabled={isSelfSelected || saving}
-                      value={reportsToUserId}
-                      onChange={(val) => setReportsToUserId(val)}
-                      placeholder="-- Pilih Atasan --"
-                      emptyOptionLabel="-- Tanpa Atasan Langsung --"
-                      searchPlaceholder="Cari nama atasan..."
-                      options={managerOptions}
-                    />
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          {/* Template Role / Preset Cepat */}
+          <div className="rounded-lg bg-slate-50 p-3 border border-slate-200/80">
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Template Role / Preset Cepat (Opsional)
+            </label>
+            <select
+              disabled={isSelfSelected || saving}
+              value={activePresetKey}
+              onChange={(e) => handlePresetChange(e.target.value)}
+              className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-800 outline-none focus:border-[#163D64]"
+            >
+              <option value="">-- Pilih Template Role untuk Otomatis Mengisi Wewenang &amp; Dashboard --</option>
+              {presets.map((p) => (
+                <option key={p.preset_key} value={p.preset_key}>
+                  {p.label} (Level: {p.role_level})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Form 2-Kolom yang Proporsional & Bebas Clipping */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Departemen / Divisi */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Departemen / Divisi
+              </label>
+              <SearchableSelect
+                disabled={isSelfSelected || saving}
+                value={departmentId}
+                onChange={(val) => setDepartmentId(val)}
+                placeholder="-- Pilih Unit --"
+                emptyOptionLabel="-- Belum Ditempatkan --"
+                searchPlaceholder="Cari kode atau nama unit..."
+                options={departmentOptions}
+              />
+              <p className="mt-1 text-[11px] text-slate-500">
+                Unit penempatan user untuk mewarisi hak akses modul unit.
+              </p>
+            </div>
+
+            {/* Level di Unit */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Level Wewenang di Unit
+              </label>
+              <select
+                disabled={isSelfSelected || saving}
+                value={roleLevel}
+                onChange={(e) => setRoleLevel(e.target.value as "GM" | "SPV" | "STAFF")}
+                className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 outline-none focus:border-[#163D64]"
+              >
+                <option value="STAFF">STAFF (Pelaksana / Operasional)</option>
+                <option value="SPV">SPV (Supervisor / Lead Unit)</option>
+                <option value="GM">GM (General Manager / Direksi)</option>
+              </select>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Menentukan hierarki operasional dan batas wewenang internal unit.
+              </p>
+            </div>
+
+            {/* Nama Jabatan (Job Title) */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Nama Jabatan Bebas (Job Title)
+              </label>
+              <input
+                type="text"
+                disabled={isSelfSelected || saving}
+                value={jobTitle}
+                onChange={(e) => setJobTitle(e.target.value)}
+                placeholder="Contoh: Staff Finance / Project Manager / Sales Executive"
+                className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-800 outline-none focus:border-[#163D64]"
+              />
+              <p className="mt-1 text-[11px] text-slate-500">
+                Gelar operasional sehari-hari yang tampil di profil tim.
+              </p>
+            </div>
+
+            {/* Atasan Langsung */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Atasan Langsung (Reports To)
+              </label>
+              <SearchableSelect
+                disabled={isSelfSelected || saving}
+                value={reportsToUserId}
+                onChange={(val) => setReportsToUserId(val)}
+                placeholder="-- Pilih Atasan --"
+                emptyOptionLabel="-- Tanpa Atasan Langsung --"
+                searchPlaceholder="Cari nama atau email atasan..."
+                options={managerOptions}
+              />
+              <p className="mt-1 text-[11px] text-slate-500">
+                Garis pelaporan tunggal untuk jalur eskalasi dan persetujuan.
+              </p>
+            </div>
           </div>
         </div>
 

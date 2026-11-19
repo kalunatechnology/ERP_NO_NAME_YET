@@ -141,7 +141,7 @@ export function SearchableSelect({
       </button>
 
       {open && (
-        <div className="absolute left-0 right-0 z-50 mt-1 overflow-hidden rounded-lg border border-[#DCE3EB] bg-white shadow-lg">
+        <div className="absolute left-0 right-0 z-[100] mt-1 overflow-hidden rounded-lg border border-[#DCE3EB] bg-white shadow-xl">
           <div className="flex items-center gap-1.5 border-b border-slate-100 bg-slate-50/70 px-2.5 py-2">
             <Search size={13} className="shrink-0 text-slate-400" />
             <input
