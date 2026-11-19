@@ -150,14 +150,23 @@ async function loadProjectBundle(req: Request, includeFinance: boolean, allowedW
     );
   }
 
-  const hasPortfolioWidget = Boolean(
-    allowedWidgets?.has('DASH_PROJECTS') || allowedWidgets?.has('DASH_EXECUTIVE')
+  const isCompanyPortfolioRole = ([
+    RoleCode.SUPER_ADMIN,
+    RoleCode.COMPANY_ADMIN,
+    RoleCode.DIRECTOR,
+    RoleCode.OPERATIONAL_MANAGER,
+  ] as RoleCode[]).includes(activeRole as RoleCode);
+  const isProjectManagerRole = activeRole === RoleCode.PROJECT_MANAGER;
+  const projectsAssignment = (req.user as any)?.module_assignments?.find(
+    (m: any) => String(m.module_code || '').toUpperCase() === 'PROJECTS'
   );
-  const isPersonalOnlyWidgetUser = Boolean(allowedWidgets && !hasPortfolioWidget);
+  const hasProjectsManagerTier = Boolean(
+    projectsAssignment &&
+      Number(projectsAssignment.tier_level) <= 1 &&
+      String(projectsAssignment.data_scope || '').toUpperCase() === 'ALL'
+  );
   const isOperationalUser =
-    isPersonalOnlyWidgetUser ||
-    (!hasPortfolioWidget &&
-      ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[]).includes(activeRole as RoleCode));
+    !isCompanyPortfolioRole && !isProjectManagerRole && !hasProjectsManagerTier;
   const managedProjectRows = managementWorkspace && isOperationalUser
     ? await prisma.project_member.findMany({
         where: {

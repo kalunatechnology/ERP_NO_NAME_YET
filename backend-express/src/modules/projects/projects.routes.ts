@@ -10,7 +10,7 @@
 import crypto from 'crypto';
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
-import { hasModuleOverride, hasUserModuleWrite } from '../../utils/module-permissions';
+import { hasModuleOverride, hasUserModuleManagerWrite, hasUserModuleWrite } from '../../utils/module-permissions';
 import { ProjectsService } from './projects.service';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
@@ -3025,7 +3025,7 @@ projectsRouter.use('/projects', createCrudRouter({
   accessWhere: async (req) => ProjectsService.projectAccessWhere(req.user, portfolioReadCompanyId(req)),
   beforeCreate: async (req, data) => {
     const role = req.user?.active_role_code;
-    if ((!([RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.COMPANY_ADMIN] as RoleCode[]).includes(role as RoleCode) && !hasUserModuleWrite(req.user, 'PROJECTS'))
+    if ((!([RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.COMPANY_ADMIN] as RoleCode[]).includes(role as RoleCode) && !hasUserModuleManagerWrite(req.user, 'PROJECTS'))
       || req.user?.roles?.includes(RoleCode.SUPER_ADMIN)) {
       throw new ForbiddenError('Anda tidak memiliki kewenangan untuk membuat project.');
     }
