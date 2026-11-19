@@ -59,12 +59,12 @@ import { CrmSalesPipelineShell, type PipelineViewMode } from "@/components/crm/C
 /* ── Tabs Configuration (Marka CRM Navigation) ─── */
 const CRM_TABS = [
   { id: "pipeline",   label: "Sales Pipeline",      icon: TrendingUp },
-  { id: "leads",      label: "Lead Management",     icon: FileText   },
-  { id: "inbox",      label: "Customer Inbox",      icon: Inbox      },
+  { id: "leads",      label: "Leads Management",    icon: FileText   },
   { id: "companies",  label: "Company Management",  icon: Building2  },
   { id: "contacts",   label: "Contact Management",  icon: Users      },
   { id: "contracts",  label: "Contract Management", icon: FileCheck  },
-  { id: "tickets",    label: "Support & Garansi",   icon: ShieldCheck },
+  { id: "inbox",      label: "Customer Inbox",      icon: Inbox      },
+  { id: "tickets",    label: "Support Garansi",     icon: ShieldCheck },
   { id: "engagement", label: "Feedback & CSAT",     icon: Star       },
 ];
 
