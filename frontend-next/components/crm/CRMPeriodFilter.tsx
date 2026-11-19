@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useCallback, useState } from "react";
 import { CalendarDays } from "lucide-react";
 import { formatDate, localDateKey } from "@/lib/utils";
@@ -41,25 +42,22 @@ export function useCRMPeriodFilter() {
 
 export type CRMPeriodFilter = ReturnType<typeof useCRMPeriodFilter>;
 
-export function CRMPeriodToolbar({ filter }: { filter: CRMPeriodFilter }) {
+export function CRMPeriodToolbar({ filter, rightContent }: { filter: CRMPeriodFilter; rightContent?: ReactNode }) {
   const { calendar, week, setWeek, changeMonth, reset } = filter;
   return (
-    <div className="flex flex-wrap items-end gap-2 rounded-xl border border-gray-200 bg-slate-50/70 p-3">
-      <span className="mr-1 inline-flex h-10 items-center gap-1.5 text-xs font-semibold text-text-secondary"><CalendarDays size={14} /> Periode</span>
-      <label className="text-[10px] font-semibold text-text-secondary">
-        Bulan
-        <input type="month" value={calendar.month} onChange={event => changeMonth(event.target.value)} className="input mt-1 block h-9 bg-white text-xs" />
-      </label>
-      <button type="button" onClick={reset} className="btn-ghost h-9 px-2.5 text-xs">Bulan ini</button>
-      <label className="text-[10px] font-semibold text-text-secondary">
-        Minggu
-        <select value={week} disabled={calendar.loading || Boolean(calendar.error)} onChange={event => setWeek(event.target.value)} className="input mt-1 block h-9 min-w-40 bg-white text-xs disabled:opacity-50">
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gray-200 bg-slate-50/70 p-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="mr-1 inline-flex h-9 items-center gap-1.5 text-xs font-semibold text-text-secondary"><CalendarDays size={14} /> Periode</span>
+        <input aria-label="Bulan" type="month" value={calendar.month} onChange={event => changeMonth(event.target.value)} className="input block h-9 bg-white text-xs" />
+        <button type="button" onClick={reset} className="btn-ghost h-9 px-2.5 text-xs">Bulan ini</button>
+        <select aria-label="Minggu" value={week} disabled={calendar.loading || Boolean(calendar.error)} onChange={event => setWeek(event.target.value)} className="input block h-9 min-w-40 bg-white text-xs disabled:opacity-50">
           <option value="ALL">Semua minggu</option>
           {calendar.periods.map(period => <option key={period.id} value={period.week}>Minggu {period.week} · {formatDate(period.start)}–{formatDate(period.end)}</option>)}
         </select>
-      </label>
-      {calendar.loading && <span className="pb-2 text-[10px] text-text-secondary">Memuat periode…</span>}
-      {calendar.error && <span className="pb-2 text-[10px] text-red-700">Periode tidak dapat dimuat. {calendar.error}</span>}
+        {calendar.loading && <span className="text-[10px] text-text-secondary">Memuat periode…</span>}
+        {calendar.error && <span className="text-[10px] text-red-700">Periode tidak dapat dimuat. {calendar.error}</span>}
+      </div>
+      {rightContent && <div className="flex flex-wrap items-center">{rightContent}</div>}
     </div>
   );
 }

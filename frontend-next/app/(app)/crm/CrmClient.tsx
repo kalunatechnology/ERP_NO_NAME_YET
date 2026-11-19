@@ -1127,54 +1127,61 @@ function TabDeals({
           </div>
         </details>
 
-        <div className="mb-3"><CRMPeriodToolbar filter={crmPeriod} /></div>
-
-        {/* Filter Toggle Pills */}
-        <div className="flex items-center gap-1.5 mb-3 bg-gray-100 p-1 rounded-xl w-fit">
-          <button
-            type="button"
-            onClick={() => setOppFilter("ACTIVE")}
-            className={cn(
-              "min-h-8 min-w-[104px] justify-center px-3 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
-              oppFilter === "ACTIVE"
-                ? "bg-white text-brand-deep-green shadow-xs"
-                : "text-text-secondary hover:text-text-primary"
-            )}
-          >
-            <span>Aktif</span>
-            <span className="px-1.5 py-0.2 rounded-full text-2xs bg-brand-light-green text-brand-deep-green font-bold">
-              {activeOpps.length}
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setOppFilter("CANCELLED")}
-            className={cn(
-              "min-h-8 min-w-[104px] justify-center px-3 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
-              oppFilter === "CANCELLED"
-                ? "bg-white text-red-600 shadow-xs"
-                : "text-text-secondary hover:text-text-primary"
-            )}
-          >
-            <span>Dibatalkan / Arsip</span>
-            {cancelledOpps.length > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full text-2xs bg-red-100 text-red-700 font-bold">
-                {cancelledOpps.length}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => setOppFilter("ALL")}
-            className={cn(
-              "min-h-8 min-w-[104px] justify-center px-3 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
-              oppFilter === "ALL"
-                ? "bg-white text-text-primary shadow-xs"
-                : "text-text-secondary hover:text-text-primary"
-            )}
-          >
-            <span>Semua</span><span className="rounded-full bg-blue-100 px-1.5 text-2xs font-bold text-blue-700">{allOpps.length}</span>
-          </button>
+        <div className="mb-3">
+          <CRMPeriodToolbar
+            filter={crmPeriod}
+            rightContent={
+              <div className="flex items-center gap-1 bg-white/90 border border-slate-200 p-1 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setOppFilter("ACTIVE")}
+                  className={cn(
+                    "min-h-7 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
+                    oppFilter === "ACTIVE"
+                      ? "bg-[#163D64] text-white shadow-xs"
+                      : "text-text-secondary hover:text-text-primary"
+                  )}
+                >
+                  <span>Aktif</span>
+                  <span className={cn("px-1.5 py-0.2 rounded-full text-2xs font-bold", oppFilter === "ACTIVE" ? "bg-white/20 text-white" : "bg-brand-light-green text-brand-deep-green")}>
+                    {activeOpps.length}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOppFilter("CANCELLED")}
+                  className={cn(
+                    "min-h-7 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
+                    oppFilter === "CANCELLED"
+                      ? "bg-red-600 text-white shadow-xs"
+                      : "text-text-secondary hover:text-text-primary"
+                  )}
+                >
+                  <span>Dibatalkan / Arsip</span>
+                  {cancelledOpps.length > 0 && (
+                    <span className={cn("px-1.5 py-0.2 rounded-full text-2xs font-bold", oppFilter === "CANCELLED" ? "bg-white/20 text-white" : "bg-red-100 text-red-700")}>
+                      {cancelledOpps.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOppFilter("ALL")}
+                  className={cn(
+                    "min-h-7 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
+                    oppFilter === "ALL"
+                      ? "bg-slate-800 text-white shadow-xs"
+                      : "text-text-secondary hover:text-text-primary"
+                  )}
+                >
+                  <span>Semua</span>
+                  <span className={cn("rounded-full px-1.5 text-2xs font-bold", oppFilter === "ALL" ? "bg-white/20 text-white" : "bg-blue-100 text-blue-700")}>
+                    {allOpps.length}
+                  </span>
+                </button>
+              </div>
+            }
+          />
         </div>
 
         {displayedOpps.length === 0 ? (
@@ -1412,9 +1419,11 @@ function TabDeals({
                 <button
                   type="button"
                   onClick={() => setIsQuickPartyOpen(true)}
-                  className="text-2xs font-semibold text-[#0876CD] hover:underline flex items-center gap-1"
+                  title="Pelanggan Baru"
+                  aria-label="Pelanggan Baru"
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-[#0876CD] hover:bg-blue-50"
                 >
-                  <UserPlus size={12} /> + Pelanggan Baru
+                  <Plus size={13} />
                 </button>
               </div>
               <select
@@ -1457,7 +1466,7 @@ function TabDeals({
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="font-medium text-slate-600 mb-1 block">Expected Amount (Rp)</label>
               <IDRInput aria-label="Expected Amount dalam rupiah" value={form.expected_amount} onChange={(digits) => setForm((current) => ({ ...current, expected_amount: digits }))} />
@@ -1473,18 +1482,19 @@ function TabDeals({
                 onChange={e => setForm(f => ({ ...f, probability_percent: Number(e.target.value) }))}
               />
             </div>
-            <div>
-              <label className="font-medium text-slate-600 mb-1 block">Tahap Pipeline</label>
-              <select
-                className="input w-full bg-white"
-                value={form.pipeline_stage}
-                onChange={e => setForm(f => ({ ...f, pipeline_stage: e.target.value }))}
-              >
-                {["PROSPECT", "DISCOVERY", "PROPOSAL_SENT", "NEGOTIATION", "FOLLOW_UP"].map(s => (
-                  <option key={s} value={s}>{CRM_PIPELINE_STAGE_LABELS[s] || s}</option>
-                ))}
-              </select>
-            </div>
+          </div>
+
+          <div>
+            <label className="font-medium text-slate-600 mb-1 block">Tahap Pipeline</label>
+            <select
+              className="input w-full bg-white"
+              value={form.pipeline_stage}
+              onChange={e => setForm(f => ({ ...f, pipeline_stage: e.target.value }))}
+            >
+              {["PROSPECT", "DISCOVERY", "PROPOSAL_SENT", "NEGOTIATION", "FOLLOW_UP"].map(s => (
+                <option key={s} value={s}>{CRM_PIPELINE_STAGE_LABELS[s] || s}</option>
+              ))}
+            </select>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2469,9 +2479,11 @@ function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { dat
               <button 
                 type="button" 
                 onClick={() => setIsQuickPartyOpen(true)}
-                className="text-2xs font-semibold text-brand-green hover:underline flex items-center gap-1"
+                title="Pelanggan Baru"
+                aria-label="Pelanggan Baru"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-brand-green hover:bg-emerald-50"
               >
-                <UserPlus size={12} /> + Pelanggan Baru
+                <Plus size={13} />
               </button>
             </div>
             <select
@@ -3374,6 +3386,7 @@ function TabContracts({ data, onNavigate, onRefresh, readOnly = false }: { data:
       .finally(() => { if (active) setTransferListLoading(false); });
     return () => { active = false; };
   }, [data.orders]);
+  const [contractSubTab, setContractSubTab] = useState<"orders" | "contracts">("orders");
   const transferableOrders = serverTransferableOrders.filter((order: any) => !transferredOrderIds.has(String(order.id)) && crmPeriod.matches(order.order_date || order.created_at));
   const periodContracts = (data.contracts || []).filter((contract: any) => crmPeriod.matches(contract.start_date || contract.created_at));
 
@@ -3455,8 +3468,40 @@ function TabContracts({ data, onNavigate, onRefresh, readOnly = false }: { data:
           </div>
         </div>
       </div>
-      <CRMPeriodToolbar filter={crmPeriod} />
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <CRMPeriodToolbar
+        filter={crmPeriod}
+        rightContent={
+          <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white/90 p-1">
+            <button
+              type="button"
+              onClick={() => setContractSubTab("orders")}
+              className={cn(
+                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all",
+                contractSubTab === "orders" ? "bg-[#163D64] text-white shadow-xs" : "text-text-secondary hover:text-text-primary"
+              )}
+            >
+              <span>Sales Order Siap Transfer</span>
+              <span className={cn("rounded-full px-1.5 py-0.2 text-2xs font-bold", contractSubTab === "orders" ? "bg-white/20 text-white" : "bg-blue-50 text-blue-700")}>
+                {transferableOrders.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setContractSubTab("contracts")}
+              className={cn(
+                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all",
+                contractSubTab === "contracts" ? "bg-[#163D64] text-white shadow-xs" : "text-text-secondary hover:text-text-primary"
+              )}
+            >
+              <span>Contracts</span>
+              <span className={cn("rounded-full px-1.5 py-0.2 text-2xs font-bold", contractSubTab === "contracts" ? "bg-white/20 text-white" : "bg-violet-50 text-violet-700")}>
+                {periodContracts.length}
+              </span>
+            </button>
+          </div>
+        }
+      />
+      {contractSubTab === "orders" ? (
         <div className="card rounded-xl p-4">
           <div className="mb-3 flex items-center justify-between gap-2"><h3 className="text-sm font-bold text-text-primary">Sales Order yang Siap Ditransfer</h3><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{transferableOrders.length} order</span></div>
           {transferListLoading ? <p className="py-8 text-center text-sm text-text-secondary">Memeriksa order yang belum memiliki proyek…</p> : transferListError ? <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">{transferListError}</div> : transferableOrders.length === 0 ? <EmptyState msg="Tidak ada Sales Order yang menunggu transfer. Order yang sudah memiliki proyek tidak ditampilkan kembali." /> : (
@@ -3475,6 +3520,7 @@ function TabContracts({ data, onNavigate, onRefresh, readOnly = false }: { data:
             </div>
           )}
         </div>
+      ) : (
         <div className="card rounded-xl p-4">
           <div className="mb-3 flex items-center justify-between gap-2"><h3 className="text-sm font-bold text-text-primary">Contracts</h3><span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">{periodContracts.length} kontrak</span></div>
           {periodContracts.length === 0 ? <EmptyState msg="Tidak ada kontrak pada periode ini." /> : (
@@ -3504,7 +3550,7 @@ function TabContracts({ data, onNavigate, onRefresh, readOnly = false }: { data:
             </div>
           )}
         </div>
-      </div>
+      )}
 
       <Modal isOpen={isNewContractOpen} onClose={() => !savingContract && setIsNewContractOpen(false)} title="Add New Contract" size="md">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 text-xs">
@@ -4509,9 +4555,9 @@ export default function CrmClient() {
                   type="button"
                   onClick={() => setIsBrandModalOpen(true)}
                   className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-[#0876CD] hover:bg-blue-50"
-                  title="Tambah / Kelola & Hapus Brand"
+                  title="Kelola Brand"
                 >
-                  + / Kelola Brand
+                  Kelola Brand
                 </button>
                 {activeBrands.length > 0 && brandFilter === "ALL" && (
                   <button

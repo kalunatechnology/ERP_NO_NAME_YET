@@ -71,6 +71,7 @@ function PopupField({
   value,
   editing,
   onChange,
+  onRequestEdit,
   type = "text",
   isFile = false,
   placeholder,
@@ -80,18 +81,138 @@ function PopupField({
   value?: string | null;
   editing: boolean;
   onChange: (val: string) => void;
+  onRequestEdit?: () => void;
   type?: "text" | "date" | "textarea";
   isFile?: boolean;
   placeholder?: string;
   className?: string;
 }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [linkMode, setLinkMode] = useState<"file" | "link">("file");
+  const [linkDraft, setLinkDraft] = useState("");
+  const dateInputRef = React.useRef<HTMLInputElement>(null);
+
   const IconComp = isFile ? FileUp : type === "date" ? Calendar : Pencil;
+
+  const handleFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const maxBytes = 5 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      toast.error("File melebihi 5 MB. Gunakan tab 'Tambah Link' untuk file berat (Google Drive / Figma).");
+      return;
+    }
+    onChange(file.name);
+    if (!editing && onRequestEdit) onRequestEdit();
+    setPickerOpen(false);
+    toast.success(`File "${file.name}" siap disimpan.`);
+  };
+
+  const handleApplyLink = () => {
+    const trimmed = linkDraft.trim();
+    if (!trimmed) {
+      toast.error("Masukkan URL / link dokumen terlebih dahulu.");
+      return;
+    }
+    onChange(trimmed);
+    if (!editing && onRequestEdit) onRequestEdit();
+    setLinkDraft("");
+    setPickerOpen(false);
+  };
+
   return (
-    <div className={cn("space-y-1.5", className)}>
+    <div className={cn("space-y-1.5 relative", className)}>
       <div className="flex items-center justify-between gap-2 text-xs font-medium text-[#64748B]">
         <span>{label}</span>
-        <IconComp size={13} className="text-[#475569] shrink-0" />
+        {isFile ? (
+          <button
+            type="button"
+            title="Upload file ringan atau tambah link dokumen"
+            onClick={() => setPickerOpen((prev) => !prev)}
+            className="rounded p-1 text-[#475569] transition hover:bg-blue-50 hover:text-[#0876CD]"
+          >
+            <IconComp size={13} />
+          </button>
+        ) : type === "date" ? (
+          <button
+            type="button"
+            title="Pilih tanggal"
+            onClick={() => {
+              if (!editing && onRequestEdit) onRequestEdit();
+              setTimeout(() => {
+                dateInputRef.current?.focus();
+                dateInputRef.current?.showPicker?.();
+              }, 20);
+            }}
+            className="rounded p-1 text-[#475569] transition hover:bg-blue-50 hover:text-[#0876CD]"
+          >
+            <IconComp size={13} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            title={`Ubah ${label}`}
+            onClick={() => {
+              if (!editing && onRequestEdit) onRequestEdit();
+            }}
+            className="rounded p-1 text-[#475569] transition hover:bg-slate-100"
+          >
+            <IconComp size={13} />
+          </button>
+        )}
       </div>
+
+      {isFile && pickerOpen && (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 space-y-2 text-xs shadow-sm">
+          <div className="flex gap-1 rounded-lg bg-white p-0.5 border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setLinkMode("file")}
+              className={cn(
+                "flex-1 rounded-md px-2 py-1 text-[11px] font-semibold transition",
+                linkMode === "file" ? "bg-[#163D64] text-white" : "text-slate-600 hover:bg-slate-100"
+              )}
+            >
+              Upload File (≤5MB)
+            </button>
+            <button
+              type="button"
+              onClick={() => setLinkMode("link")}
+              className={cn(
+                "flex-1 rounded-md px-2 py-1 text-[11px] font-semibold transition",
+                linkMode === "link" ? "bg-[#163D64] text-white" : "text-slate-600 hover:bg-slate-100"
+              )}
+            >
+              Tambah Link
+            </button>
+          </div>
+          {linkMode === "file" ? (
+            <input
+              type="file"
+              onChange={handleFilePick}
+              className="block w-full text-[11px] text-slate-600 file:mr-2 file:rounded-md file:border-0 file:bg-blue-50 file:px-2.5 file:py-1 file:text-[11px] file:font-semibold file:text-[#0876CD] hover:file:bg-blue-100"
+            />
+          ) : (
+            <div className="flex gap-1.5">
+              <input
+                type="url"
+                value={linkDraft}
+                onChange={(e) => setLinkDraft(e.target.value)}
+                placeholder="https://drive.google.com/..."
+                className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] outline-none focus:border-[#0876CD]"
+              />
+              <button
+                type="button"
+                onClick={handleApplyLink}
+                className="rounded-lg bg-[#0876CD] px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-[#163D64]"
+              >
+                Pakai
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {editing ? (
         type === "textarea" ? (
           <textarea
@@ -103,6 +224,7 @@ function PopupField({
           />
         ) : (
           <input
+            ref={type === "date" ? dateInputRef : undefined}
             type={type}
             value={value || ""}
             onChange={(e) => onChange(e.target.value)}
@@ -551,16 +673,6 @@ export function LeadStagePopupModal({
                 {editing ? <><Check size={13} /> {saving ? "Menyimpan..." : "Simpan"}</> : <><Pencil size={13} /> Edit Isi</>}
               </button>
             )}
-            <select
-              disabled={readOnly || Boolean(lead._isConverted)}
-              value={bucket}
-              onChange={(e) => void onMoveStage(String(lead.id), e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-2xs focus:outline-hidden"
-            >
-              {Object.entries(LEAD_STAGE_HEADER).map(([id, cfg]) => (
-                <option key={id} value={id}>{cfg.title}</option>
-              ))}
-            </select>
           </div>
         </div>
 
@@ -929,37 +1041,38 @@ export function OpportunityStagePopupModal({
         <div className="mt-6 space-y-6">
           {bucket === "PROSPECT" && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-              <PopupField label="Project Name" value={meta.project_name} editing={editing} onChange={(v) => setMetaField("project_name", v)} />
-              <PopupField label="Event Date" type="date" value={meta.event_date} editing={editing} onChange={(v) => setMetaField("event_date", v)} />
-              <PopupField label="Project Location" value={meta.project_location} editing={editing} onChange={(v) => setMetaField("project_location", v)} placeholder="GOR Nambo, Serang" />
-              <PopupField label="Meeting Notes" className="sm:col-span-2" value={meta.meeting_notes || meta.plain_notes} editing={editing} onChange={(v) => setMetaField("meeting_notes", v)} />
-              <PopupField label="Project Brief" isFile value={meta.project_brief_file} editing={editing} onChange={(v) => setMetaField("project_brief_file", v)} placeholder="Booth Brief Draft.pdf" />
+              <PopupField label="Project Name" value={meta.project_name} editing={editing} onRequestEdit={() => setEditing(true)} onChange={(v) => setMetaField("project_name", v)} />
+              <PopupField label="Event Date" type="date" value={meta.event_date} editing={editing} onRequestEdit={() => setEditing(true)} onChange={(v) => setMetaField("event_date", v)} />
+              <PopupField label="Project Location" value={meta.project_location} editing={editing} onRequestEdit={() => setEditing(true)} onChange={(v) => setMetaField("project_location", v)} placeholder="GOR Nambo, Serang" />
+              <PopupField label="Meeting Notes" className="sm:col-span-2" value={meta.meeting_notes || meta.plain_notes} editing={editing} onRequestEdit={() => setEditing(true)} onChange={(v) => setMetaField("meeting_notes", v)} />
+              <PopupField label="Project Brief" isFile value={meta.project_brief_file} editing={editing} onRequestEdit={() => setEditing(true)} onChange={(v) => setMetaField("project_brief_file", v)} placeholder="Booth Brief Draft.pdf" />
             </div>
           )}
 
           {bucket === "DISCOVERY" && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-              <PopupField label="Project Brief" isFile value={meta.project_brief_file} editing={editing} onChange={(v) => setMetaField("project_brief_file", v)} placeholder="Booth Brief Draft.pdf" />
-              <PopupField label="Scope of Work" isFile value={meta.sow_file} editing={editing} onChange={(v) => setMetaField("sow_file", v)} placeholder="Booth Activation SOW.pdf" />
-              <PopupField label="Design Reference" isFile value={meta.design_reference_file} editing={editing} onChange={(v) => setMetaField("design_reference_file", v)} placeholder="Design References.pdf" />
-              <PopupField label="Concept File" isFile value={meta.concept_file} editing={editing} onChange={(v) => setMetaField("concept_file", v)} placeholder="Design Concept.pdf" />
-              <PopupField label="Target Submission Date" type="date" value={meta.target_submission_date || meta.event_date} editing={editing} onChange={(v) => setMetaField("target_submission_date", v)} />
+              <PopupField label="Project Brief" isFile value={meta.project_brief_file} editing={editing} onRequestEdit={() => setEditing(true)} onChange={(v) => setMetaField("project_brief_file", v)} placeholder="Booth Brief Draft.pdf" />
+              <PopupField label="Scope of Work" isFile value={meta.sow_file} editing={editing} onRequestEdit={() => setEditing(true)} onChange={(v) => setMetaField("sow_file", v)} placeholder="Booth Activation SOW.pdf" />
+              <PopupField label="Design Reference" isFile value={meta.design_reference_file} editing={editing} onRequestEdit={() => setEditing(true)} onChange={(v) => setMetaField("design_reference_file", v)} placeholder="Design References.pdf" />
+              <PopupField label="Concept File" isFile value={meta.concept_file} editing={editing} onRequestEdit={() => setEditing(true)} onChange={(v) => setMetaField("concept_file", v)} placeholder="Design Concept.pdf" />
+              <PopupField label="Target Submission Date" type="date" value={meta.target_submission_date || meta.event_date} editing={editing} onRequestEdit={() => setEditing(true)} onChange={(v) => setMetaField("target_submission_date", v)} />
             </div>
           )}
 
           {bucket === "PROPOSAL_SENT" && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-              <PopupField label="Quotation Number" value={meta.quotation_number} editing={editing} onChange={(v) => setMetaField("quotation_number", v)} placeholder="ARSA/021/11/2026" />
-              <PopupField label="Quotation Document" isFile value={meta.quotation_doc_file} editing={editing} onChange={(v) => setMetaField("quotation_doc_file", v)} placeholder="QARS021112026.pdf" />
+              <PopupField label="Quotation Number" value={meta.quotation_number} editing={editing} onRequestEdit={() => setEditing(true)} onChange={(v) => setMetaField("quotation_number", v)} placeholder="ARSA/021/11/2026" />
+              <PopupField label="Quotation Document" isFile value={meta.quotation_doc_file} editing={editing} onRequestEdit={() => setEditing(true)} onChange={(v) => setMetaField("quotation_doc_file", v)} placeholder="QARS021112026.pdf" />
               <PopupField
                 label="Total Quotation Value"
                 value={editing ? meta.total_quotation_value : formatMoney(Number(String(meta.total_quotation_value || opp._amount || 0).replace(/[^0-9.-]/g, "")))}
                 editing={editing}
+                onRequestEdit={() => setEditing(true)}
                 onChange={(v) => setMetaField("total_quotation_value", v)}
               />
-              <PopupField label="Submission Date" type="date" value={meta.submission_date} editing={editing} onChange={(v) => setMetaField("submission_date", v)} />
-              <PopupField label="Payment Terms" value={meta.payment_terms || "Due On Receipt"} editing={editing} onChange={(v) => setMetaField("payment_terms", v)} />
-              <PopupField label="Follow-Up Date" type="date" value={meta.follow_up_date} editing={editing} onChange={(v) => setMetaField("follow_up_date", v)} />
+              <PopupField label="Submission Date" type="date" value={meta.submission_date} editing={editing} onRequestEdit={() => setEditing(true)} onChange={(v) => setMetaField("submission_date", v)} />
+              <PopupField label="Payment Terms" value={meta.payment_terms || "Due On Receipt"} editing={editing} onRequestEdit={() => setEditing(true)} onChange={(v) => setMetaField("payment_terms", v)} />
+              <PopupField label="Follow-Up Date" type="date" value={meta.follow_up_date} editing={editing} onRequestEdit={() => setEditing(true)} onChange={(v) => setMetaField("follow_up_date", v)} />
             </div>
           )}
 
