@@ -92,7 +92,7 @@ export default function InventoryClient() {
     moduleAccess: user?.module_access, activeRoleCode: user?.active_role_code, isSuperAdmin: userRole === "super_admin",
   });
   const [tab, setTab] = useState<TabKey>("overview");
-  const [warehouseSubTab, setWarehouseSubTab] = useState<"warehouses" | "locations" | "virtual" | "products" | "serials">("warehouses");
+  const [warehouseSubTab, setWarehouseSubTab] = useState<"warehouses" | "locations" | "virtual" | "categories" | "products" | "serials">("warehouses");
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<InventoryProductCategory[]>([]);
@@ -325,7 +325,8 @@ export default function InventoryClient() {
           { id: "warehouses" as const, label: `Data Gudang (${warehouses.length})` },
           { id: "locations" as const, label: `Lokasi & Rak Fisik (${physicalLocations.length})` },
           { id: "virtual" as const, label: `Lokasi Virtual & Transit (${virtualLocations.length})` },
-          { id: "products" as const, label: `Produk & Kategori (${products.length})` },
+          { id: "categories" as const, label: `Kategori Produk (${categories.length})` },
+          { id: "products" as const, label: `Katalog Produk (${products.length})` },
           { id: "serials" as const, label: `Nomor Seri & Garansi (${serials.length})` },
         ];
         return (
@@ -390,18 +391,25 @@ export default function InventoryClient() {
               </section>
             )}
 
+            {warehouseSubTab === "categories" && (
+              <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-2"><div><h2 className="text-sm font-bold">Kategori produk dinamis</h2><p className="mt-1 text-xs text-text-secondary">Gunakan kategori umum atau buat sendiri. Hardware memakai kontrol serial sebagai nilai awal; kategori lain dapat diatur sesuai kebutuhan.</p></div><button onClick={() => void addCommonCategories()} disabled={busy} className="btn-ghost text-xs">Tambah kategori umum</button></div>
+                <div className="grid gap-3 sm:grid-cols-[1fr_1.5fr_auto_auto] sm:items-end">
+                  <label className="text-xs font-medium">Kode kategori<input className="input mt-1 w-full" maxLength={100} placeholder="HARDWARE" value={categoryForm.category_code} onChange={(e) => setCategoryForm({ ...categoryForm, category_code: e.target.value })} /></label>
+                  <label className="text-xs font-medium">Nama kategori<input className="input mt-1 w-full" maxLength={150} placeholder="Hardware" value={categoryForm.category_name} onChange={(e) => setCategoryForm({ ...categoryForm, category_name: e.target.value })} /></label>
+                  <label className="inline-flex items-center gap-2 pb-2 text-xs"><input type="checkbox" checked={categoryForm.serial_controlled} onChange={(e) => setCategoryForm({ ...categoryForm, serial_controlled: e.target.checked })} /> Serial aktif secara default</label>
+                  <button onClick={() => void saveCategory()} disabled={busy} className="btn-primary flex items-center justify-center gap-1 text-xs"><Plus size={13} /> Tambah kategori</button>
+                </div>
+                {categories.length > 0 ? (
+                  <div className="mt-4 overflow-auto rounded-lg border border-slate-200"><table className="w-full min-w-[620px] border-collapse text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-text-secondary"><tr>{["Kode Kategori", "Nama Kategori", "Serial Default", "Status"].map((label) => <th key={label} className="border-b border-r border-slate-200 px-3 py-2.5 font-semibold last:border-r-0">{label}</th>)}</tr></thead><tbody>{categories.map((category, index) => <tr key={category.id} className={cn("transition-colors hover:bg-blue-50/70", index % 2 ? "bg-slate-50/70" : "bg-white")}><td className="border-b border-r border-slate-200 px-3 py-2.5 font-mono font-semibold last:border-r-0">{category.category_code}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 font-medium text-text-primary last:border-r-0">{category.category_name}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 last:border-r-0">{category.serial_controlled ? "Ya" : "Tidak"}</td><td className="border-b border-slate-200 px-3 py-2.5"><span className={cn("rounded-full px-2 py-0.5 text-2xs font-semibold", category.status === "ACTIVE" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600")}>{category.status}</span></td></tr>)}</tbody></table></div>
+                ) : (
+                  <Empty>Belum ada kategori produk.</Empty>
+                )}
+              </section>
+            )}
+
             {warehouseSubTab === "products" && (
               <div className="space-y-4">
-                <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
-                  <div className="mb-3 flex flex-wrap items-start justify-between gap-2"><div><h2 className="text-sm font-bold">Kategori produk dinamis</h2><p className="mt-1 text-xs text-text-secondary">Gunakan kategori umum atau buat sendiri. Hardware memakai kontrol serial sebagai nilai awal; kategori lain dapat diatur sesuai kebutuhan.</p></div><button onClick={() => void addCommonCategories()} disabled={busy} className="btn-ghost text-xs">Tambah kategori umum</button></div>
-                  <div className="grid gap-3 sm:grid-cols-[1fr_1.5fr_auto_auto] sm:items-end">
-                    <label className="text-xs font-medium">Kode kategori<input className="input mt-1 w-full" maxLength={100} placeholder="HARDWARE" value={categoryForm.category_code} onChange={(e) => setCategoryForm({ ...categoryForm, category_code: e.target.value })} /></label>
-                    <label className="text-xs font-medium">Nama kategori<input className="input mt-1 w-full" maxLength={150} placeholder="Hardware" value={categoryForm.category_name} onChange={(e) => setCategoryForm({ ...categoryForm, category_name: e.target.value })} /></label>
-                    <label className="inline-flex items-center gap-2 pb-2 text-xs"><input type="checkbox" checked={categoryForm.serial_controlled} onChange={(e) => setCategoryForm({ ...categoryForm, serial_controlled: e.target.checked })} /> Serial aktif secara default</label>
-                    <button onClick={() => void saveCategory()} disabled={busy} className="btn-primary flex items-center justify-center gap-1 text-xs"><Plus size={13} /> Tambah kategori</button>
-                  </div>
-                  {categories.length > 0 && <div className="mt-4 overflow-auto rounded-lg border border-slate-200"><table className="w-full min-w-[620px] border-collapse text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-text-secondary"><tr>{["Kode Kategori", "Nama Kategori", "Serial Default", "Status"].map((label) => <th key={label} className="border-b border-r border-slate-200 px-3 py-2.5 font-semibold last:border-r-0">{label}</th>)}</tr></thead><tbody>{categories.map((category, index) => <tr key={category.id} className={cn("transition-colors hover:bg-blue-50/70", index % 2 ? "bg-slate-50/70" : "bg-white")}><td className="border-b border-r border-slate-200 px-3 py-2.5 font-mono font-semibold last:border-r-0">{category.category_code}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 font-medium text-text-primary last:border-r-0">{category.category_name}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 last:border-r-0">{category.serial_controlled ? "Ya" : "Tidak"}</td><td className="border-b border-slate-200 px-3 py-2.5"><span className={cn("rounded-full px-2 py-0.5 text-2xs font-semibold", category.status === "ACTIVE" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600")}>{category.status}</span></td></tr>)}</tbody></table></div>}
-                </section>
                 <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
                   <div className="mb-3 flex flex-wrap items-start justify-between gap-2"><div><h2 className="text-sm font-bold">{editingProductId ? "Ubah produk" : "Tambah produk"}</h2><p className="mt-1 text-xs text-text-secondary">Isi katalog satu per satu atau impor banyak produk dengan XLSX.</p></div><div className="flex flex-wrap gap-2"><button onClick={downloadProductTemplate} className="btn-ghost flex items-center gap-1 text-xs"><Download size={13} /> Template XLSX</button><label className={`btn-ghost flex cursor-pointer items-center gap-1 text-xs ${busy ? "pointer-events-none opacity-50" : ""}`}><Upload size={13} /> Impor XLSX<input className="hidden" type="file" accept=".xlsx,.xls" onChange={(event) => void importProducts(event)} /></label></div></div>
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
