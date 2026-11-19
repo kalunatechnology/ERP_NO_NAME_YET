@@ -689,7 +689,7 @@ export function AccessAdministration() {
           </div>
         )}
 
-        {/* Company Admin Navigation Tabs */}
+        {/* Company Admin Navigation Tabs (Simplified to 2 Clean Tabs) */}
         {!isSuper && (
           <div className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t border-[#EFEFEF] pt-5">
             <div className="flex flex-wrap gap-2">
@@ -702,7 +702,7 @@ export function AccessAdministration() {
                     : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
                 }`}
               >
-                <Users size={16} /> Anggota Tim & Hierarki Role ({displayedUsers.length})
+                <Users size={16} /> Anggota Tim &amp; Akses Cepat ({displayedUsers.length})
               </button>
               <button
                 type="button"
@@ -713,36 +713,27 @@ export function AccessAdministration() {
                     : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
                 }`}
               >
-                <Building2 size={16} /> Departemen, Divisi & Cost Center ({departments.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setCompanyViewTab("hierarchy")}
-                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                  companyViewTab === "hierarchy"
-                    ? "bg-[#163D64] text-white shadow-sm"
-                    : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
-                }`}
-              >
-                <ShieldCheck size={16} /> Hirarki Modul 3-Level & GM 360°
+                <Building2 size={16} /> Unit Organisasi &amp; Cost Center ({departments.length})
               </button>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => openNewDepartmentModal("DEPARTMENT")}
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#163D64] bg-[#E7F2FF] px-3.5 text-xs font-semibold text-[#163D64] hover:bg-[#D9EEFF]"
-              >
-                + Buat Departemen / Cost Center
-              </button>
-              <button
-                type="button"
-                onClick={() => openNewDepartmentModal("DIVISION")}
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#E2E8F0] bg-white px-3.5 text-xs font-semibold text-[#0F172A] hover:bg-[#F8FAFC]"
-              >
-                + Buat Divisi
-              </button>
-            </div>
+            {companyViewTab === "departments" && (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => openNewDepartmentModal("DEPARTMENT")}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#163D64] bg-[#E7F2FF] px-3.5 text-xs font-semibold text-[#163D64] hover:bg-[#D9EEFF]"
+                >
+                  + Buat Departemen / Cost Center
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openNewDepartmentModal("DIVISION")}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#E2E8F0] bg-white px-3.5 text-xs font-semibold text-[#0F172A] hover:bg-[#F8FAFC]"
+                >
+                  + Buat Divisi
+                </button>
+              </div>
+            )}
           </div>
         )}
       </header>
@@ -1333,7 +1324,7 @@ export function AccessAdministration() {
                   </div>
                 )}
 
-                {/* Baseline-First Quick Access Panel */}
+                {/* Baseline-First Quick Access Panel (Single Source of Truth) */}
                 {selectedUserId && (selectedCompany || contextCompany) && (
                   <QuickAccessPanel
                     companyId={selectedCompany || contextCompany}
@@ -1348,189 +1339,6 @@ export function AccessAdministration() {
                     }}
                   />
                 )}
-
-                {/* Assigned Roles Section */}
-                <div className="mt-6 rounded-2xl border border-[#EFEFEF] p-5 bg-[#FDFDFD]">
-                  <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <h3 className="font-semibold text-[#163D64]">Departemen, Divisi & Hierarki 3 Role (GM / SPV / STAFF)</h3>
-                      <p className="mt-0.5 text-xs text-[#64748B]">
-                        Hubungkan anggota tim ke Departemen/Divisi (Cost Center) dan tetapkan wewenang 3 level hierarki untuk modul, CRM, dan approval anggaran.
-                      </p>
-                    </div>
-                    <span className="rounded-full bg-[#E7F2FF] px-3 py-1 text-xs font-bold text-[#163D64]">
-                      Level: {String(selectedUser.role_level || "STAFF").toUpperCase()}
-                    </span>
-                  </div>
-                  <div className="mb-5 grid gap-3 border-b border-[#EFEFEF] pb-5 sm:grid-cols-2">
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-[#64748B]">Departemen / Divisi (Cost Center)</label>
-                      <select
-                        disabled={savingDeptRole}
-                        value={selectedUser.department_id || ""}
-                        onChange={(e) => void handleSaveUserDepartmentRole(e.target.value || null, String(selectedUser.role_level || "STAFF"))}
-                        className="h-10 w-full rounded-xl border border-[#E2E8F0] bg-white px-3 text-xs font-semibold text-[#0F172A] outline-none focus:border-[#163D64] disabled:opacity-60"
-                      >
-                        <option value="">-- Belum Ditempatkan di Departemen / Divisi --</option>
-                        {departments.map((d) => (
-                          <option key={d.id} value={d.id}>
-                            [{d.unit_type === "DIVISION" ? "DIVISI" : "DEPT"}] {d.code} — {d.name}{d.is_cost_center ? " (Cost Center)" : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-[#64748B]">Level Hierarki Role (3 Level)</label>
-                      <select
-                        disabled={savingDeptRole}
-                        value={String(selectedUser.role_level || "STAFF").toUpperCase()}
-                        onChange={(e) => void handleSaveUserDepartmentRole(selectedUser.department_id || null, e.target.value)}
-                        className="h-10 w-full rounded-xl border border-[#E2E8F0] bg-white px-3 text-xs font-semibold text-[#0F172A] outline-none focus:border-[#163D64] disabled:opacity-60"
-                      >
-                        <option value="GM">GM — General Manager (Visibilitas Lintas Divisi & Override Budget)</option>
-                        <option value="SPV">SPV — Supervisor / Manager Divisi (Approval Divisi & Delegasi Tim)</option>
-                        <option value="STAFF">STAFF — Staff / Sales Execution (Eksekusi Operasional & Pipeline Pribadi)</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <h3 className="font-semibold text-[#163D64]">Assigned Roles</h3>
-                      <p className="mt-0.5 text-xs text-[#64748B]">
-                        Peran yang ditugaskan kepada pengguna pada company ini. Pengguna dapat berganti peran aktif melalui menu atas.
-                      </p>
-                    </div>
-                    {userRolesData.roles.find((r) => r.is_active) && (
-                      <div className="flex items-center gap-1.5 rounded-full bg-[#E7F2FF] px-3 py-1 text-xs font-semibold text-[#163D64]">
-                        <span className="text-2xs text-[#64748B]">Active Role:</span>
-                        <span>{userRolesData.roles.find((r) => r.is_active)?.role_name || userRolesData.roles.find((r) => r.is_active)?.role_code}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {loadingUserRoles ? (
-                    <div className="py-4 text-center text-xs text-[#64748B]">Memuat daftar peran...</div>
-                  ) : userRolesError ? (
-                    <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">{userRolesError}</div>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-                      {ASSIGNABLE_ROLES.map((item) => {
-                        const assigned = userRolesData.roles.some(
-                          (r) => r.raw_role_code === item.code || r.role_code === item.code
-                        );
-                        const isSelf = selectedUserId === user?.id;
-                        const updating = roleUpdatingKey === item.code;
-                        return (
-                          <label
-                            key={item.code}
-                            className={`flex items-center justify-between gap-2 rounded-xl border p-3 text-xs transition cursor-pointer ${
-                              assigned
-                                ? "border-[#163D64]/40 bg-white shadow-xs font-semibold text-[#163D64]"
-                                : "border-[#EFEFEF] bg-white text-[#0F172A] hover:border-[#163D64]/20"
-                            } ${isSelf ? "cursor-not-allowed opacity-60" : ""}`}
-                          >
-                            <div className="flex items-center gap-2.5">
-                              <input
-                                type="checkbox"
-                                checked={assigned}
-                                disabled={isSelf || updating}
-                                onChange={() => handleToggleUserRole(item.code, assigned)}
-                                className="h-4 w-4 rounded border-[#E2E8F0] text-[#163D64] focus:ring-[#163D64]"
-                              />
-                              <span>{item.label}</span>
-                            </div>
-                            {updating && <RefreshCw size={12} className="animate-spin text-[#163D64]" />}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-6">
-                  <div className="mb-4 flex items-end justify-between gap-4">
-                    <div>
-                      <h3 className="font-semibold text-[#163D64]">Module permissions</h3>
-                      <p className="mt-1 text-xs text-[#64748B]">
-                        Role default mempertahankan hak bawaan. Pilihan lain membuat override khusus user.
-                      </p>
-                    </div>
-                    <span className="text-xs text-[#64748B]">
-                      {approvedModules.length} company-approved
-                    </span>
-                  </div>
-
-                  <div className="space-y-2">
-                    {approvedModules.map((module) => {
-                      const meta = MODULE_LABELS[module.module_code] || {
-                        name: module.module_code,
-                        description: "System module",
-                      };
-                      const explicit = displayedOverrides.find(
-                        (item) =>
-                          item.user_id === selectedUserId &&
-                          item.module_code === module.module_code
-                      );
-                      const current = accessMode(explicit);
-                      const saving = savingKey === `${selectedUserId}:${module.module_code}`;
-                      const choices: Array<{ mode: AccessMode; label: string; icon: typeof Check }> = [
-                        { mode: "inherit", label: "Role default", icon: KeyRound },
-                        { mode: "blocked", label: "No access", icon: LockKeyhole },
-                        { mode: "read", label: module.module_code === "MARBOT" ? "Use Marka Plus" : "View only", icon: Eye },
-                        ...(module.module_code === "MARBOT"
-                          ? []
-                          : [{ mode: "write" as AccessMode, label: "View & manage", icon: Pencil }]),
-                      ];
-
-                      return (
-                        <div
-                          key={module.module_code}
-                          className="grid gap-3 rounded-[14px] border border-[#EFEFEF] p-4 xl:grid-cols-[minmax(210px,1fr)_auto] xl:items-center"
-                        >
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#E7F2FF] text-[10px] font-bold text-[#163D64]">
-                                {module.module_code.slice(0, 2)}
-                              </span>
-                              <p className="text-sm font-semibold text-[#163D64]">{meta.name}</p>
-                            </div>
-                            <p className="ml-9 mt-1 text-xs text-[#64748B]">{meta.description}</p>
-                          </div>
-                          <div className="segmented-control grid grid-cols-2 gap-1 p-1 sm:grid-cols-4">
-                            {choices.map((choice) => {
-                              const Icon = choice.icon;
-                              const checked = current === choice.mode;
-                              return (
-                                <button
-                                  key={choice.mode}
-                                  disabled={saving || selectedUser.id === user?.id}
-                                  onClick={() => setUserAccess(module.module_code, choice.mode)}
-                                  className={`segmented-control-item min-h-9 px-2.5 ${
-                                    checked
-                                      ? "segmented-control-item-active ring-1 ring-[#BAE6FD]"
-                                      : "text-[#64748B] hover:text-[#163D64]"
-                                  } disabled:cursor-not-allowed disabled:opacity-50`}
-                                >
-                                  <Icon size={13} /> {choice.label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {!loading && approvedModules.length === 0 && (
-                      <div className="rounded-2xl border border-dashed border-[#E2E8F0] p-10 text-center">
-                        <LockKeyhole className="mx-auto text-[#64748B]" />
-                        <p className="mt-3 font-semibold text-[#163D64]">No modules provisioned</p>
-                        <p className="mt-1 text-xs text-[#64748B]">
-                          Super Admin must enable a company module before it can be delegated.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
               </>
             ) : (
               <div className="flex min-h-[420px] items-center justify-center text-sm text-[#64748B]">

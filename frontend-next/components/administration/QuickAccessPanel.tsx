@@ -202,6 +202,40 @@ const DEFAULT_PRESETS: QuickAccessPreset[] = [
   },
 ];
 
+const CONFIGURABLE_MODULES: Array<{
+  code: string;
+  label: string;
+  description: string;
+  isBaseline?: boolean;
+}> = [
+  {
+    code: "PROJECTS",
+    label: "Projects & WBS (Weekly / Daily Task)",
+    description: "Wajib aktif sebagai baseline agar setiap user dapat mengakses Weekly & Daily Task.",
+    isBaseline: true,
+  },
+  {
+    code: "CRM",
+    label: "CRM & Sales Pipeline",
+    description: "Leads, Opportunity, Quotation, Kontrak & Customer Inbox (otomatis menyertakan SALES).",
+  },
+  {
+    code: "FINANCE",
+    label: "Finance, Accounting & Tax",
+    description: "Buku Besar (GL), Tagihan, Arus Kas, Anggaran, Payroll & Pajak.",
+  },
+  {
+    code: "INVENTORY",
+    label: "Inventory, Gudang & Aset",
+    description: "Mutasi Stok Kanonis, Transfer Transit, Reservasi & Kapitalisasi Aset.",
+  },
+  {
+    code: "REPORTING",
+    label: "Reporting & Executive Analytics",
+    description: "Laporan Manajemen & Analitik Lintas Modul.",
+  },
+];
+
 export function QuickAccessPanel({
   companyId,
   selectedUserId,
@@ -285,6 +319,65 @@ export function QuickAccessPanel({
       const next = has ? prev.filter((item) => item !== code) : [...prev, code];
       return Array.from(new Set(["DASH_PERSONAL", ...next]));
     });
+  };
+
+  const getModuleGrant = (code: string): ModuleGrantItem | undefined =>
+    modules.find((m) => m.module_code.toUpperCase() === code.toUpperCase());
+
+  const toggleModuleEnabled = (code: string) => {
+    if (code === "PROJECTS") return;
+    setActivePresetKey(null);
+    setModules((prev) => {
+      const exists = prev.some((m) => m.module_code.toUpperCase() === code);
+      if (exists) {
+        return prev.filter(
+          (m) => m.module_code.toUpperCase() !== code && !(code === "CRM" && m.module_code.toUpperCase() === "SALES")
+        );
+      }
+      const defaultTier = roleLevel === "GM" ? 1 : roleLevel === "SPV" ? 2 : 3;
+      const defaultScope: "OWN" | "TEAM" | "ALL" = defaultTier <= 1 ? "ALL" : defaultTier === 2 ? "TEAM" : "OWN";
+      const next: ModuleGrantItem[] = [
+        ...prev,
+        {
+          module_code: code,
+          tier_level: defaultTier,
+          allow_read: true,
+          allow_write: true,
+          data_scope: defaultScope,
+        },
+      ];
+      if (code === "CRM" && !next.some((m) => m.module_code === "SALES")) {
+        next.push({
+          module_code: "SALES",
+          tier_level: defaultTier,
+          allow_read: true,
+          allow_write: true,
+          data_scope: defaultScope,
+        });
+      }
+      return next;
+    });
+  };
+
+  const updateModuleTier = (code: string, tier: number) => {
+    setActivePresetKey(null);
+    const scope: "OWN" | "TEAM" | "ALL" = tier <= 1 ? "ALL" : tier === 2 ? "TEAM" : "OWN";
+    const allowWrite = tier === 0 ? false : true;
+    setModules((prev) =>
+      prev.map((m) => {
+        const upper = m.module_code.toUpperCase();
+        if (upper === code || (code === "CRM" && upper === "SALES")) {
+          return {
+            ...m,
+            tier_level: tier,
+            allow_read: true,
+            allow_write: allowWrite,
+            data_scope: scope,
+          };
+        }
+        return m;
+      })
+    );
   };
 
   const handleSave = async () => {
@@ -465,11 +558,85 @@ export function QuickAccessPanel({
         </div>
       </div>
 
-      {/* 3. Grid Toggle Panel Dashboard Modular */}
+      {/* 3. Modul Operasional & Level Wewenang (Tier 0–3) */}
       <div className="mb-4">
         <div className="mb-2 flex items-center justify-between">
           <span className="flex items-center gap-1.5 text-xs font-bold text-[#163D64]">
-            <LayoutDashboard size={14} /> 2. Panel Dashboard Modular (Multi-Role Union)
+            <Layers size={14} /> 2. Modul Operasional &amp; Cakupan Data (Tier 0–3)
+          </span>
+          <span className="text-[11px] text-[#64748B]">
+            Atur modul dan level cakupan data (OWN / TEAM / ALL)
+          </span>
+        </div>
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          {CONFIGURABLE_MODULES.map((mod) => {
+            const grant = getModuleGrant(mod.code);
+            const isEnabled = Boolean(mod.isBaseline || grant);
+            const currentTier = grant?.tier_level ?? 3;
+            return (
+              <div
+                key={mod.code}
+                className={`flex flex-col justify-between gap-2.5 rounded-xl border p-3 transition ${
+                  isEnabled
+                    ? "border-[#163D64] bg-white shadow-2xs"
+                    : "border-[#E2E8F0] bg-[#F8FAFC] opacity-75"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-extrabold text-[#163D64]">{mod.label}</span>
+                      {mod.isBaseline && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[#163D64] px-2 py-0.5 text-[10px] font-bold text-white">
+                          <Lock size={9} /> Baseline
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-[11px] text-[#64748B]">{mod.description}</p>
+                  </div>
+                  {!mod.isBaseline && (
+                    <button
+                      type="button"
+                      disabled={isSelfSelected || saving}
+                      onClick={() => toggleModuleEnabled(mod.code)}
+                      className={`rounded-lg border px-2.5 py-1 text-[11px] font-bold transition ${
+                        isEnabled
+                          ? "border-[#163D64] bg-[#163D64] text-white"
+                          : "border-[#CBD5E1] bg-white text-[#475569] hover:bg-[#E7F2FF]"
+                      }`}
+                    >
+                      {isEnabled ? "Aktif" : "Nonaktif"}
+                    </button>
+                  )}
+                </div>
+
+                {isEnabled && (
+                  <div className="flex items-center justify-between gap-2 border-t border-[#F1F5F9] pt-2">
+                    <span className="text-[11px] font-semibold text-[#475569]">Level &amp; Scope:</span>
+                    <select
+                      disabled={isSelfSelected || saving}
+                      value={currentTier}
+                      onChange={(e) => updateModuleTier(mod.code, Number(e.target.value))}
+                      className="rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] px-2.5 py-1 text-[11px] font-bold text-[#163D64] outline-none focus:border-[#163D64]"
+                    >
+                      <option value={3}>Tier 3 — Staff / Eksekutor (Scope: OWN)</option>
+                      <option value={2}>Tier 2 — Supervisor / Lead (Scope: TEAM)</option>
+                      <option value={1}>Tier 1 — Manager / Head (Scope: ALL - Read/Write)</option>
+                      <option value={0}>Tier 0 — Direksi / Oversight (Scope: ALL - Read Only)</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 4. Grid Toggle Panel Dashboard Modular */}
+      <div className="mb-4">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="flex items-center gap-1.5 text-xs font-bold text-[#163D64]">
+            <LayoutDashboard size={14} /> 3. Panel Dashboard Modular (Multi-Role Union)
           </span>
           <span className="text-[11px] text-[#64748B]">
             {selectedWidgets.length} dari {catalog.length} panel aktif
