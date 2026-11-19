@@ -266,7 +266,7 @@ export function CRMFilterBar({
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border border-[#E2E8F0] bg-white px-3 py-2.5 shadow-2xs">
-      <div className="flex flex-wrap items-center gap-2 min-w-0">
+      <div className="flex flex-wrap items-center gap-2 min-w-0 flex-1">
         {showSearchInput ? (
           <label className="relative w-48 xl:w-56 shrink-0">
             <span className="sr-only">{searchPlaceholder}</span>
@@ -313,45 +313,47 @@ export function CRMFilterBar({
             ))}
           </select>
         ))}
-
-        {viewOptions && viewOptions.length > 0 && onViewChange && (
-          <div className="inline-flex shrink-0 items-center rounded-xl border border-[#E2E8F0] bg-[#F1F5F9]/80 p-0.5">
-            {viewOptions.map((opt) => {
-              const Icon = opt.icon;
-              const active = activeView === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => onViewChange(opt.id)}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all whitespace-nowrap",
-                    active
-                      ? "bg-white text-[#163D64] shadow-2xs font-bold"
-                      : "text-[#64748B] hover:text-[#0F172A]"
-                  )}
-                >
-                  {Icon && <Icon size={13} />}
-                  <span>{opt.label}</span>
-                  {opt.badge !== undefined && (
-                    <span
-                      className={cn(
-                        "rounded-full px-1.5 py-0.2 text-[10px] font-bold",
-                        active ? "bg-[#E7F2FF] text-[#163D64]" : "bg-[#EDEDED] text-[#64748B]"
-                      )}
-                    >
-                      {opt.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        )}
       </div>
 
-      {rightActions && (
-        <div className="flex shrink-0 items-center gap-2">{rightActions}</div>
+      {((viewOptions && viewOptions.length > 0) || Boolean(rightActions)) && (
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {viewOptions && viewOptions.length > 0 && onViewChange && (
+            <div className="inline-flex shrink-0 items-center rounded-xl border border-[#E2E8F0] bg-[#F1F5F9]/80 p-0.5">
+              {viewOptions.map((opt) => {
+                const Icon = opt.icon;
+                const active = activeView === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => onViewChange(opt.id)}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all whitespace-nowrap",
+                      active
+                        ? "bg-white text-[#163D64] shadow-2xs font-bold"
+                        : "text-[#64748B] hover:text-[#0F172A]"
+                    )}
+                  >
+                    {Icon && <Icon size={13} />}
+                    <span>{opt.label}</span>
+                    {opt.badge !== undefined && (
+                      <span
+                        className={cn(
+                          "rounded-full px-1.5 py-0.2 text-[10px] font-bold",
+                          active ? "bg-[#E7F2FF] text-[#163D64]" : "bg-[#EDEDED] text-[#64748B]"
+                        )}
+                      >
+                        {opt.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {rightActions}
+        </div>
       )}
     </div>
   );

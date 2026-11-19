@@ -510,13 +510,13 @@ export function LeadStagePopupModal({
       ) : (
         <div className="space-y-1.5">
           <div>
-            <div className="text-base font-bold text-[#0F172A] break-words leading-snug">{contactForm.contact_name || "—"}</div>
-            <div className="mt-1 flex flex-wrap items-center gap-1.5">
-              <span className="rounded-full bg-[#EDF6FE] px-2.5 py-0.5 text-[11px] font-medium text-[#0876CD]">Primary</span>
-              <span className="text-xs text-[#64748B]">{contactForm.job_title || "PIC Utama"}</span>
+            <div className="text-sm font-bold text-[#0F172A] break-words">{contactForm.contact_name || "—"}</div>
+            <div className="mt-1">
+              <span className="inline-block rounded-full bg-[#EDF6FE] px-2 py-0.5 text-[10px] font-semibold text-[#0876CD]">Primary</span>
             </div>
+            <div className="mt-0.5 text-xs text-[#64748B]">{contactForm.job_title || "PIC Utama"}</div>
           </div>
-          <div className="pt-1 space-y-1.5 text-xs text-[#334155]">
+          <div className="pt-1 space-y-1 text-xs text-[#334155]">
             <div className="flex items-center gap-2"><Phone size={13} className="text-slate-500" /> {contactForm.phone || "—"}</div>
             <div className="flex items-center gap-2"><Mail size={13} className="text-slate-500" /> {contactForm.email || "—"}</div>
           </div>
@@ -1218,13 +1218,13 @@ export function OpportunityStagePopupModal({
               ) : (
                 <div className="space-y-1.5">
                   <div>
-                    <div className="text-base font-bold text-[#0F172A] break-words leading-snug">{contactForm.contact_name || "—"}</div>
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      <span className="rounded-full bg-[#EDF6FE] px-2.5 py-0.5 text-[11px] font-medium text-[#0876CD]">Primary</span>
-                      <span className="text-xs text-[#64748B]">{contactForm.job_title || "PIC Utama"}</span>
+                    <div className="text-sm font-bold text-[#0F172A] break-words">{contactForm.contact_name || "—"}</div>
+                    <div className="mt-1">
+                      <span className="inline-block rounded-full bg-[#EDF6FE] px-2 py-0.5 text-[10px] font-semibold text-[#0876CD]">Primary</span>
                     </div>
+                    <div className="mt-0.5 text-xs text-[#64748B]">{contactForm.job_title || "PIC Utama"}</div>
                   </div>
-                  <div className="pt-1 space-y-1.5 text-xs text-[#334155]">
+                  <div className="pt-1 space-y-1 text-xs text-[#334155]">
                     <div className="flex items-center gap-2"><Phone size={13} className="text-slate-500" /> {contactForm.phone || "—"}</div>
                     <div className="flex items-center gap-2"><Mail size={13} className="text-slate-500" /> {contactForm.email || "—"}</div>
                   </div>
@@ -1292,7 +1292,7 @@ export function OpportunityStagePopupModal({
                   <div className="text-[#64748B]">Assigned to</div>
                   <div className="mt-1"><CRMAvatarBadge name={opp._ownerName || "Unassigned"} size="xs" /></div>
                 </div>
-                <div>
+                <div className="col-span-2 sm:col-span-1 min-w-0">
                   <div className="text-[#64748B]">Created at</div>
                   <div className="mt-0.5 text-sm font-medium text-[#0F172A]">{formatDate(opp.created_at || opp.opened_at)}</div>
                 </div>
