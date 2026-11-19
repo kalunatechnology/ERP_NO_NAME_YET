@@ -11,7 +11,7 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '.
 import { RoleCode } from '../../types/roles';
 import { Prisma } from '@prisma/client';
 import { compareTaskOutput } from './output-comparison';
-import { getUserModuleOverride, hasUserModuleWrite } from '../../utils/module-permissions';
+import { getUserModuleOverride, hasUserModuleManagerWrite, hasUserModuleWrite } from '../../utils/module-permissions';
 import { WeeklyNotificationService } from './weekly-notification.service';
 import {
   CANONICAL_PROJECT_LIFECYCLE_STAGES,
@@ -131,7 +131,7 @@ export class ProjectsService {
 
   static async managedProjectIds(user: any, companyId: string, db: any = prisma): Promise<string[]> {
     if (!user?.id || !companyId) return [];
-    if (hasUserModuleWrite(user, 'PROJECTS') && !user.roles?.includes(RoleCode.SUPER_ADMIN)) {
+    if (hasUserModuleManagerWrite(user, 'PROJECTS') && !user.roles?.includes(RoleCode.SUPER_ADMIN)) {
       const scope = await this.projectAccessWhere(user, companyId, db);
       const projects = await db.project_project.findMany({
         where: { company_id: companyId, AND: [scope] }, select: { id: true },
@@ -191,7 +191,7 @@ export class ProjectsService {
     if (override && !hasUserModuleWrite(user, 'PROJECTS')) {
       throw new ForbiddenError('Akses pengelolaan modul PROJECTS dinonaktifkan oleh Admin.');
     }
-    if (hasUserModuleWrite(user, 'PROJECTS')) {
+    if (hasUserModuleManagerWrite(user, 'PROJECTS')) {
       await this.assertCanViewProject(user, projectId, companyId, db);
       return;
     }
@@ -1025,7 +1025,7 @@ export class ProjectsService {
     const allowed = this.isCompanyAdmin(user)
       || this.activeRole(user) === RoleCode.OPERATIONAL_MANAGER
       || this.activeRole(user) === RoleCode.PROJECT_MANAGER
-      || hasUserModuleWrite(user, 'PROJECTS');
+      || hasUserModuleManagerWrite(user, 'PROJECTS');
     if (!allowed) {
       throw new ForbiddenError('Anda tidak memiliki kewenangan untuk menunjuk atau mencabut Project Supervisor.');
     }
@@ -1292,8 +1292,9 @@ export class ProjectsService {
 
     const isPm = isCreatorPm;
     const moduleWrite = hasUserModuleWrite(user, 'PROJECTS');
+    const moduleManagerWrite = hasUserModuleManagerWrite(user, 'PROJECTS');
     const allowsManagement = !getUserModuleOverride(user, 'PROJECTS') || moduleWrite;
-    const canManage = !user?.roles?.includes(RoleCode.SUPER_ADMIN) && allowsManagement && (isAdmin || isOm || isPm || isActing || moduleWrite);
+    const canManage = !user?.roles?.includes(RoleCode.SUPER_ADMIN) && allowsManagement && (isAdmin || isOm || isPm || isActing || moduleManagerWrite);
     const canViewFinancials = isActing || ([
       RoleCode.SUPER_ADMIN,
       RoleCode.COMPANY_ADMIN,
@@ -1302,7 +1303,7 @@ export class ProjectsService {
       RoleCode.PROJECT_MANAGER,
       RoleCode.FINANCE,
     ] as RoleCode[]).includes(activeRole as RoleCode);
-    const canDelegate = canManage && (isAdmin || isOm || isPm || moduleWrite);
+    const canDelegate = canManage && (isAdmin || isOm || isPm || moduleManagerWrite);
     const effectiveRole = isActing
       ? ACTING_PROJECT_MANAGER_ROLE
       : isPm
@@ -1329,8 +1330,8 @@ export class ProjectsService {
       can_manage_milestones: canManage,
       can_view_financials: canViewFinancials,
       can_delegate_supervisor: canDelegate,
-      can_create_project: allowsManagement && (isAdmin || isOm || isPm || moduleWrite),
-      can_delete_project: allowsManagement && (isAdmin || isOm || isPm || moduleWrite),
+      can_create_project: allowsManagement && (isAdmin || isOm || isPm || moduleManagerWrite),
+      can_delete_project: allowsManagement && (isAdmin || isOm || isPm || moduleManagerWrite),
     };
   }
 

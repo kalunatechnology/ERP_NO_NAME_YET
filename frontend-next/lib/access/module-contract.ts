@@ -85,9 +85,9 @@ export const ROUTE_ACCESS_CONTRACTS: readonly RouteAccessContract[] = [
   { prefix: "/resources", module: "ANALYTICS", roles: [ROLE_CODES.superAdmin, ROLE_CODES.companyAdmin, ROLE_CODES.director], moduleBypassRoles: [ROLE_CODES.superAdmin, ROLE_CODES.companyAdmin] },
   { prefix: "/management-reports", module: "REPORTING", roles: [ROLE_CODES.operationalManager, ROLE_CODES.director], allowDelegation: true },
   { prefix: "/reporting", module: "REPORTING", roles: null },
-  // Staff use the assigned-task projection to submit Weekly Tasks. Opening
-  // this page does not grant project management or approval authority.
-  { prefix: "/projects", module: "PROJECTS", roles: [ROLE_CODES.projectManager, ROLE_CODES.operationalManager, ROLE_CODES.director, ROLE_CODES.staff, ROLE_CODES.supervisor], allowDelegation: true },
+  // Staff use the assigned-task projection to submit Weekly Tasks.
+  // Baseline PROJECTS (Tier 3 OWN) grants /tasks, NOT full /projects PM console for non-project roles.
+  { prefix: "/projects", module: "PROJECTS", roles: [ROLE_CODES.projectManager, ROLE_CODES.operationalManager, ROLE_CODES.director, ROLE_CODES.staff, ROLE_CODES.supervisor], allowDelegation: false },
   // Daily Tasks are a baseline company-user workspace. Business roles add
   // capabilities elsewhere and must never remove this personal workspace.
   { prefix: "/tasks", module: "PROJECTS", roles: null, allowDelegation: false },

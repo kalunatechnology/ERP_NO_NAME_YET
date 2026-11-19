@@ -6,6 +6,12 @@ export interface ModulePermission {
   allow_write: boolean;
 }
 
+export interface ModuleAssignmentSummary {
+  module_code: string;
+  tier_level: number;
+  data_scope?: string;
+}
+
 /** Only the entitlement middleware may establish a module permission override. */
 export function hasModuleOverride(req: Request, moduleCode?: string): boolean {
   const access = req.moduleAccess;
@@ -23,6 +29,29 @@ export function getUserModuleOverride(user: { module_access?: ModulePermission[]
 export function hasUserModuleWrite(user: { module_access?: ModulePermission[] } | undefined, moduleCode: string): boolean {
   const override = getUserModuleOverride(user, moduleCode);
   return Boolean(override?.allow_read && override.allow_write);
+}
+
+/**
+ * Returns true ONLY when the user holds explicit Manager-level (tier_level <= 1)
+ * write assignment on the module. Baseline Tier 3 (OWN) or Tier 2 (TEAM) task
+ * grants must never confer Project Manager / module-wide management authority.
+ */
+export function hasUserModuleManagerWrite(
+  user: {
+    module_access?: ModulePermission[];
+    module_assignments?: ModuleAssignmentSummary[];
+  } | undefined,
+  moduleCode: string,
+): boolean {
+  if (!hasUserModuleWrite(user, moduleCode)) return false;
+  const code = moduleCode.toUpperCase();
+  const assignment = user?.module_assignments?.find(
+    (item) => String(item.module_code || '').toUpperCase() === code
+  );
+  if (assignment) {
+    return Number(assignment.tier_level) <= 1;
+  }
+  return false;
 }
 
 export function effectiveModuleOverrides(
