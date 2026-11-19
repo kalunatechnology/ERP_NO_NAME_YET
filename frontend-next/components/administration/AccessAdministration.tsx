@@ -47,7 +47,18 @@ import { QuickAccessPanel, getCleanInitials } from "./QuickAccessPanel";
 type Company = { id: string; legal_name?: string; company_code?: string; name?: string; tenant_id?: string; business_category?: string; tax_number?: string; status?: string };
 type ModuleAccess = ModuleAccessItem;
 type RoleRef = { role_code?: string; role_name?: string };
-type UserRow = { id: string; full_name?: string; email: string; tenant_id?: string; department_id?: string | null; role_level?: "GM" | "SPV" | "STAFF" | string; status?: string; is_active?: boolean; roles?: RoleRef[] };
+type UserRow = {
+  id: string;
+  full_name?: string;
+  email: string;
+  tenant_id?: string;
+  department_id?: string | null;
+  role_level?: "GM" | "SPV" | "STAFF" | string;
+  job_title?: string | null;
+  status?: string;
+  is_active?: boolean;
+  roles?: RoleRef[];
+};
 type Role = { id: string; role_code: string; role_name: string; tenant_id?: string };
 type UserModuleAccess = { user_id: string; module_code: string; allow_read: boolean; allow_write: boolean };
 type DepartmentItem = {
@@ -1239,28 +1250,58 @@ export function AccessAdministration() {
                             {(d.modules || []).length > 0 ? (d.modules || []).join(", ") : "—"}
                           </td>
                           <td className="px-4 py-2.5">
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-slate-800">
-                                {unitMembers.length} orang
-                              </span>
-                              <select
-                                disabled={savingDeptRole}
-                                value=""
-                                onChange={(e) => {
-                                  if (!e.target.value) return;
-                                  void handleSaveUserDepartmentRole(d.id, undefined, e.target.value);
-                                }}
-                                className="h-7 rounded border border-slate-300 bg-white px-2 text-[11px] text-slate-700 outline-none focus:border-[#163D64]"
-                              >
-                                <option value="">+ Assign User</option>
-                                {displayedUsers
-                                  .filter((u) => String(u.department_id || "") !== String(d.id))
-                                  .map((u) => (
-                                    <option key={u.id} value={u.id}>
-                                      {u.full_name || u.email}
-                                    </option>
+                            <div className="space-y-1.5 min-w-[220px]">
+                              <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700">
+                                <span>{unitMembers.length} anggota:</span>
+                              </div>
+                              {unitMembers.length > 0 ? (
+                                <div className="flex flex-wrap gap-1 max-w-[320px]">
+                                  {unitMembers.map((member) => (
+                                    <span
+                                      key={member.id}
+                                      className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50/80 px-2 py-0.5 text-[11px] font-medium text-[#163D64]"
+                                      title={`${member.full_name || member.email} (${member.email})`}
+                                    >
+                                      <span className="truncate max-w-[120px]">
+                                        {member.full_name || member.email}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        disabled={savingDeptRole}
+                                        onClick={() => void handleSaveUserDepartmentRole(null, undefined, member.id)}
+                                        className="text-slate-400 hover:text-red-600 transition-colors ml-0.5"
+                                        title={`Lepas ${member.full_name || member.email} dari unit ini`}
+                                        aria-label={`Lepas ${member.full_name || member.email}`}
+                                      >
+                                        ✕
+                                      </button>
+                                    </span>
                                   ))}
-                              </select>
+                                </div>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 italic">Belum ada anggota</span>
+                              )}
+
+                              <div className="flex items-center gap-1.5 pt-0.5">
+                                <select
+                                  disabled={savingDeptRole}
+                                  value=""
+                                  onChange={(e) => {
+                                    if (!e.target.value) return;
+                                    void handleSaveUserDepartmentRole(d.id, undefined, e.target.value);
+                                  }}
+                                  className="h-7 w-full max-w-[210px] rounded border border-slate-300 bg-white px-2 text-[11px] text-slate-700 outline-none focus:border-[#163D64]"
+                                >
+                                  <option value="">+ Assign User ({displayedUsers.filter((u) => String(u.department_id || "") !== String(d.id)).length} tersedia)</option>
+                                  {displayedUsers
+                                    .filter((u) => String(u.department_id || "") !== String(d.id))
+                                    .map((u) => (
+                                      <option key={u.id} value={u.id}>
+                                        {u.full_name || u.email}
+                                      </option>
+                                    ))}
+                                </select>
+                              </div>
                             </div>
                           </td>
                           <td className="px-4 py-2.5 text-right whitespace-nowrap">
@@ -1611,6 +1652,94 @@ export function AccessAdministration() {
                   </label>
                 </div>
               </div>
+
+              {/* DAFTAR ANGGOTA / USER YANG DITUGASKAN */}
+              {editingDeptId && (
+                <div className="border-t border-[#EFEFEF] pt-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+                    <div>
+                      <label className="block text-xs font-bold text-[#163D64]">
+                        Daftar Anggota / User yang Ditugaskan ({displayedUsers.filter((u) => String(u.department_id || "") === String(editingDeptId)).length} orang)
+                      </label>
+                      <p className="text-[11px] text-[#64748B]">
+                        Pengguna yang saat ini ditempatkan pada {deptForm.unit_type === "DIVISION" ? "divisi" : "departemen"} ini.
+                      </p>
+                    </div>
+
+                    {/* Quick Assign di dalam Modal */}
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        disabled={savingDeptRole}
+                        value=""
+                        onChange={(e) => {
+                          if (!e.target.value) return;
+                          void handleSaveUserDepartmentRole(editingDeptId, undefined, e.target.value);
+                        }}
+                        className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-slate-700 outline-none focus:border-[#163D64]"
+                      >
+                        <option value="">+ Assign User Baru</option>
+                        {displayedUsers
+                          .filter((u) => String(u.department_id || "") !== String(editingDeptId))
+                          .map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.full_name || u.email} ({u.email})
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {displayedUsers.filter((u) => String(u.department_id || "") === String(editingDeptId)).length > 0 ? (
+                    <div className="max-h-52 overflow-y-auto divide-y divide-slate-100 rounded-xl border border-[#E2E8F0] bg-slate-50/50 p-1">
+                      {displayedUsers
+                        .filter((u) => String(u.department_id || "") === String(editingDeptId))
+                        .map((member) => (
+                          <div
+                            key={member.id}
+                            className="flex items-center justify-between px-3 py-2 hover:bg-white rounded-lg transition-colors"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#163D64] text-[11px] font-bold text-white">
+                                {(member.full_name || member.email || "?")
+                                  .split(" ")
+                                  .slice(0, 2)
+                                  .map((p) => p[0]?.toUpperCase() || "")
+                                  .join("")}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-xs font-semibold text-slate-800 truncate">
+                                  {member.full_name || member.email}
+                                </div>
+                                <div className="text-[10px] text-slate-500 truncate">
+                                  {member.email} {member.job_title ? `• ${member.job_title}` : ""}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <span className="rounded bg-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-700">
+                                {member.role_level || "STAFF"}
+                              </span>
+                              <button
+                                type="button"
+                                disabled={savingDeptRole}
+                                onClick={() => void handleSaveUserDepartmentRole(null, undefined, member.id)}
+                                className="rounded px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors"
+                                title="Lepas user dari departemen ini"
+                              >
+                                Lepas
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400">
+                      Belum ada anggota yang ditugaskan pada unit ini. Pilih user pada dropdown di atas untuk menambahkan anggota.
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="border-t border-[#EFEFEF] pt-3">
                 <label className="mb-2 block text-xs font-bold text-[#163D64]">

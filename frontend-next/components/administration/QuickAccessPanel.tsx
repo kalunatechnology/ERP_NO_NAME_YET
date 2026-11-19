@@ -39,7 +39,7 @@ export interface UserAccessProfile {
   is_active?: boolean;
   department_id?: string | null;
   role_level?: string;
-  job_title?: string;
+  job_title?: string | null;
   reports_to_user_id?: string | null;
   roles?: Array<{ id?: string; role_code?: string; role_name?: string }>;
 }
