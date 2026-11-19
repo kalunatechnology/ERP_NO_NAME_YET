@@ -19,6 +19,8 @@ import {
 } from "@/lib/api/crm.api";
 import { formatDate } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
+import { TablePagination } from "@/components/ui/TablePagination";
 import {
   CRMAvatarBadge,
   CRMFilterBar,
@@ -103,6 +105,8 @@ export function CrmLeadsView({
   const [serviceFilter, setServiceFilter] = useState("ALL");
   const [ownerFilter, setOwnerFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [leadPage, setLeadPage] = useState(1);
+  const [leadPageSize, setLeadPageSize] = useState(10);
   const [optimisticBuckets, setOptimisticBuckets] = useState<Record<string, string>>({});
   const [pendingLeadIds, setPendingLeadIds] = useState<Set<string>>(() => new Set());
   const latestLeadSeqRef = useRef<Record<string, number>>({});
@@ -696,6 +700,7 @@ export function CrmLeadsView({
           {filteredLeads.length === 0 ? (
             <p className="py-12 text-center text-xs text-slate-400">Tidak ada Lead yang sesuai filter.</p>
           ) : (
+            <>
             <div className="max-h-[560px] overflow-auto">
               <table className="w-full min-w-[960px] border-collapse text-left text-xs">
                 <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
@@ -710,7 +715,9 @@ export function CrmLeadsView({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredLeads.map((l: any) => (
+                  {filteredLeads
+                    .slice((leadPage - 1) * leadPageSize, leadPage * leadPageSize)
+                    .map((l: any) => (
                     <tr
                       key={l.id}
                       onClick={() => {
@@ -761,6 +768,20 @@ export function CrmLeadsView({
                 </tbody>
               </table>
             </div>
+            <div className="px-4 pb-3">
+              <TablePagination
+                page={Math.min(leadPage, Math.max(1, Math.ceil(filteredLeads.length / leadPageSize)))}
+                totalPages={Math.max(1, Math.ceil(filteredLeads.length / leadPageSize))}
+                pageSize={leadPageSize}
+                totalItems={filteredLeads.length}
+                onPageChange={setLeadPage}
+                onPageSizeChange={(size) => {
+                  setLeadPageSize(size);
+                  setLeadPage(1);
+                }}
+              />
+            </div>
+            </>
           )}
         </div>
       )}
@@ -795,14 +816,15 @@ export function CrmLeadsView({
             {/* Company Details */}
             <div className="rounded-2xl border border-slate-200 p-3.5 space-y-2.5">
               <div className="font-bold text-sm text-[#163D64]">Company Details</div>
-              <label className="block font-medium text-slate-600">
-                Pilih Master Company (Opsional)
-                <select
-                  className="input mt-1 w-full bg-white disabled:bg-slate-100"
+              <div className="block font-medium text-slate-600">
+                <span className="mb-1 block">Pilih Master Company (Opsional)</span>
+                <SearchableSelect
                   disabled={Boolean(editingLead?._isConverted)}
                   value={leadForm.customer_party}
-                  onChange={(e) => {
-                    const pid = e.target.value;
+                  placeholder="-- Input Perusahaan Baru --"
+                  emptyOptionLabel="-- Input Perusahaan Baru --"
+                  searchPlaceholder="Cari nama perusahaan..."
+                  onChange={(pid) => {
                     const p = partyById.get(pid);
                     const primaryContact = pid
                       ? ((data.contacts || []).find((c: any) => String(c.party_id) === pid && c.primary_contact) ||
@@ -822,17 +844,15 @@ export function CrmLeadsView({
                       customer_phone: primaryContact?.phone || f.customer_phone,
                     }));
                   }}
-                >
-                  <option value="">-- Input Perusahaan Baru --</option>
-                  {(data.parties || [])
+                  options={(data.parties || [])
                     .filter((p: any) => ["CUSTOMER", "PROSPECT"].includes(String(p.party_type || "").toUpperCase()) && p.status === "ACTIVE")
-                    .map((p: any) => (
-                      <option key={p.id} value={String(p.id)}>
-                        {p.display_name || p.legal_name} ({p.party_type})
-                      </option>
-                    ))}
-                </select>
-              </label>
+                    .map((p: any) => ({
+                      value: String(p.id),
+                      label: `${p.display_name || p.legal_name} (${p.party_type})`,
+                      sublabel: p.industry || p.city || undefined,
+                    }))}
+                />
+              </div>
               <label className="block font-medium text-slate-600">
                 Company *
                 <input className="input mt-1 w-full" value={leadForm.customer_name} onChange={(e) => setLeadForm((f) => ({ ...f, customer_name: e.target.value }))} placeholder="Contoh: PT Danacipta" />
@@ -869,13 +889,14 @@ export function CrmLeadsView({
                 <span className="rounded-full bg-[#EDF6FE] px-2.5 py-0.5 text-[10px] font-semibold text-[#0876CD]">Primary</span>
               </div>
               {leadForm.customer_party && (
-                <label className="block font-medium text-slate-600">
-                  Pilih Contact Terdaftar
-                  <select
-                    className="input mt-1 w-full bg-white"
+                <div className="block font-medium text-slate-600">
+                  <span className="mb-1 block">Pilih Contact Terdaftar</span>
+                  <SearchableSelect
                     value={leadForm.contact_id}
-                    onChange={(e) => {
-                      const cid = e.target.value;
+                    placeholder="-- Input PIC Baru / Manual --"
+                    emptyOptionLabel="-- Input PIC Baru / Manual --"
+                    searchPlaceholder="Cari nama atau jabatan contact..."
+                    onChange={(cid) => {
                       const ct = contactById.get(cid);
                       setLeadForm((f) => ({
                         ...f,
@@ -886,17 +907,15 @@ export function CrmLeadsView({
                         customer_phone: ct?.phone || f.customer_phone,
                       }));
                     }}
-                  >
-                    <option value="">-- Input PIC Baru / Manual --</option>
-                    {(data.contacts || [])
+                    options={(data.contacts || [])
                       .filter((c: any) => String(c.party_id) === leadForm.customer_party)
-                      .map((c: any) => (
-                        <option key={c.id} value={String(c.id)}>
-                          {c.contact_name}{c.job_title ? ` · ${c.job_title}` : ""}
-                        </option>
-                      ))}
-                  </select>
-                </label>
+                      .map((c: any) => ({
+                        value: String(c.id),
+                        label: `${c.contact_name}${c.job_title ? ` · ${c.job_title}` : ""}`,
+                        sublabel: [c.email, c.phone].filter(Boolean).join(" · ") || undefined,
+                      }))}
+                  />
+                </div>
               )}
               <label className="block font-medium text-slate-600">
                 Contact Name
@@ -921,21 +940,20 @@ export function CrmLeadsView({
           <div className="rounded-2xl border border-slate-200 p-3.5 space-y-3">
             <div className="font-bold text-sm text-[#163D64]">Lead Information</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <label className="font-medium text-slate-600">
-                Brand / Unit Bisnis
-                <select
-                  className="input mt-1 w-full bg-white"
+              <div className="font-medium text-slate-600">
+                <span className="mb-1 block">Brand / Unit Bisnis</span>
+                <SearchableSelect
                   value={leadForm.brand_id}
-                  onChange={(e) => setLeadForm((f) => ({ ...f, brand_id: e.target.value }))}
-                >
-                  <option value="">-- Pilih Brand --</option>
-                  {(data.brands || []).map((b: any) => (
-                    <option key={b.id} value={String(b.id)}>
-                      [{b.brand_code}] {b.brand_name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  placeholder="-- Pilih Brand --"
+                  emptyOptionLabel="-- Pilih Brand --"
+                  searchPlaceholder="Cari brand..."
+                  onChange={(val) => setLeadForm((f) => ({ ...f, brand_id: val }))}
+                  options={(data.brands || []).map((b: any) => ({
+                    value: String(b.id),
+                    label: `[${b.brand_code}] ${b.brand_name}`,
+                  }))}
+                />
+              </div>
               <label className="font-medium text-slate-600">
                 Project Type / Jenis Kebutuhan *
                 <input className="input mt-1 w-full" value={leadForm.subject} onChange={(e) => setLeadForm((f) => ({ ...f, subject: e.target.value }))} placeholder="Contoh: Booth Exhibition" />
@@ -953,34 +971,44 @@ export function CrmLeadsView({
                   ))}
                 </select>
               </label>
-              <label className="font-medium text-slate-600">
-                Source
-                <select className="input mt-1 w-full bg-white" value={leadForm.lead_source} onChange={(e) => setLeadForm((f) => ({ ...f, lead_source: e.target.value }))}>
-                  {LEAD_SOURCE_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="font-medium text-slate-600">
-                Interested Service
-                <select className="input mt-1 w-full bg-white" value={leadForm.interested_service} onChange={(e) => setLeadForm((f) => ({ ...f, interested_service: e.target.value }))}>
-                  <option value="">-- Pilih Layanan --</option>
-                  {SERVICE_OPTIONS.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="font-medium text-slate-600">
-                Assigned Sales
-                <select className="input mt-1 w-full bg-white" value={leadForm.owner_user_id} onChange={(e) => setLeadForm((f) => ({ ...f, owner_user_id: e.target.value }))}>
-                  <option value="">-- Default (Pembuat Lead) --</option>
-                  {teamUsers.map((u: any) => (
-                    <option key={u.id} value={String(u.id)}>
-                      {u.full_name || u.email}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="font-medium text-slate-600">
+                <span className="mb-1 block">Source</span>
+                <SearchableSelect
+                  value={leadForm.lead_source}
+                  searchPlaceholder="Cari sumber lead..."
+                  onChange={(val) => setLeadForm((f) => ({ ...f, lead_source: val }))}
+                  options={LEAD_SOURCE_OPTIONS.map((opt) => ({
+                    value: opt.value,
+                    label: opt.label,
+                  }))}
+                />
+              </div>
+              <div className="font-medium text-slate-600">
+                <span className="mb-1 block">Interested Service</span>
+                <SearchableSelect
+                  value={leadForm.interested_service}
+                  placeholder="-- Pilih Layanan --"
+                  emptyOptionLabel="-- Pilih Layanan --"
+                  searchPlaceholder="Cari layanan..."
+                  onChange={(val) => setLeadForm((f) => ({ ...f, interested_service: val }))}
+                  options={SERVICE_OPTIONS.map((s) => ({ value: s, label: s }))}
+                />
+              </div>
+              <div className="font-medium text-slate-600">
+                <span className="mb-1 block">Assigned Sales</span>
+                <SearchableSelect
+                  value={leadForm.owner_user_id}
+                  placeholder="-- Default (Pembuat Lead) --"
+                  emptyOptionLabel="-- Default (Pembuat Lead) --"
+                  searchPlaceholder="Cari nama sales..."
+                  onChange={(val) => setLeadForm((f) => ({ ...f, owner_user_id: val }))}
+                  options={teamUsers.map((u: any) => ({
+                    value: String(u.id),
+                    label: u.full_name || u.email,
+                    sublabel: u.email,
+                  }))}
+                />
+              </div>
               <label className="font-medium text-slate-600">
                 Follow Up Date
                 <input type="date" className="input mt-1 w-full" value={leadForm.next_follow_up_at} onChange={(e) => setLeadForm((f) => ({ ...f, next_follow_up_at: e.target.value }))} />

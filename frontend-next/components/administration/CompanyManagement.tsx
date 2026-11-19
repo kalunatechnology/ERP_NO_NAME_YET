@@ -23,6 +23,8 @@ import {
 import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
 import { Modal } from "@/components/ui/Modal";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
+import { TablePagination, TableSearchBar } from "@/components/ui/TablePagination";
 import { useAuth } from "@/contexts/AuthContext";
 import { TenantItem } from "./TenantManagement";
 
@@ -69,6 +71,8 @@ export function CompanyManagement({
   const { refreshProfile } = useAuth();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<CompanyDetail | null>(null);
@@ -262,41 +266,46 @@ export function CompanyManagement({
 
       {/* Control Filters & New Company Button */}
       <div className="flex flex-col gap-4 rounded-2xl border border-[#EFEFEF] bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative flex-1 max-w-sm">
-            <Search
-              size={16}
-              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8]"
-            />
-            <input
-              type="text"
-              placeholder="Cari nama legal atau kode company..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-10 w-full rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] pl-10 pr-4 text-sm text-[#0F172A] placeholder-[#94A3B8] outline-none transition focus:border-[#163D64] focus:bg-white"
-            />
-          </div>
+        <div className="flex flex-1 flex-wrap items-center gap-3">
+          <TableSearchBar
+            query={search}
+            onQueryChange={(val) => {
+              setSearch(val);
+              setPage(1);
+            }}
+            onSearchSubmit={() => setPage(1)}
+            onReset={() => {
+              setSearch("");
+              setPage(1);
+            }}
+            placeholder="Cari nama legal atau kode company..."
+            totalItems={companies.length}
+            filteredCount={filteredCompanies.length}
+          />
 
-          <div className="flex items-center gap-2">
-            <Filter size={15} className="text-[#64748B]" />
-            <select
+          <div className="min-w-[200px]">
+            <SearchableSelect
               value={selectedTenantFilter}
-              onChange={(e) => onFilterTenantChange(e.target.value)}
-              className="h-10 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3.5 text-sm font-medium text-[#475569] outline-none transition focus:border-[#163D64] focus:bg-white"
-            >
-              <option value="ALL">Semua Tenant</option>
-              {tenants.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name} ({t.code})
-                </option>
-              ))}
-            </select>
+              onChange={(val) => {
+                onFilterTenantChange(val || "ALL");
+                setPage(1);
+              }}
+              placeholder="Semua Tenant"
+              searchPlaceholder="Cari tenant..."
+              options={[
+                { value: "ALL", label: "Semua Tenant" },
+                ...tenants.map((t) => ({ value: String(t.id), label: `${t.name} (${t.code})` })),
+              ]}
+            />
           </div>
 
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-10 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3.5 text-sm font-medium text-[#475569] outline-none transition focus:border-[#163D64] focus:bg-white"
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(1);
+            }}
+            className="h-9 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 text-xs font-medium text-[#475569] outline-none transition focus:border-[#163D64] focus:bg-white"
           >
             <option value="ALL">Semua Status</option>
             <option value="ACTIVE">Aktif</option>
@@ -340,7 +349,9 @@ export function CompanyManagement({
                   </td>
                 </tr>
               ) : (
-                filteredCompanies.map((comp) => {
+                filteredCompanies
+                  .slice((page - 1) * pageSize, page * pageSize)
+                  .map((comp) => {
                   const tenant = comp.tenant_id ? tenantMap.get(comp.tenant_id) : null;
                   const isActive = (comp.status || "ACTIVE").toUpperCase() === "ACTIVE";
 
@@ -416,6 +427,19 @@ export function CompanyManagement({
               )}
             </tbody>
           </table>
+        </div>
+        <div className="px-4 pb-3">
+          <TablePagination
+            page={Math.min(page, Math.max(1, Math.ceil(filteredCompanies.length / pageSize)))}
+            totalPages={Math.max(1, Math.ceil(filteredCompanies.length / pageSize))}
+            pageSize={pageSize}
+            totalItems={filteredCompanies.length}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPage(1);
+            }}
+          />
         </div>
       </div>
 

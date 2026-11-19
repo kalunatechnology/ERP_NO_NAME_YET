@@ -17,6 +17,8 @@ import {
 } from "@/lib/api/crm.api";
 import { cn, formatDate, formatMoney } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
+import { TablePagination } from "@/components/ui/TablePagination";
 import {
   CRMAvatarBadge,
   CRMFilterBar,
@@ -116,6 +118,8 @@ export function CrmCompaniesView({
   });
 
   // Quick Add Contact inside Company Drawer
+  const [companyPage, setCompanyPage] = useState(1);
+  const [companyPageSize, setCompanyPageSize] = useState(10);
   const [quickContactOpen, setQuickContactOpen] = useState(false);
   const [quickContactSaving, setQuickContactSaving] = useState(false);
   const [quickContactForm, setQuickContactForm] = useState({
@@ -515,6 +519,7 @@ export function CrmCompaniesView({
             Tidak ada perusahaan yang cocok dengan filter saat ini.
           </div>
         ) : (
+          <>
           <div className="max-h-[540px] overflow-auto">
             <table className="w-full min-w-[1060px] border-collapse text-left text-xs">
               <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
@@ -539,7 +544,9 @@ export function CrmCompaniesView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredParties.map((p: any) => {
+                {filteredParties
+                  .slice((companyPage - 1) * companyPageSize, companyPage * companyPageSize)
+                  .map((p: any) => {
                   const typeMeta = COMPANY_TYPE_META[p._normType] || COMPANY_TYPE_META.CUSTOMER;
                   const canEditRow = !readOnly && (canEditAll || Boolean(currentUserId && String(p.created_by_id) === currentUserId));
                   return (
@@ -623,6 +630,20 @@ export function CrmCompaniesView({
               </tbody>
             </table>
           </div>
+          <div className="px-4 pb-3">
+            <TablePagination
+              page={Math.min(companyPage, Math.max(1, Math.ceil(filteredParties.length / companyPageSize)))}
+              totalPages={Math.max(1, Math.ceil(filteredParties.length / companyPageSize))}
+              pageSize={companyPageSize}
+              totalItems={filteredParties.length}
+              onPageChange={setCompanyPage}
+              onPageSizeChange={(size) => {
+                setCompanyPageSize(size);
+                setCompanyPage(1);
+              }}
+            />
+          </div>
+          </>
         )}
       </div>
 
@@ -834,17 +855,20 @@ export function CrmCompaniesView({
         size="md"
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 text-xs">
-          <label className="font-medium text-slate-600 sm:col-span-2">
-            Brand / Unit Bisnis
-            <select className="input mt-1 w-full bg-white" value={partyForm.brand_id} onChange={(e) => setPartyForm((f) => ({ ...f, brand_id: e.target.value }))}>
-              <option value="">-- Lintas Brand --</option>
-              {(data.brands || []).map((b: any) => (
-                <option key={b.id} value={String(b.id)}>
-                  [{b.brand_code}] {b.brand_name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="font-medium text-slate-600 sm:col-span-2">
+            <span className="mb-1 block">Brand / Unit Bisnis</span>
+            <SearchableSelect
+              value={partyForm.brand_id}
+              placeholder="-- Lintas Brand --"
+              emptyOptionLabel="-- Lintas Brand --"
+              searchPlaceholder="Cari brand..."
+              onChange={(val) => setPartyForm((f) => ({ ...f, brand_id: val }))}
+              options={(data.brands || []).map((b: any) => ({
+                value: String(b.id),
+                label: `[${b.brand_code}] ${b.brand_name}`,
+              }))}
+            />
+          </div>
           <label className="font-medium text-slate-600">
             Company Name *
             <input className="input mt-1 w-full" value={partyForm.display_name} onChange={(e) => setPartyForm((f) => ({ ...f, display_name: e.target.value }))} placeholder="Contoh: PT Maju Jaya" />
@@ -878,15 +902,21 @@ export function CrmCompaniesView({
             City
             <input className="input mt-1 w-full" value={partyForm.city} onChange={(e) => setPartyForm((f) => ({ ...f, city: e.target.value }))} placeholder="Jakarta, Surabaya, Bandung..." />
           </label>
-          <label className="font-medium text-slate-600">
-            Account Owner
-            <select className="input mt-1 w-full bg-white" value={partyForm.owner_user_id} onChange={(e) => setPartyForm((f) => ({ ...f, owner_user_id: e.target.value }))}>
-              <option value="">-- Pilih PIC --</option>
-              {teamUsers.map((u: any) => (
-                <option key={u.id} value={String(u.id)}>{u.full_name || u.email}</option>
-              ))}
-            </select>
-          </label>
+          <div className="font-medium text-slate-600">
+            <span className="mb-1 block">Account Owner</span>
+            <SearchableSelect
+              value={partyForm.owner_user_id}
+              placeholder="-- Pilih PIC --"
+              emptyOptionLabel="-- Pilih PIC --"
+              searchPlaceholder="Cari nama PIC..."
+              onChange={(val) => setPartyForm((f) => ({ ...f, owner_user_id: val }))}
+              options={teamUsers.map((u: any) => ({
+                value: String(u.id),
+                label: u.full_name || u.email,
+                sublabel: u.email,
+              }))}
+            />
+          </div>
           <label className="font-medium text-slate-600">
             Kode Rekanan
             <input className="input mt-1 w-full" value={partyForm.party_code} onChange={(e) => setPartyForm((f) => ({ ...f, party_code: e.target.value }))} placeholder="Auto-generate jika kosong" />
@@ -1070,6 +1100,11 @@ export function CrmContactsView({
     setIsContactModalOpen(true);
   };
 
+  const [wonPage, setWonPage] = useState(1);
+  const [wonPageSize, setWonPageSize] = useState(10);
+  const [contactPage, setContactPage] = useState(1);
+  const [contactPageSize, setContactPageSize] = useState(10);
+
   const openEditContact = (c: any) => {
     setEditingContact(c);
     setContactForm({
@@ -1221,6 +1256,7 @@ export function CrmContactsView({
           ) : filteredWonContacts.length === 0 ? (
             <p className="py-10 text-center text-xs text-slate-400">Belum ada kontak dari Opportunity berstatus Deal Won.</p>
           ) : (
+            <>
             <div className="max-h-[540px] overflow-auto">
               <table className="w-full min-w-[820px] border-collapse text-left text-xs">
                 <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
@@ -1233,7 +1269,9 @@ export function CrmContactsView({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredWonContacts.map((w: any) => (
+                  {filteredWonContacts
+                    .slice((wonPage - 1) * wonPageSize, wonPage * wonPageSize)
+                    .map((w: any) => (
                     <tr key={w.opportunity_id} className="hover:bg-[#EBF5FF]/40">
                       <td className="px-4 py-3 font-semibold text-slate-900">{w.customer_name || "—"}</td>
                       <td className="px-4 py-3">
@@ -1248,6 +1286,20 @@ export function CrmContactsView({
                 </tbody>
               </table>
             </div>
+            <div className="px-4 pb-3">
+              <TablePagination
+                page={Math.min(wonPage, Math.max(1, Math.ceil(filteredWonContacts.length / wonPageSize)))}
+                totalPages={Math.max(1, Math.ceil(filteredWonContacts.length / wonPageSize))}
+                pageSize={wonPageSize}
+                totalItems={filteredWonContacts.length}
+                onPageChange={setWonPage}
+                onPageSizeChange={(size) => {
+                  setWonPageSize(size);
+                  setWonPage(1);
+                }}
+              />
+            </div>
+            </>
           )}
         </div>
       ) : (
@@ -1255,6 +1307,7 @@ export function CrmContactsView({
           {filteredContacts.length === 0 ? (
             <p className="py-12 text-center text-xs text-slate-400">Tidak ada kontak yang sesuai filter.</p>
           ) : (
+            <>
             <div className="max-h-[540px] overflow-auto">
               <table className="w-full min-w-[1040px] border-collapse text-left text-xs">
                 <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
@@ -1282,7 +1335,9 @@ export function CrmContactsView({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredContacts.map((c: any) => {
+                  {filteredContacts
+                    .slice((contactPage - 1) * contactPageSize, contactPage * contactPageSize)
+                    .map((c: any) => {
                     const typeMeta = CONTACT_TYPE_META[c._contactType] || CONTACT_TYPE_META.GENERAL;
                     const canEditRow = !readOnly && (canEditAll || Boolean(currentUserId && String(c.created_by_id) === currentUserId));
                     return (
@@ -1335,6 +1390,20 @@ export function CrmContactsView({
                 </tbody>
               </table>
             </div>
+            <div className="px-4 pb-3">
+              <TablePagination
+                page={Math.min(contactPage, Math.max(1, Math.ceil(filteredContacts.length / contactPageSize)))}
+                totalPages={Math.max(1, Math.ceil(filteredContacts.length / contactPageSize))}
+                pageSize={contactPageSize}
+                totalItems={filteredContacts.length}
+                onPageChange={setContactPage}
+                onPageSizeChange={(size) => {
+                  setContactPageSize(size);
+                  setContactPage(1);
+                }}
+              />
+            </div>
+            </>
           )}
         </div>
       )}
@@ -1394,15 +1463,20 @@ export function CrmContactsView({
         size="md"
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 text-xs">
-          <label className="font-medium text-slate-600 sm:col-span-2">
-            Company *
-            <select className="input mt-1 w-full bg-white" value={contactForm.party_id} onChange={(e) => setContactForm((f) => ({ ...f, party_id: e.target.value }))}>
-              <option value="">-- Pilih Perusahaan --</option>
-              {(data.parties || []).map((p: any) => (
-                <option key={p.id} value={String(p.id)}>{p.display_name || p.legal_name} ({p.party_type})</option>
-              ))}
-            </select>
-          </label>
+          <div className="font-medium text-slate-600 sm:col-span-2">
+            <span className="mb-1 block">Company *</span>
+            <SearchableSelect
+              value={contactForm.party_id}
+              placeholder="-- Pilih Perusahaan --"
+              searchPlaceholder="Cari nama perusahaan..."
+              onChange={(val) => setContactForm((f) => ({ ...f, party_id: val }))}
+              options={(data.parties || []).map((p: any) => ({
+                value: String(p.id),
+                label: `${p.display_name || p.legal_name} (${p.party_type})`,
+                sublabel: p.industry || p.city || undefined,
+              }))}
+            />
+          </div>
           <label className="font-medium text-slate-600">
             Full Name *
             <input className="input mt-1 w-full" value={contactForm.contact_name} onChange={(e) => setContactForm((f) => ({ ...f, contact_name: e.target.value }))} placeholder="Nama lengkap PIC" />

@@ -677,3 +677,4 @@ Then('Material Ledger PUP returns positive periodic unit price', () => {
   assert.ok(world.pupRows!.length >= 1);
   assert.ok(world.pupRows![0].periodic_unit_price > 0);
 });
+

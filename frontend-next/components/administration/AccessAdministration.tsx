@@ -12,6 +12,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { TablePagination, TableSearchBar, useTablePagination } from "@/components/ui/TablePagination";
 import {
   Building2,
   Check,
@@ -173,6 +174,16 @@ export function AccessAdministration() {
       `${u.full_name ?? ""} ${u.email}`.toLowerCase().includes(q)
     );
   }, [users, userSearch]);
+
+  const [userPage, setUserPage] = useState(1);
+  const [userPageSize, setUserPageSize] = useState(10);
+  const departmentsTable = useTablePagination(
+    departments,
+    useCallback(
+      (d, q) => `${d.code} ${d.name} ${d.unit_type} ${d.parent_name || ""} ${d.manager_name || ""}`.toLowerCase().includes(q),
+      []
+    )
+  );
 
   /** Loads core data catalogs (tenants, companies, roles, users) */
   const loadBase = useCallback(async () => {
@@ -820,6 +831,15 @@ export function AccessAdministration() {
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <TableSearchBar
+                    query={departmentsTable.query}
+                    onQueryChange={departmentsTable.setQuery}
+                    onSearchSubmit={departmentsTable.applySearch}
+                    onReset={departmentsTable.resetSearch}
+                    placeholder="Cari kode atau nama unit..."
+                    totalItems={departments.length}
+                    filteredCount={departmentsTable.totalItems}
+                  />
                   <select
                     value={selectedCompany}
                     onChange={(e) => {
@@ -864,7 +884,7 @@ export function AccessAdministration() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#EFEFEF]">
-                    {departments.map((d) => (
+                    {departmentsTable.paginatedItems.map((d) => (
                       <tr key={d.id} className="hover:bg-[#FDFDFD]">
                         <td className="px-4 py-3">
                           <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
@@ -915,16 +935,24 @@ export function AccessAdministration() {
                         </td>
                       </tr>
                     ))}
-                    {departments.length === 0 && (
+                    {departmentsTable.paginatedItems.length === 0 && (
                       <tr>
                         <td colSpan={7} className="px-4 py-8 text-center text-xs text-[#64748B]">
-                          Belum ada Departemen atau Divisi terdaftar.
+                          {departments.length ? "Tidak ada unit yang cocok dengan pencarian." : "Belum ada Departemen atau Divisi terdaftar."}
                         </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
               </div>
+              <TablePagination
+                page={departmentsTable.page}
+                totalPages={departmentsTable.totalPages}
+                pageSize={departmentsTable.pageSize}
+                totalItems={departmentsTable.totalItems}
+                onPageChange={departmentsTable.setPage}
+                onPageSizeChange={departmentsTable.setPageSize}
+              />
             </div>
           )}
 
@@ -937,15 +965,21 @@ export function AccessAdministration() {
                     <h2 className="font-bold text-[#163D64]">Semua Pengguna Platform</h2>
                     <p className="mt-0.5 text-xs text-[#64748B]">{users.length} pengguna terdaftar di seluruh tenant</p>
                   </div>
-                  <div className="relative">
-                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]" />
-                    <input
-                      value={userSearch}
-                      onChange={(e) => setUserSearch(e.target.value)}
-                      placeholder="Cari nama atau email…"
-                      className="h-9 w-64 rounded-xl border border-[#EFEFEF] bg-[#FDFDFD] pl-8 pr-3 text-sm outline-none focus:border-[#0876CD]"
-                    />
-                  </div>
+                  <TableSearchBar
+                    query={userSearch}
+                    onQueryChange={(val) => {
+                      setUserSearch(val);
+                      setUserPage(1);
+                    }}
+                    onSearchSubmit={() => setUserPage(1)}
+                    onReset={() => {
+                      setUserSearch("");
+                      setUserPage(1);
+                    }}
+                    placeholder="Cari nama atau email…"
+                    totalItems={users.length}
+                    filteredCount={filteredAllUsers.length}
+                  />
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -968,7 +1002,9 @@ export function AccessAdministration() {
                           <td colSpan={5} className="px-6 py-10 text-center text-xs text-[#64748B]">Tidak ada pengguna ditemukan.</td>
                         </tr>
                       ) : (
-                        filteredAllUsers.map((u) => {
+                        filteredAllUsers
+                          .slice((userPage - 1) * userPageSize, userPage * userPageSize)
+                          .map((u) => {
                           const tenant = tenants.find((t) => t.id === u.tenant_id);
                           const userCompany = companies.find((c) => c.tenant_id === u.tenant_id);
                           return (
@@ -1008,6 +1044,19 @@ export function AccessAdministration() {
                       )}
                     </tbody>
                   </table>
+                </div>
+                <div className="px-6 pb-4">
+                  <TablePagination
+                    page={Math.min(userPage, Math.max(1, Math.ceil(filteredAllUsers.length / userPageSize)))}
+                    totalPages={Math.max(1, Math.ceil(filteredAllUsers.length / userPageSize))}
+                    pageSize={userPageSize}
+                    totalItems={filteredAllUsers.length}
+                    onPageChange={setUserPage}
+                    onPageSizeChange={(size) => {
+                      setUserPageSize(size);
+                      setUserPage(1);
+                    }}
+                  />
                 </div>
               </div>
             </div>

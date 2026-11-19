@@ -214,3 +214,4 @@ CREATE TABLE IF NOT EXISTS "inv_outbox_event" (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "inv_outbox_event_idempotency_key_key" ON "inv_outbox_event"("idempotency_key");
 CREATE INDEX IF NOT EXISTS "idx_inv_outbox_event_status" ON "inv_outbox_event"("company_id", "status", "created_at");
+

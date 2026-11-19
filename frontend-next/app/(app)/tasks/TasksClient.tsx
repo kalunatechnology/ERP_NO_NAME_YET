@@ -19,6 +19,8 @@ import { compareTaskOutput, outputReviewLabel } from "@/lib/tasks/output-compari
 import { personalDailyTaskRecords, personalDailyTaskSummary } from "@/lib/tasks/personal-workspace";
 import { WeeklyTaskManagement } from "@/components/tasks/WeeklyTaskManagement";
 import { DailyTaskBoard } from "@/components/tasks/DailyTaskBoard";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
+import { TablePagination, TableSearchBar } from "@/components/ui/TablePagination";
 
 /* ── Status helpers ─────────────────────────────── */
 /**
@@ -342,40 +344,35 @@ function NewDailyTaskModal({
         <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
           <div>
             <label className="text-xs font-semibold text-text-primary block mb-1">Proyek *</label>
-            <select
-              required
+            <SearchableSelect
               value={projectId}
-              onChange={e => {
-                setProjectId(e.target.value);
+              onChange={(val) => {
+                setProjectId(val);
                 setWeeklyTaskId("");
               }}
-              className="w-full border border-text-tertiary rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-green bg-white"
-            >
-              <option value="">— Pilih Proyek —</option>
-              {projects.map(p => (
-                <option key={p.id} value={p.id}>
-                  {p.project_code || p.code} — {p.project_name || p.name}
-                </option>
-              ))}
-            </select>
+              placeholder="— Pilih Proyek —"
+              searchPlaceholder="Cari kode atau nama proyek..."
+              options={projects.map(p => ({
+                value: String(p.id),
+                label: `${p.project_code || p.code} — ${p.project_name || p.name}`,
+                sublabel: p.status || undefined,
+              }))}
+            />
           </div>
 
           <div>
             <label className="text-xs font-semibold text-text-primary block mb-1">Target Mingguan (WBS) *</label>
-            <select
-              required
+            <SearchableSelect
               disabled={!projectId || weeklyOptions.length === 0}
               value={weeklyTaskId}
-              onChange={e => setWeeklyTaskId(e.target.value)}
-              className="w-full border border-text-tertiary rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-green bg-white disabled:bg-gray-50 disabled:text-text-secondary"
-            >
-              <option value="">
-                {!projectId ? "Pilih proyek terlebih dahulu" : weeklyOptions.length === 0 ? "Belum ada Weekly Target milik Anda yang disetujui" : "— Pilih Target Mingguan —"}
-              </option>
-              {weeklyOptions.map(w => (
-                <option key={w.id} value={w.id}>{w.label}</option>
-              ))}
-            </select>
+              onChange={(val) => setWeeklyTaskId(val)}
+              placeholder={!projectId ? "Pilih proyek terlebih dahulu" : weeklyOptions.length === 0 ? "Belum ada Weekly Target milik Anda yang disetujui" : "— Pilih Target Mingguan —"}
+              searchPlaceholder="Cari target mingguan..."
+              options={weeklyOptions.map(w => ({
+                value: String(w.id),
+                label: w.label,
+              }))}
+            />
             {projectId && weeklyOptions.length === 0 && (
               <p className="mt-1 text-2xs text-amber-700">
                 Proyek tersedia, tetapi Anda belum memiliki Weekly Target yang disetujui di proyek ini. Ajukan atau tunggu persetujuan Target Mingguan sebelum membuat Daily Task.
@@ -616,6 +613,8 @@ export default function TasksClient() {
   const [dailyCreationContext, setDailyCreationContext] = useState({ projectId: "", weeklyId: "" });
   const [activeFilter, setActiveFilter] = useState("TODAY");
   const [search, setSearch] = useState("");
+  const [taskPage, setTaskPage] = useState(1);
+  const [taskPageSize, setTaskPageSize] = useState(10);
   const [viewMode, setViewMode] = useState<"list" | "grouped" | "board">("grouped");
   const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
   const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
@@ -885,41 +884,60 @@ export default function TasksClient() {
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-  const renderTable = (items: typeof filteredTasks) => (
-    <table className="w-full min-w-[980px] text-left text-xs">
-      <thead>
-        <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider border-b border-gray-200">
-          <th className="py-3 px-4 font-bold">Proyek & WBS</th>
-          <th className="py-3 px-4 font-bold">Tanggal & Waktu</th>
-          <th className="py-3 px-4 font-bold">Aktivitas / Task</th>
-          <th className="whitespace-nowrap px-4 py-3 font-bold">Output Target</th>
-          <th className="whitespace-nowrap px-4 py-3 font-bold">Progress Output</th>
-          <th className="whitespace-nowrap px-4 py-3 font-bold">Status</th>
-          <th className="py-3 px-4 font-bold"></th>
-        </tr>
-      </thead>
-      <tbody>
-        {items.map(({ projectName, projectCode, mainTaskName, weekNumber, task }) => {
-          const isOwner = String(task.owner_id || (task as any).owner || "") === String(user?.id);
-          const isAllowed = canOperateTasks && isOwner;
-          return (
-            <TaskRow
-              key={task.id}
-              projectName={projectName}
-              projectCode={projectCode}
-              mainTaskName={mainTaskName}
-              weekNumber={weekNumber}
-              task={task}
-              isAllowed={isAllowed}
-              onToggle={() => handleToggle(task)}
-              onEdit={() => setEditingTask(task)}
-              onDelete={() => void handleDeleteDaily(task)}
-            />
-          );
-        })}
-      </tbody>
-    </table>
-  );
+  const renderTable = (items: typeof filteredTasks) => {
+    const safePage = Math.min(taskPage, Math.max(1, Math.ceil(items.length / taskPageSize)));
+    const pagedItems = items.slice((safePage - 1) * taskPageSize, safePage * taskPageSize);
+    return (
+      <>
+        <table className="w-full min-w-[980px] text-left text-xs">
+          <thead>
+            <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider border-b border-gray-200">
+              <th className="py-3 px-4 font-bold">Proyek & WBS</th>
+              <th className="py-3 px-4 font-bold">Tanggal & Waktu</th>
+              <th className="py-3 px-4 font-bold">Aktivitas / Task</th>
+              <th className="whitespace-nowrap px-4 py-3 font-bold">Output Target</th>
+              <th className="whitespace-nowrap px-4 py-3 font-bold">Progress Output</th>
+              <th className="whitespace-nowrap px-4 py-3 font-bold">Status</th>
+              <th className="py-3 px-4 font-bold"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {pagedItems.map(({ projectName, projectCode, mainTaskName, weekNumber, task }) => {
+              const isOwner = String(task.owner_id || (task as any).owner || "") === String(user?.id);
+              const isAllowed = canOperateTasks && isOwner;
+              return (
+                <TaskRow
+                  key={task.id}
+                  projectName={projectName}
+                  projectCode={projectCode}
+                  mainTaskName={mainTaskName}
+                  weekNumber={weekNumber}
+                  task={task}
+                  isAllowed={isAllowed}
+                  onToggle={() => handleToggle(task)}
+                  onEdit={() => setEditingTask(task)}
+                  onDelete={() => void handleDeleteDaily(task)}
+                />
+              );
+            })}
+          </tbody>
+        </table>
+        <div className="px-4 pb-3">
+          <TablePagination
+            page={safePage}
+            totalPages={Math.max(1, Math.ceil(items.length / taskPageSize))}
+            pageSize={taskPageSize}
+            totalItems={items.length}
+            onPageChange={setTaskPage}
+            onPageSizeChange={(size) => {
+              setTaskPageSize(size);
+              setTaskPage(1);
+            }}
+          />
+        </div>
+      </>
+    );
+  };
 
   return (
     <div className="flex flex-col gap-5">
@@ -1021,17 +1039,21 @@ export default function TasksClient() {
 
       {/* ── Toolbar ────────────────────────── */}
       <div className="card rounded-xl p-3 flex items-center gap-3 flex-wrap">
-        {/* Search */}
-        <div className="flex items-center gap-2 flex-1 min-w-40">
-          <Search size={14} className="text-text-secondary flex-shrink-0" />
-          <input
-            type="text"
-            placeholder="Cari task atau proyek..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="flex-1 text-xs border-none outline-none bg-transparent"
-          />
-        </div>
+        <TableSearchBar
+          query={search}
+          onQueryChange={(val) => {
+            setSearch(val);
+            setTaskPage(1);
+          }}
+          onSearchSubmit={() => setTaskPage(1)}
+          onReset={() => {
+            setSearch("");
+            setTaskPage(1);
+          }}
+          placeholder="Cari task atau proyek..."
+          totalItems={allTasks.length}
+          filteredCount={filteredTasks.length}
+        />
 
         {/* Filters */}
         <div className="flex items-center gap-1.5 overflow-x-auto">

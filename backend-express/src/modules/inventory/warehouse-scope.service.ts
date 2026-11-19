@@ -68,3 +68,4 @@ export async function assertWarehouseScopeAccess(input: {
     throw new ForbiddenError('ABAC Warehouse Scope: Anda tidak berwenang menyetujui transaksi di gudang ini.');
   }
 }
+

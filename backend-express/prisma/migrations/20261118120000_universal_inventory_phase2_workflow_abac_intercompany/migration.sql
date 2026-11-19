@@ -90,3 +90,4 @@ CREATE TABLE IF NOT EXISTS "inv_intercompany_sto_line" (
 );
 
 CREATE INDEX IF NOT EXISTS "idx_inv_ic_sto_line_order" ON "inv_intercompany_sto_line" ("sto_id");
+

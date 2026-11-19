@@ -19,6 +19,7 @@ import {
 import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
 import { Modal } from "@/components/ui/Modal";
+import { TablePagination, TableSearchBar } from "@/components/ui/TablePagination";
 import { MarbotConfigModal } from "./MarbotConfigModal";
 
 export type TenantItem = {
@@ -58,6 +59,8 @@ export function TenantManagement({
 }: TenantManagementProps) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<TenantItem | null>(null);
@@ -251,25 +254,30 @@ export function TenantManagement({
 
       {/* Control Bar & Actions */}
       <div className="flex flex-col gap-4 rounded-2xl border border-[#EFEFEF] bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative flex-1 max-w-md">
-            <Search
-              size={16}
-              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8]"
-            />
-            <input
-              type="text"
-              placeholder="Cari tenant berdasarkan nama atau kode..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-10 w-full rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] pl-10 pr-4 text-sm text-[#0F172A] placeholder-[#94A3B8] outline-none transition focus:border-[#163D64] focus:bg-white"
-            />
-          </div>
+        <div className="flex flex-1 flex-wrap items-center gap-3">
+          <TableSearchBar
+            query={search}
+            onQueryChange={(val) => {
+              setSearch(val);
+              setPage(1);
+            }}
+            onSearchSubmit={() => setPage(1)}
+            onReset={() => {
+              setSearch("");
+              setPage(1);
+            }}
+            placeholder="Cari tenant berdasarkan nama atau kode..."
+            totalItems={tenants.length}
+            filteredCount={filteredTenants.length}
+          />
 
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-10 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3.5 text-sm font-medium text-[#475569] outline-none transition focus:border-[#163D64] focus:bg-white"
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(1);
+            }}
+            className="h-9 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 text-xs font-medium text-[#475569] outline-none transition focus:border-[#163D64] focus:bg-white"
           >
             <option value="ALL">Semua Status</option>
             <option value="ACTIVE">Aktif</option>
@@ -312,7 +320,9 @@ export function TenantManagement({
                   </td>
                 </tr>
               ) : (
-                filteredTenants.map((tenant) => {
+                filteredTenants
+                  .slice((page - 1) * pageSize, page * pageSize)
+                  .map((tenant) => {
                   const compCount = companyCountByTenant[tenant.id] || 0;
                   const isActive = (tenant.status || "ACTIVE").toUpperCase() === "ACTIVE";
 
@@ -384,6 +394,19 @@ export function TenantManagement({
               )}
             </tbody>
           </table>
+        </div>
+        <div className="px-4 pb-3">
+          <TablePagination
+            page={Math.min(page, Math.max(1, Math.ceil(filteredTenants.length / pageSize)))}
+            totalPages={Math.max(1, Math.ceil(filteredTenants.length / pageSize))}
+            pageSize={pageSize}
+            totalItems={filteredTenants.length}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPage(1);
+            }}
+          />
         </div>
       </div>
 

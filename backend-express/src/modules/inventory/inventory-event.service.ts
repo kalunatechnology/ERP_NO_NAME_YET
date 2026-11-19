@@ -46,3 +46,4 @@ export async function emitInventoryOutboxEvent(
     })
     .catch(() => null);
 }
+

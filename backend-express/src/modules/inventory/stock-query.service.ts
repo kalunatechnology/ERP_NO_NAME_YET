@@ -289,3 +289,4 @@ export async function getInventoryOverviewAndBalances(
 function EligibleOnHandSafe(d: Prisma.Decimal) {
   return d;
 }
+

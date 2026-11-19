@@ -6,3 +6,4 @@ module.exports = {
     format: ['progress-bar', 'summary'],
   },
 };
+

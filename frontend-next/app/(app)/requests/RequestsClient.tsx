@@ -8,6 +8,7 @@ import { MeetingDetail, MeetingRequestSummary, NonMeetingRequest, requestApi } f
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { getUserFacingApiError } from "@/lib/api/error-message";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
 
 type Member = { id: string; name: string; email: string; role: string };
 type CreateForm = { title:string; description:string; date:string; recurrenceEndDate:string; startTime:string; endTime:string; location:string; meetingType:string; recurrenceType:"RECURRING"|"NON_RECURRING"; recurringDays:number[]; assigneeId:string; notetakerId:string; participantIds:string[]; agenda:string };
@@ -1179,7 +1180,7 @@ function NewNonMeetingRequestModal({members,busy,onClose,onSuccess}:{members:Mem
         <Field label={type==='LEAVE'?'Mulai Cuti':'Mulai'} type="date" value={startAt} onChange={setStartAt}/>
         <Field label={type==='LEAVE'?'Selesai Cuti':'Selesai'} type="date" value={endAt} onChange={setEndAt}/>
       </div>
-      {type==='OTHER'&&<div><label className="block text-sm font-bold text-[#0876CD]">Assign kepada<select value={assigneeId} onChange={event=>setAssigneeId(event.target.value)} className="mt-2 h-11 w-full rounded-xl border-2 border-[#3154C7] bg-white px-4 text-[#0876CD] outline-none"><option value="">Pilih anggota (opsional)</option>{members.map(m=><option key={m.id} value={m.id}>{m.name} — {m.role}</option>)}</select></label></div>}
+      {type==='OTHER'&&<div><span className="mb-2 block text-sm font-bold text-[#0876CD]">Assign kepada</span><SearchableSelect value={assigneeId} onChange={setAssigneeId} placeholder="Pilih anggota (opsional)" emptyOptionLabel="Pilih anggota (opsional)" searchPlaceholder="Cari nama atau role anggota..." options={members.map(m=>({value:String(m.id),label:`${m.name} — ${m.role}`,sublabel:m.email}))}/></div>}
       {type==='LEAVE'&&<div className="rounded-xl bg-[#FFF9E6] border border-[#F5C842] px-4 py-3 text-xs text-[#7A5C00]">Permohonan cuti/izin akan otomatis diarahkan ke HR atau Eksekutif yang bertanggung jawab. Anda tidak perlu memilih tujuan.</div>}
       <div className="flex gap-3 pt-2">
         <button type="button" onClick={onClose} className="flex-1 h-11 rounded-xl border-2 border-[#E2E8F0] font-bold text-[#64748B] hover:bg-[#F4F6FB]">Batal</button>

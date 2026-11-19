@@ -148,3 +148,4 @@ CREATE UNIQUE INDEX IF NOT EXISTS "uq_iam_cross_module_capability"
   ON "iam_cross_module_capability" ("company_id", "user_id", "source_module_code", "target_module_code", "capability_code");
 CREATE INDEX IF NOT EXISTS "idx_iam_cross_module_capability_user"
   ON "iam_cross_module_capability" ("company_id", "user_id", "status");
+

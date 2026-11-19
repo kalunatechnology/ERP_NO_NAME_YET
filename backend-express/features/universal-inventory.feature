@@ -72,3 +72,4 @@ Feature: Universal Inventory & Asset Management (Phases 1 - 4)
     When GS1 EPCIS 2.0 events and Material Ledger PUP are queried
     Then the EPCIS document type is "EPCISDocument" with CBV 2.0 events
     And Material Ledger PUP returns positive periodic unit price
+

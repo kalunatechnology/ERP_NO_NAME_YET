@@ -114,3 +114,4 @@ export async function approveStockCount(input: {
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
   );
 }
+

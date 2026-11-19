@@ -15,6 +15,8 @@ import {
   DollarSign, Layers, Clock, Zap,
   Edit, Search, Check, Wallet, FileText, ExternalLink
 } from "lucide-react";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
+import { TablePagination, TableSearchBar } from "@/components/ui/TablePagination";
 import {
   Project, MainTask, WeeklyTask, DailyTask, TaskTransfer, ProjectAuthority, ProjectSupervisor,
   loadAllProjects, mergeProjectDashboardBundles, createProject, deleteProject, updateProjectDepartment,
@@ -407,6 +409,8 @@ export default function ProjectsClient() {
   /* Personal Workspace Filters & Timer */
   const [personalFilter, setPersonalFilter] = useState("ALL");
   const [personalSearch, setPersonalSearch] = useState("");
+  const [personalPage, setPersonalPage] = useState(1);
+  const [personalPageSize, setPersonalPageSize] = useState(10);
   const [timerDailyId, setTimerDailyId] = useState<string | number | null>(null);
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [transfers, setTransfers] = useState<TaskTransfer[]>([]);
@@ -1825,22 +1829,31 @@ export default function ProjectsClient() {
         <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(260px,1fr)_minmax(0,1fr)] md:items-start">
           <div className="min-w-0">
             <label htmlFor="project-selector" className="sr-only">Pilih Proyek</label>
-            <select
-              id="project-selector"
-              value={selectedId ?? ""}
-              onChange={(e) => navigateProject(e.target.value)}
-              className="block h-10 w-full min-w-0 max-w-full truncate rounded-full border border-gray-300 bg-white px-4 text-xs font-semibold text-text-primary outline-none transition focus:border-[#0876CD] focus:ring-2 focus:ring-[#0876CD]/20"
-            >
-              {filteredProjects.length === 0 && <option disabled value="">Tidak ada proyek yang cocok</option>}
-              {selectedProject && !filteredProjects.some((project) => String(project.id) === String(selectedProject.id)) && (
-                <option value={selectedProject.id}>Aktif: [{selectedProject.project_code || selectedProject.code || "PRJ"}] {selectedProject.project_name || selectedProject.name}</option>
-              )}
-              {filteredProjects.map((proj) => {
-                const code = proj.project_code || proj.code || "PRJ";
-                const name = proj.project_name || proj.name || "Proyek";
-                return <option key={proj.id} value={proj.id}>[{code}] {name}</option>;
-              })}
-            </select>
+            <SearchableSelect
+              value={String(selectedId ?? "")}
+              onChange={(val) => navigateProject(val)}
+              placeholder="Pilih proyek..."
+              searchPlaceholder="Cari kode atau nama proyek..."
+              options={(() => {
+                const list = filteredProjects.map((proj) => {
+                  const code = proj.project_code || proj.code || "PRJ";
+                  const name = proj.project_name || proj.name || "Proyek";
+                  return {
+                    value: String(proj.id),
+                    label: `[${code}] ${name}`,
+                    sublabel: proj.status || undefined,
+                  };
+                });
+                if (selectedProject && !filteredProjects.some((p) => String(p.id) === String(selectedProject.id))) {
+                  list.unshift({
+                    value: String(selectedProject.id),
+                    label: `Aktif: [${selectedProject.project_code || selectedProject.code || "PRJ"}] ${selectedProject.project_name || selectedProject.name}`,
+                    sublabel: selectedProject.status || undefined,
+                  });
+                }
+                return list;
+              })()}
+            />
             <p className="mt-1.5 text-2xs text-text-secondary">{filteredProjects.length} proyek pada tampilan ini dari {projects.length} total · Pencarian tidak mengubah proyek yang sedang dibuka</p>
           </div>
           <div className="flex min-w-0 items-center gap-2 md:justify-end">
@@ -2114,28 +2127,28 @@ export default function ProjectsClient() {
 
               {canAssignProjectDepartment && (
                 <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-xs text-white">
-                  <label htmlFor="project-department-assign" className="text-2xs font-bold uppercase tracking-wider text-white/90">
+                  <span className="text-2xs font-bold uppercase tracking-wider text-white/90">
                     Departemen Proyek (PM / GM):
-                  </label>
-                  <select
-                    id="project-department-assign"
-                    disabled={projectDeptSaving}
-                    value={String(
-                      selectedProject.department_id ||
-                        selectedProject.cost_center_id ||
-                        projectSupervisor?.department_id ||
-                        "",
-                    )}
-                    onChange={(e) => void handleAssignProjectDepartment(e.target.value || null)}
-                    className="h-8 min-w-[230px] rounded-lg border border-white/30 bg-white px-2.5 text-xs font-semibold text-[#111827] outline-none focus:ring-2 focus:ring-white/40 disabled:opacity-60"
-                  >
-                    <option value="">-- Biarkan NULL / Ikuti Relasi SPV --</option>
-                    {departmentOptions.map((dept) => (
-                      <option key={dept.id} value={dept.id}>
-                        [{dept.unit_type === "DIVISION" ? "DIVISI" : "DEPT"}] {dept.code} — {dept.name}
-                      </option>
-                    ))}
-                  </select>
+                  </span>
+                  <div className="min-w-[240px] text-slate-800">
+                    <SearchableSelect
+                      disabled={projectDeptSaving}
+                      value={String(
+                        selectedProject.department_id ||
+                          selectedProject.cost_center_id ||
+                          projectSupervisor?.department_id ||
+                          "",
+                      )}
+                      onChange={(val) => void handleAssignProjectDepartment(val || null)}
+                      placeholder="-- Biarkan NULL / Ikuti Relasi SPV --"
+                      emptyOptionLabel="-- Biarkan NULL / Ikuti Relasi SPV --"
+                      searchPlaceholder="Cari departemen / divisi..."
+                      options={departmentOptions.map((dept) => ({
+                        value: String(dept.id),
+                        label: `[${dept.unit_type === "DIVISION" ? "DIVISI" : "DEPT"}] ${dept.code} — ${dept.name}`,
+                      }))}
+                    />
+                  </div>
                   {projectDeptSaving && <span className="text-2xs text-white/80">Menyimpan…</span>}
                 </div>
               )}
@@ -2598,16 +2611,21 @@ export default function ProjectsClient() {
 
           {/* Search and Filters for Personal Tasks */}
           <div className="card p-4 rounded-2xl bg-white border border-text-tertiary flex items-center justify-between flex-wrap gap-3">
-            <div className="flex items-center gap-2 flex-1 max-w-md">
-              <Search size={15} className="text-text-secondary flex-shrink-0" />
-              <input
-                type="text"
-                placeholder="Cari dalam semua task harian saya…"
-                value={personalSearch}
-                onChange={e => setPersonalSearch(e.target.value)}
-                className="input py-1.5 text-xs"
-              />
-            </div>
+            <TableSearchBar
+              query={personalSearch}
+              onQueryChange={(val) => {
+                setPersonalSearch(val);
+                setPersonalPage(1);
+              }}
+              onSearchSubmit={() => setPersonalPage(1)}
+              onReset={() => {
+                setPersonalSearch("");
+                setPersonalPage(1);
+              }}
+              placeholder="Cari dalam semua task harian saya…"
+              totalItems={allPersonalTasks.length}
+              filteredCount={filteredPersonalTasks.length}
+            />
 
             <div className="flex items-center gap-1.5 overflow-x-auto">
               {[
@@ -2639,6 +2657,7 @@ export default function ProjectsClient() {
                 Tidak ada aktivitas harian yang sesuai filter saat ini.
               </div>
             ) : (
+              <>
               <div className="table-scroll-wrapper">
                 <table className="w-full data-table text-xs text-left min-w-[640px]">
                   <thead>
@@ -2652,7 +2671,9 @@ export default function ProjectsClient() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredPersonalTasks.map(({ projectName, projectCode, mainTaskName, weekNumber, daily }) => {
+                    {filteredPersonalTasks
+                      .slice((personalPage - 1) * personalPageSize, personalPage * personalPageSize)
+                      .map(({ projectName, projectCode, mainTaskName, weekNumber, daily }) => {
                       const isDone = daily.status === "COMPLETED" || daily.status === "DONE";
                       const isBlocked = daily.is_blocked || daily.status === "BLOCKED";
                       const isDailyOwner = String(daily.owner_id || (daily as any).owner || "") === String(user?.id);
@@ -2764,6 +2785,20 @@ export default function ProjectsClient() {
                   </tbody>
                 </table>
               </div>
+              <div className="px-4 pb-3">
+                <TablePagination
+                  page={Math.min(personalPage, Math.max(1, Math.ceil(filteredPersonalTasks.length / personalPageSize)))}
+                  totalPages={Math.max(1, Math.ceil(filteredPersonalTasks.length / personalPageSize))}
+                  pageSize={personalPageSize}
+                  totalItems={filteredPersonalTasks.length}
+                  onPageChange={setPersonalPage}
+                  onPageSizeChange={(size) => {
+                    setPersonalPageSize(size);
+                    setPersonalPage(1);
+                  }}
+                />
+              </div>
+              </>
             )}
           </div>
 
@@ -3136,10 +3171,17 @@ export default function ProjectsClient() {
         <div className="flex flex-col gap-3">
           <div>
             <label className="text-xs font-bold text-text-secondary block mb-1">Divisi Pemilik Biaya</label>
-            <select value={mainTaskForm.cost_owner_division_id} onChange={e => setMainTaskForm({ ...mainTaskForm, cost_owner_division_id: e.target.value })} className="input text-xs">
-              <option value="">Belum ditentukan</option>
-              {divisionOptions.map((division) => <option key={division.id} value={division.id}>{division.organization_name ?? division.name}</option>)}
-            </select>
+            <SearchableSelect
+              value={mainTaskForm.cost_owner_division_id}
+              onChange={(val) => setMainTaskForm({ ...mainTaskForm, cost_owner_division_id: val })}
+              placeholder="Belum ditentukan"
+              emptyOptionLabel="Belum ditentukan"
+              searchPlaceholder="Cari divisi..."
+              options={divisionOptions.map((division) => ({
+                value: String(division.id),
+                label: division.organization_name ?? division.name,
+              }))}
+            />
           </div>
           <div>
             <label className="text-xs font-bold text-text-primary block mb-1">Judul Paket Kerja Utama (Main Task) *</label>
@@ -3793,20 +3835,19 @@ export default function ProjectsClient() {
           </p>
           <div>
             <label className="text-xs font-bold text-text-secondary block mb-1">Anggota Tujuan *</label>
-            <select
+            <SearchableSelect
               value={transferTargetUserId}
-              onChange={e => setTransferTargetUserId(e.target.value)}
-              className="input text-xs"
-            >
-              <option value="">Pilih anggota aktif</option>
-              {companyUsers
+              onChange={(val) => setTransferTargetUserId(val)}
+              placeholder="Pilih anggota aktif"
+              searchPlaceholder="Cari nama atau email anggota..."
+              options={companyUsers
                 .filter(member => String(member.id) !== String(activeDailyTask?.owner_id || (activeDailyTask as any)?.owner || ""))
-                .map(member => (
-                  <option key={member.id} value={member.id}>
-                    {member.full_name || member.username || member.email}
-                  </option>
-                ))}
-            </select>
+                .map(member => ({
+                  value: String(member.id),
+                  label: member.full_name || member.username || member.email,
+                  sublabel: member.email,
+                }))}
+            />
           </div>
           <div>
             <label className="text-xs font-bold text-text-secondary block mb-1">Alasan Pengalihan Tugas *</label>
@@ -3892,19 +3933,17 @@ export default function ProjectsClient() {
             <label htmlFor="new-project-department" className="text-xs font-bold text-text-secondary block mb-1">
               Departemen / Divisi Pengelola Proyek (Diatur oleh PM / GM)
             </label>
-            <select
-              id="new-project-department"
+            <SearchableSelect
               value={newProjForm.department_id}
-              onChange={(e) => setNewProjForm({ ...newProjForm, department_id: e.target.value })}
-              className="input text-xs"
-            >
-              <option value="">-- Pilih Departemen / Divisi Proyek --</option>
-              {departmentOptions.map((dept) => (
-                <option key={dept.id} value={dept.id}>
-                  [{dept.unit_type === "DIVISION" ? "DIVISI" : "DEPT"}] {dept.code} — {dept.name}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setNewProjForm({ ...newProjForm, department_id: val })}
+              placeholder="-- Pilih Departemen / Divisi Proyek --"
+              emptyOptionLabel="-- Pilih Departemen / Divisi Proyek --"
+              searchPlaceholder="Cari departemen atau divisi..."
+              options={departmentOptions.map((dept) => ({
+                value: String(dept.id),
+                label: `[${dept.unit_type === "DIVISION" ? "DIVISI" : "DEPT"}] ${dept.code} — ${dept.name}`,
+              }))}
+            />
           </div>
           <p className="text-2xs text-text-secondary">Vendor/Supplier dan Partner opsional. Tambahkan rekanan terlebih dahulu di Master Rekanan jika belum tersedia.</p>
           <div className="grid grid-cols-2 gap-3">

@@ -299,3 +299,4 @@ export async function receiveIntercompanySto(id: string, requestingCompanyId: st
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
   );
 }
+
