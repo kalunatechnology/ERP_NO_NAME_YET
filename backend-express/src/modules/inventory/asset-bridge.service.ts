@@ -35,7 +35,7 @@ export async function capitalizeAssetIdempotent(input: {
       );
     }
 
-    // Idempotency check by serial_number_id or (source_goods_receipt_line_id + serial_number)
+    // Idempotency check by serial_number_id or serial_number text
     if (input.serialNumberId) {
       const existingBySerial = await (tx as any).asset_asset.findFirst({
         where: { company_id: input.companyId, serial_number_id: input.serialNumberId },
@@ -43,6 +43,31 @@ export async function capitalizeAssetIdempotent(input: {
       if (existingBySerial) {
         return { asset: existingBySerial, idempotentReplay: true };
       }
+    }
+    if (input.serialNumberText?.trim()) {
+      const existingByText = await (tx as any).asset_asset.findFirst({
+        where: { company_id: input.companyId, serial_number: input.serialNumberText.trim() },
+      });
+      if (existingByText) {
+        return { asset: existingByText, idempotentReplay: true };
+      }
+    }
+
+    // Resolve valid asset_category.id (never pass master_product.category_id directly into asset_asset.category_id)
+    let resolvedAssetCategoryId: string | null = null;
+    if ((product as any).default_asset_category_id) {
+      const validCat = await tx.asset_category.findFirst({
+        where: { id: String((product as any).default_asset_category_id), company_id: input.companyId },
+        select: { id: true },
+      });
+      resolvedAssetCategoryId = validCat?.id ?? null;
+    }
+    if (!resolvedAssetCategoryId) {
+      const fallbackCat = await tx.asset_category.findFirst({
+        where: { company_id: input.companyId },
+        select: { id: true },
+      });
+      resolvedAssetCategoryId = fallbackCat?.id ?? null;
     }
 
     const assetCode = `AST-${new Date().toISOString().slice(0, 7).replace('-', '')}-${crypto
@@ -56,7 +81,7 @@ export async function capitalizeAssetIdempotent(input: {
         tenant_id: input.tenantId ?? product.tenant_id,
         company_id: input.companyId,
         created_by_id: input.userId,
-        category_id: (product as any).default_asset_category_id ?? product.category_id,
+        category_id: resolvedAssetCategoryId,
         product_id: product.id,
         serial_number_id: input.serialNumberId ?? null,
         source_goods_receipt_id: input.sourceGoodsReceiptId ?? null,
@@ -164,3 +189,4 @@ export async function assignAssetCustodian(input: {
     };
   });
 }
+
