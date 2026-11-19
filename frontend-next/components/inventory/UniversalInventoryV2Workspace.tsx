@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -21,6 +21,8 @@ import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
 import { getUserFacingApiError } from "@/lib/api/error-message";
 import { formatMoney } from "@/lib/utils";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
+import { TablePagination, TableSearchBar, useTablePagination } from "@/components/ui/TablePagination";
 
 interface UniversalInventoryV2Props {
   mode: "overview" | "transfers" | "reservations" | "assets";
@@ -293,14 +295,57 @@ export function UniversalInventoryV2Workspace({
 
   const kpis = data?.kpis || {};
   const aging = data?.aging_buckets || {};
-  const balances: any[] = data?.balances || [];
-  const transfers: any[] = data?.transfers || [];
-  const reservations: any[] = data?.reservations || [];
-  const assets: any[] = data?.assets || [];
+  const balances: any[] = useMemo(() => data?.balances || [], [data?.balances]);
+  const transfers: any[] = useMemo(() => data?.transfers || [], [data?.transfers]);
+  const reservations: any[] = useMemo(() => data?.reservations || [], [data?.reservations]);
+  const assets: any[] = useMemo(() => data?.assets || [], [data?.assets]);
   const assetHistory: any[] = data?.asset_assignment_history || [];
-  const products: any[] = data?.products || [];
-  const locations: any[] = data?.locations || [];
+  const products: any[] = useMemo(() => data?.products || [], [data?.products]);
+  const locations: any[] = useMemo(() => data?.locations || [], [data?.locations]);
   const lowStockAlerts: any[] = data?.low_stock_alerts || [];
+
+  const balancesTable = useTablePagination(
+    balances,
+    useCallback(
+      (b, q) =>
+        `${b.product_code || ""} ${b.product_name || ""} ${b.location_code || ""} ${b.location_name || ""} ${b.location_purpose || ""} ${b.condition_status || ""} ${b.stock_status || ""}`
+          .toLowerCase()
+          .includes(q),
+      []
+    )
+  );
+  const transfersTable = useTablePagination(
+    transfers,
+    useCallback(
+      (trf, q) =>
+        `${trf.transfer_number || ""} ${trf.source_location_name || ""} ${trf.destination_location_name || ""} ${trf.product_code || ""} ${trf.product_name || ""} ${trf.status || ""}`
+          .toLowerCase()
+          .includes(q),
+      []
+    )
+  );
+  const reservationsTable = useTablePagination(
+    reservations,
+    useCallback(
+      (r, q) => {
+        const prod = products.find((p: any) => p.id === r.product_id);
+        return `${prod?.product_code || ""} ${prod?.product_name || ""} ${r.source_type || ""} ${r.status || ""}`
+          .toLowerCase()
+          .includes(q);
+      },
+      [products]
+    )
+  );
+  const assetsTable = useTablePagination(
+    assets,
+    useCallback(
+      (a, q) =>
+        `${a.asset_code || ""} ${a.asset_name || ""} ${a.serial_number || ""} ${a.status || ""}`
+          .toLowerCase()
+          .includes(q),
+      []
+    )
+  );
 
   if (mode === "overview") {
     return (
@@ -478,56 +523,50 @@ export function UniversalInventoryV2Workspace({
                 </select>
               </label>
             </div>
-            <label className="block text-xs font-semibold">
-              Produk
-              <select
+            <div className="block text-xs font-semibold">
+              <span className="mb-1 block">Produk</span>
+              <SearchableSelect
                 value={moveForm.product_id}
-                onChange={(e) => setMoveForm((p) => ({ ...p, product_id: e.target.value }))}
-                className="input mt-1 w-full text-xs"
-                required
-              >
-                <option value="">-- Pilih Produk --</option>
-                {products.map((p: any) => (
-                  <option key={p.id} value={p.id}>
-                    {p.product_code} · {p.product_name} ({p.costing_method})
-                  </option>
-                ))}
-              </select>
-            </label>
+                onChange={(val) => setMoveForm((p) => ({ ...p, product_id: val }))}
+                placeholder="-- Pilih Produk --"
+                searchPlaceholder="Cari kode atau nama produk..."
+                options={products.map((p: any) => ({
+                  value: String(p.id),
+                  label: `${p.product_code} · ${p.product_name} (${p.costing_method})`,
+                  sublabel: p.product_type,
+                }))}
+              />
+            </div>
             {moveForm.move_type === "RECEIPT" ? (
-              <label className="block text-xs font-semibold">
-                Lokasi Tujuan (Receiving)
-                <select
+              <div className="block text-xs font-semibold">
+                <span className="mb-1 block">Lokasi Tujuan (Receiving)</span>
+                <SearchableSelect
                   value={moveForm.destination_location_id}
-                  onChange={(e) => setMoveForm((p) => ({ ...p, destination_location_id: e.target.value }))}
-                  className="input mt-1 w-full text-xs"
-                  required
-                >
-                  <option value="">-- Pilih Lokasi Tujuan --</option>
-                  {locations.map((l: any) => (
-                    <option key={l.id} value={l.id}>
-                      {l.location_code} · {l.location_name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  onChange={(val) => setMoveForm((p) => ({ ...p, destination_location_id: val }))}
+                  placeholder="-- Pilih Lokasi Tujuan --"
+                  searchPlaceholder="Cari kode atau nama lokasi..."
+                  options={locations.map((l: any) => ({
+                    value: String(l.id),
+                    label: `${l.location_code} · ${l.location_name}`,
+                    sublabel: l.location_type,
+                  }))}
+                />
+              </div>
             ) : (
-              <label className="block text-xs font-semibold">
-                Lokasi Asal (Issuing)
-                <select
+              <div className="block text-xs font-semibold">
+                <span className="mb-1 block">Lokasi Asal (Issuing)</span>
+                <SearchableSelect
                   value={moveForm.source_location_id}
-                  onChange={(e) => setMoveForm((p) => ({ ...p, source_location_id: e.target.value }))}
-                  className="input mt-1 w-full text-xs"
-                  required
-                >
-                  <option value="">-- Pilih Lokasi Asal --</option>
-                  {locations.map((l: any) => (
-                    <option key={l.id} value={l.id}>
-                      {l.location_code} · {l.location_name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  onChange={(val) => setMoveForm((p) => ({ ...p, source_location_id: val }))}
+                  placeholder="-- Pilih Lokasi Asal --"
+                  searchPlaceholder="Cari kode atau nama lokasi..."
+                  options={locations.map((l: any) => ({
+                    value: String(l.id),
+                    label: `${l.location_code} · ${l.location_name}`,
+                    sublabel: l.location_type,
+                  }))}
+                />
+              </div>
             )}
             <div className="grid grid-cols-2 gap-2">
               <label className="text-xs font-semibold">
@@ -563,7 +602,7 @@ export function UniversalInventoryV2Workspace({
 
           {/* Canonical Stock Identity (K) Table */}
           <div className="lg:col-span-8 rounded-2xl border border-[#E2E8F0] bg-white p-4">
-            <div className="mb-3 flex items-center justify-between">
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
               <div>
                 <h3 className="text-sm font-bold text-[#0F172A]">
                   Posisi Saldo Stok Kanonis — Tuple Identitas `K` (`inv_stock_balance`)
@@ -572,31 +611,45 @@ export function UniversalInventoryV2Workspace({
                   Setiap baris direpresentasikan oleh `K = (company, product, location, owner, condition, lot, serial)` bebas hitung-ganda.
                 </p>
               </div>
-              <span className="rounded-full bg-[#F1F5F9] px-3 py-1 text-xs font-bold text-[#163D64]">
-                {balances.length} Baris K
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <TableSearchBar
+                  query={balancesTable.query}
+                  onQueryChange={balancesTable.setQuery}
+                  onSearchSubmit={balancesTable.applySearch}
+                  onReset={balancesTable.resetSearch}
+                  placeholder="Cari produk, lokasi, atau kondisi..."
+                  totalItems={balances.length}
+                  filteredCount={balancesTable.totalItems}
+                />
+                <span className="rounded-full bg-[#F1F5F9] px-3 py-1 text-xs font-bold text-[#163D64]">
+                  {balances.length} Baris K
+                </span>
+              </div>
             </div>
 
-            {balances.length === 0 ? (
+            {balancesTable.paginatedItems.length === 0 ? (
               <div className="py-10 text-center text-xs text-[#64748B]">
-                Belum ada saldo stok. Gunakan formulir di kiri untuk memposting Goods Receipt pertama.
+                {balances.length
+                  ? "Tidak ada saldo stok yang cocok dengan pencarian."
+                  : "Belum ada saldo stok. Gunakan formulir di kiri untuk memposting Goods Receipt pertama."}
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-[#E2E8F0] text-[10px] uppercase text-[#64748B]">
-                      <th className="py-2 pr-2">Produk</th>
-                      <th className="py-2 px-2">Lokasi & Purpose</th>
-                      <th className="py-2 px-2">Kondisi & Eligibility</th>
-                      <th className="py-2 px-2 text-right">On Hand</th>
-                      <th className="py-2 px-2 text-right">Rsv / Alloc</th>
-                      <th className="py-2 px-2 text-right">Available(K)</th>
-                      <th className="py-2 pl-2 text-right">Nilai Buku</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#F1F5F9]">
-                    {balances.map((b: any) => (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-[#E2E8F0] text-[10px] uppercase text-[#64748B]">
+                        <th className="py-2 pr-2">Produk</th>
+                        <th className="py-2 px-2">Lokasi & Purpose</th>
+                        <th className="py-2 px-2">Kondisi & Eligibility</th>
+                        <th className="py-2 px-2 text-right">On Hand</th>
+                        <th className="py-2 px-2 text-right">Rsv / Alloc</th>
+                        <th className="py-2 px-2 text-right">Available(K)</th>
+                        <th className="py-2 pl-2 text-right">Nilai Buku</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#F1F5F9]">
+                      {balancesTable.paginatedItems.map((b: any) => (
                       <tr key={b.id} className="hover:bg-[#F8FAFC]">
                         <td className="py-2.5 pr-2">
                           <div className="font-bold text-[#0F172A]">
@@ -642,6 +695,15 @@ export function UniversalInventoryV2Workspace({
                   </tbody>
                 </table>
               </div>
+              <TablePagination
+                page={balancesTable.page}
+                totalPages={balancesTable.totalPages}
+                pageSize={balancesTable.pageSize}
+                totalItems={balancesTable.totalItems}
+                onPageChange={balancesTable.setPage}
+                onPageSizeChange={balancesTable.setPageSize}
+              />
+              </>
             )}
           </div>
         </div>
@@ -662,60 +724,54 @@ export function UniversalInventoryV2Workspace({
           <p className="text-xs text-[#64748B]">
             Mendukung Dispatch ke Virtual Transit, Penerimaan Parsial/Rusak, dan Resolusi Selisih dengan persamaan konservasi stok.
           </p>
-          <label className="block text-xs font-semibold">
-            Lokasi Gudang Asal
-            <select
+          <div className="block text-xs font-semibold">
+            <span className="mb-1 block">Lokasi Gudang Asal</span>
+            <SearchableSelect
               value={transferForm.source_location_id}
-              onChange={(e) => setTransferForm((p) => ({ ...p, source_location_id: e.target.value }))}
-              className="input mt-1 w-full text-xs"
-              required
-            >
-              <option value="">-- Pilih Lokasi Asal --</option>
-              {locations
+              onChange={(val) => setTransferForm((p) => ({ ...p, source_location_id: val }))}
+              placeholder="-- Pilih Lokasi Asal --"
+              searchPlaceholder="Cari kode atau nama lokasi..."
+              options={locations
                 .filter((l: any) => !l.is_virtual)
-                .map((l: any) => (
-                  <option key={l.id} value={l.id}>
-                    {l.location_code} · {l.location_name}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <label className="block text-xs font-semibold">
-            Lokasi Gudang Tujuan
-            <select
+                .map((l: any) => ({
+                  value: String(l.id),
+                  label: `${l.location_code} · ${l.location_name}`,
+                  sublabel: l.location_type,
+                }))}
+            />
+          </div>
+          <div className="block text-xs font-semibold">
+            <span className="mb-1 block">Lokasi Gudang Tujuan</span>
+            <SearchableSelect
               value={transferForm.destination_location_id}
-              onChange={(e) =>
-                setTransferForm((p) => ({ ...p, destination_location_id: e.target.value }))
+              onChange={(val) =>
+                setTransferForm((p) => ({ ...p, destination_location_id: val }))
               }
-              className="input mt-1 w-full text-xs"
-              required
-            >
-              <option value="">-- Pilih Lokasi Tujuan --</option>
-              {locations
+              placeholder="-- Pilih Lokasi Tujuan --"
+              searchPlaceholder="Cari kode atau nama lokasi..."
+              options={locations
                 .filter((l: any) => !l.is_virtual)
-                .map((l: any) => (
-                  <option key={l.id} value={l.id}>
-                    {l.location_code} · {l.location_name}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <label className="block text-xs font-semibold">
-            Produk
-            <select
+                .map((l: any) => ({
+                  value: String(l.id),
+                  label: `${l.location_code} · ${l.location_name}`,
+                  sublabel: l.location_type,
+                }))}
+            />
+          </div>
+          <div className="block text-xs font-semibold">
+            <span className="mb-1 block">Produk</span>
+            <SearchableSelect
               value={transferForm.product_id}
-              onChange={(e) => setTransferForm((p) => ({ ...p, product_id: e.target.value }))}
-              className="input mt-1 w-full text-xs"
-              required
-            >
-              <option value="">-- Pilih Produk --</option>
-              {products.map((p: any) => (
-                <option key={p.id} value={p.id}>
-                  {p.product_code} · {p.product_name}
-                </option>
-              ))}
-            </select>
-          </label>
+              onChange={(val) => setTransferForm((p) => ({ ...p, product_id: val }))}
+              placeholder="-- Pilih Produk --"
+              searchPlaceholder="Cari kode atau nama produk..."
+              options={products.map((p: any) => ({
+                value: String(p.id),
+                label: `${p.product_code} · ${p.product_name}`,
+                sublabel: p.product_type,
+              }))}
+            />
+          </div>
           <label className="block text-xs font-semibold">
             Kuantitas Transfer
             <input
@@ -739,16 +795,30 @@ export function UniversalInventoryV2Workspace({
         </form>
 
         <div className="lg:col-span-8 rounded-2xl border border-[#E2E8F0] bg-white p-4 space-y-4">
-          <h3 className="text-sm font-bold text-[#0F172A]">
-            Daftar Transfer Antar-Gudang & Konservasi Stok Transit
-          </h3>
-          {transfers.length === 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-bold text-[#0F172A]">
+              Daftar Transfer Antar-Gudang &amp; Konservasi Stok Transit
+            </h3>
+            <TableSearchBar
+              query={transfersTable.query}
+              onQueryChange={transfersTable.setQuery}
+              onSearchSubmit={transfersTable.applySearch}
+              onReset={transfersTable.resetSearch}
+              placeholder="Cari nomor transfer, lokasi, status..."
+              totalItems={transfers.length}
+              filteredCount={transfersTable.totalItems}
+            />
+          </div>
+          {transfersTable.paginatedItems.length === 0 ? (
             <div className="py-10 text-center text-xs text-[#64748B]">
-              Belum ada dokumen transfer antar-gudang.
+              {transfers.length
+                ? "Tidak ada transfer yang cocok dengan pencarian."
+                : "Belum ada dokumen transfer antar-gudang."}
             </div>
           ) : (
+            <>
             <div className="space-y-3">
-              {transfers.map((trf: any) => (
+              {transfersTable.paginatedItems.map((trf: any) => (
                 <div key={trf.id} className="rounded-xl border border-[#E2E8F0] p-4 space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
@@ -865,6 +935,15 @@ export function UniversalInventoryV2Workspace({
                 </div>
               ))}
             </div>
+            <TablePagination
+              page={transfersTable.page}
+              totalPages={transfersTable.totalPages}
+              pageSize={transfersTable.pageSize}
+              totalItems={transfersTable.totalItems}
+              onPageChange={transfersTable.setPage}
+              onPageSizeChange={transfersTable.setPageSize}
+            />
+            </>
           )}
         </div>
       </div>
@@ -884,42 +963,38 @@ export function UniversalInventoryV2Workspace({
           <p className="text-xs text-[#64748B]">
             Tahap 1 (`Reserve`) mengunci `Available(K)`. Tahap 2 (`Allocate`) memindahkan `Reserved` ke `Allocated` secara eksklusif tanpa memotong `Available(K)` dua kali.
           </p>
-          <label className="block text-xs font-semibold">
-            Produk
-            <select
+          <div className="block text-xs font-semibold">
+            <span className="mb-1 block">Produk</span>
+            <SearchableSelect
               value={resvForm.product_id}
-              onChange={(e) => setResvForm((p) => ({ ...p, product_id: e.target.value }))}
-              className="input mt-1 w-full text-xs"
-              required
-            >
-              <option value="">-- Pilih Produk --</option>
-              {products.map((p: any) => (
-                <option key={p.id} value={p.id}>
-                  {p.product_code} · {p.product_name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-xs font-semibold">
-            Lokasi Gudang
-            <select
+              onChange={(val) => setResvForm((p) => ({ ...p, product_id: val }))}
+              placeholder="-- Pilih Produk --"
+              searchPlaceholder="Cari kode atau nama produk..."
+              options={products.map((p: any) => ({
+                value: String(p.id),
+                label: `${p.product_code} · ${p.product_name}`,
+                sublabel: p.product_type,
+              }))}
+            />
+          </div>
+          <div className="block text-xs font-semibold">
+            <span className="mb-1 block">Lokasi Gudang</span>
+            <SearchableSelect
               value={resvForm.warehouse_location_id}
-              onChange={(e) =>
-                setResvForm((p) => ({ ...p, warehouse_location_id: e.target.value }))
+              onChange={(val) =>
+                setResvForm((p) => ({ ...p, warehouse_location_id: val }))
               }
-              className="input mt-1 w-full text-xs"
-              required
-            >
-              <option value="">-- Pilih Lokasi --</option>
-              {locations
+              placeholder="-- Pilih Lokasi --"
+              searchPlaceholder="Cari kode atau nama lokasi..."
+              options={locations
                 .filter((l: any) => !l.is_virtual)
-                .map((l: any) => (
-                  <option key={l.id} value={l.id}>
-                    {l.location_code} · {l.location_name}
-                  </option>
-                ))}
-            </select>
-          </label>
+                .map((l: any) => ({
+                  value: String(l.id),
+                  label: `${l.location_code} · ${l.location_name}`,
+                  sublabel: l.location_type,
+                }))}
+            />
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <label className="text-xs font-semibold">
               Kuantitas
@@ -956,14 +1031,28 @@ export function UniversalInventoryV2Workspace({
         </form>
 
         <div className="lg:col-span-8 rounded-2xl border border-[#E2E8F0] bg-white p-4">
-          <h3 className="mb-3 text-sm font-bold text-[#0F172A]">
-            Daftar Reservasi & Alokasi Aktif (`inv_stock_reservation`)
-          </h3>
-          {reservations.length === 0 ? (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-bold text-[#0F172A]">
+              Daftar Reservasi &amp; Alokasi Aktif (`inv_stock_reservation`)
+            </h3>
+            <TableSearchBar
+              query={reservationsTable.query}
+              onQueryChange={reservationsTable.setQuery}
+              onSearchSubmit={reservationsTable.applySearch}
+              onReset={reservationsTable.resetSearch}
+              placeholder="Cari produk, sumber, atau status..."
+              totalItems={reservations.length}
+              filteredCount={reservationsTable.totalItems}
+            />
+          </div>
+          {reservationsTable.paginatedItems.length === 0 ? (
             <div className="py-10 text-center text-xs text-[#64748B]">
-              Belum ada reservasi stok.
+              {reservations.length
+                ? "Tidak ada reservasi yang cocok dengan pencarian."
+                : "Belum ada reservasi stok."}
             </div>
           ) : (
+            <>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
@@ -978,7 +1067,7 @@ export function UniversalInventoryV2Workspace({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#F1F5F9]">
-                  {reservations.map((r: any) => {
+                  {reservationsTable.paginatedItems.map((r: any) => {
                     const prod = products.find((p: any) => p.id === r.product_id);
                     return (
                       <tr key={r.id}>
@@ -1035,6 +1124,15 @@ export function UniversalInventoryV2Workspace({
                 </tbody>
               </table>
             </div>
+            <TablePagination
+              page={reservationsTable.page}
+              totalPages={reservationsTable.totalPages}
+              pageSize={reservationsTable.pageSize}
+              totalItems={reservationsTable.totalItems}
+              onPageChange={reservationsTable.setPage}
+              onPageSizeChange={reservationsTable.setPageSize}
+            />
+            </>
           )}
         </div>
       </div>
@@ -1057,22 +1155,20 @@ export function UniversalInventoryV2Workspace({
             Konversi barang inventori bernilai tinggi / berseri menjadi Aset Tetap (`asset_asset`) secara idempoten tanpa duplikasi.
           </p>
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-xs font-semibold">
-              Produk Sumber
-              <select
+            <div className="text-xs font-semibold">
+              <span className="mb-1 block">Produk Sumber</span>
+              <SearchableSelect
                 value={capForm.product_id}
-                onChange={(e) => setCapForm((p) => ({ ...p, product_id: e.target.value }))}
-                className="input mt-1 w-full text-xs"
-                required
-              >
-                <option value="">-- Pilih Produk --</option>
-                {products.map((p: any) => (
-                  <option key={p.id} value={p.id}>
-                    {p.product_code} · {p.product_name}
-                  </option>
-                ))}
-              </select>
-            </label>
+                onChange={(val) => setCapForm((p) => ({ ...p, product_id: val }))}
+                placeholder="-- Pilih Produk --"
+                searchPlaceholder="Cari kode atau nama produk..."
+                options={products.map((p: any) => ({
+                  value: String(p.id),
+                  label: `${p.product_code} · ${p.product_name}`,
+                  sublabel: p.product_type,
+                }))}
+              />
+            </div>
             <label className="text-xs font-semibold">
               Nomor Seri Aset
               <input
@@ -1120,22 +1216,20 @@ export function UniversalInventoryV2Workspace({
             Catat penugasan aset ke pemegang (Custodian), pemindahan lokasi, atau pengembalian ke gudang.
           </p>
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-xs font-semibold">
-              Pilih Aset
-              <select
+            <div className="text-xs font-semibold">
+              <span className="mb-1 block">Pilih Aset</span>
+              <SearchableSelect
                 value={custodianForm.asset_id}
-                onChange={(e) => setCustodianForm((p) => ({ ...p, asset_id: e.target.value }))}
-                className="input mt-1 w-full text-xs"
-                required
-              >
-                <option value="">-- Pilih Aset --</option>
-                {assets.map((a: any) => (
-                  <option key={a.id} value={a.id}>
-                    {a.asset_code} · {a.asset_name} ({a.status})
-                  </option>
-                ))}
-              </select>
-            </label>
+                onChange={(val) => setCustodianForm((p) => ({ ...p, asset_id: val }))}
+                placeholder="-- Pilih Aset --"
+                searchPlaceholder="Cari kode, nama, atau serial aset..."
+                options={assets.map((a: any) => ({
+                  value: String(a.id),
+                  label: `${a.asset_code} · ${a.asset_name} (${a.status})`,
+                  sublabel: a.serial_number ? `SN: ${a.serial_number}` : undefined,
+                }))}
+              />
+            </div>
             <label className="text-xs font-semibold">
               Jenis Transaksi Custodian
               <select
@@ -1151,21 +1245,21 @@ export function UniversalInventoryV2Workspace({
                 <option value="MAINTENANCE_SEND">MAINTENANCE_SEND (Servis/Perbaikan)</option>
               </select>
             </label>
-            <label className="text-xs font-semibold">
-              Lokasi Penempatan
-              <select
+            <div className="text-xs font-semibold">
+              <span className="mb-1 block">Lokasi Penempatan</span>
+              <SearchableSelect
                 value={custodianForm.location_id}
-                onChange={(e) => setCustodianForm((p) => ({ ...p, location_id: e.target.value }))}
-                className="input mt-1 w-full text-xs"
-              >
-                <option value="">-- Pilih Lokasi --</option>
-                {locations.map((l: any) => (
-                  <option key={l.id} value={l.id}>
-                    {l.location_code} · {l.location_name}
-                  </option>
-                ))}
-              </select>
-            </label>
+                onChange={(val) => setCustodianForm((p) => ({ ...p, location_id: val }))}
+                placeholder="-- Pilih Lokasi --"
+                emptyOptionLabel="Tanpa lokasi"
+                searchPlaceholder="Cari kode atau nama lokasi..."
+                options={locations.map((l: any) => ({
+                  value: String(l.id),
+                  label: `${l.location_code} · ${l.location_name}`,
+                  sublabel: l.location_type,
+                }))}
+              />
+            </div>
             <label className="text-xs font-semibold">
               Catatan Serah-Terima
               <input
@@ -1185,14 +1279,28 @@ export function UniversalInventoryV2Workspace({
 
       {/* Register Aset Tetap */}
       <div className="rounded-2xl border border-[#E2E8F0] bg-white p-4">
-        <h3 className="mb-3 text-sm font-bold text-[#0F172A]">
-          Daftar Aset Tetap & Riwayat Serah-Terima (`asset_asset`)
-        </h3>
-        {assets.length === 0 ? (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-bold text-[#0F172A]">
+            Daftar Aset Tetap &amp; Riwayat Serah-Terima (`asset_asset`)
+          </h3>
+          <TableSearchBar
+            query={assetsTable.query}
+            onQueryChange={assetsTable.setQuery}
+            onSearchSubmit={assetsTable.applySearch}
+            onReset={assetsTable.resetSearch}
+            placeholder="Cari kode aset, nama, atau serial..."
+            totalItems={assets.length}
+            filteredCount={assetsTable.totalItems}
+          />
+        </div>
+        {assetsTable.paginatedItems.length === 0 ? (
           <div className="py-8 text-center text-xs text-[#64748B]">
-            Belum ada aset tetap yang dikapitalisasi.
+            {assets.length
+              ? "Tidak ada aset yang cocok dengan pencarian."
+              : "Belum ada aset tetap yang dikapitalisasi."}
           </div>
         ) : (
+          <>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
@@ -1205,7 +1313,7 @@ export function UniversalInventoryV2Workspace({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F1F5F9]">
-                {assets.map((a: any) => (
+                {assetsTable.paginatedItems.map((a: any) => (
                   <tr key={a.id}>
                     <td className="py-2.5 pr-2 font-mono font-bold text-[#163D64]">
                       {a.asset_code}
@@ -1228,6 +1336,15 @@ export function UniversalInventoryV2Workspace({
               </tbody>
             </table>
           </div>
+          <TablePagination
+            page={assetsTable.page}
+            totalPages={assetsTable.totalPages}
+            pageSize={assetsTable.pageSize}
+            totalItems={assetsTable.totalItems}
+            onPageChange={assetsTable.setPage}
+            onPageSizeChange={assetsTable.setPageSize}
+          />
+          </>
         )}
       </div>
     </div>

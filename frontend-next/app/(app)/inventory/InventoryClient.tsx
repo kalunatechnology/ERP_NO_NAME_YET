@@ -2,12 +2,14 @@
 
 import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
-import { Archive, Barcode, Download, FileAudio, FileImage, FileSpreadsheet, FileText, FileVideo, FolderOpen, LoaderCircle, Package, Plus, RefreshCw, Save, Search, Upload, Warehouse as WarehouseIcon } from "lucide-react";
+import { Archive, Barcode, Download, FileAudio, FileImage, FileSpreadsheet, FileText, FileVideo, FolderOpen, LoaderCircle, Package, Plus, RefreshCw, Save, Upload, Warehouse as WarehouseIcon } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { canAccessRoute } from "@/lib/access/module-contract";
 import { AccessDeniedState } from "@/components/ui/AccessDeniedState";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
+import { TablePagination, TableSearchBar, useTablePagination } from "@/components/ui/TablePagination";
 import { UniversalInventoryV2Workspace } from "@/components/inventory/UniversalInventoryV2Workspace";
 import {
   createSerialNumber,
@@ -100,7 +102,6 @@ export default function InventoryClient() {
   const [warehouseLocations, setWarehouseLocations] = useState<InventoryWarehouseLocation[]>([]);
   const [serials, setSerials] = useState<any[]>([]);
   const [documents, setDocuments] = useState<InventoryDocument[]>([]);
-  const [search, setSearch] = useState("");
   const [productForm, setProductForm] = useState<ProductForm>(blankProduct);
   const [categoryForm, setCategoryForm] = useState({ category_code: "", category_name: "", serial_controlled: false });
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
@@ -124,12 +125,63 @@ export default function InventoryClient() {
 
   useEffect(() => { if (isAllowed) void reload(); }, [isAllowed, reload]);
 
-  const visibleProducts = useMemo(() => products.filter((row) => `${row.product_code} ${row.product_name}`.toLowerCase().includes(search.toLowerCase())), [products, search]);
-  const visibleSerials = useMemo(() => serials.filter((row) => {
-    const product = products.find((item) => String(item.id) === String(row.product_id));
-    return `${row.serial_number} ${product?.product_code || ""} ${product?.product_name || ""}`.toLowerCase().includes(search.toLowerCase());
-  }), [serials, products, search]);
-  const visibleDocuments = useMemo(() => documents.filter((row) => `${row.title} ${row.category} ${row.file_name}`.toLowerCase().includes(search.toLowerCase())), [documents, search]);
+  const isVirtualLoc = useCallback(
+    (loc: any) =>
+      Boolean(loc.is_virtual) ||
+      String(loc.location_type || "").toUpperCase().startsWith("VIRTUAL") ||
+      String(loc.location_purpose || "").toUpperCase() === "VIRTUAL",
+    []
+  );
+  const physicalLocations = useMemo(() => warehouseLocations.filter((loc) => !isVirtualLoc(loc)), [warehouseLocations, isVirtualLoc]);
+  const virtualLocations = useMemo(() => warehouseLocations.filter((loc) => isVirtualLoc(loc)), [warehouseLocations, isVirtualLoc]);
+
+  const warehousesTable = useTablePagination(
+    warehouses,
+    useCallback((row, q) => `${row.warehouse_code} ${row.warehouse_name} ${row.warehouse_type} ${row.status}`.toLowerCase().includes(q), [])
+  );
+  const physicalLocationsTable = useTablePagination(
+    physicalLocations,
+    useCallback(
+      (row, q) => {
+        const wh = warehouses.find((item) => item.id === row.warehouse_id);
+        return `${wh?.warehouse_code || ""} ${wh?.warehouse_name || ""} ${row.location_code} ${row.location_name} ${row.location_type}`.toLowerCase().includes(q);
+      },
+      [warehouses]
+    )
+  );
+  const virtualLocationsTable = useTablePagination(
+    virtualLocations,
+    useCallback((row, q) => `${row.location_code} ${row.location_name} ${row.location_type}`.toLowerCase().includes(q), [])
+  );
+  const categoriesTable = useTablePagination(
+    categories,
+    useCallback((row, q) => `${row.category_code} ${row.category_name} ${row.status}`.toLowerCase().includes(q), [])
+  );
+  const productsTable = useTablePagination(
+    products,
+    useCallback(
+      (row, q) => {
+        const cat = categories.find((c) => c.id === row.category_id);
+        return `${row.product_code} ${row.product_name} ${cat?.category_name || ""} ${row.product_type} ${row.status}`.toLowerCase().includes(q);
+      },
+      [categories]
+    )
+  );
+  const serialsTable = useTablePagination(
+    serials,
+    useCallback(
+      (row, q) => {
+        const product = products.find((item) => String(item.id) === String(row.product_id));
+        const loc = warehouseLocations.find((item) => item.id === row.current_location_id);
+        return `${row.serial_number} ${product?.product_code || ""} ${product?.product_name || ""} ${loc?.location_code || ""} ${loc?.location_name || ""} ${row.status}`.toLowerCase().includes(q);
+      },
+      [products, warehouseLocations]
+    )
+  );
+  const documentsTable = useTablePagination(
+    documents,
+    useCallback((row, q) => `${row.title} ${row.category} ${row.file_name} ${row.description || ""}`.toLowerCase().includes(q), [])
+  );
 
   if (authLoading) return <div className="p-8 text-sm text-text-secondary">Memeriksa akses…</div>;
   if (!isAllowed) return <AccessDeniedState title="Akses Inventory dibutuhkan" description="Aktifkan modul Inventory & Stock untuk mengelola produk, nomor seri, dan dokumen internal." section="INVENTORY" />;
@@ -307,7 +359,7 @@ export default function InventoryClient() {
       </div>
 
       <div className="flex flex-wrap gap-2 border-b border-[#DCE3EB]">
-        {tabs.map(({ id, label, icon: Icon }) => <button key={id} onClick={() => { setTab(id); setSearch(""); }} className={`inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-semibold ${tab === id ? "border-blue-700 text-blue-800" : "border-transparent text-text-secondary hover:text-text-primary"}`}><Icon size={15} />{label}</button>)}
+        {tabs.map(({ id, label, icon: Icon }) => <button key={id} onClick={() => setTab(id)} className={`inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-semibold ${tab === id ? "border-blue-700 text-blue-800" : "border-transparent text-text-secondary hover:text-text-primary"}`}><Icon size={15} />{label}</button>)}
       </div>
 
       {(tab === "overview" || tab === "transfers" || tab === "reservations" || tab === "assets") && (
@@ -315,12 +367,6 @@ export default function InventoryClient() {
       )}
 
       {tab === "warehouse" && (() => {
-        const isVirtualLoc = (loc: any) =>
-          Boolean(loc.is_virtual) ||
-          String(loc.location_type || "").toUpperCase().startsWith("VIRTUAL") ||
-          String(loc.location_purpose || "").toUpperCase() === "VIRTUAL";
-        const physicalLocations = warehouseLocations.filter((loc) => !isVirtualLoc(loc));
-        const virtualLocations = warehouseLocations.filter((loc) => isVirtualLoc(loc));
         const subTabs = [
           { id: "warehouses" as const, label: `Data Gudang (${warehouses.length})` },
           { id: "locations" as const, label: `Lokasi & Rak Fisik (${physicalLocations.length})` },
@@ -351,59 +397,135 @@ export default function InventoryClient() {
 
             {warehouseSubTab === "warehouses" && (
               <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
-                <div className="mb-3"><h2 className="text-sm font-bold">Data gudang</h2><p className="mt-1 text-xs text-text-secondary">Buat dan kelola gudang perusahaan. Lokasi rak, produk, dan nomor seri dipisahkan pada sub-tab masing-masing.</p></div>
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                  <div><h2 className="text-sm font-bold">Data gudang</h2><p className="mt-1 text-xs text-text-secondary">Buat dan kelola gudang perusahaan. Lokasi rak, produk, dan nomor seri dipisahkan pada sub-tab masing-masing.</p></div>
+                  <TableSearchBar
+                    query={warehousesTable.query}
+                    onQueryChange={warehousesTable.setQuery}
+                    onSearchSubmit={warehousesTable.applySearch}
+                    onReset={warehousesTable.resetSearch}
+                    placeholder="Cari kode atau nama gudang..."
+                    totalItems={warehouses.length}
+                    filteredCount={warehousesTable.totalItems}
+                  />
+                </div>
                 <div className="grid gap-3 sm:grid-cols-[1fr_1.5fr_1fr_auto] sm:items-end">
                   <label className="text-xs font-medium">Kode gudang *<input className="input mt-1 w-full" value={warehouseForm.warehouse_code} onChange={(e) => setWarehouseForm({ ...warehouseForm, warehouse_code: e.target.value })} placeholder="WH-JKT" /></label>
                   <label className="text-xs font-medium">Nama gudang *<input className="input mt-1 w-full" value={warehouseForm.warehouse_name} onChange={(e) => setWarehouseForm({ ...warehouseForm, warehouse_name: e.target.value })} placeholder="Gudang Jakarta" /></label>
                   <label className="text-xs font-medium">Jenis gudang<select className="input mt-1 w-full" value={warehouseForm.warehouse_type} onChange={(e) => setWarehouseForm({ ...warehouseForm, warehouse_type: e.target.value })}><option value="STANDARD">Standar</option><option value="RETAIL">Retail</option><option value="TRANSIT">Transit</option><option value="SERVICE">Service</option></select></label>
                   <button onClick={() => void saveWarehouse()} disabled={busy} className="btn-primary flex items-center justify-center gap-1 text-xs"><Save size={13} />{editingWarehouseId ? "Simpan" : "Tambah gudang"}</button>
                 </div>
-                {warehouses.length > 0 && <div className="mt-4 overflow-auto rounded-lg border border-slate-200"><table className="w-full min-w-[620px] border-collapse text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-text-secondary"><tr>{["Kode Gudang", "Nama Gudang", "Jenis", "Status", "Aksi"].map((label) => <th key={label} className="border-b border-r border-slate-200 px-3 py-2.5 font-semibold last:border-r-0">{label}</th>)}</tr></thead><tbody>{warehouses.map((warehouse, index) => <tr key={warehouse.id} className={cn("transition-colors hover:bg-blue-50/70", index % 2 ? "bg-slate-50/70" : "bg-white")}><td className="border-b border-r border-slate-200 px-3 py-2.5 font-mono font-semibold last:border-r-0">{warehouse.warehouse_code}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 font-medium text-text-primary last:border-r-0">{warehouse.warehouse_name}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 text-text-secondary last:border-r-0">{warehouse.warehouse_type}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 last:border-r-0"><span className="rounded-full bg-blue-50 px-2 py-0.5 text-2xs font-semibold text-blue-700">{warehouse.status}</span></td><td className="border-b border-slate-200 px-3 py-2.5 text-right"><button onClick={() => { setEditingWarehouseId(warehouse.id); setWarehouseForm({ warehouse_code: warehouse.warehouse_code, warehouse_name: warehouse.warehouse_name, warehouse_type: warehouse.warehouse_type, status: warehouse.status }); }} className="font-semibold text-blue-700 hover:underline">Ubah</button></td></tr>)}</tbody></table></div>}
+                {warehousesTable.paginatedItems.length > 0 ? (
+                  <>
+                    <div className="mt-4 overflow-auto rounded-lg border border-slate-200"><table className="w-full min-w-[620px] border-collapse text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-text-secondary"><tr>{["Kode Gudang", "Nama Gudang", "Jenis", "Status", "Aksi"].map((label) => <th key={label} className="border-b border-r border-slate-200 px-3 py-2.5 font-semibold last:border-r-0">{label}</th>)}</tr></thead><tbody>{warehousesTable.paginatedItems.map((warehouse, index) => <tr key={warehouse.id} className={cn("transition-colors hover:bg-blue-50/70", index % 2 ? "bg-slate-50/70" : "bg-white")}><td className="border-b border-r border-slate-200 px-3 py-2.5 font-mono font-semibold last:border-r-0">{warehouse.warehouse_code}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 font-medium text-text-primary last:border-r-0">{warehouse.warehouse_name}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 text-text-secondary last:border-r-0">{warehouse.warehouse_type}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 last:border-r-0"><span className="rounded-full bg-blue-50 px-2 py-0.5 text-2xs font-semibold text-blue-700">{warehouse.status}</span></td><td className="border-b border-slate-200 px-3 py-2.5 text-right"><button onClick={() => { setEditingWarehouseId(warehouse.id); setWarehouseForm({ warehouse_code: warehouse.warehouse_code, warehouse_name: warehouse.warehouse_name, warehouse_type: warehouse.warehouse_type, status: warehouse.status }); }} className="font-semibold text-blue-700 hover:underline">Ubah</button></td></tr>)}</tbody></table></div>
+                    <TablePagination page={warehousesTable.page} totalPages={warehousesTable.totalPages} pageSize={warehousesTable.pageSize} totalItems={warehousesTable.totalItems} onPageChange={warehousesTable.setPage} onPageSizeChange={warehousesTable.setPageSize} />
+                  </>
+                ) : (
+                  <Empty>{warehouses.length ? "Tidak ada gudang yang cocok dengan pencarian." : "Belum ada data gudang."}</Empty>
+                )}
               </section>
             )}
 
             {warehouseSubTab === "locations" && (
               <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
-                <div className="mb-3"><h2 className="text-sm font-bold">Lokasi / rak gudang fisik</h2><p className="mt-1 text-xs text-text-secondary">Atur area atau bin fisik untuk penempatan barang di dalam gudang (lokasi virtual dipisahkan di sub-tab Lokasi Virtual).</p></div>
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                  <div><h2 className="text-sm font-bold">Lokasi / rak gudang fisik</h2><p className="mt-1 text-xs text-text-secondary">Atur area atau bin fisik untuk penempatan barang di dalam gudang (lokasi virtual dipisahkan di sub-tab Lokasi Virtual).</p></div>
+                  <TableSearchBar
+                    query={physicalLocationsTable.query}
+                    onQueryChange={physicalLocationsTable.setQuery}
+                    onSearchSubmit={physicalLocationsTable.applySearch}
+                    onReset={physicalLocationsTable.resetSearch}
+                    placeholder="Cari gudang, kode, atau nama rak..."
+                    totalItems={physicalLocations.length}
+                    filteredCount={physicalLocationsTable.totalItems}
+                  />
+                </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1fr_1fr_auto] lg:items-end">
-                  <label className="text-xs font-medium">Gudang *<select className="input mt-1 w-full" value={locationForm.warehouse_id} onChange={(e) => setLocationForm({ ...locationForm, warehouse_id: e.target.value })}><option value="">Pilih gudang</option>{warehouses.filter((warehouse) => warehouse.status === "ACTIVE").map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.warehouse_code} · {warehouse.warehouse_name}</option>)}</select></label>
+                  <div className="text-xs font-medium">
+                    <span className="mb-1 block">Gudang *</span>
+                    <SearchableSelect
+                      value={locationForm.warehouse_id}
+                      onChange={(val) => setLocationForm({ ...locationForm, warehouse_id: val })}
+                      placeholder="Pilih gudang..."
+                      searchPlaceholder="Cari kode atau nama gudang..."
+                      options={warehouses.filter((warehouse) => warehouse.status === "ACTIVE").map((warehouse) => ({
+                        value: warehouse.id,
+                        label: `${warehouse.warehouse_code} · ${warehouse.warehouse_name}`,
+                        sublabel: warehouse.warehouse_type,
+                      }))}
+                    />
+                  </div>
                   <label className="text-xs font-medium">Kode lokasi *<input className="input mt-1 w-full" value={locationForm.location_code} onChange={(e) => setLocationForm({ ...locationForm, location_code: e.target.value })} placeholder="A-01-01" /></label>
                   <label className="text-xs font-medium">Nama lokasi *<input className="input mt-1 w-full" value={locationForm.location_name} onChange={(e) => setLocationForm({ ...locationForm, location_name: e.target.value })} placeholder="Rak A, tingkat 1" /></label>
                   <label className="text-xs font-medium">Jenis<select className="input mt-1 w-full" value={locationForm.location_type} onChange={(e) => setLocationForm({ ...locationForm, location_type: e.target.value })}><option value="BIN">Rak / Bin</option><option value="RECEIVING">Penerimaan</option><option value="SHIPPING">Pengiriman</option><option value="STAGING">Transit</option></select></label>
                   <button onClick={() => void saveWarehouseLocation()} disabled={busy || !warehouses.length} className="btn-primary flex items-center justify-center gap-1 text-xs"><Plus size={13} />Tambah lokasi</button>
                 </div>
-                {physicalLocations.length > 0 ? (
-                  <div className="mt-4 overflow-auto rounded-lg border border-slate-200"><table className="w-full min-w-[700px] border-collapse text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-text-secondary"><tr>{["Gudang", "Kode Lokasi", "Nama Lokasi", "Jenis", "Kontrol"].map((label) => <th key={label} className="border-b border-r border-slate-200 px-3 py-2.5 font-semibold last:border-r-0">{label}</th>)}</tr></thead><tbody>{physicalLocations.map((location, index) => { const warehouse = warehouses.find((item) => item.id === location.warehouse_id); return <tr key={location.id} className={cn("transition-colors hover:bg-blue-50/70", index % 2 ? "bg-slate-50/70" : "bg-white")}><td className="border-b border-r border-slate-200 px-3 py-2.5 font-medium text-text-primary last:border-r-0">{warehouse?.warehouse_name || "Gudang"}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 font-mono font-semibold last:border-r-0">{location.location_code}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 last:border-r-0">{location.location_name}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 text-text-secondary last:border-r-0">{location.location_type}</td><td className="border-b border-slate-200 px-3 py-2.5">{location.quality_hold ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-2xs font-semibold text-amber-800">Quality hold</span> : <span className="text-text-secondary">—</span>}</td></tr>; })}</tbody></table></div>
+                {physicalLocationsTable.paginatedItems.length > 0 ? (
+                  <>
+                    <div className="mt-4 overflow-auto rounded-lg border border-slate-200"><table className="w-full min-w-[700px] border-collapse text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-text-secondary"><tr>{["Gudang", "Kode Lokasi", "Nama Lokasi", "Jenis", "Kontrol"].map((label) => <th key={label} className="border-b border-r border-slate-200 px-3 py-2.5 font-semibold last:border-r-0">{label}</th>)}</tr></thead><tbody>{physicalLocationsTable.paginatedItems.map((location, index) => { const warehouse = warehouses.find((item) => item.id === location.warehouse_id); return <tr key={location.id} className={cn("transition-colors hover:bg-blue-50/70", index % 2 ? "bg-slate-50/70" : "bg-white")}><td className="border-b border-r border-slate-200 px-3 py-2.5 font-medium text-text-primary last:border-r-0">{warehouse?.warehouse_name || "Gudang"}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 font-mono font-semibold last:border-r-0">{location.location_code}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 last:border-r-0">{location.location_name}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 text-text-secondary last:border-r-0">{location.location_type}</td><td className="border-b border-slate-200 px-3 py-2.5">{location.quality_hold ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-2xs font-semibold text-amber-800">Quality hold</span> : <span className="text-text-secondary">—</span>}</td></tr>; })}</tbody></table></div>
+                    <TablePagination page={physicalLocationsTable.page} totalPages={physicalLocationsTable.totalPages} pageSize={physicalLocationsTable.pageSize} totalItems={physicalLocationsTable.totalItems} onPageChange={physicalLocationsTable.setPage} onPageSizeChange={physicalLocationsTable.setPageSize} />
+                  </>
                 ) : (
-                  <Empty>Belum ada lokasi rak fisik.</Empty>
+                  <Empty>{physicalLocations.length ? "Tidak ada lokasi rak yang cocok dengan pencarian." : "Belum ada lokasi rak fisik."}</Empty>
                 )}
               </section>
             )}
 
             {warehouseSubTab === "virtual" && (
               <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
-                <div className="mb-3"><h2 className="text-sm font-bold">Lokasi virtual counterpart &amp; transit</h2><p className="mt-1 text-xs text-text-secondary">Lokasi virtual sistem (VIRT-VENDOR, VIRT-CUSTOMER, VIRT-INVENTORY_LOSS, VIRTUAL_TRANSIT) untuk pencatatan double-entry ledger dan transfer antar gudang.</p></div>
-                {virtualLocations.length > 0 ? (
-                  <div className="overflow-auto rounded-lg border border-slate-200"><table className="w-full min-w-[620px] border-collapse text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-text-secondary"><tr>{["Kode Lokasi", "Nama Lokasi Virtual", "Jenis", "Status"].map((label) => <th key={label} className="border-b border-r border-slate-200 px-3 py-2.5 font-semibold last:border-r-0">{label}</th>)}</tr></thead><tbody>{virtualLocations.map((location, index) => <tr key={location.id} className={cn("transition-colors hover:bg-blue-50/70", index % 2 ? "bg-slate-50/70" : "bg-white")}><td className="border-b border-r border-slate-200 px-3 py-2.5 font-mono font-semibold text-[#0876CD] last:border-r-0">{location.location_code}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 last:border-r-0">{location.location_name}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 text-text-secondary last:border-r-0">{location.location_type}</td><td className="border-b border-slate-200 px-3 py-2.5"><span className="rounded-full bg-indigo-50 px-2 py-0.5 text-2xs font-semibold text-indigo-700">{location.active ? "ACTIVE" : "INACTIVE"}</span></td></tr>)}</tbody></table></div>
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                  <div><h2 className="text-sm font-bold">Lokasi virtual counterpart &amp; transit</h2><p className="mt-1 text-xs text-text-secondary">Lokasi virtual sistem (VIRT-VENDOR, VIRT-CUSTOMER, VIRT-INVENTORY_LOSS, VIRTUAL_TRANSIT) untuk pencatatan double-entry ledger dan transfer antar gudang.</p></div>
+                  <TableSearchBar
+                    query={virtualLocationsTable.query}
+                    onQueryChange={virtualLocationsTable.setQuery}
+                    onSearchSubmit={virtualLocationsTable.applySearch}
+                    onReset={virtualLocationsTable.resetSearch}
+                    placeholder="Cari lokasi virtual..."
+                    totalItems={virtualLocations.length}
+                    filteredCount={virtualLocationsTable.totalItems}
+                  />
+                </div>
+                {virtualLocationsTable.paginatedItems.length > 0 ? (
+                  <>
+                    <div className="overflow-auto rounded-lg border border-slate-200"><table className="w-full min-w-[620px] border-collapse text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-text-secondary"><tr>{["Kode Lokasi", "Nama Lokasi Virtual", "Jenis", "Status"].map((label) => <th key={label} className="border-b border-r border-slate-200 px-3 py-2.5 font-semibold last:border-r-0">{label}</th>)}</tr></thead><tbody>{virtualLocationsTable.paginatedItems.map((location, index) => <tr key={location.id} className={cn("transition-colors hover:bg-blue-50/70", index % 2 ? "bg-slate-50/70" : "bg-white")}><td className="border-b border-r border-slate-200 px-3 py-2.5 font-mono font-semibold text-[#0876CD] last:border-r-0">{location.location_code}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 last:border-r-0">{location.location_name}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 text-text-secondary last:border-r-0">{location.location_type}</td><td className="border-b border-slate-200 px-3 py-2.5"><span className="rounded-full bg-indigo-50 px-2 py-0.5 text-2xs font-semibold text-indigo-700">{location.active ? "ACTIVE" : "INACTIVE"}</span></td></tr>)}</tbody></table></div>
+                    <TablePagination page={virtualLocationsTable.page} totalPages={virtualLocationsTable.totalPages} pageSize={virtualLocationsTable.pageSize} totalItems={virtualLocationsTable.totalItems} onPageChange={virtualLocationsTable.setPage} onPageSizeChange={virtualLocationsTable.setPageSize} />
+                  </>
                 ) : (
-                  <Empty>Belum ada lokasi virtual yang terbuat.</Empty>
+                  <Empty>{virtualLocations.length ? "Tidak ada lokasi virtual yang cocok." : "Belum ada lokasi virtual yang terbuat."}</Empty>
                 )}
               </section>
             )}
 
             {warehouseSubTab === "categories" && (
               <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
-                <div className="mb-3 flex flex-wrap items-start justify-between gap-2"><div><h2 className="text-sm font-bold">Kategori produk dinamis</h2><p className="mt-1 text-xs text-text-secondary">Gunakan kategori umum atau buat sendiri. Hardware memakai kontrol serial sebagai nilai awal; kategori lain dapat diatur sesuai kebutuhan.</p></div><button onClick={() => void addCommonCategories()} disabled={busy} className="btn-ghost text-xs">Tambah kategori umum</button></div>
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                  <div><h2 className="text-sm font-bold">Kategori produk dinamis</h2><p className="mt-1 text-xs text-text-secondary">Gunakan kategori umum atau buat sendiri. Hardware memakai kontrol serial sebagai nilai awal; kategori lain dapat diatur sesuai kebutuhan.</p></div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <TableSearchBar
+                      query={categoriesTable.query}
+                      onQueryChange={categoriesTable.setQuery}
+                      onSearchSubmit={categoriesTable.applySearch}
+                      onReset={categoriesTable.resetSearch}
+                      placeholder="Cari kode atau nama kategori..."
+                      totalItems={categories.length}
+                      filteredCount={categoriesTable.totalItems}
+                    />
+                    <button onClick={() => void addCommonCategories()} disabled={busy} className="btn-ghost text-xs">Tambah kategori umum</button>
+                  </div>
+                </div>
                 <div className="grid gap-3 sm:grid-cols-[1fr_1.5fr_auto_auto] sm:items-end">
                   <label className="text-xs font-medium">Kode kategori<input className="input mt-1 w-full" maxLength={100} placeholder="HARDWARE" value={categoryForm.category_code} onChange={(e) => setCategoryForm({ ...categoryForm, category_code: e.target.value })} /></label>
                   <label className="text-xs font-medium">Nama kategori<input className="input mt-1 w-full" maxLength={150} placeholder="Hardware" value={categoryForm.category_name} onChange={(e) => setCategoryForm({ ...categoryForm, category_name: e.target.value })} /></label>
                   <label className="inline-flex items-center gap-2 pb-2 text-xs"><input type="checkbox" checked={categoryForm.serial_controlled} onChange={(e) => setCategoryForm({ ...categoryForm, serial_controlled: e.target.checked })} /> Serial aktif secara default</label>
                   <button onClick={() => void saveCategory()} disabled={busy} className="btn-primary flex items-center justify-center gap-1 text-xs"><Plus size={13} /> Tambah kategori</button>
                 </div>
-                {categories.length > 0 ? (
-                  <div className="mt-4 overflow-auto rounded-lg border border-slate-200"><table className="w-full min-w-[620px] border-collapse text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-text-secondary"><tr>{["Kode Kategori", "Nama Kategori", "Serial Default", "Status"].map((label) => <th key={label} className="border-b border-r border-slate-200 px-3 py-2.5 font-semibold last:border-r-0">{label}</th>)}</tr></thead><tbody>{categories.map((category, index) => <tr key={category.id} className={cn("transition-colors hover:bg-blue-50/70", index % 2 ? "bg-slate-50/70" : "bg-white")}><td className="border-b border-r border-slate-200 px-3 py-2.5 font-mono font-semibold last:border-r-0">{category.category_code}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 font-medium text-text-primary last:border-r-0">{category.category_name}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 last:border-r-0">{category.serial_controlled ? "Ya" : "Tidak"}</td><td className="border-b border-slate-200 px-3 py-2.5"><span className={cn("rounded-full px-2 py-0.5 text-2xs font-semibold", category.status === "ACTIVE" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600")}>{category.status}</span></td></tr>)}</tbody></table></div>
+                {categoriesTable.paginatedItems.length > 0 ? (
+                  <>
+                    <div className="mt-4 overflow-auto rounded-lg border border-slate-200"><table className="w-full min-w-[620px] border-collapse text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-text-secondary"><tr>{["Kode Kategori", "Nama Kategori", "Serial Default", "Status"].map((label) => <th key={label} className="border-b border-r border-slate-200 px-3 py-2.5 font-semibold last:border-r-0">{label}</th>)}</tr></thead><tbody>{categoriesTable.paginatedItems.map((category, index) => <tr key={category.id} className={cn("transition-colors hover:bg-blue-50/70", index % 2 ? "bg-slate-50/70" : "bg-white")}><td className="border-b border-r border-slate-200 px-3 py-2.5 font-mono font-semibold last:border-r-0">{category.category_code}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 font-medium text-text-primary last:border-r-0">{category.category_name}</td><td className="border-b border-r border-slate-200 px-3 py-2.5 last:border-r-0">{category.serial_controlled ? "Ya" : "Tidak"}</td><td className="border-b border-slate-200 px-3 py-2.5"><span className={cn("rounded-full px-2 py-0.5 text-2xs font-semibold", category.status === "ACTIVE" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600")}>{category.status}</span></td></tr>)}</tbody></table></div>
+                    <TablePagination page={categoriesTable.page} totalPages={categoriesTable.totalPages} pageSize={categoriesTable.pageSize} totalItems={categoriesTable.totalItems} onPageChange={categoriesTable.setPage} onPageSizeChange={categoriesTable.setPageSize} />
+                  </>
                 ) : (
-                  <Empty>Belum ada kategori produk.</Empty>
+                  <Empty>{categories.length ? "Tidak ada kategori yang cocok dengan pencarian." : "Belum ada kategori produk."}</Empty>
                 )}
               </section>
             )}
@@ -415,7 +537,21 @@ export default function InventoryClient() {
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     <label className="text-xs font-medium">Kode produk *<input className="input mt-1 w-full" value={productForm.product_code} onChange={(e) => setProductForm({ ...productForm, product_code: e.target.value })} /></label>
                     <label className="text-xs font-medium">Nama produk *<input className="input mt-1 w-full" value={productForm.product_name} onChange={(e) => setProductForm({ ...productForm, product_name: e.target.value })} /></label>
-                    <label className="text-xs font-medium">Kategori<select className="input mt-1 w-full" value={productForm.category_id} onChange={(e) => selectProductCategory(e.target.value)}><option value="">Tanpa kategori</option>{categories.filter((category) => category.status === "ACTIVE").map((category) => <option key={category.id} value={category.id}>{category.category_name} ({category.category_code})</option>)}</select></label>
+                    <div className="text-xs font-medium">
+                      <span className="mb-1 block">Kategori</span>
+                      <SearchableSelect
+                        value={productForm.category_id}
+                        onChange={(val) => selectProductCategory(val)}
+                        placeholder="Tanpa kategori"
+                        emptyOptionLabel="Tanpa kategori"
+                        searchPlaceholder="Cari kategori..."
+                        options={categories.filter((category) => category.status === "ACTIVE").map((category) => ({
+                          value: category.id,
+                          label: `${category.category_name} (${category.category_code})`,
+                          sublabel: category.serial_controlled ? "Serial default aktif" : undefined,
+                        }))}
+                      />
+                    </div>
                     <label className="text-xs font-medium">Tipe<select className="input mt-1 w-full" value={productForm.product_type} onChange={(e) => setProductForm({ ...productForm, product_type: e.target.value })}><option value="GOODS">Barang</option><option value="SERVICE">Jasa</option><option value="RAW_MATERIAL">Bahan baku</option><option value="FINISHED_GOOD">Barang jadi</option></select></label>
                     <label className="text-xs font-medium">Metode biaya<select className="input mt-1 w-full" value={productForm.costing_method} onChange={(e) => setProductForm({ ...productForm, costing_method: e.target.value })}><option value="FIFO">FIFO</option><option value="WEIGHTED_AVERAGE">Rata-rata tertimbang</option><option value="STANDARD">Biaya standar</option></select></label>
                     <label className="text-xs font-medium">Status<select className="input mt-1 w-full" value={productForm.status} onChange={(e) => setProductForm({ ...productForm, status: e.target.value })}><option value="ACTIVE">Aktif</option><option value="INACTIVE">Nonaktif</option></select></label>
@@ -424,8 +560,24 @@ export default function InventoryClient() {
                   <div className="mt-3 flex gap-2"><button onClick={() => void saveProduct()} disabled={busy} className="btn-primary flex items-center gap-1 text-xs"><Save size={13} />{busy ? "Menyimpan…" : editingProductId ? "Simpan perubahan" : "Tambah produk"}</button>{editingProductId && <button onClick={() => { setEditingProductId(null); setProductForm(blankProduct); }} className="btn-ghost text-xs">Batal ubah</button>}</div>
                 </section>
                 <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-bold">Katalog produk</h2><label className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" /><input className="input pl-8 text-xs" placeholder="Cari kode atau nama" value={search} onChange={(e) => setSearch(e.target.value)} /></label></div>
-                  {loading ? <Loading /> : <div className="overflow-auto rounded-lg border border-slate-200"><table className="w-full min-w-[700px] border-collapse text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-text-secondary"><tr>{["Kode", "Produk", "Kategori", "Tipe", "Kontrol", "Status", "Aksi"].map((label) => <th key={label} className="border-b border-r border-slate-200 p-2.5 font-semibold last:border-r-0">{label}</th>)}</tr></thead><tbody>{visibleProducts.map((product, index) => <tr key={product.id} className={cn("transition-colors hover:bg-blue-50/70", index % 2 ? "bg-slate-50/70" : "bg-white")}><td className="border-b border-r border-slate-200 p-2.5 font-mono last:border-r-0">{product.product_code}</td><td className="border-b border-r border-slate-200 p-2.5 font-semibold last:border-r-0">{product.product_name}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{categories.find((category) => category.id === product.category_id)?.category_name || "—"}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{product.product_type}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{product.serial_controlled ? "Serial" : "—"}{product.lot_controlled ? " · Lot" : ""}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{product.status}</td><td className="border-b border-slate-200 p-2.5"><button onClick={() => startEditProduct(product)} className="font-semibold text-blue-700 hover:underline">Ubah</button></td></tr>)}</tbody></table>{!visibleProducts.length && <Empty>No product ditemukan.</Empty>}</div>}
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="text-sm font-bold">Katalog produk</h2>
+                    <TableSearchBar
+                      query={productsTable.query}
+                      onQueryChange={productsTable.setQuery}
+                      onSearchSubmit={productsTable.applySearch}
+                      onReset={productsTable.resetSearch}
+                      placeholder="Cari kode, nama, atau kategori..."
+                      totalItems={products.length}
+                      filteredCount={productsTable.totalItems}
+                    />
+                  </div>
+                  {loading ? <Loading /> : (
+                    <>
+                      <div className="overflow-auto rounded-lg border border-slate-200"><table className="w-full min-w-[700px] border-collapse text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-text-secondary"><tr>{["Kode", "Produk", "Kategori", "Tipe", "Kontrol", "Status", "Aksi"].map((label) => <th key={label} className="border-b border-r border-slate-200 p-2.5 font-semibold last:border-r-0">{label}</th>)}</tr></thead><tbody>{productsTable.paginatedItems.map((product, index) => <tr key={product.id} className={cn("transition-colors hover:bg-blue-50/70", index % 2 ? "bg-slate-50/70" : "bg-white")}><td className="border-b border-r border-slate-200 p-2.5 font-mono last:border-r-0">{product.product_code}</td><td className="border-b border-r border-slate-200 p-2.5 font-semibold last:border-r-0">{product.product_name}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{categories.find((category) => category.id === product.category_id)?.category_name || "—"}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{product.product_type}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{product.serial_controlled ? "Serial" : "—"}{product.lot_controlled ? " · Lot" : ""}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{product.status}</td><td className="border-b border-slate-200 p-2.5"><button onClick={() => startEditProduct(product)} className="font-semibold text-blue-700 hover:underline">Ubah</button></td></tr>)}</tbody></table>{!productsTable.paginatedItems.length && <Empty>Tidak ada produk ditemukan.</Empty>}</div>
+                      <TablePagination page={productsTable.page} totalPages={productsTable.totalPages} pageSize={productsTable.pageSize} totalItems={productsTable.totalItems} onPageChange={productsTable.setPage} onPageSizeChange={productsTable.setPageSize} />
+                    </>
+                  )}
                 </section>
               </div>
             )}
@@ -435,13 +587,62 @@ export default function InventoryClient() {
                 <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
                   <h2 className="text-sm font-bold">Nomor seri &amp; garansi</h2><p className="mt-1 text-xs leading-5 text-text-secondary">Catat serial untuk produk dengan kontrol serial aktif agar bisa dipakai saat pemeriksaan garansi.</p>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <label className="text-xs font-medium">Produk *<select className="input mt-1 w-full" value={serialForm.product_id} onChange={(e) => setSerialForm({ ...serialForm, product_id: e.target.value })}><option value="">Pilih produk</option>{products.filter((product) => product.serial_controlled).map((product) => <option key={product.id} value={product.id}>{product.product_code} · {product.product_name}</option>)}</select></label>
+                    <div className="text-xs font-medium">
+                      <span className="mb-1 block">Produk *</span>
+                      <SearchableSelect
+                        value={serialForm.product_id}
+                        onChange={(val) => setSerialForm({ ...serialForm, product_id: val })}
+                        placeholder="Pilih produk berserial..."
+                        searchPlaceholder="Cari kode atau nama produk..."
+                        options={products.filter((product) => product.serial_controlled).map((product) => ({
+                          value: String(product.id),
+                          label: `${product.product_code} · ${product.product_name}`,
+                          sublabel: product.product_type,
+                        }))}
+                      />
+                    </div>
                     <label className="text-xs font-medium">Nomor seri *<input className="input mt-1 w-full" value={serialForm.serial_number} onChange={(e) => setSerialForm({ ...serialForm, serial_number: e.target.value })} placeholder="Contoh: SN-2026-0001" /></label>
-                    <label className="text-xs font-medium">Lokasi gudang<select className="input mt-1 w-full" value={serialForm.current_location_id} onChange={(e) => setSerialForm({ ...serialForm, current_location_id: e.target.value })}><option value="">Belum ditempatkan</option>{physicalLocations.filter((location) => location.active).map((location) => { const warehouse = warehouses.find((item) => item.id === location.warehouse_id); return <option key={location.id} value={location.id}>{warehouse?.warehouse_code || "WH"} · {location.location_code} · {location.location_name}</option>; })}</select></label>
+                    <div className="text-xs font-medium">
+                      <span className="mb-1 block">Lokasi gudang</span>
+                      <SearchableSelect
+                        value={serialForm.current_location_id}
+                        onChange={(val) => setSerialForm({ ...serialForm, current_location_id: val })}
+                        placeholder="Belum ditempatkan"
+                        emptyOptionLabel="Belum ditempatkan"
+                        searchPlaceholder="Cari gudang atau kode rak..."
+                        options={physicalLocations.filter((location) => location.active).map((location) => {
+                          const warehouse = warehouses.find((item) => item.id === location.warehouse_id);
+                          return {
+                            value: location.id,
+                            label: `${warehouse?.warehouse_code || "WH"} · ${location.location_code} · ${location.location_name}`,
+                            sublabel: warehouse?.warehouse_name,
+                          };
+                        })}
+                      />
+                    </div>
                     <button onClick={() => void saveSerial()} disabled={busy} className="btn-primary mt-auto flex items-center justify-center gap-1 text-xs"><Plus size={13} /> Simpan serial</button>
                   </div>
                 </section>
-                <section className="rounded-xl border border-[#DCE3EB] bg-white p-4"><div className="mb-3 flex items-center justify-between gap-2"><h2 className="text-sm font-bold">Daftar nomor seri</h2><label className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" /><input className="input pl-8 text-xs" placeholder="Cari serial atau produk" value={search} onChange={(e) => setSearch(e.target.value)} /></label></div>{loading ? <Loading /> : <div className="overflow-auto rounded-lg border border-slate-200"><table className="w-full min-w-[600px] border-collapse text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-text-secondary"><tr>{["Nomor seri", "Produk", "Status", "Lokasi"].map((label) => <th key={label} className="border-b border-r border-slate-200 p-2.5 font-semibold last:border-r-0">{label}</th>)}</tr></thead><tbody>{visibleSerials.map((serial, index) => { const product = products.find((item) => String(item.id) === String(serial.product_id)); const location = warehouseLocations.find((item) => item.id === serial.current_location_id); return <tr key={serial.id} className={cn("transition-colors hover:bg-blue-50/70", index % 2 ? "bg-slate-50/70" : "bg-white")}><td className="border-b border-r border-slate-200 p-2.5 font-mono font-semibold last:border-r-0">{serial.serial_number}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{product?.product_code || "—"} · {product?.product_name || "Produk tidak ditemukan"}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{serial.status}</td><td className="border-b border-slate-200 p-2.5">{location ? `${location.location_code} · ${location.location_name}` : "—"}</td></tr>; })}</tbody></table>{!visibleSerials.length && <Empty>Belum ada nomor seri.</Empty>}</div>}</section>
+                <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="text-sm font-bold">Daftar nomor seri</h2>
+                    <TableSearchBar
+                      query={serialsTable.query}
+                      onQueryChange={serialsTable.setQuery}
+                      onSearchSubmit={serialsTable.applySearch}
+                      onReset={serialsTable.resetSearch}
+                      placeholder="Cari serial, produk, atau lokasi..."
+                      totalItems={serials.length}
+                      filteredCount={serialsTable.totalItems}
+                    />
+                  </div>
+                  {loading ? <Loading /> : (
+                    <>
+                      <div className="overflow-auto rounded-lg border border-slate-200"><table className="w-full min-w-[600px] border-collapse text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-text-secondary"><tr>{["Nomor seri", "Produk", "Status", "Lokasi"].map((label) => <th key={label} className="border-b border-r border-slate-200 p-2.5 font-semibold last:border-r-0">{label}</th>)}</tr></thead><tbody>{serialsTable.paginatedItems.map((serial, index) => { const product = products.find((item) => String(item.id) === String(serial.product_id)); const location = warehouseLocations.find((item) => item.id === serial.current_location_id); return <tr key={serial.id} className={cn("transition-colors hover:bg-blue-50/70", index % 2 ? "bg-slate-50/70" : "bg-white")}><td className="border-b border-r border-slate-200 p-2.5 font-mono font-semibold last:border-r-0">{serial.serial_number}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{product?.product_code || "—"} · {product?.product_name || "Produk tidak ditemukan"}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{serial.status}</td><td className="border-b border-slate-200 p-2.5">{location ? `${location.location_code} · ${location.location_name}` : "—"}</td></tr>; })}</tbody></table>{!serialsTable.paginatedItems.length && <Empty>Belum ada nomor seri.</Empty>}</div>
+                      <TablePagination page={serialsTable.page} totalPages={serialsTable.totalPages} pageSize={serialsTable.pageSize} totalItems={serialsTable.totalItems} onPageChange={serialsTable.setPage} onPageSizeChange={serialsTable.setPageSize} />
+                    </>
+                  )}
+                </section>
               </div>
             )}
           </div>
@@ -453,13 +654,55 @@ export default function InventoryClient() {
           <h2 className="text-sm font-bold">Unggah file internal</h2><p className="mt-1 text-xs leading-5 text-text-secondary">Kelola dokumen, spreadsheet, gambar, video, audio, dan ZIP dalam ruang file per company. Maksimum 7 MB per file.</p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <label className="text-xs font-medium">Judul *<input className="input mt-1 w-full" value={documentForm.title} onChange={(e) => setDocumentForm({ ...documentForm, title: e.target.value })} /></label>
-            <label className="text-xs font-medium">Kategori<select className="input mt-1 w-full" value={documentForm.category} onChange={(e) => setDocumentForm({ ...documentForm, category: e.target.value })}><option value="GENERAL">Umum</option><option value="DOCUMENT">Dokumen</option><option value="PRODUCT_IMPORT">Impor produk</option><option value="PRODUCT_SPEC">Spesifikasi produk</option><option value="POLICY">Kebijakan / SOP</option><option value="CONTRACT">Kontrak / komersial</option><option value="WARRANTY">Garansi / manual</option><option value="IMAGE">Gambar</option><option value="VIDEO">Video</option><option value="AUDIO">Audio</option><option value="OTHER">Lainnya</option></select></label>
+            <div className="text-xs font-medium">
+              <span className="mb-1 block">Kategori</span>
+              <SearchableSelect
+                value={documentForm.category}
+                onChange={(val) => setDocumentForm({ ...documentForm, category: val })}
+                placeholder="Pilih kategori file..."
+                searchPlaceholder="Cari kategori..."
+                options={[
+                  { value: "GENERAL", label: "Umum" },
+                  { value: "DOCUMENT", label: "Dokumen" },
+                  { value: "PRODUCT_IMPORT", label: "Impor produk" },
+                  { value: "PRODUCT_SPEC", label: "Spesifikasi produk" },
+                  { value: "POLICY", label: "Kebijakan / SOP" },
+                  { value: "CONTRACT", label: "Kontrak / komersial" },
+                  { value: "WARRANTY", label: "Garansi / manual" },
+                  { value: "IMAGE", label: "Gambar" },
+                  { value: "VIDEO", label: "Video" },
+                  { value: "AUDIO", label: "Audio" },
+                  { value: "OTHER", label: "Lainnya" },
+                ]}
+              />
+            </div>
             <label className="text-xs font-medium">Pilih file *<input className="input mt-1 w-full" type="file" accept=".xlsx,.xls,.pdf,.docx,.doc,.csv,.txt,.zip,.jpg,.jpeg,.png,.webp,.gif,.mp4,.webm,.mov,.mp3,.wav,.ogg" onChange={handleDocumentPick} /></label>
             <div className="flex items-end"><button onClick={() => void uploadDocument()} disabled={busy || !documentFile} className="btn-primary flex w-full items-center justify-center gap-1 text-xs"><Upload size={13} /> Unggah ke Data Internal</button></div>
             <label className="text-xs font-medium sm:col-span-2 lg:col-span-4">Keterangan<textarea className="input mt-1 w-full" rows={2} maxLength={2000} value={documentForm.description} onChange={(e) => setDocumentForm({ ...documentForm, description: e.target.value })} /></label>
           </div>
         </section>
-        <section className="rounded-xl border border-[#DCE3EB] bg-white p-4"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-bold">Ruang file internal</h2><label className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" /><input className="input pl-8 text-xs" placeholder="Cari file" value={search} onChange={(e) => setSearch(e.target.value)} /></label></div>{loading ? <Loading /> : visibleDocuments.length ? <div className="divide-y divide-slate-100">{visibleDocuments.map((document) => <DocumentRow key={document.id} document={document} onDownload={() => void downloadInventoryDocument(document.id, document.file_name).catch(() => toast.error("File tidak dapat diunduh."))} />)}</div> : <Empty>Belum ada file yang diunggah.</Empty>}</section>
+        <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-bold">Ruang file internal</h2>
+            <TableSearchBar
+              query={documentsTable.query}
+              onQueryChange={documentsTable.setQuery}
+              onSearchSubmit={documentsTable.applySearch}
+              onReset={documentsTable.resetSearch}
+              placeholder="Cari judul, kategori, atau nama file..."
+              totalItems={documents.length}
+              filteredCount={documentsTable.totalItems}
+            />
+          </div>
+          {loading ? <Loading /> : documentsTable.paginatedItems.length ? (
+            <>
+              <div className="divide-y divide-slate-100">{documentsTable.paginatedItems.map((document) => <DocumentRow key={document.id} document={document} onDownload={() => void downloadInventoryDocument(document.id, document.file_name).catch(() => toast.error("File tidak dapat diunduh."))} />)}</div>
+              <TablePagination page={documentsTable.page} totalPages={documentsTable.totalPages} pageSize={documentsTable.pageSize} totalItems={documentsTable.totalItems} onPageChange={documentsTable.setPage} onPageSizeChange={documentsTable.setPageSize} />
+            </>
+          ) : (
+            <Empty>{documents.length ? "Tidak ada file yang cocok dengan pencarian." : "Belum ada file yang diunggah."}</Empty>
+          )}
+        </section>
       </>}
     </div>
   );
