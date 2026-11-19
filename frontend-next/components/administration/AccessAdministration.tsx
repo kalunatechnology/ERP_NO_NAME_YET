@@ -156,7 +156,7 @@ export function AccessAdministration() {
     module_keys: ["CORE", "REQUESTS"],
   });
   const [savingDeptRole, setSavingDeptRole] = useState(false);
-  const [deptSectionExpanded, setDeptSectionExpanded] = useState(false);
+  const [deptSectionExpanded, setDeptSectionExpanded] = useState(true);
 
   // Super Admin invite user state
   const [superInviteOpen, setSuperInviteOpen] = useState(false);
@@ -1156,176 +1156,143 @@ export function AccessAdministration() {
             </main>
           </div>
 
-          {/* 2. Integrated Departments, Divisions & Cost Centers Collapsible Section */}
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-xs overflow-hidden">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 bg-slate-50/60 p-4 sm:p-5">
+          {/* 2. Tabel Daftar Unit Organisasi, Departemen, Divisi & Cost Center */}
+          <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3.5">
               <button
                 type="button"
                 onClick={() => setDeptSectionExpanded((v) => !v)}
-                className="flex items-center gap-2.5 text-left group"
+                className="flex items-center gap-2 text-left"
               >
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white border border-slate-200 text-[#163D64] shadow-2xs group-hover:border-[#0876CD]">
-                  {deptSectionExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-sm font-bold text-[#163D64]">
-                      Daftar Unit Organisasi, Departemen, Divisi &amp; Cost Center
-                    </h2>
-                    <span className="rounded-full bg-[#E7F2FF] px-2.5 py-0.5 text-[11px] font-bold text-[#163D64]">
-                      {departments.length} Unit
-                    </span>
-                  </div>
-                  <p className="mt-0.5 text-[11px] text-slate-500">
-                    {deptSectionExpanded
-                      ? "Klik untuk melipat panel daftar unit organisasi"
-                      : "Klik untuk membuka & mengelola seluruh unit, delegasi modul, serta Cost Center budgeting"}
-                  </p>
-                </div>
+                {deptSectionExpanded ? <ChevronUp size={16} className="text-slate-600" /> : <ChevronDown size={16} className="text-slate-600" />}
+                <h2 className="text-sm font-bold text-slate-800">
+                  Tabel Unit Organisasi, Departemen &amp; Divisi ({departments.length})
+                </h2>
               </button>
 
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={() => openNewDepartmentModal("DEPARTMENT")}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-[#163D64] px-3.5 text-xs font-semibold text-white shadow-2xs hover:bg-[#1D3A96]"
+                  className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#163D64] px-3 text-xs font-semibold text-white hover:bg-[#1D3A96]"
                 >
-                  + Buat Departemen Baru
+                  + Tambah Departemen
                 </button>
                 <button
                   type="button"
                   onClick={() => openNewDepartmentModal("DIVISION")}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-[#163D64]/30 bg-[#E7F2FF] px-3.5 text-xs font-semibold text-[#163D64] hover:bg-[#D9EEFF]"
+                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                 >
-                  + Buat Divisi Baru
+                  + Tambah Divisi
                 </button>
               </div>
             </div>
 
             {deptSectionExpanded && (
-              <div className="p-4 sm:p-6">
-                <div className="grid gap-4 md:grid-cols-2">
-                  {departments.map((d) => (
-                    <div
-                      key={d.id}
-                      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs flex flex-col justify-between gap-3 hover:border-slate-300 transition"
-                    >
-                      <div>
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span
-                                className={`rounded-full px-2.5 py-0.5 text-[10px] font-extrabold ${
-                                  d.unit_type === "DIVISION"
-                                    ? "bg-purple-100 text-purple-800"
-                                    : "bg-[#E7F2FF] text-[#163D64]"
-                                }`}
-                              >
-                                {d.unit_type === "DIVISION" ? "DIVISI" : "DEPARTEMEN"}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50/70 text-slate-600">
+                      <th className="px-4 py-2.5 font-semibold">Kode</th>
+                      <th className="px-4 py-2.5 font-semibold">Nama Unit</th>
+                      <th className="px-4 py-2.5 font-semibold">Tipe</th>
+                      <th className="px-4 py-2.5 font-semibold">Induk</th>
+                      <th className="px-4 py-2.5 font-semibold">PIC / Manager</th>
+                      <th className="px-4 py-2.5 font-semibold">Cost Center</th>
+                      <th className="px-4 py-2.5 font-semibold">Modul Unit</th>
+                      <th className="px-4 py-2.5 font-semibold">Anggota</th>
+                      <th className="px-4 py-2.5 text-right font-semibold">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {departments.map((d) => {
+                      const unitMembers = displayedUsers.filter(
+                        (u) => String(u.department_id || "") === String(d.id)
+                      );
+                      return (
+                        <tr key={d.id} className="hover:bg-slate-50/60">
+                          <td className="px-4 py-2.5 font-mono font-semibold text-slate-700">
+                            {d.code}
+                          </td>
+                          <td className="px-4 py-2.5 font-semibold text-slate-900">
+                            {d.name}
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-600">
+                            {d.unit_type === "DIVISION" ? "Divisi" : "Departemen"}
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-500">
+                            {d.parent_name || "—"}
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-700">
+                            {d.manager_name || "—"}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            {d.is_cost_center ? (
+                              <span className="rounded bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-800">
+                                Ya
                               </span>
-                              <span className="font-mono text-xs font-bold text-slate-500">{d.code}</span>
-                              {d.is_cost_center && (
-                                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
-                                  Cost Center
-                                </span>
-                              )}
+                            ) : (
+                              <span className="text-slate-400">Tidak</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-600">
+                            {(d.modules || []).length > 0 ? (d.modules || []).join(", ") : "—"}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-slate-800">
+                                {unitMembers.length} orang
+                              </span>
+                              <select
+                                disabled={savingDeptRole}
+                                value=""
+                                onChange={(e) => {
+                                  if (!e.target.value) return;
+                                  void handleSaveUserDepartmentRole(d.id, undefined, e.target.value);
+                                }}
+                                className="h-7 rounded border border-slate-300 bg-white px-2 text-[11px] text-slate-700 outline-none focus:border-[#163D64]"
+                              >
+                                <option value="">+ Assign User</option>
+                                {displayedUsers
+                                  .filter((u) => String(u.department_id || "") !== String(d.id))
+                                  .map((u) => (
+                                    <option key={u.id} value={u.id}>
+                                      {u.full_name || u.email}
+                                    </option>
+                                  ))}
+                              </select>
                             </div>
-                            <h3 className="mt-1.5 text-sm font-bold text-[#0F172A]">{d.name}</h3>
-                            {d.parent_name && (
-                              <p className="mt-0.5 text-xs text-slate-500">
-                                Induk Departemen: <b>{d.parent_name}</b>
-                              </p>
-                            )}
-                            <p className="mt-0.5 text-xs text-slate-500">
-                              PIC / Manager: <b>{d.manager_name || "Belum ditentukan"}</b> · <b>{d.member_count ?? 0}</b> anggota aktif
-                            </p>
-                          </div>
-                          <div className="flex gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => openEditDepartmentModal(d)}
-                              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-[#163D64] hover:bg-slate-50"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleDeleteDepartment(d)}
-                              className="rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
-                            >
-                              Hapus
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="mt-3 border-t border-slate-100 pt-2.5">
-                          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                            Hak Akses Modul Unit:
-                          </div>
-                          <div className="mt-1.5 flex flex-wrap gap-1.5">
-                            {(d.modules || []).length > 0 ? (
-                              (d.modules || []).map((modKey) => (
-                                <span
-                                  key={modKey}
-                                  className="rounded-lg bg-[#E7F2FF] px-2.5 py-0.5 text-[11px] font-semibold text-[#163D64]"
-                                >
-                                  {MODULE_LABELS[String(modKey).toUpperCase()]?.name || modKey}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-xs text-slate-400">Belum ada modul didelegasikan</span>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="mt-3 border-t border-slate-100 pt-2.5">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                              Anggota Unit ({displayedUsers.filter((u) => String(u.department_id || "") === String(d.id)).length} user):
-                            </span>
-                            <select
-                              disabled={savingDeptRole}
-                              value=""
-                              onChange={(e) => {
-                                if (!e.target.value) return;
-                                void handleSaveUserDepartmentRole(d.id, undefined, e.target.value);
-                              }}
-                              className="h-7 rounded-lg border border-slate-200 bg-white px-2 text-[11px] font-semibold text-[#163D64] outline-none focus:border-[#163D64]"
-                            >
-                              <option value="">+ Tambah Anggota…</option>
-                              {displayedUsers
-                                .filter((u) => String(u.department_id || "") !== String(d.id))
-                                .map((u) => (
-                                  <option key={u.id} value={u.id}>
-                                    {u.full_name || u.email} ({String(u.role_level || "STAFF").toUpperCase()})
-                                  </option>
-                                ))}
-                            </select>
-                          </div>
-                          <div className="mt-1.5 flex flex-wrap gap-1.5">
-                            {displayedUsers.filter((u) => String(u.department_id || "") === String(d.id)).length > 0 ? (
-                              displayedUsers
-                                .filter((u) => String(u.department_id || "") === String(d.id))
-                                .map((u) => (
-                                  <span
-                                    key={u.id}
-                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-800"
-                                  >
-                                    <span>{u.full_name || u.email}</span>
-                                    <span className="rounded bg-[#E7F2FF] px-1 text-[9px] font-bold text-[#163D64]">
-                                      {String(u.role_level || "STAFF").toUpperCase()}
-                                    </span>
-                                  </span>
-                                ))
-                            ) : (
-                              <span className="text-xs text-slate-400">Belum ada user ditempatkan di unit ini</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                          </td>
+                          <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                            <div className="inline-flex gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => openEditDepartmentModal(d)}
+                                className="rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteDepartment(d)}
+                                className="rounded border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                              >
+                                Hapus
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {departments.length === 0 && (
+                      <tr>
+                        <td colSpan={9} className="px-4 py-6 text-center text-slate-400">
+                          Belum ada unit departemen atau divisi terdaftar.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>

@@ -1,20 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  Building2,
-  Check,
-  ChevronRight,
-  Layers,
-  LayoutDashboard,
-  Lock,
-  Mail,
-  RefreshCw,
-  Save,
-  ShieldCheck,
-  Sparkles,
-  User,
-} from "lucide-react";
+import { RefreshCw, Save } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
 import { getUserFacingApiError } from "@/lib/api/error-message";
@@ -89,43 +76,43 @@ export function getCleanInitials(nameOrEmail?: string | null): string {
 const DEFAULT_CATALOG: DashboardWidgetCatalogItem[] = [
   {
     code: "DASH_PERSONAL",
-    title: "Workspace Pribadi (Baseline)",
-    description: "Proyek terkait pribadi, Main Task, Weekly Task, Daily Task, dan pengajuan sendiri.",
+    title: "Workspace Pribadi",
+    description: "Tugas harian, mingguan, dan pengajuan pribadi.",
     required_module: "PROJECTS",
     is_baseline: true,
   },
   {
     code: "DASH_PROJECTS",
-    title: "Portofolio Proyek & WBS Tim",
-    description: "Portofolio proyek perusahaan, WBS manajemen, milestone, dan monitoring tim.",
+    title: "Portofolio Proyek & WBS",
+    description: "Monitoring proyek, milestone, dan progres tim.",
     required_module: "PROJECTS",
     is_baseline: false,
   },
   {
     code: "DASH_CRM",
     title: "CRM & Sales Pipeline",
-    description: "Pipeline lead, opportunity, quotation, dan performa penjualan.",
+    description: "Prospek, opportunity, quotation, dan target penjualan.",
     required_module: "CRM",
     is_baseline: false,
   },
   {
     code: "DASH_FINANCE",
-    title: "Keuangan, Arus Kas & Anggaran",
-    description: "Ringkasan arus kas, piutang/utang (AR/AP), realisasi anggaran, dan keuangan.",
+    title: "Keuangan & Anggaran",
+    description: "Arus kas, piutang/utang (AR/AP), dan realisasi anggaran.",
     required_module: "FINANCE",
     is_baseline: false,
   },
   {
     code: "DASH_INVENTORY",
-    title: "Inventori, Gudang & Aset",
-    description: "Status stok gudang, pergerakan barang transit, reservasi, dan aset operasional.",
+    title: "Inventori & Gudang",
+    description: "Stok barang, mutasi gudang, dan aset operasional.",
     required_module: "INVENTORY",
     is_baseline: false,
   },
   {
     code: "DASH_EXECUTIVE",
-    title: "Executive 360° & WBS Direksi",
-    description: "Data direksi 360° lintas modul & pemantauan WBS perusahaan lengkap.",
+    title: "Ringkasan Direksi 360°",
+    description: "Ikhtisar performa perusahaan lintas departemen.",
     required_module: "REPORTING",
     is_baseline: false,
   },
@@ -134,7 +121,7 @@ const DEFAULT_CATALOG: DashboardWidgetCatalogItem[] = [
 const DEFAULT_PRESETS: QuickAccessPreset[] = [
   {
     preset_key: "STAFF_BASELINE",
-    label: "Baseline Staff",
+    label: "Staff Operasional (Default)",
     role_level: "STAFF",
     default_job_title: "Staff Operasional",
     modules: [{ module_code: "PROJECTS", tier_level: 3, allow_read: true, allow_write: true, data_scope: "OWN" }],
@@ -161,7 +148,7 @@ const DEFAULT_PRESETS: QuickAccessPreset[] = [
   },
   {
     preset_key: "OPERATIONAL_MANAGER",
-    label: "OM / Inventory",
+    label: "Operational / Inventory Manager",
     role_level: "GM",
     default_job_title: "Operational Manager",
     modules: [
@@ -186,7 +173,7 @@ const DEFAULT_PRESETS: QuickAccessPreset[] = [
   },
   {
     preset_key: "CRM_LEAD",
-    label: "CRM Lead",
+    label: "CRM & Sales Lead",
     role_level: "SPV",
     default_job_title: "CRM & Sales Lead",
     modules: [
@@ -210,7 +197,7 @@ const DEFAULT_PRESETS: QuickAccessPreset[] = [
   },
   {
     preset_key: "DIRECTOR_360",
-    label: "Direktur Executive 360°",
+    label: "Direktur / Executive 360°",
     role_level: "GM",
     default_job_title: "Director",
     modules: [
@@ -239,29 +226,29 @@ const CONFIGURABLE_MODULES: Array<{
 }> = [
   {
     code: "PROJECTS",
-    label: "Projects & WBS (Task Management)",
-    description: "Baseline wajib agar user dapat mengakses Weekly Task & Daily Task pribadi.",
+    label: "Projects & Tugas",
+    description: "Akses proyek, Weekly Task & Daily Task",
     isBaseline: true,
   },
   {
     code: "CRM",
-    label: "CRM & Sales Pipeline",
-    description: "Leads, Opportunity, Quotation, Kontrak & Customer Inbox.",
+    label: "CRM & Penjualan",
+    description: "Leads, Pipeline, Quotation & Kontrak",
   },
   {
     code: "FINANCE",
-    label: "Finance, Accounting & Tax",
-    description: "Buku Besar (GL), Tagihan AR/AP, Arus Kas, Anggaran & Pajak.",
+    label: "Finance & Akuntansi",
+    description: "Kas, Tagihan AR/AP, Buku Besar, Anggaran & Pajak",
   },
   {
     code: "INVENTORY",
-    label: "Inventory, Gudang & Aset",
-    description: "Mutasi Stok Kanonis, Transit, Reservasi & Kapitalisasi Aset.",
+    label: "Inventory & Gudang",
+    description: "Stok Barang, Mutasi Gudang & Aset",
   },
   {
     code: "REPORTING",
-    label: "Reporting & Executive Analytics",
-    description: "Laporan Manajemen & Analitik Kinerja Lintas Modul.",
+    label: "Laporan Manajemen",
+    description: "Laporan Analitik & Evaluasi Kinerja",
   },
 ];
 
@@ -279,7 +266,7 @@ export function QuickAccessPanel({
   const [saving, setSaving] = useState(false);
   const [catalog, setCatalog] = useState<DashboardWidgetCatalogItem[]>(DEFAULT_CATALOG);
   const [presets, setPresets] = useState<QuickAccessPreset[]>(DEFAULT_PRESETS);
-  const [activePresetKey, setActivePresetKey] = useState<string | null>(null);
+  const [activePresetKey, setActivePresetKey] = useState<string>("");
 
   const [departmentId, setDepartmentId] = useState("");
   const [roleLevel, setRoleLevel] = useState<"GM" | "SPV" | "STAFF">("STAFF");
@@ -320,7 +307,7 @@ export function QuickAccessPanel({
       if (Array.isArray(payload.roles)) {
         setDerivedRoles(payload.roles);
       }
-      setActivePresetKey(null);
+      setActivePresetKey("");
     } catch {
       // Fallback gracefully
     } finally {
@@ -332,8 +319,10 @@ export function QuickAccessPanel({
     void loadQuickAccess();
   }, [loadQuickAccess]);
 
-  const applyPreset = (preset: QuickAccessPreset) => {
-    setActivePresetKey(preset.preset_key);
+  const handlePresetChange = (presetKey: string) => {
+    setActivePresetKey(presetKey);
+    const preset = presets.find((p) => p.preset_key === presetKey);
+    if (!preset) return;
     setRoleLevel(preset.role_level);
     if (!jobTitle.trim() || presets.some((p) => p.default_job_title === jobTitle.trim())) {
       setJobTitle(preset.default_job_title);
@@ -344,7 +333,7 @@ export function QuickAccessPanel({
 
   const toggleWidget = (code: string) => {
     if (code === "DASH_PERSONAL") return;
-    setActivePresetKey(null);
+    setActivePresetKey("");
     setSelectedWidgets((prev) => {
       const has = prev.includes(code);
       const next = has ? prev.filter((item) => item !== code) : [...prev, code];
@@ -357,7 +346,7 @@ export function QuickAccessPanel({
 
   const toggleModuleEnabled = (code: string) => {
     if (code === "PROJECTS") return;
-    setActivePresetKey(null);
+    setActivePresetKey("");
     setModules((prev) => {
       const exists = prev.some((m) => m.module_code.toUpperCase() === code);
       if (exists) {
@@ -391,7 +380,7 @@ export function QuickAccessPanel({
   };
 
   const updateModuleTier = (code: string, tier: number) => {
-    setActivePresetKey(null);
+    setActivePresetKey("");
     const scope: "OWN" | "TEAM" | "ALL" = tier <= 1 ? "ALL" : tier === 2 ? "TEAM" : "OWN";
     const allowWrite = tier !== 0;
     setModules((prev) =>
@@ -421,7 +410,7 @@ export function QuickAccessPanel({
           role_level: roleLevel,
           reports_to_user_id: reportsToUserId || null,
           job_title: jobTitle.trim(),
-          preset_key: activePresetKey,
+          preset_key: activePresetKey || null,
           modules,
           dashboard_widgets: selectedWidgets,
           reason: "Quick Access Panel update by Company Admin",
@@ -431,11 +420,11 @@ export function QuickAccessPanel({
       if (Array.isArray(res.data?.roles)) {
         setDerivedRoles(res.data.roles);
       }
-      toast.success("Akses Cepat, Jabatan, Panel Dashboard & Role berhasil disinkronkan!");
+      toast.success("Pengaturan user berhasil disimpan.");
       window.dispatchEvent(new CustomEvent("erp:data-mutated"));
       if (onSaved) onSaved();
     } catch (error) {
-      toast.error(getUserFacingApiError(error, "Gagal menyimpan konfigurasi Quick Access."));
+      toast.error(getUserFacingApiError(error, "Gagal menyimpan pengaturan user."));
     } finally {
       setSaving(false);
     }
@@ -450,425 +439,290 @@ export function QuickAccessPanel({
 
   const departmentOptions = departments.map((d) => ({
     value: String(d.id),
-    label: `[${d.code}] ${d.name}${d.is_cost_center ? " · Cost Center" : ""}`,
+    label: `[${d.code}] ${d.name}${d.is_cost_center ? " (Cost Center)" : ""}`,
   }));
 
-  const userDisplayName = selectedUser?.full_name || selectedUser?.email || "User";
+  const userDisplayName = selectedUser?.full_name || selectedUser?.email || "Pengguna";
   const userDisplayEmail = selectedUser?.email || "";
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
-      {/* 1. Header Profil User Terpadu */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 bg-gradient-to-r from-slate-50/80 via-white to-blue-50/30 p-5 sm:p-6">
-        <div className="flex items-center gap-3.5 min-w-0">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#163D64] to-[#0876CD] text-sm font-extrabold text-white shadow-2xs">
-            {getCleanInitials(userDisplayName)}
-          </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="truncate text-lg font-bold text-[#163D64]">
-                {userDisplayName}
-              </h2>
-              <span
-                className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
-                  selectedUser?.is_active === false
-                    ? "border border-rose-200 bg-rose-50 text-rose-700"
-                    : "border border-emerald-200 bg-emerald-50 text-emerald-700"
-                }`}
-              >
-                {selectedUser?.is_active === false ? "Nonaktif" : "Aktif"}
+    <div className="bg-white">
+      {/* Header Bar Sederhana */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-bold text-slate-900">{userDisplayName}</h2>
+            <span
+              className={`rounded px-2 py-0.5 text-xs font-medium ${
+                selectedUser?.is_active === false
+                  ? "bg-red-100 text-red-700"
+                  : "bg-emerald-100 text-emerald-700"
+              }`}
+            >
+              {selectedUser?.is_active === false ? "Nonaktif" : "Aktif"}
+            </span>
+            {isSelfSelected && (
+              <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                Akun Sendiri (Read-Only)
               </span>
-              {isSelfSelected && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-800">
-                  <Lock size={10} /> Akun Anda (Terlindungi)
-                </span>
-              )}
-            </div>
-            {userDisplayEmail && (
-              <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-slate-500">
-                <Mail size={12} className="shrink-0" /> {userDisplayEmail}
-              </p>
             )}
           </div>
+          <p className="text-xs text-slate-500">
+            {userDisplayEmail}
+            {derivedRoles.length > 0 && ` · Role: ${derivedRoles.join(", ")}`}
+          </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {derivedRoles.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1 mr-1">
-              {derivedRoles.map((r) => (
-                <span
-                  key={r}
-                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-[#163D64] shadow-2xs"
-                >
-                  {r}
-                </span>
-              ))}
-            </div>
-          )}
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => void loadQuickAccess()}
             disabled={loading || saving}
-            title="Muat ulang konfigurasi"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+            Reset
           </button>
           <button
             type="button"
             disabled={isSelfSelected || saving || loading}
             onClick={() => void handleSave()}
-            className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#163D64] px-4 text-xs font-bold text-white shadow-xs transition hover:bg-[#0876CD] disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#163D64] px-4 text-xs font-semibold text-white hover:bg-[#0876CD] disabled:opacity-50"
           >
             <Save size={13} />
-            <span>{saving ? "Menyimpan…" : "Simpan Akses"}</span>
+            {saving ? "Menyimpan..." : "Simpan Perubahan"}
           </button>
         </div>
       </div>
 
-      {/* Main Configuration Body */}
-      <div className="p-5 sm:p-6 space-y-6">
-        {/* Baseline Info Callout */}
-        <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3.5 text-xs text-slate-700">
-          <Sparkles size={16} className="mt-0.5 shrink-0 text-[#0876CD]" />
-          <div className="leading-relaxed">
-            <span className="font-bold text-[#163D64]">Baseline Seragam Terjamin: </span>
-            Setiap anggota tim otomatis memiliki izin <strong>PROJECTS (Tier 3, OWN) + Workspace Pribadi</strong> agar selalu dapat mengakses Main Task, Weekly Task, dan Daily Task yang ditugaskan kepadanya.
-          </div>
-        </div>
-
-        {/* 1. Preset Cepat 1-Klik */}
-        <div className="space-y-2.5">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
-            <div className="flex items-center gap-2">
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#163D64] text-[10px] font-bold text-white">
-                1
-              </span>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#163D64]">
-                Preset Akses Cepat 1-Klik
-              </h3>
-            </div>
-            <span className="text-[11px] text-slate-500">
-              Pilih preset untuk otomatis mengonfigurasi modul, jabatan &amp; panel
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {presets.map((preset) => {
-              const isSelected = activePresetKey === preset.preset_key;
-              return (
-                <button
-                  key={preset.preset_key}
-                  type="button"
-                  disabled={isSelfSelected || saving}
-                  onClick={() => applyPreset(preset)}
-                  className={`flex items-center justify-between gap-1.5 rounded-xl border px-3 py-2 text-left text-xs font-bold transition ${
-                    isSelected
-                      ? "border-[#163D64] bg-[#163D64] text-white shadow-2xs"
-                      : "border-slate-200 bg-white text-[#163D64] hover:border-[#163D64]/40 hover:bg-[#F8FAFC]"
-                  } disabled:cursor-not-allowed disabled:opacity-50`}
-                >
-                  <span className="truncate">{preset.label}</span>
-                  {isSelected ? (
-                    <Check size={13} className="shrink-0 text-white" />
-                  ) : (
-                    <span className="text-[10px] font-semibold text-slate-400">
-                      {preset.role_level}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 2. Penempatan Organisasi & Garis Pelaporan (2-Kolom Seimbang) */}
-        <div className="rounded-2xl border border-slate-200 bg-slate-50/40 p-4 sm:p-5 space-y-4">
-          <div className="flex items-center gap-2 border-b border-slate-200/80 pb-2.5">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#163D64] text-[10px] font-bold text-white">
-              2
-            </span>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[#163D64]">
-              Penempatan Organisasi &amp; Garis Pelaporan
+      <div className="p-5 space-y-6">
+        {/* Bagian 1: Tabel Informasi Organisasi & Jabatan */}
+        <div>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-700">
+              1. Penempatan Unit &amp; Jabatan
             </h3>
+            {onCreateUnit && !isSelfSelected && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => onCreateUnit("DEPARTMENT")}
+                  className="rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  + Departemen Baru
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onCreateUnit("DIVISION")}
+                  className="rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  + Divisi Baru
+                </button>
+              </div>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Unit Utama / Cost Center */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-[#163D64]">
-                  Unit Utama / Cost Center
-                </label>
-                {onCreateUnit && !isSelfSelected && (
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => onCreateUnit("DEPARTMENT")}
-                      className="rounded-lg border border-[#163D64]/20 bg-white px-2 py-0.5 text-[10px] font-bold text-[#163D64] shadow-2xs hover:bg-[#E7F2FF]"
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <table className="w-full text-left text-xs">
+              <tbody className="divide-y divide-slate-200">
+                <tr>
+                  <th className="w-48 bg-slate-50 px-3.5 py-2.5 font-semibold text-slate-700">
+                    Template / Preset Cepat
+                  </th>
+                  <td className="px-3.5 py-2" colSpan={3}>
+                    <select
+                      disabled={isSelfSelected || saving}
+                      value={activePresetKey}
+                      onChange={(e) => handlePresetChange(e.target.value)}
+                      className="h-9 w-full max-w-md rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-slate-800 outline-none focus:border-[#163D64]"
                     >
-                      + Dept Baru
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onCreateUnit("DIVISION")}
-                      className="rounded-lg border border-purple-200 bg-white px-2 py-0.5 text-[10px] font-bold text-purple-800 shadow-2xs hover:bg-purple-50"
+                      <option value="">-- Pilih Template Jabatan (Mengisi Otomatis Modul &amp; Dashboard) --</option>
+                      {presets.map((p) => (
+                        <option key={p.preset_key} value={p.preset_key}>
+                          {p.label} ({p.role_level})
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+                <tr>
+                  <th className="w-48 bg-slate-50 px-3.5 py-2.5 font-semibold text-slate-700">
+                    Departemen / Divisi
+                  </th>
+                  <td className="w-1/3 px-3.5 py-2 min-w-[220px]">
+                    <SearchableSelect
+                      disabled={isSelfSelected || saving}
+                      value={departmentId}
+                      onChange={(val) => setDepartmentId(val)}
+                      placeholder="-- Pilih Unit --"
+                      emptyOptionLabel="-- Belum Ditempatkan --"
+                      searchPlaceholder="Cari unit..."
+                      options={departmentOptions}
+                    />
+                  </td>
+                  <th className="w-44 bg-slate-50 px-3.5 py-2.5 font-semibold text-slate-700">
+                    Level di Unit
+                  </th>
+                  <td className="px-3.5 py-2 min-w-[200px]">
+                    <select
+                      disabled={isSelfSelected || saving}
+                      value={roleLevel}
+                      onChange={(e) => setRoleLevel(e.target.value as "GM" | "SPV" | "STAFF")}
+                      className="h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-slate-800 outline-none focus:border-[#163D64]"
                     >
-                      + Divisi Baru
-                    </button>
-                  </div>
-                )}
-              </div>
-              <SearchableSelect
-                disabled={isSelfSelected || saving}
-                value={departmentId}
-                onChange={(val) => setDepartmentId(val)}
-                placeholder="-- Pilih Unit / Departemen --"
-                emptyOptionLabel="-- Belum Ditempatkan --"
-                searchPlaceholder="Cari kode atau nama unit..."
-                options={departmentOptions}
-              />
-              <p className="text-[11px] text-slate-500">
-                Unit penempatan user untuk mewarisi modul dan penetapan anggaran.
-              </p>
-            </div>
-
-            {/* Level Wewenang Unit */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#163D64]">
-                Level Wewenang Unit
-              </label>
-              <select
-                disabled={isSelfSelected || saving}
-                value={roleLevel}
-                onChange={(e) => setRoleLevel(e.target.value as "GM" | "SPV" | "STAFF")}
-                className="input h-10 w-full bg-white text-xs font-semibold text-[#163D64]"
-              >
-                <option value="STAFF">STAFF — Eksekutor / Operasional</option>
-                <option value="SPV">SPV — Supervisor / Lead Unit</option>
-                <option value="GM">GM — General Manager / Direksi</option>
-              </select>
-              <p className="text-[11px] text-slate-500">
-                Menentukan hierarki wewenang operasional di dalam unit tersebut.
-              </p>
-            </div>
-
-            {/* Jabatan Bisnis (Job Title) */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#163D64]">
-                Jabatan Bisnis (Job Title)
-              </label>
-              <input
-                type="text"
-                disabled={isSelfSelected || saving}
-                value={jobTitle}
-                onChange={(e) => setJobTitle(e.target.value)}
-                placeholder="Contoh: Senior Finance / Project Manager"
-                className="input h-10 w-full bg-white text-xs"
-              />
-              <p className="text-[11px] text-slate-500">
-                Nama jabatan bisnis bebas yang ditampilkan pada profil tim.
-              </p>
-            </div>
-
-            {/* Atasan Langsung (Reports To) */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#163D64]">
-                Atasan Langsung (Reports To)
-              </label>
-              <SearchableSelect
-                disabled={isSelfSelected || saving}
-                value={reportsToUserId}
-                onChange={(val) => setReportsToUserId(val)}
-                placeholder="-- Tanpa Atasan Langsung --"
-                emptyOptionLabel="-- Tanpa Atasan Langsung --"
-                searchPlaceholder="Cari nama atau email atasan..."
-                options={managerOptions}
-              />
-              <p className="text-[11px] text-slate-500">
-                Garis pelaporan tunggal untuk jalur eskalasi dan approval.
-              </p>
-            </div>
+                      <option value="STAFF">STAFF (Pelaksana)</option>
+                      <option value="SPV">SPV (Supervisor / Lead)</option>
+                      <option value="GM">GM (Manager / Direksi)</option>
+                    </select>
+                  </td>
+                </tr>
+                <tr>
+                  <th className="bg-slate-50 px-3.5 py-2.5 font-semibold text-slate-700">
+                    Nama Jabatan (Job Title)
+                  </th>
+                  <td className="px-3.5 py-2">
+                    <input
+                      type="text"
+                      disabled={isSelfSelected || saving}
+                      value={jobTitle}
+                      onChange={(e) => setJobTitle(e.target.value)}
+                      placeholder="Contoh: Staff Finance / Project Manager"
+                      className="h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-slate-800 outline-none focus:border-[#163D64]"
+                    />
+                  </td>
+                  <th className="bg-slate-50 px-3.5 py-2.5 font-semibold text-slate-700">
+                    Atasan Langsung
+                  </th>
+                  <td className="px-3.5 py-2">
+                    <SearchableSelect
+                      disabled={isSelfSelected || saving}
+                      value={reportsToUserId}
+                      onChange={(val) => setReportsToUserId(val)}
+                      placeholder="-- Pilih Atasan --"
+                      emptyOptionLabel="-- Tanpa Atasan Langsung --"
+                      searchPlaceholder="Cari nama atasan..."
+                      options={managerOptions}
+                    />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
-        {/* 3. Modul Operasional & Hak Akses (Tier 0–3) */}
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-slate-100 pb-2">
-            <div className="flex items-center gap-2">
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#163D64] text-[10px] font-bold text-white">
-                3
-              </span>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#163D64]">
-                Modul Operasional &amp; Hak Akses
-                <span className="ml-2 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                  Tier 0–3
-                </span>
-              </h3>
-            </div>
-            <span className="text-[11px] text-slate-500">
-              Atur modul operasional dan level cakupan data (OWN / TEAM / ALL)
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {CONFIGURABLE_MODULES.map((mod) => {
-              const grant = getModuleGrant(mod.code);
-              const isEnabled = Boolean(mod.isBaseline || grant);
-              const currentTier = grant?.tier_level ?? 3;
-              return (
-                <div
-                  key={mod.code}
-                  className={`flex flex-col justify-between gap-2.5 rounded-xl border p-3.5 transition ${
-                    isEnabled
-                      ? "border-[#163D64] bg-white shadow-2xs"
-                      : "border-slate-200 bg-slate-50/60 opacity-80"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-extrabold text-[#163D64] truncate">
-                          {mod.label}
-                        </span>
+        {/* Bagian 2: Tabel Hak Akses Modul */}
+        <div>
+          <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-700">
+            2. Tabel Hak Akses Modul Operasional
+          </h3>
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-slate-600">
+                  <th className="w-24 px-3.5 py-2.5 text-center font-semibold">Akses</th>
+                  <th className="px-3.5 py-2.5 font-semibold">Nama Modul</th>
+                  <th className="px-3.5 py-2.5 font-semibold">Keterangan</th>
+                  <th className="w-80 px-3.5 py-2.5 font-semibold">Level Wewenang &amp; Cakupan Data</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {CONFIGURABLE_MODULES.map((mod) => {
+                  const grant = getModuleGrant(mod.code);
+                  const isEnabled = Boolean(mod.isBaseline || grant);
+                  const currentTier = grant?.tier_level ?? 3;
+                  return (
+                    <tr key={mod.code} className={isEnabled ? "bg-white" : "bg-slate-50/50 text-slate-400"}>
+                      <td className="px-3.5 py-2.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isEnabled}
+                          disabled={Boolean(mod.isBaseline) || isSelfSelected || saving}
+                          onChange={() => toggleModuleEnabled(mod.code)}
+                          className="h-4 w-4 rounded border-slate-300 text-[#163D64] focus:ring-[#163D64]"
+                        />
+                      </td>
+                      <td className="px-3.5 py-2.5 font-semibold text-slate-800">
+                        {mod.label}
                         {mod.isBaseline && (
-                          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#163D64] px-2 py-0.5 text-[10px] font-bold text-white">
-                            <Lock size={9} /> Baseline
+                          <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-normal text-slate-600">
+                            Wajib
                           </span>
                         )}
-                      </div>
-                      <p className="mt-1 text-[11px] text-slate-500 line-clamp-2">
-                        {mod.description}
-                      </p>
-                    </div>
-                    {!mod.isBaseline && (
-                      <button
-                        type="button"
-                        disabled={isSelfSelected || saving}
-                        onClick={() => toggleModuleEnabled(mod.code)}
-                        className={`shrink-0 rounded-lg border px-3 py-1 text-[11px] font-bold transition ${
-                          isEnabled
-                            ? "border-[#163D64] bg-[#163D64] text-white"
-                            : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
-                        }`}
-                      >
-                        {isEnabled ? "Aktif" : "Nonaktif"}
-                      </button>
-                    )}
-                  </div>
-
-                  {isEnabled && (
-                    <div className="border-t border-slate-100 pt-2.5">
-                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                        Level Wewenang &amp; Cakupan Data
-                      </label>
-                      <select
-                        disabled={isSelfSelected || saving}
-                        value={currentTier}
-                        onChange={(e) => updateModuleTier(mod.code, Number(e.target.value))}
-                        className="h-8 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-[#163D64] outline-none focus:border-[#163D64] focus:bg-white"
-                      >
-                        <option value={3}>Tier 3 — Staff / Eksekutor (Scope: OWN)</option>
-                        <option value={2}>Tier 2 — Supervisor / Lead (Scope: TEAM)</option>
-                        <option value={1}>Tier 1 — Manager / Head (Scope: ALL - Read/Write)</option>
-                        <option value={0}>Tier 0 — Direksi / Oversight (Scope: ALL - Read Only)</option>
-                      </select>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                      </td>
+                      <td className="px-3.5 py-2.5 text-slate-500">{mod.description}</td>
+                      <td className="px-3.5 py-2">
+                        {isEnabled ? (
+                          <select
+                            disabled={isSelfSelected || saving}
+                            value={currentTier}
+                            onChange={(e) => updateModuleTier(mod.code, Number(e.target.value))}
+                            className="h-8 w-full rounded border border-slate-300 bg-white px-2 text-xs text-slate-800 outline-none focus:border-[#163D64]"
+                          >
+                            <option value={3}>Staff — Data Sendiri (OWN)</option>
+                            <option value={2}>Supervisor — Data Tim (TEAM)</option>
+                            <option value={1}>Manager — Semua Data (Baca &amp; Edit)</option>
+                            <option value={0}>Direksi — Semua Data (Hanya Lihat)</option>
+                          </select>
+                        ) : (
+                          <span className="text-slate-400">Tidak aktif</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
 
-        {/* 4. Panel Dashboard Modular */}
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-slate-100 pb-2">
-            <div className="flex items-center gap-2">
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#163D64] text-[10px] font-bold text-white">
-                4
-              </span>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#163D64]">
-                Panel Dashboard Modular
-              </h3>
-            </div>
-            <span className="text-[11px] font-bold text-[#0876CD]">
-              {selectedWidgets.length} dari {catalog.length} panel aktif
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-            {catalog.map((widget) => {
-              const isBaseline = widget.is_baseline || widget.code === "DASH_PERSONAL";
-              const isEnabled = isBaseline || selectedWidgets.includes(widget.code);
-              return (
-                <button
-                  key={widget.code}
-                  type="button"
-                  disabled={isBaseline || isSelfSelected || saving}
-                  onClick={() => toggleWidget(widget.code)}
-                  className={`flex flex-col justify-between rounded-xl border p-3.5 text-left transition ${
-                    isEnabled
-                      ? "border-[#163D64] bg-blue-50/50 text-[#0F172A] shadow-2xs"
-                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
-                  } ${isBaseline ? "cursor-default" : ""}`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-extrabold text-[#163D64] truncate">
+        {/* Bagian 3: Tabel Panel Dashboard */}
+        <div>
+          <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-700">
+            3. Tabel Panel Dashboard yang Ditampilkan
+          </h3>
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-slate-600">
+                  <th className="w-24 px-3.5 py-2.5 text-center font-semibold">Tampilkan</th>
+                  <th className="px-3.5 py-2.5 font-semibold">Nama Panel Dashboard</th>
+                  <th className="px-3.5 py-2.5 font-semibold">Fungsi Tampilan</th>
+                  <th className="w-36 px-3.5 py-2.5 font-semibold">Modul Terkait</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {catalog.map((widget) => {
+                  const isBaseline = widget.is_baseline || widget.code === "DASH_PERSONAL";
+                  const isEnabled = isBaseline || selectedWidgets.includes(widget.code);
+                  return (
+                    <tr key={widget.code} className={isEnabled ? "bg-white" : "bg-slate-50/50 text-slate-400"}>
+                      <td className="px-3.5 py-2.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isEnabled}
+                          disabled={isBaseline || isSelfSelected || saving}
+                          onChange={() => toggleWidget(widget.code)}
+                          className="h-4 w-4 rounded border-slate-300 text-[#163D64] focus:ring-[#163D64]"
+                        />
+                      </td>
+                      <td className="px-3.5 py-2.5 font-semibold text-slate-800">
                         {widget.title}
-                      </span>
-                      {isBaseline ? (
-                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#163D64] px-2 py-0.5 text-[10px] font-bold text-white">
-                          <Lock size={9} /> Baseline
-                        </span>
-                      ) : (
-                        <span
-                          className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
-                            isEnabled
-                              ? "border-[#163D64] bg-[#163D64] text-white"
-                              : "border-slate-300 bg-white text-transparent"
-                          }`}
-                        >
-                          <Check size={12} />
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1.5 text-[11px] leading-snug text-slate-600 line-clamp-2">
-                      {widget.description}
-                    </p>
-                  </div>
-                  <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2 text-[10px] font-semibold text-slate-500">
-                    <span className="font-mono">{widget.code}</span>
-                    {widget.required_module && (
-                      <span className="rounded bg-slate-100 px-1.5 py-0.5 font-bold text-[#163D64]">
-                        Modul: {widget.required_module}
-                      </span>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
+                        {isBaseline && (
+                          <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-normal text-slate-600">
+                            Wajib
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3.5 py-2.5 text-slate-500">{widget.description}</td>
+                      <td className="px-3.5 py-2.5 text-slate-600">
+                        {widget.required_module || "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        </div>
-
-        {/* Sticky/Bottom Save Action Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <ShieldCheck size={16} className="shrink-0 text-emerald-600" />
-            <span>
-              Perubahan tersimpan otomatis menyinkronkan IAM role dan wewenang modul (Company Admin tetap terlindungi).
-            </span>
-          </div>
-          <button
-            type="button"
-            disabled={isSelfSelected || saving || loading}
-            onClick={() => void handleSave()}
-            className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#163D64] px-5 text-xs font-extrabold text-white shadow-xs transition hover:bg-[#0876CD] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Save size={14} />
-            <span>{saving ? "Menyimpan Akses Cepat..." : "Simpan Akses Cepat"}</span>
-          </button>
         </div>
       </div>
     </div>
