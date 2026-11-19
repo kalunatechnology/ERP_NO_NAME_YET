@@ -555,6 +555,31 @@ export async function getUserQuickAccess(companyId: string, userId: string) {
     effectiveModules.push({ ...BASELINE_PROJECTS_GRANT });
   }
 
+  const isLegacyTransition =
+    moduleAssignments.length === 0 &&
+    roleCodes.some(
+      (c) =>
+        c !== RoleCode.STAFF &&
+        c !== RoleCode.COMPANY_ADMIN &&
+        c !== RoleCode.SUPER_ADMIN
+    );
+
+  const effectiveRoleLevel =
+    isLegacyTransition && (!user.role_level || user.role_level === 'STAFF')
+      ? fallbackMerged.role_level
+      : user.role_level;
+
+  const inferredLegacyJobTitle =
+    roleCodes
+      .filter((c) => c !== RoleCode.STAFF && c !== RoleCode.COMPANY_ADMIN && c !== RoleCode.SUPER_ADMIN)
+      .map((c) => LEGACY_ROLE_TRANSLATION_MAP[c]?.default_job_title)
+      .find(Boolean) || '';
+
+  const effectiveJobTitle =
+    isLegacyTransition && (!user.job_title || !user.job_title.trim())
+      ? inferredLegacyJobTitle
+      : user.job_title ?? '';
+
   return {
     user: {
       id: user.id,
@@ -562,11 +587,13 @@ export async function getUserQuickAccess(companyId: string, userId: string) {
       email: user.email,
       department_id: user.department_id,
       department_name: user.department?.name ?? null,
-      role_level: user.role_level,
+      role_level: effectiveRoleLevel,
       reports_to_user_id: user.reports_to_user_id ?? null,
-      job_title: user.job_title ?? '',
+      job_title: effectiveJobTitle,
       active_role_id: user.active_role_id,
     },
+    is_legacy_transition: isLegacyTransition,
+    legacy_roles: roleCodes,
     roles: roleCodes,
     org_memberships: orgMemberships,
     modules: effectiveModules,

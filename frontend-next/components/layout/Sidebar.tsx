@@ -54,7 +54,7 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
 
   const initial = user?.full_name?.[0] ?? user?.email?.[0]?.toUpperCase() ?? "U";
   const displayName = user?.full_name || user?.email?.split("@")[0] || "User";
-  const roleLabel = getRoleLabel(userRole);
+  const roleLabel = (user as any)?.job_title?.trim() || getRoleLabel(userRole);
   const badgeStyle = getRoleBadgeStyle(userRole);
   const navItems = getNavigationEntries({
     enabledModules: user?.enabled_modules,

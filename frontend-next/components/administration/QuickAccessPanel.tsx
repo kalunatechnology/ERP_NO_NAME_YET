@@ -277,6 +277,7 @@ export function QuickAccessPanel({
     { module_code: "PROJECTS", tier_level: 3, allow_read: true, allow_write: true, data_scope: "OWN" },
   ]);
   const [derivedRoles, setDerivedRoles] = useState<string[]>([]);
+  const [isLegacyTransition, setIsLegacyTransition] = useState(false);
 
   const loadQuickAccess = useCallback(async () => {
     if (!companyId || !selectedUserId) return;
@@ -307,6 +308,7 @@ export function QuickAccessPanel({
       if (Array.isArray(payload.roles)) {
         setDerivedRoles(payload.roles);
       }
+      setIsLegacyTransition(Boolean(payload.is_legacy_transition));
       setActivePresetKey("");
     } catch {
       // Fallback gracefully
@@ -496,6 +498,16 @@ export function QuickAccessPanel({
       </div>
 
       <div className="p-5 space-y-6">
+        {isLegacyTransition && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-xs text-amber-900">
+            <div className="font-bold">Transisi dari Role Lama ({derivedRoles.join(", ")})</div>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-amber-800">
+              Level wewenang, jabatan, dan hak akses modul di bawah ini telah dipetakan otomatis dari role lama pengguna ini. Periksa kembali lalu klik{" "}
+              <span className="font-semibold">Simpan Perubahan</span> untuk memigrasikan akses sepenuhnya ke sistem Departemen &amp; Hak Akses Modular.
+            </p>
+          </div>
+        )}
+
         {/* Bagian 1: Form Informasi Organisasi & Jabatan */}
         <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">

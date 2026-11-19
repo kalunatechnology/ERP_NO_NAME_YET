@@ -83,7 +83,7 @@ export const ROUTE_ACCESS_CONTRACTS: readonly RouteAccessContract[] = [
   { prefix: "/requests", module: "REQUESTS", roles: null },
   { prefix: "/administration", module: null, roles: [ROLE_CODES.superAdmin, ROLE_CODES.companyAdmin] },
   { prefix: "/resources", module: "ANALYTICS", roles: [ROLE_CODES.superAdmin, ROLE_CODES.companyAdmin, ROLE_CODES.director], moduleBypassRoles: [ROLE_CODES.superAdmin, ROLE_CODES.companyAdmin] },
-  { prefix: "/management-reports", module: "REPORTING", roles: [ROLE_CODES.operationalManager, ROLE_CODES.director], allowDelegation: false },
+  { prefix: "/management-reports", module: "REPORTING", roles: [ROLE_CODES.operationalManager, ROLE_CODES.director], allowDelegation: true },
   { prefix: "/reporting", module: "REPORTING", roles: null },
   // Staff use the assigned-task projection to submit Weekly Tasks. Opening
   // this page does not grant project management or approval authority.
@@ -91,9 +91,9 @@ export const ROUTE_ACCESS_CONTRACTS: readonly RouteAccessContract[] = [
   // Daily Tasks are a baseline company-user workspace. Business roles add
   // capabilities elsewhere and must never remove this personal workspace.
   { prefix: "/tasks", module: "PROJECTS", roles: null, allowDelegation: false },
-  { prefix: "/finance", module: "FINANCE", roles: [ROLE_CODES.finance, ROLE_CODES.director], allowDelegation: false },
+  { prefix: "/finance", module: "FINANCE", roles: [ROLE_CODES.finance, ROLE_CODES.director], allowDelegation: true },
   { prefix: "/inventory", module: "INVENTORY", roles: null },
-  { prefix: "/crm", module: "CRM", roles: [ROLE_CODES.companyAdmin, ROLE_CODES.crmLead, ROLE_CODES.sales, ROLE_CODES.director], allowDelegation: false },
+  { prefix: "/crm", module: "CRM", roles: [ROLE_CODES.companyAdmin, ROLE_CODES.crmLead, ROLE_CODES.sales, ROLE_CODES.director], allowDelegation: true },
   { prefix: "/dashboard", module: null, roles: null },
 ] as const;
 
@@ -171,13 +171,13 @@ const API_ACCESS_CONTRACTS: readonly ApiAccessContract[] = [
   { prefix: "/api/v1/requests", module: "REQUESTS" },
   { prefix: "/api/v1/request", module: "REQUESTS" },
   { prefix: "/api/v1/marbot", module: "MARBOT" },
-  { prefix: "/api/v1/management-reports", module: "REPORTING", roles: [ROLE_CODES.operationalManager, ROLE_CODES.director], allowDelegation: false },
-  { prefix: "/api/v1/crm", module: "CRM", roles: CRM_ROLES, allowDelegation: false },
-  { prefix: "/api/v1/sales", module: "SALES", roles: CRM_ROLES, allowDelegation: false },
+  { prefix: "/api/v1/management-reports", module: "REPORTING", roles: [ROLE_CODES.operationalManager, ROLE_CODES.director], allowDelegation: true },
+  { prefix: "/api/v1/crm", module: "CRM", roles: CRM_ROLES, allowDelegation: true },
+  { prefix: "/api/v1/sales", module: "SALES", roles: CRM_ROLES, allowDelegation: true },
   // Backend project scope is authoritative. This module also serves the
   // personal Daily Task baseline shared by every company user.
   { prefix: "/api/v1/projects", module: "PROJECTS" },
-  { prefix: "/api/v1/finance", module: "FINANCE", roles: FINANCE_ROLES, allowDelegation: false },
+  { prefix: "/api/v1/finance", module: "FINANCE", roles: FINANCE_ROLES, allowDelegation: true },
   { prefix: "/api/v1/master-data/products", module: "INVENTORY" },
   { prefix: "/api/v1/master-data/product-categories", module: "INVENTORY" },
   { prefix: "/api/v1/master-data/warehouses", module: "INVENTORY" },
