@@ -55,6 +55,7 @@ interface QuickAccessPanelProps {
     is_cost_center?: boolean;
   }>;
   onSaved?: () => void;
+  onCreateUnit?: (unitType: "DEPARTMENT" | "DIVISION") => void;
 }
 
 const DEFAULT_CATALOG: DashboardWidgetCatalogItem[] = [
@@ -243,6 +244,7 @@ export function QuickAccessPanel({
   allUsers,
   departments,
   onSaved,
+  onCreateUnit,
 }: QuickAccessPanelProps) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -498,9 +500,31 @@ export function QuickAccessPanel({
       {/* 2. Penempatan Unit, Jabatan Bisnis & Atasan Langsung */}
       <div className="mb-4 grid grid-cols-1 gap-3 rounded-xl border border-[#E2E8F0] bg-white p-3.5 sm:grid-cols-2 lg:grid-cols-4">
         <div>
-          <label className="mb-1 block text-xs font-bold text-[#163D64]">
-            Unit Utama / Cost Center
-          </label>
+          <div className="mb-1 flex flex-wrap items-center justify-between gap-1">
+            <label className="text-xs font-bold text-[#163D64]">
+              Unit Utama / Cost Center
+            </label>
+            {onCreateUnit && !isSelfSelected && (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => onCreateUnit("DEPARTMENT")}
+                  className="rounded border border-[#163D64]/20 bg-[#E7F2FF] px-1.5 py-0.5 text-[10px] font-bold text-[#163D64] hover:bg-[#D9EEFF]"
+                  title="Buat Departemen / Cost Center Baru"
+                >
+                  + Dept
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onCreateUnit("DIVISION")}
+                  className="rounded border border-purple-200 bg-purple-50 px-1.5 py-0.5 text-[10px] font-bold text-purple-800 hover:bg-purple-100"
+                  title="Buat Divisi Baru"
+                >
+                  + Divisi
+                </button>
+              </div>
+            )}
+          </div>
           <SearchableSelect
             disabled={isSelfSelected || saving}
             value={departmentId}

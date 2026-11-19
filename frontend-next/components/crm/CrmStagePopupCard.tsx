@@ -508,12 +508,14 @@ export function LeadStagePopupModal({
           <input className="input w-full text-xs" value={contactForm.email} onChange={(e) => setContactForm((f) => ({ ...f, email: e.target.value }))} placeholder="email@perusahaan.co.id" />
         </div>
       ) : (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xl font-bold text-[#0F172A]">{contactForm.contact_name || "—"}</span>
-            <span className="rounded-full bg-[#EDF6FE] px-3 py-0.5 text-xs font-medium text-[#0876CD]">Primary</span>
+        <div className="space-y-1.5">
+          <div>
+            <div className="text-base font-bold text-[#0F172A] break-words leading-snug">{contactForm.contact_name || "—"}</div>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              <span className="rounded-full bg-[#EDF6FE] px-2.5 py-0.5 text-[11px] font-medium text-[#0876CD]">Primary</span>
+              <span className="text-xs text-[#64748B]">{contactForm.job_title || "PIC Utama"}</span>
+            </div>
           </div>
-          <div className="text-sm text-[#64748B]">{contactForm.job_title || "PIC Utama"}</div>
           <div className="pt-1 space-y-1.5 text-xs text-[#334155]">
             <div className="flex items-center gap-2"><Phone size={13} className="text-slate-500" /> {contactForm.phone || "—"}</div>
             <div className="flex items-center gap-2"><Mail size={13} className="text-slate-500" /> {contactForm.email || "—"}</div>
@@ -605,7 +607,7 @@ export function LeadStagePopupModal({
             <div className="mt-0.5 text-sm font-medium text-[#0F172A]">{leadInfoForm.lead_source || "—"}</div>
           )}
         </div>
-        <div>
+        <div className="col-span-2 min-w-0">
           <div className="text-[#64748B]">Assigned to</div>
           <div className="mt-1"><CRMAvatarBadge name={lead._ownerName || "Unassigned"} size="xs" /></div>
         </div>
@@ -1214,12 +1216,14 @@ export function OpportunityStagePopupModal({
                   <input className="input w-full text-xs" value={contactForm.email} onChange={(e) => setContactForm((f) => ({ ...f, email: e.target.value }))} placeholder="Email" />
                 </div>
               ) : (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xl font-bold text-[#0F172A]">{contactForm.contact_name || "—"}</span>
-                    <span className="rounded-full bg-[#EDF6FE] px-3 py-0.5 text-xs font-medium text-[#0876CD]">Primary</span>
+                <div className="space-y-1.5">
+                  <div>
+                    <div className="text-base font-bold text-[#0F172A] break-words leading-snug">{contactForm.contact_name || "—"}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <span className="rounded-full bg-[#EDF6FE] px-2.5 py-0.5 text-[11px] font-medium text-[#0876CD]">Primary</span>
+                      <span className="text-xs text-[#64748B]">{contactForm.job_title || "PIC Utama"}</span>
+                    </div>
                   </div>
-                  <div className="text-sm text-[#64748B]">{contactForm.job_title || "PIC Utama"}</div>
                   <div className="pt-1 space-y-1.5 text-xs text-[#334155]">
                     <div className="flex items-center gap-2"><Phone size={13} className="text-slate-500" /> {contactForm.phone || "—"}</div>
                     <div className="flex items-center gap-2"><Mail size={13} className="text-slate-500" /> {contactForm.email || "—"}</div>
@@ -1284,7 +1288,7 @@ export function OpportunityStagePopupModal({
                     <div className="mt-0.5 text-sm font-medium text-[#0F172A]">{leadInfoForm.lead_source || "—"}</div>
                   )}
                 </div>
-                <div>
+                <div className="col-span-2 min-w-0">
                   <div className="text-[#64748B]">Assigned to</div>
                   <div className="mt-1"><CRMAvatarBadge name={opp._ownerName || "Unassigned"} size="xs" /></div>
                 </div>
@@ -1293,7 +1297,7 @@ export function OpportunityStagePopupModal({
                   <div className="mt-0.5 text-sm font-medium text-[#0F172A]">{formatDate(opp.created_at || opp.opened_at)}</div>
                 </div>
                 {bucket !== "PROSPECT" && (
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-[#64748B]">Internal PIC</div>
                     {editing ? (
                       <input className="input mt-0.5 w-full text-xs" value={leadInfoForm.internal_pic} onChange={(e) => setLeadInfoForm((f) => ({ ...f, internal_pic: e.target.value }))} />

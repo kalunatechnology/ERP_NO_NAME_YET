@@ -655,25 +655,14 @@ export function AccessAdministration() {
             </button>
 
             <button
-              onClick={() => setActiveTab("departments")}
-              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                activeTab === "departments"
-                  ? "bg-[#163D64] text-white shadow-sm"
-                  : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
-              }`}
-            >
-              <Building2 size={16} /> Departemen, Divisi & Cost Center ({departments.length})
-            </button>
-
-            <button
               onClick={() => setActiveTab("users")}
               className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                activeTab === "users"
+                activeTab === "users" || activeTab === "departments"
                   ? "bg-[#163D64] text-white shadow-sm"
                   : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
               }`}
             >
-              <Users size={16} /> Manajemen User ({users.length})
+              <Users size={16} /> Manajemen User &amp; Departemen ({users.length} User · {departments.length} Unit)
             </button>
 
             <button
@@ -689,51 +678,33 @@ export function AccessAdministration() {
           </div>
         )}
 
-        {/* Company Admin Navigation Tabs (Simplified to 2 Clean Tabs) */}
+        {/* Company Admin Unified Workspace Bar */}
         {!isSuper && (
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t border-[#EFEFEF] pt-5">
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-[#EFEFEF] pt-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-2 rounded-xl bg-[#163D64] px-4 py-2 text-xs font-bold text-white shadow-2xs">
+                <Users size={15} /> Workspace Terpadu: Anggota Tim ({displayedUsers.length}) &amp; Unit Organisasi ({departments.length})
+              </span>
+              <span className="text-xs text-[#64748B]">
+                Kelola user, penempatan departemen/divisi, serta panel dashboard modular dalam satu layar.
+              </span>
+            </div>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => setCompanyViewTab("members")}
-                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                  companyViewTab === "members"
-                    ? "bg-[#163D64] text-white shadow-sm"
-                    : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
-                }`}
+                onClick={() => openNewDepartmentModal("DEPARTMENT")}
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#163D64] bg-[#E7F2FF] px-3.5 text-xs font-semibold text-[#163D64] hover:bg-[#D9EEFF]"
               >
-                <Users size={16} /> Anggota Tim &amp; Akses Cepat ({displayedUsers.length})
+                + Buat Departemen / Cost Center
               </button>
               <button
                 type="button"
-                onClick={() => setCompanyViewTab("departments")}
-                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                  companyViewTab === "departments"
-                    ? "bg-[#163D64] text-white shadow-sm"
-                    : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
-                }`}
+                onClick={() => openNewDepartmentModal("DIVISION")}
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#E2E8F0] bg-white px-3.5 text-xs font-semibold text-[#0F172A] hover:bg-[#F8FAFC]"
               >
-                <Building2 size={16} /> Unit Organisasi &amp; Cost Center ({departments.length})
+                + Buat Divisi
               </button>
             </div>
-            {companyViewTab === "departments" && (
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => openNewDepartmentModal("DEPARTMENT")}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#163D64] bg-[#E7F2FF] px-3.5 text-xs font-semibold text-[#163D64] hover:bg-[#D9EEFF]"
-                >
-                  + Buat Departemen / Cost Center
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openNewDepartmentModal("DIVISION")}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#E2E8F0] bg-white px-3.5 text-xs font-semibold text-[#0F172A] hover:bg-[#F8FAFC]"
-                >
-                  + Buat Divisi
-                </button>
-              </div>
-            )}
           </div>
         )}
       </header>
@@ -813,143 +784,141 @@ export function AccessAdministration() {
             />
           )}
 
-          {activeTab === "departments" && (
-            <div className="rounded-[24px] border border-[#EFEFEF] bg-white p-6 space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#EFEFEF] pb-4">
-                <div>
-                  <h2 className="text-lg font-bold text-[#163D64]">Departemen, Divisi & Cost Center</h2>
-                  <p className="mt-0.5 text-xs text-[#64748B]">
-                    Kelola struktur Departemen dan Divisi beserta Cost Center Budgeting dan delegasi modul untuk Company terpilih.
-                  </p>
+          {(activeTab === "users" || activeTab === "departments") && (
+            <div className="space-y-6">
+              <div className="rounded-[24px] border border-[#EFEFEF] bg-white p-6 space-y-5">
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#EFEFEF] pb-4">
+                  <div>
+                    <h2 className="text-lg font-bold text-[#163D64]">Departemen, Divisi &amp; Cost Center</h2>
+                    <p className="mt-0.5 text-xs text-[#64748B]">
+                      Kelola struktur Departemen dan Divisi beserta Cost Center Budgeting dan delegasi modul untuk Company terpilih.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <TableSearchBar
+                      query={departmentsTable.query}
+                      onQueryChange={departmentsTable.setQuery}
+                      onSearchSubmit={departmentsTable.applySearch}
+                      onReset={departmentsTable.resetSearch}
+                      placeholder="Cari kode atau nama unit..."
+                      totalItems={departments.length}
+                      filteredCount={departmentsTable.totalItems}
+                    />
+                    <select
+                      value={selectedCompany}
+                      onChange={(e) => {
+                        setSelectedCompany(e.target.value);
+                        setCompany(e.target.value);
+                      }}
+                      className="h-9 rounded-xl border border-[#E2E8F0] bg-white px-3 text-xs font-semibold text-[#0F172A]"
+                    >
+                      {companies.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.legal_name || c.name || c.company_code}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => openNewDepartmentModal("DEPARTMENT")}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#163D64] px-3.5 text-xs font-semibold text-white hover:bg-[#1D3A96]"
+                    >
+                      + Buat Departemen
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openNewDepartmentModal("DIVISION")}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#163D64] bg-[#E7F2FF] px-3.5 text-xs font-semibold text-[#163D64] hover:bg-[#D9EEFF]"
+                    >
+                      + Buat Divisi
+                    </button>
+                  </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <TableSearchBar
-                    query={departmentsTable.query}
-                    onQueryChange={departmentsTable.setQuery}
-                    onSearchSubmit={departmentsTable.applySearch}
-                    onReset={departmentsTable.resetSearch}
-                    placeholder="Cari kode atau nama unit..."
-                    totalItems={departments.length}
-                    filteredCount={departmentsTable.totalItems}
-                  />
-                  <select
-                    value={selectedCompany}
-                    onChange={(e) => {
-                      setSelectedCompany(e.target.value);
-                      setCompany(e.target.value);
-                    }}
-                    className="h-9 rounded-xl border border-[#E2E8F0] bg-white px-3 text-xs font-semibold text-[#0F172A]"
-                  >
-                    {companies.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.legal_name || c.name || c.company_code}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => openNewDepartmentModal("DEPARTMENT")}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#163D64] px-3.5 text-xs font-semibold text-white hover:bg-[#1D3A96]"
-                  >
-                    + Buat Departemen
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openNewDepartmentModal("DIVISION")}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#163D64] bg-[#E7F2FF] px-3.5 text-xs font-semibold text-[#163D64] hover:bg-[#D9EEFF]"
-                  >
-                    + Buat Divisi
-                  </button>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-[#EFEFEF] text-left text-xs font-semibold uppercase tracking-wider text-[#64748B]">
+                        <th className="px-4 py-3">Tipe Unit</th>
+                        <th className="px-4 py-3">Kode &amp; Nama</th>
+                        <th className="px-4 py-3">Induk Departemen</th>
+                        <th className="px-4 py-3">Cost Center</th>
+                        <th className="px-4 py-3">PIC / Manager</th>
+                        <th className="px-4 py-3">Modul Delegasi</th>
+                        <th className="px-4 py-3 text-right">Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#EFEFEF]">
+                      {departmentsTable.paginatedItems.map((d) => (
+                        <tr key={d.id} className="hover:bg-[#FDFDFD]">
+                          <td className="px-4 py-3">
+                            <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                              d.unit_type === "DIVISION" ? "bg-purple-50 text-purple-700" : "bg-[#E7F2FF] text-[#163D64]"
+                            }`}>
+                              {d.unit_type === "DIVISION" ? "DIVISI" : "DEPARTEMEN"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="font-semibold text-[#0F172A]">{d.name}</div>
+                            <div className="text-xs font-mono text-[#64748B]">{d.code} · {d.member_count ?? 0} anggota</div>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-[#64748B]">{d.parent_name || "—"}</td>
+                          <td className="px-4 py-3">
+                            <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                              d.is_cost_center ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"
+                            }`}>
+                              {d.is_cost_center ? "Ya (Cost Center)" : "Non-Cost Center"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-[#64748B]">{d.manager_name || "—"}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-1">
+                              {(d.modules || []).map((m) => (
+                                <span key={m} className="rounded-md bg-[#F1F5F9] px-2 py-0.5 text-[10px] font-semibold text-[#334155]">
+                                  {m}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="inline-flex gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => openEditDepartmentModal(d)}
+                                className="rounded-lg border border-[#E2E8F0] px-2.5 py-1 text-xs font-semibold text-[#163D64] hover:bg-[#E7F2FF]"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteDepartment(d)}
+                                className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
+                              >
+                                Hapus
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {departmentsTable.paginatedItems.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="px-4 py-8 text-center text-xs text-[#64748B]">
+                            {departments.length ? "Tidak ada unit yang cocok dengan pencarian." : "Belum ada Departemen atau Divisi terdaftar."}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
+                <TablePagination
+                  page={departmentsTable.page}
+                  totalPages={departmentsTable.totalPages}
+                  pageSize={departmentsTable.pageSize}
+                  totalItems={departmentsTable.totalItems}
+                  onPageChange={departmentsTable.setPage}
+                  onPageSizeChange={departmentsTable.setPageSize}
+                />
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-[#EFEFEF] text-left text-xs font-semibold uppercase tracking-wider text-[#64748B]">
-                      <th className="px-4 py-3">Tipe Unit</th>
-                      <th className="px-4 py-3">Kode & Nama</th>
-                      <th className="px-4 py-3">Induk Departemen</th>
-                      <th className="px-4 py-3">Cost Center</th>
-                      <th className="px-4 py-3">PIC / Manager</th>
-                      <th className="px-4 py-3">Modul Delegasi</th>
-                      <th className="px-4 py-3 text-right">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#EFEFEF]">
-                    {departmentsTable.paginatedItems.map((d) => (
-                      <tr key={d.id} className="hover:bg-[#FDFDFD]">
-                        <td className="px-4 py-3">
-                          <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
-                            d.unit_type === "DIVISION" ? "bg-purple-50 text-purple-700" : "bg-[#E7F2FF] text-[#163D64]"
-                          }`}>
-                            {d.unit_type === "DIVISION" ? "DIVISI" : "DEPARTEMEN"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="font-semibold text-[#0F172A]">{d.name}</div>
-                          <div className="text-xs font-mono text-[#64748B]">{d.code} · {d.member_count ?? 0} anggota</div>
-                        </td>
-                        <td className="px-4 py-3 text-xs text-[#64748B]">{d.parent_name || "—"}</td>
-                        <td className="px-4 py-3">
-                          <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
-                            d.is_cost_center ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"
-                          }`}>
-                            {d.is_cost_center ? "Ya (Cost Center)" : "Non-Cost Center"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-xs text-[#64748B]">{d.manager_name || "—"}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-1">
-                            {(d.modules || []).map((m) => (
-                              <span key={m} className="rounded-md bg-[#F1F5F9] px-2 py-0.5 text-[10px] font-semibold text-[#334155]">
-                                {m}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="inline-flex gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => openEditDepartmentModal(d)}
-                              className="rounded-lg border border-[#E2E8F0] px-2.5 py-1 text-xs font-semibold text-[#163D64] hover:bg-[#E7F2FF]"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleDeleteDepartment(d)}
-                              className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
-                            >
-                              Hapus
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {departmentsTable.paginatedItems.length === 0 && (
-                      <tr>
-                        <td colSpan={7} className="px-4 py-8 text-center text-xs text-[#64748B]">
-                          {departments.length ? "Tidak ada unit yang cocok dengan pencarian." : "Belum ada Departemen atau Divisi terdaftar."}
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <TablePagination
-                page={departmentsTable.page}
-                totalPages={departmentsTable.totalPages}
-                pageSize={departmentsTable.pageSize}
-                totalItems={departmentsTable.totalItems}
-                onPageChange={departmentsTable.setPage}
-                onPageSizeChange={departmentsTable.setPageSize}
-              />
-            </div>
-          )}
 
-          {activeTab === "users" && (
-            <div className="space-y-4">
               {/* Users table header */}
               <div className="rounded-[24px] border border-[#EFEFEF] bg-white">
                 <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#EFEFEF] px-6 py-4">
@@ -1068,284 +1037,290 @@ export function AccessAdministration() {
           users={displayedUsers}
           departments={departments}
         />
-      ) : companyViewTab === "departments" ? (
-        /* Company Admin: Departments, Divisions & Cost Centers Management */
-        <div className="rounded-2xl border border-[#EFEFEF] bg-white p-6 space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#EFEFEF] pb-4">
-            <div>
-              <h2 className="text-lg font-bold text-[#163D64]">Kelola Departemen, Divisi & Cost Center</h2>
-              <p className="mt-1 text-xs text-[#64748B]">
-                Setiap Departemen atau Divisi yang ditandai sebagai <b>Cost Center</b> otomatis muncul di dropdown <b>Buat Budget Plan</b> dan mewariskan modulnya ke seluruh <b>GM</b>, <b>SPV</b>, dan <b>STAFF</b> di dalamnya.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => openNewDepartmentModal("DEPARTMENT")}
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#163D64] px-4 text-xs font-semibold text-white hover:bg-[#1D3A96]"
-              >
-                + Buat Departemen Baru
-              </button>
-              <button
-                type="button"
-                onClick={() => openNewDepartmentModal("DIVISION")}
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#163D64] bg-[#E7F2FF] px-4 text-xs font-semibold text-[#163D64] hover:bg-[#D9EEFF]"
-              >
-                + Buat Divisi Baru
-              </button>
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            {departments.map((d) => (
-              <div key={d.id} className="rounded-2xl border border-[#EFEFEF] bg-[#FDFDFD] p-4 shadow-2xs flex flex-col justify-between gap-3">
-                <div>
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-extrabold ${
-                          d.unit_type === "DIVISION" ? "bg-purple-100 text-purple-800" : "bg-[#E7F2FF] text-[#163D64]"
-                        }`}>
-                          {d.unit_type === "DIVISION" ? "DIVISI" : "DEPARTEMEN"}
-                        </span>
-                        <span className="font-mono text-xs font-bold text-[#64748B]">{d.code}</span>
-                        {d.is_cost_center && (
-                          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                            Cost Center Budgeting
-                          </span>
-                        )}
-                      </div>
-                      <h3 className="mt-1.5 text-base font-bold text-[#0F172A]">{d.name}</h3>
-                      {d.parent_name && (
-                        <p className="mt-0.5 text-xs text-[#64748B]">Induk Departemen: <b>{d.parent_name}</b></p>
-                      )}
-                      <p className="mt-0.5 text-xs text-[#64748B]">
-                        Manager / SPV: <b>{d.manager_name || "Belum ditentukan"}</b> · <b>{d.member_count ?? 0}</b> anggota aktif
-                      </p>
-                    </div>
-                    <div className="flex gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => openEditDepartmentModal(d)}
-                        className="rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-1 text-xs font-semibold text-[#163D64] hover:bg-[#E7F2FF]"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleDeleteDepartment(d)}
-                        className="rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
-                      >
-                        Hapus
-                      </button>
-                    </div>
-                  </div>
-                  <div className="mt-3 border-t border-[#EFEFEF] pt-2.5">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">Hak Akses Modul Departemen/Divisi:</div>
-                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                      {(d.modules || []).length > 0 ? (
-                        (d.modules || []).map((modKey) => (
-                          <span key={modKey} className="rounded-lg bg-[#E7F2FF] px-2.5 py-0.5 text-[11px] font-semibold text-[#163D64]">
-                            {MODULE_LABELS[String(modKey).toUpperCase()]?.name || modKey}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-xs text-[#64748B]">Belum ada modul didelegasikan</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-3 border-t border-[#EFEFEF] pt-2.5">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">
-                        Anggota Departemen ({displayedUsers.filter((u) => String(u.department_id || "") === String(d.id)).length} user):
-                      </span>
-                      <select
-                        disabled={savingDeptRole}
-                        value=""
-                        onChange={(e) => {
-                          if (!e.target.value) return;
-                          void handleSaveUserDepartmentRole(d.id, undefined, e.target.value);
-                        }}
-                        className="h-7 rounded-lg border border-[#E2E8F0] bg-white px-2 text-[11px] font-semibold text-[#163D64] outline-none focus:border-[#163D64]"
-                      >
-                        <option value="">+ Assign User ke {d.code}…</option>
-                        {displayedUsers
-                          .filter((u) => String(u.department_id || "") !== String(d.id))
-                          .map((u) => (
-                            <option key={u.id} value={u.id}>
-                              {u.full_name || u.email} ({String(u.role_level || "STAFF").toUpperCase()})
-                            </option>
-                          ))}
-                      </select>
-                    </div>
-                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                      {displayedUsers.filter((u) => String(u.department_id || "") === String(d.id)).length > 0 ? (
-                        displayedUsers
-                          .filter((u) => String(u.department_id || "") === String(d.id))
-                          .map((u) => (
-                            <span
-                              key={u.id}
-                              className="inline-flex items-center gap-1 rounded-lg border border-[#E2E8F0] bg-white px-2 py-0.5 text-[11px] font-medium text-[#0F172A]"
-                            >
-                              <span>{u.full_name || u.email}</span>
-                              <span className="rounded bg-[#E7F2FF] px-1 text-[9px] font-bold text-[#163D64]">
-                                {String(u.role_level || "STAFF").toUpperCase()}
-                              </span>
-                            </span>
-                          ))
-                      ) : (
-                        <span className="text-xs text-[#64748B]">Belum ada user ditempatkan di unit ini</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
       ) : (
-        /* Company Admin Team Access Control (Preserved) */
-        <div className="grid min-h-[590px] grid-cols-1 overflow-hidden rounded-2xl border border-[#EFEFEF] bg-white lg:grid-cols-[310px_1fr]">
-          <aside className="border-b border-[#EFEFEF] bg-[#EFEFEF] lg:border-b-0 lg:border-r">
-            <div className="border-b border-[#EFEFEF] p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[.14em] text-[#64748B]">
-                    Company members
-                  </p>
-                  <p className="mt-1 text-sm text-[#163D64]">
-                    {displayedUsers.length} active identities
-                  </p>
-                </div>
-                <Users size={19} className="text-[#0876CD]" />
-              </div>
-              <div className="relative mt-4">
-                <Search
-                  size={15}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]"
-                />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search team member"
-                  className="h-10 w-full rounded-xl border border-[#EFEFEF] bg-white pl-9 pr-3 text-sm outline-none focus:border-[#0876CD]"
-                />
-              </div>
-            </div>
-            <div className="max-h-[510px] overflow-y-auto p-2">
-              {visibleUsers.map((member) => {
-                const active = member.id === selectedUserId;
-                const roleName =
-                  member.roles?.[0]?.role_name ||
-                  member.roles?.[0]?.role_code ||
-                  "Team member";
-                return (
-                  <button
-                    key={member.id}
-                    onClick={() => setSelectedUserId(member.id)}
-                    className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${
-                      active ? "bg-[#E7F2FF]" : "hover:bg-[#E7F2FF]"
-                    }`}
-                  >
-                    <span
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-                        active ? "bg-[#163D64] text-white" : "bg-[#EFEFEF] text-[#163D64]"
-                      }`}
-                    >
-                      {(member.full_name || member.email)
-                        .split(/\s+/)
-                        .slice(0, 2)
-                        .map((part) => part[0])
-                        .join("")
-                        .toUpperCase()}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-[#163D64]">
-                        {member.full_name || member.email}
-                      </span>
-                      <span className="block truncate text-xs text-[#64748B]">
-                        {member.id === user?.id ? "Your account · " : ""}
-                        {roleName}
-                      </span>
-                      <span className="mt-0.5 block truncate text-[11px] font-medium text-[#163D64]/80">
-                        {(() => {
-                          const dept = departments.find((d) => String(d.id) === String(member.department_id || ""));
-                          const lvl = String(member.role_level || "STAFF").toUpperCase();
-                          return dept ? `[${dept.code}] ${dept.name} · ${lvl}` : `Belum ada departemen · ${lvl}`;
-                        })()}
-                      </span>
-                    </span>
-                    <ChevronRight
-                      size={15}
-                      className={active ? "text-[#163D64]" : "text-[#E2E8F0]"}
-                    />
-                  </button>
-                );
-              })}
-            </div>
-          </aside>
-
-          <main className="p-5 md:p-7">
-            {selectedUser ? (
-              <>
-                <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#EFEFEF] pb-5">
+        /* Company Admin Unified Team & Organization Control */
+        <div className="space-y-6">
+          {/* 1. User & Quick Access Split View */}
+          <div className="grid min-h-[590px] grid-cols-1 overflow-hidden rounded-2xl border border-[#EFEFEF] bg-white lg:grid-cols-[310px_1fr]">
+            <aside className="border-b border-[#EFEFEF] bg-[#EFEFEF] lg:border-b-0 lg:border-r">
+              <div className="border-b border-[#EFEFEF] p-5">
+                <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[.14em] text-[#64748B]">
-                      Access profile
+                      Company members
                     </p>
-                    <h2 className="mt-1 text-xl font-semibold text-[#163D64]">
-                      {selectedUser.full_name || selectedUser.email}
-                    </h2>
-                    <p className="mt-1 flex items-center gap-1.5 text-sm text-[#64748B]">
-                      <Mail size={13} /> {selectedUser.email}
+                    <p className="mt-1 text-sm text-[#163D64]">
+                      {displayedUsers.length} active identities
                     </p>
                   </div>
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                      selectedUser.is_active === false
-                        ? "bg-red-50 text-red-700"
-                        : "bg-[#E7F2FF] text-[#163D64]"
-                    }`}
-                  >
-                    {selectedUser.is_active === false ? "Inactive" : "Active"}
-                  </span>
+                  <Users size={19} className="text-[#0876CD]" />
                 </div>
+                <div className="relative mt-4">
+                  <Search
+                    size={15}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]"
+                  />
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search team member"
+                    className="h-10 w-full rounded-xl border border-[#EFEFEF] bg-white pl-9 pr-3 text-sm outline-none focus:border-[#0876CD]"
+                  />
+                </div>
+              </div>
+              <div className="max-h-[510px] overflow-y-auto p-2">
+                {visibleUsers.map((member) => {
+                  const active = member.id === selectedUserId;
+                  const roleName =
+                    member.roles?.[0]?.role_name ||
+                    member.roles?.[0]?.role_code ||
+                    "Team member";
+                  return (
+                    <button
+                      key={member.id}
+                      onClick={() => setSelectedUserId(member.id)}
+                      className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${
+                        active ? "bg-[#E7F2FF]" : "hover:bg-[#E7F2FF]"
+                      }`}
+                    >
+                      <span
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                          active ? "bg-[#163D64] text-white" : "bg-[#EFEFEF] text-[#163D64]"
+                        }`}
+                      >
+                        {(member.full_name || member.email)
+                          .split(/\s+/)
+                          .slice(0, 2)
+                          .map((part) => part[0])
+                          .join("")
+                          .toUpperCase()}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-[#163D64]">
+                          {member.full_name || member.email}
+                        </span>
+                        <span className="block truncate text-xs text-[#64748B]">
+                          {member.id === user?.id ? "Your account · " : ""}
+                          {roleName}
+                        </span>
+                        <span className="mt-0.5 block truncate text-[11px] font-medium text-[#163D64]/80">
+                          {(() => {
+                            const dept = departments.find((d) => String(d.id) === String(member.department_id || ""));
+                            const lvl = String(member.role_level || "STAFF").toUpperCase();
+                            return dept ? `[${dept.code}] ${dept.name} · ${lvl}` : `Belum ada departemen · ${lvl}`;
+                          })()}
+                        </span>
+                      </span>
+                      <ChevronRight
+                        size={15}
+                        className={active ? "text-[#163D64]" : "text-[#E2E8F0]"}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+            </aside>
 
-                {selectedUser.id === user?.id && (
-                  <div className="mt-5 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                    <LockKeyhole size={18} className="mt-0.5 shrink-0" />
+            <main className="p-5 md:p-7">
+              {selectedUser ? (
+                <>
+                  <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#EFEFEF] pb-5">
                     <div>
-                      <p className="font-semibold">Your own access is protected</p>
-                      <p className="mt-1 text-xs leading-5 text-amber-800">
-                        Company Admin tidak dapat menaikkan atau menurunkan akses akunnya sendiri.
-                        Gunakan Super Admin untuk perubahan administratif.
+                      <p className="text-xs font-semibold uppercase tracking-[.14em] text-[#64748B]">
+                        Access profile
+                      </p>
+                      <h2 className="mt-1 text-xl font-semibold text-[#163D64]">
+                        {selectedUser.full_name || selectedUser.email}
+                      </h2>
+                      <p className="mt-1 flex items-center gap-1.5 text-sm text-[#64748B]">
+                        <Mail size={13} /> {selectedUser.email}
                       </p>
                     </div>
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                        selectedUser.is_active === false
+                          ? "bg-red-50 text-red-700"
+                          : "bg-[#E7F2FF] text-[#163D64]"
+                      }`}
+                    >
+                      {selectedUser.is_active === false ? "Inactive" : "Active"}
+                    </span>
                   </div>
-                )}
 
-                {/* Baseline-First Quick Access Panel (Single Source of Truth) */}
-                {selectedUserId && (selectedCompany || contextCompany) && (
-                  <QuickAccessPanel
-                    companyId={selectedCompany || contextCompany}
-                    selectedUserId={selectedUserId}
-                    isSelfSelected={selectedUser.id === user?.id}
-                    allUsers={displayedUsers}
-                    departments={departments}
-                    onSaved={() => {
-                      void loadBase();
-                      void loadCompanyContext();
-                      void loadUserRoles(selectedUserId);
-                    }}
-                  />
-                )}
-              </>
-            ) : (
-              <div className="flex min-h-[420px] items-center justify-center text-sm text-[#64748B]">
-                Select a company member to manage access.
+                  {selectedUser.id === user?.id && (
+                    <div className="mt-5 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                      <LockKeyhole size={18} className="mt-0.5 shrink-0" />
+                      <div>
+                        <p className="font-semibold">Your own access is protected</p>
+                        <p className="mt-1 text-xs leading-5 text-amber-800">
+                          Company Admin tidak dapat menaikkan atau menurunkan akses akunnya sendiri.
+                          Gunakan Super Admin untuk perubahan administratif.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Baseline-First Quick Access Panel (Single Source of Truth) */}
+                  {selectedUserId && (selectedCompany || contextCompany) && (
+                    <QuickAccessPanel
+                      companyId={selectedCompany || contextCompany}
+                      selectedUserId={selectedUserId}
+                      isSelfSelected={selectedUser.id === user?.id}
+                      allUsers={displayedUsers}
+                      departments={departments}
+                      onCreateUnit={(unitType) => openNewDepartmentModal(unitType)}
+                      onSaved={() => {
+                        void loadBase();
+                        void loadCompanyContext();
+                        void loadUserRoles(selectedUserId);
+                      }}
+                    />
+                  )}
+                </>
+              ) : (
+                <div className="flex min-h-[420px] items-center justify-center text-sm text-[#64748B]">
+                  Select a company member to manage access.
+                </div>
+              )}
+            </main>
+          </div>
+
+          {/* 2. Integrated Departments, Divisions & Cost Centers Section */}
+          <div className="rounded-2xl border border-[#EFEFEF] bg-white p-6 space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#EFEFEF] pb-4">
+              <div>
+                <h2 className="text-lg font-bold text-[#163D64]">
+                  Daftar Unit Organisasi, Departemen, Divisi &amp; Cost Center ({departments.length})
+                </h2>
+                <p className="mt-1 text-xs text-[#64748B]">
+                  Kelola unit organisasi di bawah ini atau langsung buat unit baru dari tombol di atas. Setiap unit berlabel <b>Cost Center</b> otomatis muncul di dropdown <b>Buat Budget Plan</b>.
+                </p>
               </div>
-            )}
-          </main>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => openNewDepartmentModal("DEPARTMENT")}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#163D64] px-4 text-xs font-semibold text-white hover:bg-[#1D3A96]"
+                >
+                  + Buat Departemen Baru
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openNewDepartmentModal("DIVISION")}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#163D64] bg-[#E7F2FF] px-4 text-xs font-semibold text-[#163D64] hover:bg-[#D9EEFF]"
+                >
+                  + Buat Divisi Baru
+                </button>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              {departments.map((d) => (
+                <div key={d.id} className="rounded-2xl border border-[#EFEFEF] bg-[#FDFDFD] p-4 shadow-2xs flex flex-col justify-between gap-3">
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-extrabold ${
+                            d.unit_type === "DIVISION" ? "bg-purple-100 text-purple-800" : "bg-[#E7F2FF] text-[#163D64]"
+                          }`}>
+                            {d.unit_type === "DIVISION" ? "DIVISI" : "DEPARTEMEN"}
+                          </span>
+                          <span className="font-mono text-xs font-bold text-[#64748B]">{d.code}</span>
+                          {d.is_cost_center && (
+                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                              Cost Center Budgeting
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="mt-1.5 text-base font-bold text-[#0F172A]">{d.name}</h3>
+                        {d.parent_name && (
+                          <p className="mt-0.5 text-xs text-[#64748B]">Induk Departemen: <b>{d.parent_name}</b></p>
+                        )}
+                        <p className="mt-0.5 text-xs text-[#64748B]">
+                          Manager / SPV: <b>{d.manager_name || "Belum ditentukan"}</b> · <b>{d.member_count ?? 0}</b> anggota aktif
+                        </p>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => openEditDepartmentModal(d)}
+                          className="rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-1 text-xs font-semibold text-[#163D64] hover:bg-[#E7F2FF]"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteDepartment(d)}
+                          className="rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
+                        >
+                          Hapus
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-3 border-t border-[#EFEFEF] pt-2.5">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">Hak Akses Modul Departemen/Divisi:</div>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {(d.modules || []).length > 0 ? (
+                          (d.modules || []).map((modKey) => (
+                            <span key={modKey} className="rounded-lg bg-[#E7F2FF] px-2.5 py-0.5 text-[11px] font-semibold text-[#163D64]">
+                              {MODULE_LABELS[String(modKey).toUpperCase()]?.name || modKey}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-xs text-[#64748B]">Belum ada modul didelegasikan</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-3 border-t border-[#EFEFEF] pt-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">
+                          Anggota Departemen ({displayedUsers.filter((u) => String(u.department_id || "") === String(d.id)).length} user):
+                        </span>
+                        <select
+                          disabled={savingDeptRole}
+                          value=""
+                          onChange={(e) => {
+                            if (!e.target.value) return;
+                            void handleSaveUserDepartmentRole(d.id, undefined, e.target.value);
+                          }}
+                          className="h-7 rounded-lg border border-[#E2E8F0] bg-white px-2 text-[11px] font-semibold text-[#163D64] outline-none focus:border-[#163D64]"
+                        >
+                          <option value="">+ Assign User ke {d.code}…</option>
+                          {displayedUsers
+                            .filter((u) => String(u.department_id || "") !== String(d.id))
+                            .map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.full_name || u.email} ({String(u.role_level || "STAFF").toUpperCase()})
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {displayedUsers.filter((u) => String(u.department_id || "") === String(d.id)).length > 0 ? (
+                          displayedUsers
+                            .filter((u) => String(u.department_id || "") === String(d.id))
+                            .map((u) => (
+                              <span
+                                key={u.id}
+                                className="inline-flex items-center gap-1 rounded-lg border border-[#E2E8F0] bg-white px-2 py-0.5 text-[11px] font-medium text-[#0F172A]"
+                              >
+                                <span>{u.full_name || u.email}</span>
+                                <span className="rounded bg-[#E7F2FF] px-1 text-[9px] font-bold text-[#163D64]">
+                                  {String(u.role_level || "STAFF").toUpperCase()}
+                                </span>
+                              </span>
+                            ))
+                        ) : (
+                          <span className="text-xs text-[#64748B]">Belum ada user ditempatkan di unit ini</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 

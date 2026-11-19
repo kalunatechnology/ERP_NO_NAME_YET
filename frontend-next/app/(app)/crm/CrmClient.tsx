@@ -1107,23 +1107,34 @@ function TabDeals({
             <h3 className="text-sm font-bold text-text-primary">Deal Pipeline & Closed Won</h3>
             <p className="text-2xs text-text-secondary">Kelola prospek penjualan dan pipeline deal aktif</p>
           </div>
-          <div className="flex items-center gap-2">
-            {!readOnly && (
-              <button onClick={() => setIsNewOppOpen(true)} className="btn-primary text-xs py-1.5 px-3 gap-1 shadow-xs">
-                <Plus size={12} /> Buat Opportunity
-              </button>
-            )}
-          </div>
         </div>
 
-        <details className="mb-3 rounded-lg border border-text-tertiary/50 bg-bg-lighter px-3 py-2 text-xs">
-          <summary className="cursor-pointer font-semibold text-text-primary">Penjelasan tombol Opportunity</summary>
-          <div className="mt-2 grid gap-1.5 leading-5 text-text-secondary sm:grid-cols-2">
-            <p><b>Aktivitas:</b> simpan telepon, meeting, catatan, atau jadwal follow-up.</p>
-            <p><b>Customer 360:</b> lihat ringkasan riwayat transaksi, proyek, pengiriman, dan piutang customer.</p>
-            <p><b>Deal Won:</b> tandai peluang berhasil lalu jalankan pemeriksaan kredit. Hasil aman membuat order dan project incoming; jika tertahan kredit, sistem membuat proforma.</p>
-            <p><b>Executive override:</b> jalur pengecualian untuk meneruskan deal yang tertahan pemeriksaan kredit. Pakai hanya setelah keputusan eksekutif disetujui.</p>
-            <p className="sm:col-span-2"><b>Tandai kalah:</b> tutup peluang sebagai lost dan pilih alasan. Ini tidak menghapus riwayat opportunity.</p>
+        <details className="mb-3 rounded-lg border border-blue-200/80 bg-blue-50/40 px-3 py-2 text-xs">
+          <summary className="cursor-pointer font-semibold text-[#163D64]">
+            ℹ️ Catatan &amp; Penjelasan Fungsi Tombol Tindakan Opportunity (Klik untuk buka/tutup)
+          </summary>
+          <div className="mt-2.5 grid gap-2 leading-5 text-text-secondary sm:grid-cols-2">
+            <div className="rounded-lg border border-slate-200/80 bg-white px-2.5 py-1.5">
+              <b className="text-[#163D64]">Detail Pipeline:</b> Membuka jendela ringkasan lengkap tahap pipeline (Company, Contact Person, Lead Info, Follow-Up, Estimasi &amp; Pajak, serta Notulensi).
+            </div>
+            <div className="rounded-lg border border-slate-200/80 bg-white px-2.5 py-1.5">
+              <b className="text-[#163D64]">Delegasi PIC:</b> Mengalihkan atau menugaskan PIC Sales baru untuk menangani prospek/opportunity ini.
+            </div>
+            <div className="rounded-lg border border-slate-200/80 bg-white px-2.5 py-1.5">
+              <b className="text-[#163D64]">Aktivitas:</b> Mencatat log komunikasi (telepon, meeting, catatan harian) atau mengatur pengingat jadwal follow-up.
+            </div>
+            <div className="rounded-lg border border-slate-200/80 bg-white px-2.5 py-1.5">
+              <b className="text-[#163D64]">Jadwalkan meeting:</b> Membuat agenda meeting resmi dan menautkannya dengan notulensi serta action item opportunity ini.
+            </div>
+            <div className="rounded-lg border border-slate-200/80 bg-white px-2.5 py-1.5">
+              <b className="text-[#163D64]">Customer 360:</b> Menampilkan profil menyeluruh pelanggan (total nilai transaksi/LTV, proyek aktif, kontrak, pengiriman, dan piutang berjalan).
+            </div>
+            <div className="rounded-lg border border-slate-200/80 bg-white px-2.5 py-1.5">
+              <b className="text-emerald-700">Deal Won:</b> Menandai peluang berhasil dimenangkan dan menjalankan evaluasi kredit otomatis untuk membuat Sales Order &amp; proyek incoming (atau Proforma jika tertahan kredit).
+            </div>
+            <div className="rounded-lg border border-slate-200/80 bg-white px-2.5 py-1.5 sm:col-span-2">
+              <b className="text-rose-700">Tandai kalah:</b> Menutup peluang sebagai <i>Closed Lost</i> beserta alasan kalah tanpa menghapus histori prospek. (Khusus Direksi/GM: tombol <b>Executive override</b> muncul bila deal tertahan batas kredit).
+            </div>
           </div>
         </details>
 

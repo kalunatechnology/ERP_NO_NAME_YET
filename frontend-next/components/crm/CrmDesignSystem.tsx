@@ -265,8 +265,8 @@ export function CRMFilterBar({
   const showSearchInput = searchOpen || Boolean(searchValue);
 
   return (
-    <div className="flex flex-wrap lg:flex-nowrap items-center justify-between gap-2 rounded-2xl border border-[#E2E8F0] bg-white px-3 py-2.5 shadow-2xs">
-      <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 flex-1 min-w-0">
+    <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border border-[#E2E8F0] bg-white px-3 py-2.5 shadow-2xs">
+      <div className="flex flex-wrap items-center gap-2 min-w-0">
         {showSearchInput ? (
           <label className="relative w-48 xl:w-56 shrink-0">
             <span className="sr-only">{searchPlaceholder}</span>
