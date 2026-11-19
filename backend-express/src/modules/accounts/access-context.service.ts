@@ -11,6 +11,7 @@ import { Prisma, type iam_role, type iam_user, type iam_user_company_membership,
 import { ForbiddenError } from '../../utils/errors';
 import { isSuperAdmin, parseRoleCode, RoleCode } from '../../types/roles';
 import { effectiveModuleOverrides, ModulePermission } from '../../utils/module-permissions';
+import { mergeLegacyRoleTranslations } from './org-policy-sync.service';
 
 export type DepartmentRoleLevelType = 'GM' | 'SPV' | 'STAFF';
 
@@ -62,6 +63,9 @@ export interface UserAccessContext {
   departmentName: string | null;
   departmentUnitType: string | null;
   roleLevel: DepartmentRoleLevelType;
+  reportsToUserId?: string | null;
+  jobTitle?: string;
+  dashboardWidgets?: string[];
   canApproveDivisionScope: boolean;
   canOverrideBudget: boolean;
 }
@@ -339,6 +343,8 @@ export async function loadUserAccessContext(
       select: {
         department_id: true,
         role_level: true,
+        reports_to_user_id: true,
+        job_title: true,
         department: {
           include: {
             module_access: true,
@@ -377,7 +383,7 @@ export async function loadUserAccessContext(
 
   // 2. Dynamic 3-Tier Module Assignments (iam_user_module_assignment) + Tier Permissions + Overrides + Cross-Module Capabilities
   const activeCompanyId = superAdmin ? null : companyIds[0] ?? null;
-  const [rawModuleAssignments, rawTierPermissions, rawPermOverrides, rawCrossCapabilities] = activeCompanyId
+  const [rawModuleAssignments, rawTierPermissions, rawPermOverrides, rawCrossCapabilities, rawDashboardWidgets] = activeCompanyId
     ? await Promise.all([
         (prisma as any).iam_user_module_assignment?.findMany?.({
           where: {
@@ -399,8 +405,23 @@ export async function loadUserAccessContext(
         (prisma as any).iam_cross_module_capability?.findMany?.({
           where: { company_id: activeCompanyId, user_id: userId, status: 'ACTIVE' },
         }).catch(() => []) ?? [],
+        (prisma as any).iam_user_dashboard_access?.findMany?.({
+          where: { company_id: activeCompanyId, user_id: userId },
+        }).catch(() => []) ?? [],
       ])
-    : [[], [], [], []];
+    : [[], [], [], [], []];
+
+  const dashboardWidgets: string[] =
+    Array.isArray(rawDashboardWidgets) && rawDashboardWidgets.length > 0
+      ? Array.from(
+          new Set([
+            'DASH_PERSONAL',
+            ...rawDashboardWidgets
+              .filter((w: any) => Boolean(w.is_enabled))
+              .map((w: any) => String(w.widget_code || '').toUpperCase()),
+          ])
+        )
+      : mergeLegacyRoleTranslations(roles).dashboard_widgets;
 
   const permissionOverrides: UserPermissionOverrideContext[] = (Array.isArray(rawPermOverrides) ? rawPermOverrides : []).map((po: any) => ({
     module_code: String(po.module_code || '').trim().toUpperCase(),
@@ -547,6 +568,9 @@ export async function loadUserAccessContext(
     departmentName: deptRecord?.name ?? null,
     departmentUnitType: deptRecord?.unit_type ?? null,
     roleLevel,
+    reportsToUserId: userWithDept?.reports_to_user_id ?? null,
+    jobTitle: userWithDept?.job_title ?? '',
+    dashboardWidgets,
     canApproveDivisionScope: roleLevel === 'SPV' || roleLevel === 'GM' || moduleAssignments.some((m) => m.allow_approve),
     canOverrideBudget: roleLevel === 'GM',
   };

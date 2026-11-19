@@ -17,6 +17,7 @@ import { getModelFields } from '../../utils/crud-factory';
 import { ForbiddenError, ValidationError } from '../../utils/errors';
 import { Prisma } from '@prisma/client';
 import { ReadThroughCache } from '../../utils/read-through-cache';
+import { mergeLegacyRoleTranslations } from '../accounts/org-policy-sync.service';
 
 export const dashboardRouter = Router();
 
@@ -45,19 +46,86 @@ function parseSections(value: unknown): DashboardSection[] {
 }
 
 /**
+ * Loads the authenticated user's enabled dashboard widgets from iam_user_dashboard_access,
+ * falling back to mergeLegacyRoleTranslations(roles).dashboard_widgets when not yet configured.
+ */
+async function loadAllowedDashboardWidgets(req: Request): Promise<Set<string>> {
+  const companyId = req.companyId;
+  const userId = req.user?.id;
+  const fallbackRoles = [
+    ...(Array.isArray(req.user?.roles) ? req.user!.roles : []),
+    ...(req.user?.active_role_code ? [req.user.active_role_code] : []),
+  ];
+
+  if (!companyId || !userId) {
+    return new Set(mergeLegacyRoleTranslations(fallbackRoles).dashboard_widgets);
+  }
+
+  try {
+    const rows = await (prisma as any).iam_user_dashboard_access?.findMany?.({
+      where: { company_id: companyId, user_id: userId },
+      select: { widget_code: true, is_enabled: true },
+    });
+    if (Array.isArray(rows) && rows.length > 0) {
+      const enabled = new Set<string>(['DASH_PERSONAL']);
+      for (const r of rows) {
+        if (r.is_enabled && r.widget_code) {
+          enabled.add(String(r.widget_code).toUpperCase());
+        }
+      }
+      return enabled;
+    }
+  } catch {
+    // Graceful fallback if iam_user_dashboard_access table hasn't been created yet
+  }
+
+  return new Set(mergeLegacyRoleTranslations(fallbackRoles).dashboard_widgets);
+}
+
+/**
  * Determines whether the current identity may receive a dashboard section.
  * Company Admin remains an IAM operator and is intentionally excluded from operational data.
  */
-function canReadSection(req: Request, section: DashboardSection): boolean {
+function canReadSection(req: Request, section: DashboardSection, allowedWidgets?: Set<string>): boolean {
   const moduleCode = section.toUpperCase();
   const enabled = new Set((req.user?.enabled_modules ?? []).map((item) => item.toUpperCase()));
   const activeRole = req.user?.active_role_code;
-  return enabled.has(moduleCode) && Boolean(activeRole && SECTION_ROLES[section].includes(activeRole));
+  if (activeRole === RoleCode.COMPANY_ADMIN && (!allowedWidgets || allowedWidgets.size <= 1)) {
+    return false;
+  }
+
+  if (section === 'projects') {
+    const hasWidget = Boolean(
+      allowedWidgets?.has('DASH_PERSONAL') ||
+        allowedWidgets?.has('DASH_PROJECTS') ||
+        allowedWidgets?.has('DASH_EXECUTIVE')
+    );
+    return enabled.has('PROJECTS') && (hasWidget || Boolean(activeRole && SECTION_ROLES.projects.includes(activeRole)));
+  }
+
+  if (section === 'finance') {
+    const hasWidget = Boolean(
+      allowedWidgets?.has('DASH_FINANCE') || allowedWidgets?.has('DASH_EXECUTIVE')
+    );
+    return enabled.has('FINANCE') && (hasWidget || Boolean(activeRole && SECTION_ROLES.finance.includes(activeRole)));
+  }
+
+  if (section === 'crm') {
+    const hasWidget = Boolean(
+      allowedWidgets?.has('DASH_CRM') || allowedWidgets?.has('DASH_EXECUTIVE')
+    );
+    return (
+      (enabled.has('CRM') || enabled.has('SALES')) &&
+      (hasWidget || Boolean(activeRole && SECTION_ROLES.crm.includes(activeRole)))
+    );
+  }
+
+  return false;
 }
 
 /** Loads scoped project records. Personal WBS rows are complete so independent
  * preview limits cannot hide an assigned Main Task or disconnect its children. */
-async function loadProjectBundle(req: Request, includeFinance: boolean) {
+async function loadProjectBundle(req: Request, includeFinance: boolean, allowedWidgets?: Set<string>) {
   const companyId = req.companyId!;
   const tenantId = req.user?.tenant_id;
   const userId = req.user?.id;
@@ -82,8 +150,14 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
     );
   }
 
-  const isOperationalUser = ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[])
-    .includes(activeRole as RoleCode);
+  const hasPortfolioWidget = Boolean(
+    allowedWidgets?.has('DASH_PROJECTS') || allowedWidgets?.has('DASH_EXECUTIVE')
+  );
+  const isPersonalOnlyWidgetUser = Boolean(allowedWidgets && !hasPortfolioWidget);
+  const isOperationalUser =
+    isPersonalOnlyWidgetUser ||
+    (!hasPortfolioWidget &&
+      ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[]).includes(activeRole as RoleCode));
   const managedProjectRows = managementWorkspace && isOperationalUser
     ? await prisma.project_member.findMany({
         where: {
@@ -785,7 +859,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
   // Executive Weekly monitoring must receive the complete company WBS. A
   // separate preview limit on each level can hide tasks or orphan children.
-  const completeExecutiveWbs = activeRole === RoleCode.DIRECTOR;
+  const completeExecutiveWbs = Boolean(allowedWidgets?.has('DASH_EXECUTIVE')) || activeRole === RoleCode.DIRECTOR;
   const projectScope = managedProjectIds.length
     ? Prisma.sql`AND id IN (${Prisma.join(managedProjectIds.map((id) => Prisma.sql`${id}::text`))})`
     : Prisma.empty;
@@ -1300,15 +1374,18 @@ dashboardRouter.get('/bootstrap', async (req: Request, res: Response, next: Next
   try {
     if (!req.companyId) throw new ForbiddenError('Pilih satu company eksplisit untuk memuat dashboard operasional.');
     const requested = parseSections(req.query.sections);
-    const denied = requested.filter((section) => !canReadSection(req, section));
+    const allowedWidgets = await loadAllowedDashboardWidgets(req);
+    const denied = requested.filter((section) => !canReadSection(req, section, allowedWidgets));
     if (denied.length) throw new ForbiddenError(`Akses dashboard ditolak untuk section: ${denied.join(', ')}.`);
     const enabled = req.user?.enabled_modules ?? [];
+    const sortedWidgets = [...allowedWidgets].sort();
     const cacheKey = [
       req.user!.tenant_id,
       req.companyId,
       req.user!.id,
       req.user!.active_role_code,
       [...enabled].sort().join(','),
+      sortedWidgets.join(','),
       [...requested].sort().join(','),
       String(req.query.project_workspace ?? ''),
     ].join('|');
@@ -1317,7 +1394,7 @@ dashboardRouter.get('/bootstrap', async (req: Request, res: Response, next: Next
       const sectionPromises = new Map<DashboardSection, Promise<unknown>>();
       // Loaders are intentionally created inside the cache miss callback. A hit
       // therefore performs zero dashboard database reads.
-      if (requestedSet.has('projects')) sectionPromises.set('projects', loadProjectBundle(req, false));
+      if (requestedSet.has('projects')) sectionPromises.set('projects', loadProjectBundle(req, false, allowedWidgets));
       if (requestedSet.has('finance')) sectionPromises.set('finance', loadFinanceBundle(req, enabled.includes('PROJECTS')));
       if (requestedSet.has('crm')) sectionPromises.set('crm', loadCrmBundle(req, enabled));
       const result = await Promise.all(requested.map(async (section) => [section, await sectionPromises.get(section)!] as const));
@@ -1337,7 +1414,15 @@ dashboardRouter.get('/bootstrap', async (req: Request, res: Response, next: Next
     );
     res.setHeader('X-Dashboard-Cache', cached.state);
     res.setHeader('Server-Timing', `dashboard;dur=${(performance.now() - startedAt).toFixed(1)}`);
-    return res.json({ success: true, data: cached.value, meta: { sections: requested, request_id: req.requestId } });
+    return res.json({
+      success: true,
+      data: cached.value,
+      meta: {
+        sections: requested,
+        allowed_widgets: sortedWidgets,
+        request_id: req.requestId,
+      },
+    });
   } catch (error) {
     return next(error);
   }

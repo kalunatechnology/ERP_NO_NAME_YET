@@ -18,6 +18,11 @@ import {
 } from '../master_data/employee-provisioning.service';
 import { ROLE_BUNDLES } from './role-bundle.config';
 import { effectiveModuleOverrides } from '../../utils/module-permissions';
+import {
+  DASHBOARD_WIDGET_CATALOG,
+  deterministicUuid,
+  mergeLegacyRoleTranslations,
+} from './org-policy-sync.service';
 
 type LoginAccessSnapshot = {
   user_roles: Array<{
@@ -251,6 +256,9 @@ export class AccountsService {
       department_code: access.departmentCode,
       department_name: access.departmentName,
       role_level: access.roleLevel,
+      reports_to_user_id: access.reportsToUserId ?? null,
+      job_title: access.jobTitle ?? '',
+      dashboard_widgets: access.dashboardWidgets ?? ['DASH_PERSONAL'],
       can_approve_division_scope: access.canApproveDivisionScope,
       can_override_budget: access.canOverrideBudget,
       enabled_modules: access.enabledModules,
@@ -377,6 +385,9 @@ export class AccountsService {
       department_code: access.departmentCode,
       department_name: access.departmentName,
       role_level: access.roleLevel,
+      reports_to_user_id: access.reportsToUserId ?? null,
+      job_title: access.jobTitle ?? '',
+      dashboard_widgets: access.dashboardWidgets ?? ['DASH_PERSONAL'],
       can_approve_division_scope: access.canApproveDivisionScope,
       can_override_budget: access.canOverrideBudget,
       enabled_modules: access.enabledModules,
@@ -702,6 +713,66 @@ export class AccountsService {
       },
       tx,
     );
+
+    // Seed uniform baseline: PROJECTS (Tier 3, OWN) + DASH_PERSONAL (+ merged role grants)
+    try {
+      const mergedBaseline = mergeLegacyRoleTranslations(uniqueRoleCodes);
+      const widgetSet = new Set(mergedBaseline.dashboard_widgets);
+      for (const item of DASHBOARD_WIDGET_CATALOG) {
+        const isEnabled = item.code === 'DASH_PERSONAL' ? true : widgetSet.has(item.code);
+        await (tx as any).iam_user_dashboard_access?.upsert?.({
+          where: {
+            company_id_user_id_widget_code: {
+              company_id: companyId,
+              user_id: created.id,
+              widget_code: item.code,
+            },
+          },
+          update: { is_enabled: isEnabled },
+          create: {
+            id: deterministicUuid(`dash-acc:${companyId}:${created.id}:${item.code}`),
+            tenant_id: tenantId,
+            company_id: companyId,
+            user_id: created.id,
+            widget_code: item.code,
+            is_enabled: isEnabled,
+            granted_by_id: actorId ?? null,
+          },
+        });
+      }
+      for (const mod of mergedBaseline.modules) {
+        await (tx as any).iam_user_module_assignment?.upsert?.({
+          where: {
+            company_id_user_id_module_code: {
+              company_id: companyId,
+              user_id: created.id,
+              module_code: mod.module_code,
+            },
+          },
+          update: {
+            tier_level: mod.tier_level,
+            data_scope: mod.data_scope,
+            department_id: cleanDepartmentId,
+            status: 'ACTIVE',
+          },
+          create: {
+            id: deterministicUuid(`mod-asg:${companyId}:${created.id}:${mod.module_code}`),
+            tenant_id: tenantId,
+            company_id: companyId,
+            user_id: created.id,
+            module_code: mod.module_code,
+            tier_level: mod.tier_level,
+            data_scope: mod.data_scope,
+            department_id: cleanDepartmentId,
+            is_primary: mod.module_code === 'PROJECTS',
+            status: 'ACTIVE',
+            created_by_id: actorId ?? null,
+          },
+        });
+      }
+    } catch {
+      // Non-blocking if in-memory mock or pre-migration DB is used
+    }
 
     return created;
     });

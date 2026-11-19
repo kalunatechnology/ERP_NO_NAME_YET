@@ -507,7 +507,9 @@ masterDataRouter.post('/departments', async (req: Request, res: Response, next: 
 
     if (!rawCode || rawCode.length > 50) throw new ValidationError('Kode Departemen/Divisi wajib diisi (maksimal 50 karakter).');
     if (!rawName || rawName.length > 150) throw new ValidationError('Nama Departemen/Divisi wajib diisi (maksimal 150 karakter).');
-    if (!['DEPARTMENT', 'DIVISION'].includes(unitType)) throw new ValidationError('Tipe unit harus DEPARTMENT atau DIVISION.');
+    if (!['DIRECTORATE', 'BRANCH', 'DEPARTMENT', 'DIVISION', 'TEAM'].includes(unitType)) {
+      throw new ValidationError('Tipe unit harus DIRECTORATE, BRANCH, DEPARTMENT, DIVISION, atau TEAM.');
+    }
 
     const duplicate = await (prisma as any).core_department.findFirst({
       where: { company_id: companyId, code: { equals: rawCode, mode: 'insensitive' } },
@@ -515,13 +517,21 @@ masterDataRouter.post('/departments', async (req: Request, res: Response, next: 
     });
     if (duplicate) throw new ConflictError(`Kode Departemen/Divisi "${rawCode}" sudah digunakan pada company ini.`);
 
+    let parentDept: { id: string; hierarchy_level?: number; materialized_path?: string; code?: string } | null = null;
     if (parentId) {
-      const parentDept = await (prisma as any).core_department.findFirst({
+      parentDept = await (prisma as any).core_department.findFirst({
         where: { id: parentId, company_id: companyId },
-        select: { id: true },
+        select: { id: true, hierarchy_level: true, materialized_path: true, code: true },
       });
       if (!parentDept) throw new ValidationError('Departemen induk tidak ditemukan pada company ini.');
     }
+    const hierarchyLevel = parentDept ? (Number(parentDept.hierarchy_level) || 1) + 1 : 1;
+    const parentPath = parentDept?.materialized_path && parentDept.materialized_path !== '/'
+      ? parentDept.materialized_path
+      : parentDept?.code
+      ? `/${parentDept.code}/`
+      : '/';
+    const materializedPath = `${parentPath}${rawCode}/`;
 
     const moduleKeys: string[] = Array.isArray(req.body.module_keys)
       ? req.body.module_keys.map((k: unknown) => String(k).trim().toUpperCase()).filter(Boolean)
@@ -546,6 +556,8 @@ masterDataRouter.post('/departments', async (req: Request, res: Response, next: 
           manager_user_id: managerUserId,
           is_cost_center: isCostCenter,
           is_active: isActive,
+          hierarchy_level: hierarchyLevel,
+          materialized_path: materializedPath,
         },
       });
 
@@ -656,6 +668,25 @@ const updateDepartmentHandler = async (req: Request, res: Response, next: NextFu
 
     if (!rawCode || !rawName) throw new ValidationError('Kode dan nama Departemen/Divisi wajib diisi.');
     if (parentId === existing.id) throw new ValidationError('Departemen/Divisi tidak dapat menjadi induk bagi dirinya sendiri.');
+    if (!['DIRECTORATE', 'BRANCH', 'DEPARTMENT', 'DIVISION', 'TEAM'].includes(unitType)) {
+      throw new ValidationError('Tipe unit harus DIRECTORATE, BRANCH, DEPARTMENT, DIVISION, atau TEAM.');
+    }
+
+    let parentDept: { id: string; hierarchy_level?: number; materialized_path?: string; code?: string } | null = null;
+    if (parentId) {
+      parentDept = await (prisma as any).core_department.findFirst({
+        where: { id: parentId, company_id: companyId },
+        select: { id: true, hierarchy_level: true, materialized_path: true, code: true },
+      });
+      if (!parentDept) throw new ValidationError('Departemen induk tidak ditemukan pada company ini.');
+    }
+    const hierarchyLevel = parentDept ? (Number(parentDept.hierarchy_level) || 1) + 1 : 1;
+    const parentPath = parentDept?.materialized_path && parentDept.materialized_path !== '/'
+      ? parentDept.materialized_path
+      : parentDept?.code
+      ? `/${parentDept.code}/`
+      : '/';
+    const materializedPath = `${parentPath}${rawCode}/`;
 
     const duplicate = await (prisma as any).core_department.findFirst({
       where: { company_id: companyId, id: { not: existing.id }, code: { equals: rawCode, mode: 'insensitive' } },
@@ -675,6 +706,8 @@ const updateDepartmentHandler = async (req: Request, res: Response, next: NextFu
           manager_user_id: managerUserId,
           is_cost_center: isCostCenter,
           is_active: isActive,
+          hierarchy_level: hierarchyLevel,
+          materialized_path: materializedPath,
         },
       });
 

@@ -235,6 +235,7 @@ export interface FrontendAccessContext {
   moduleAccess?: readonly ModulePermission[] | null;
   activeRoleCode?: unknown;
   isSuperAdmin?: boolean;
+  dashboardWidgets?: readonly string[] | null;
 }
 
 export function canRequestApi(url: string, access: FrontendAccessContext): boolean {
@@ -258,12 +259,27 @@ const DASHBOARD_SECTION_CONTRACTS: Record<DashboardSection, { module: ModuleCode
   crm: { module: "CRM", roles: CRM_ROLES },
 };
 
-/** Mirrors Dashboard BFF `SECTION_ROLES` without treating its sections as direct module URLs. */
+/** Mirrors Dashboard BFF `SECTION_ROLES` and modular dashboard widgets without treating its sections as direct module URLs. */
 export function canRequestDashboardSection(section: DashboardSection, access: FrontendAccessContext): boolean {
   const contract = DASHBOARD_SECTION_CONTRACTS[section];
   const activeRole = normalizeRoleCode(access.activeRoleCode);
   const superAdmin = Boolean(access.isSuperAdmin || activeRole === ROLE_CODES.superAdmin);
   if (!hasModuleEntitlement(access.enabledModules, contract.module, superAdmin)) return false;
-  // Dashboard BFF canReadSection deliberately does not accept module delegation.
-  return superAdmin || contract.roles.includes(activeRole);
+  if (superAdmin || contract.roles.includes(activeRole)) return true;
+
+  const widgets = new Set((access.dashboardWidgets || []).map((w) => String(w).toUpperCase()));
+  if (section === "projects" && (widgets.has("DASH_PERSONAL") || widgets.has("DASH_PROJECTS") || widgets.has("DASH_EXECUTIVE"))) {
+    return true;
+  }
+  if (section === "finance" && (widgets.has("DASH_FINANCE") || widgets.has("DASH_EXECUTIVE"))) {
+    return true;
+  }
+  if (section === "crm" && (widgets.has("DASH_CRM") || widgets.has("DASH_EXECUTIVE"))) {
+    return true;
+  }
+
+  const delegated = normalizeModuleCodes(access.delegatedModules);
+  if (delegated.has(contract.module)) return true;
+
+  return false;
 }

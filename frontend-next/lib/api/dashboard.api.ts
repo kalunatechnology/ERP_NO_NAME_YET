@@ -77,6 +77,8 @@ export interface DashboardBootstrap {
     data: Partial<CRMData>;
     dashboard: CRMDashboard;
   };
+
+  allowed_widgets?: string[];
 }
 
 /**
@@ -91,6 +93,7 @@ interface DashboardBootstrapResponse {
 
   meta?: {
     sections?: DashboardSection[];
+    allowed_widgets?: string[];
     request_id?: string;
   };
 }
@@ -230,11 +233,14 @@ export async function loadDashboardBootstrap(
         timeout: 30_000,
       },
     )
-    .then((response) => (
-      response.data?.data ??
-      (response.data as DashboardBootstrap) ??
-      {}
-    ));
+    .then((response) => {
+      const payload =
+        response.data?.data ??
+        (response.data as DashboardBootstrap) ??
+        {};
+      const allowedWidgets = response.data?.meta?.allowed_widgets;
+      return allowedWidgets ? { ...payload, allowed_widgets: allowedWidgets } : payload;
+    });
 
   if (!options.fresh) bootstrapRequests.set(cacheKey, request);
   try {

@@ -1258,6 +1258,7 @@ export default function DashboardClient() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [staffOvertimeSummary, setStaffOvertimeSummary] = useState<StaffOvertimeSummaryData | null>(null);
+  const [allowedWidgets, setAllowedWidgets] = useState<string[]>([]);
 
   // Marka+ Request Card & Ticketing States
   const [isNewRequestModalOpen, setIsNewRequestModalOpen] = useState(false);
@@ -1266,14 +1267,19 @@ export default function DashboardClient() {
   const [selectedReviewRequest, setSelectedReviewRequest] = useState<any>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const enabledModules = new Set((user?.enabled_modules || []).map((module) => module.toUpperCase()));
+  const userProfileWidgets: string[] = Array.isArray((user as any)?.dashboard_widgets)
+    ? ((user as any).dashboard_widgets as string[])
+    : [];
   const canUseProjects = userRole === "super_admin" || enabledModules.has("PROJECTS");
   const canUseFinance = userRole === "super_admin" || enabledModules.has("FINANCE");
   const canUseCrm = userRole === "super_admin" || enabledModules.has("CRM");
+  const canUseInventory = userRole === "super_admin" || enabledModules.has("INVENTORY");
   const canUseRequests = userRole === "super_admin" || enabledModules.has("REQUESTS");
   const apiAccessContext = {
     delegatedModules: user?.delegated_modules,
     activeRoleCode: user?.active_role_code,
     isSuperAdmin: userRole === "super_admin",
+    dashboardWidgets: allowedWidgets.length > 0 ? allowedWidgets : userProfileWidgets,
   };
 
   const loadData = useCallback(async (silent = false) => {
@@ -1281,19 +1287,41 @@ export default function DashboardClient() {
     else setRefreshing(true);
     setLoadError(null);
     try {
-      const mayReadProjectDashboard = ["pm", "om", "executive", "staff", "crm"].includes(userRole);
+      const widgetHintSet = new Set(
+        (allowedWidgets.length > 0 ? allowedWidgets : userProfileWidgets).map((w) => String(w).toUpperCase())
+      );
+      const hasExecHint = userRole === "executive" || widgetHintSet.has("DASH_EXECUTIVE");
+      const hasFinanceHint = userRole === "finance" || hasExecHint || widgetHintSet.has("DASH_FINANCE");
+      const hasCrmHint = userRole === "crm" || widgetHintSet.has("DASH_CRM");
+      const mayReadProjectDashboard =
+        ["pm", "om", "executive", "staff", "crm"].includes(userRole) ||
+        widgetHintSet.has("DASH_PERSONAL") ||
+        widgetHintSet.has("DASH_PROJECTS") ||
+        hasExecHint;
+
       const primarySections: Array<"projects" | "finance" | "crm"> = [];
       // Executive Weekly Target must use the same paginated project loader as
       // Staff Weekly; the dashboard bootstrap projection omits Weekly fields.
-      if (canUseProjects && mayReadProjectDashboard && userRole !== "crm" && userRole !== "executive") primarySections.push("projects");
-      if ((userRole === "finance" || userRole === "executive") && canUseFinance) primarySections.push("finance");
-      if (userRole === "crm" && canUseCrm) primarySections.push("crm");
+      if (canUseProjects && mayReadProjectDashboard && userRole !== "crm" && !hasExecHint) {
+        primarySections.push("projects");
+      }
+      if (hasFinanceHint && canUseFinance) primarySections.push("finance");
+      if (hasCrmHint && canUseCrm) primarySections.push("crm");
 
       // One BFF request provides the above-the-fold datasets. Express performs
       // the underlying reads concurrently while preserving tenant and RBAC scope.
-      const primary = await loadDashboardBootstrap(primarySections, { ...apiAccessContext, enabledModules: user?.enabled_modules });
+      const primary = await loadDashboardBootstrap(primarySections, {
+        ...apiAccessContext,
+        enabledModules: user?.enabled_modules,
+      });
+      if (Array.isArray(primary.allowed_widgets) && primary.allowed_widgets.length > 0) {
+        setAllowedWidgets(primary.allowed_widgets);
+      } else if (userProfileWidgets.length > 0) {
+        setAllowedWidgets(userProfileWidgets);
+      }
+
       const primaryTasks: Promise<void>[] = [];
-      if (userRole === "executive" && canUseProjects && mayReadProjectDashboard) {
+      if (hasExecHint && canUseProjects && mayReadProjectDashboard) {
         primaryTasks.push(loadAllProjects(user?.enabled_modules || [], undefined, apiAccessContext).then(setProjects));
       }
       if (primary.projects) {
@@ -1309,18 +1337,31 @@ export default function DashboardClient() {
       await Promise.all(primaryTasks);
 
       // Lower-priority sections are requested only after primary widgets render.
-      // CRM detail is secondary for an Executive; project context is secondary
-      // on the CRM dashboard. This avoids competing with the visible KPI cards.
-      const deferredSections: Array<"projects" | "crm"> = [];
-      if (userRole === "executive" && canUseCrm) deferredSections.push("crm");
-      if (userRole === "crm" && canUseProjects) deferredSections.push("projects");
+      const effectiveWidgets = new Set(
+        (primary.allowed_widgets || userProfileWidgets).map((w) => String(w).toUpperCase())
+      );
+      const deferredSections: Array<"projects" | "finance" | "crm"> = [];
+      if ((hasExecHint || effectiveWidgets.has("DASH_CRM")) && canUseCrm && !primarySections.includes("crm")) {
+        deferredSections.push("crm");
+      }
+      if ((effectiveWidgets.has("DASH_FINANCE") || effectiveWidgets.has("DASH_EXECUTIVE")) && canUseFinance && !primarySections.includes("finance")) {
+        deferredSections.push("finance");
+      }
+      if ((userRole === "crm" || effectiveWidgets.has("DASH_PROJECTS") || effectiveWidgets.has("DASH_PERSONAL")) && canUseProjects && !primarySections.includes("projects") && !hasExecHint) {
+        deferredSections.push("projects");
+      }
       if (deferredSections.length) {
         const schedule = typeof window !== "undefined" && "requestIdleCallback" in window
           ? (callback: () => void) => (window as any).requestIdleCallback(callback, { timeout: 1500 })
           : (callback: () => void) => window.setTimeout(callback, 200);
         schedule(() => {
-          void loadDashboardBootstrap(deferredSections, { ...apiAccessContext, enabledModules: user?.enabled_modules }).then(async (deferred) => {
+          void loadDashboardBootstrap(deferredSections, {
+            ...apiAccessContext,
+            enabledModules: user?.enabled_modules,
+            dashboardWidgets: Array.from(effectiveWidgets),
+          }).then(async (deferred) => {
             if (deferred.projects) setProjects(await loadAllProjects(user?.enabled_modules || [], deferred.projects, apiAccessContext));
+            if (deferred.finance) setFinData(await loadFinanceDashboard(user?.enabled_modules || [], deferred.finance, apiAccessContext));
             if (deferred.crm) {
               const crm = await loadCRMData(user?.enabled_modules || [], deferred.crm, apiAccessContext);
               setCrmData(crm.data);
@@ -1439,41 +1480,106 @@ export default function DashboardClient() {
         </div>
       )}
 
-      {/* ── Role-Based Dashboard Content ── */}
-      {userRole === "executive" && (
-        <ExecutiveDashboard projects={projects} finData={finData} loading={loading} />
-      )}
-      {userRole === "super_admin" && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <KpiCard label="Akses Global" value="Read-only" subLabel="Data operasional lintas company" icon={ShieldAlert} />
-          <KpiCard label="Module Governance" value="Per Company" subLabel="Aktivasi read/write terpisah" icon={Layers} />
-          <KpiCard label="Kelola Company" value="Open" subLabel="Buka Company & Access" icon={Building2} onClick={() => window.location.assign('/administration')} />
-        </div>
-      )}
-      {userRole === "company_admin" && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <KpiCard label="User & Role" value="Kelola" subLabel="Atur user dan akses personal company" icon={Users} onClick={() => window.location.assign('/administration')} />
-          <KpiCard label="Company Modules" value="Delegasi" subLabel="Hanya modul yang telah disetujui Super Admin" icon={Layers} onClick={() => window.location.assign('/administration')} />
-          <KpiCard label="Operational Data" value="Scoped" subLabel="Gunakan role operasional terpisah bila diperlukan" icon={ShieldAlert} />
-        </div>
-      )}
-      {(userRole === "pm" || userRole === "om") && (
-        <PMDashboard projects={projects} loading={loading} userId={user?.id} />
-      )}
-      {userRole === "finance" && (
-        <FinanceDashboard finData={finData} loading={loading} />
-      )}
-      {userRole === "crm" && (
-        <CRMDashboard
-          projects={projects}
-          crmData={crmData}
-          crmDash={crmDash}
-          loading={loading}
-        />
-      )}
-      {userRole === "staff" && (
-        <StaffDashboard projects={projects} loading={loading} overtimeSummary={staffOvertimeSummary} />
-      )}
+      {/* ── Modular & Multi-Role Dashboard Content ── */}
+      {(() => {
+        const activeWidgetSet = new Set(
+          (allowedWidgets.length > 0 ? allowedWidgets : userProfileWidgets).map((w) =>
+            String(w).toUpperCase()
+          )
+        );
+        const hasModularConfig = activeWidgetSet.size > 0 && userRole !== "super_admin" && userRole !== "company_admin";
+
+        const showExec = hasModularConfig
+          ? activeWidgetSet.has("DASH_EXECUTIVE")
+          : userRole === "executive";
+        const showProjects = hasModularConfig
+          ? activeWidgetSet.has("DASH_PROJECTS") && !showExec
+          : userRole === "pm" || userRole === "om";
+        const showFinance = hasModularConfig
+          ? activeWidgetSet.has("DASH_FINANCE") && !showExec
+          : userRole === "finance";
+        const showCrm = hasModularConfig
+          ? activeWidgetSet.has("DASH_CRM")
+          : userRole === "crm";
+        const showInventory = hasModularConfig
+          ? activeWidgetSet.has("DASH_INVENTORY") && canUseInventory
+          : userRole === "om" && canUseInventory;
+        const showPersonal = hasModularConfig
+          ? activeWidgetSet.has("DASH_PERSONAL") &&
+            (!showExec && !showProjects)
+          : userRole === "staff";
+
+        return (
+          <>
+            {userRole === "super_admin" && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <KpiCard label="Akses Global" value="Read-only" subLabel="Data operasional lintas company" icon={ShieldAlert} />
+                <KpiCard label="Module Governance" value="Per Company" subLabel="Aktivasi read/write terpisah" icon={Layers} />
+                <KpiCard label="Kelola Company" value="Open" subLabel="Buka Company & Access" icon={Building2} onClick={() => window.location.assign('/administration')} />
+              </div>
+            )}
+            {userRole === "company_admin" && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <KpiCard label="User & Role" value="Kelola" subLabel="Atur user dan akses personal company" icon={Users} onClick={() => window.location.assign('/administration')} />
+                <KpiCard label="Company Modules" value="Delegasi" subLabel="Hanya modul yang telah disetujui Super Admin" icon={Layers} onClick={() => window.location.assign('/administration')} />
+                <KpiCard label="Operational Data" value="Scoped" subLabel="Gunakan role operasional terpisah bila diperlukan" icon={ShieldAlert} />
+              </div>
+            )}
+            {showExec && (
+              <ExecutiveDashboard projects={projects} finData={finData} loading={loading} />
+            )}
+            {showProjects && (
+              <PMDashboard projects={projects} loading={loading} userId={user?.id} />
+            )}
+            {showFinance && (
+              <FinanceDashboard finData={finData} loading={loading} />
+            )}
+            {showCrm && (
+              <CRMDashboard
+                projects={projects}
+                crmData={crmData}
+                crmDash={crmDash}
+                loading={loading}
+              />
+            )}
+            {showInventory && (
+              <section className="rounded-[20px] border border-[#CBD5E1] bg-gradient-to-r from-[#E7F2FF]/80 via-white to-[#F8FAFC] p-5 shadow-2xs">
+                <SectionHeader
+                  title="Inventori, Gudang & Aset Operasional (DASH_INVENTORY)"
+                  actionLabel="Buka Pusat Kendali Inventori"
+                  actionHref="/inventory"
+                />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <KpiCard
+                    label="Gudang & Mutasi Stok"
+                    value="Aktif"
+                    subLabel="Canonical Stock Identity (K) & FIFO/Moving Avg"
+                    icon={Layers}
+                    onClick={() => window.location.assign("/inventory")}
+                  />
+                  <KpiCard
+                    label="Transfer Transit & Reservasi"
+                    value="3-Event"
+                    subLabel="Dispatch Transit, Receive & 2-Stage Reservation"
+                    icon={Activity}
+                    onClick={() => window.location.assign("/inventory")}
+                  />
+                  <KpiCard
+                    label="Kapitalisasi Aset & Custodian"
+                    value="Tersinkron"
+                    subLabel="Konversi inventori ke Register Aset Tetap"
+                    icon={CheckCircle2}
+                    onClick={() => window.location.assign("/inventory")}
+                  />
+                </div>
+              </section>
+            )}
+            {showPersonal && (
+              <StaffDashboard projects={projects} loading={loading} overtimeSummary={staffOvertimeSummary} />
+            )}
+          </>
+        );
+      })()}
 
       {/* ── Marka+ Active Request Cards Feed ── */}
       {canUseRequests && userRole !== "super_admin" && <section className="mt-2 pt-5 border-t border-[#E2E8F0]">

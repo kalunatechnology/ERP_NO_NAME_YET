@@ -40,6 +40,7 @@ import { TenantManagement, TenantItem } from "./TenantManagement";
 import { CompanyManagement, CompanyDetail } from "./CompanyManagement";
 import { ModuleEntitlements, ModuleAccessItem } from "./ModuleEntitlements";
 import { ModuleHierarchyManager } from "./ModuleHierarchyManager";
+import { QuickAccessPanel } from "./QuickAccessPanel";
 
 type Company = { id: string; legal_name?: string; company_code?: string; name?: string; tenant_id?: string; business_category?: string; tax_number?: string; status?: string };
 type ModuleAccess = ModuleAccessItem;
@@ -1330,6 +1331,22 @@ export function AccessAdministration() {
                       </p>
                     </div>
                   </div>
+                )}
+
+                {/* Baseline-First Quick Access Panel */}
+                {selectedUserId && (selectedCompany || contextCompany) && (
+                  <QuickAccessPanel
+                    companyId={selectedCompany || contextCompany}
+                    selectedUserId={selectedUserId}
+                    isSelfSelected={selectedUser.id === user?.id}
+                    allUsers={displayedUsers}
+                    departments={departments}
+                    onSaved={() => {
+                      void loadBase();
+                      void loadCompanyContext();
+                      void loadUserRoles(selectedUserId);
+                    }}
+                  />
                 )}
 
                 {/* Assigned Roles Section */}

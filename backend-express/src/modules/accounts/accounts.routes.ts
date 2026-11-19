@@ -19,6 +19,13 @@ import {
   requireSuperAdminForWrite,
 } from '../../middlewares/rbac.middleware';
 import { ADMIN_ROLE_CODES, isSuperAdmin, parseRoleCode, RoleCode } from '../../types/roles';
+import {
+  DASHBOARD_WIDGET_CATALOG,
+  QUICK_ACCESS_PRESETS,
+  getUserQuickAccess,
+  syncUserQuickAccess,
+} from './org-policy-sync.service';
+import { invalidateDashboardCache } from '../dashboard/dashboard.routes';
 
 export const authRouter = Router();
 export const publicAuthRouter = Router();
@@ -1045,6 +1052,55 @@ async function ensureModuleHierarchyTables() {
       CREATE UNIQUE INDEX IF NOT EXISTS "uq_iam_cross_module_capability"
         ON "iam_cross_module_capability" ("company_id", "user_id", "source_module_code", "target_module_code", "capability_code");
     `);
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "core_department"
+        ADD COLUMN IF NOT EXISTS "hierarchy_level" INTEGER NOT NULL DEFAULT 1,
+        ADD COLUMN IF NOT EXISTS "materialized_path" TEXT NOT NULL DEFAULT '/';
+    `);
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "core_department_module_access"
+        ADD COLUMN IF NOT EXISTS "default_role_code" TEXT;
+    `);
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "iam_user"
+        ADD COLUMN IF NOT EXISTS "reports_to_user_id" TEXT,
+        ADD COLUMN IF NOT EXISTS "job_title" TEXT NOT NULL DEFAULT '';
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "core_user_org_membership" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "company_id" TEXT NOT NULL,
+        "user_id" TEXT NOT NULL,
+        "department_id" TEXT NOT NULL REFERENCES "core_department"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        "unit_role" TEXT NOT NULL DEFAULT 'STAFF',
+        "is_primary" BOOLEAN NOT NULL DEFAULT true,
+        "allocation_pct" DECIMAL(5,2) NOT NULL DEFAULT 100.00,
+        "is_active" BOOLEAN NOT NULL DEFAULT true,
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "uq_core_user_org_membership"
+        ON "core_user_org_membership" ("company_id", "user_id", "department_id");
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "iam_user_dashboard_access" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "tenant_id" TEXT,
+        "company_id" TEXT NOT NULL,
+        "user_id" TEXT NOT NULL,
+        "widget_code" TEXT NOT NULL,
+        "is_enabled" BOOLEAN NOT NULL DEFAULT true,
+        "granted_by_id" TEXT,
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "uq_iam_user_dashboard_access"
+        ON "iam_user_dashboard_access" ("company_id", "user_id", "widget_code");
+    `);
     moduleHierarchyTablesEnsured = true;
   } catch (err) {
     console.error('[ensureModuleHierarchyTables]', err);
@@ -1496,7 +1552,67 @@ async function revokeApprovalDelegation(req: Request, res: Response, next: NextF
   }
 }
 
+async function getDashboardWidgetCatalogHandler(_req: Request, res: Response, next: NextFunction) {
+  try {
+    await ensureModuleHierarchyTables();
+    res.json({
+      success: true,
+      widgets: DASHBOARD_WIDGET_CATALOG,
+      presets: QUICK_ACCESS_PRESETS,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getUserQuickAccessHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    await ensureModuleHierarchyTables();
+    const companyId = req.companyId || String(req.header('X-Company-ID') || '').trim();
+    if (!companyId) throw new ForbiddenError('Pilih company terlebih dahulu.');
+    const { userId } = req.params;
+    const data = await getUserQuickAccess(companyId, userId);
+    res.json({ success: true, ...data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function putUserQuickAccessHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    await ensureModuleHierarchyTables();
+    const companyId = req.companyId || String(req.header('X-Company-ID') || '').trim();
+    if (!companyId) throw new ForbiddenError('Pilih company terlebih dahulu.');
+    const { userId } = req.params;
+
+    const result = await syncUserQuickAccess({
+      companyId,
+      tenantId: req.tenantId || req.user?.tenant_id || null,
+      actorId: req.user?.id || null,
+      userId,
+      departmentId: req.body.department_id,
+      roleLevel: req.body.role_level,
+      reportsToUserId: req.body.reports_to_user_id,
+      jobTitle: req.body.job_title,
+      presetKey: req.body.preset_key,
+      modules: Array.isArray(req.body.modules) ? req.body.modules : undefined,
+      dashboardWidgets: Array.isArray(req.body.dashboard_widgets)
+        ? req.body.dashboard_widgets
+        : undefined,
+      reason: req.body.reason,
+    });
+
+    invalidateDashboardCache();
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+}
+
 function mountAccountResources(router: Router) {
+  router.get('/dashboard-widget-catalog', getDashboardWidgetCatalogHandler);
+  router.get('/users/:userId/quick-access', requireCompanyAdmin, getUserQuickAccessHandler);
+  router.put('/users/:userId/quick-access', requireCompanyAdmin, requireCompanyContextForWrite, putUserQuickAccessHandler);
   router.get('/module-hierarchy', getModuleHierarchy);
   router.post('/module-tiers', requireCompanyAdmin, requireCompanyContextForWrite, upsertModuleTier);
   router.post('/module-assignments', requireCompanyAdmin, requireCompanyContextForWrite, upsertModuleAssignment);

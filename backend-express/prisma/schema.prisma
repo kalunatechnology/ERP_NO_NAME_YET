@@ -280,14 +280,17 @@ model core_department {
   name            String
   description     String                        @default("")
   manager_user_id String?                       @map("manager_user_id")
-  is_cost_center  Boolean                       @default(true) @map("is_cost_center")
-  is_active       Boolean                       @default(true) @map("is_active")
-  created_at      DateTime                      @default(now()) @map("created_at")
-  updated_at      DateTime                      @updatedAt @map("updated_at")
-  parent          core_department?              @relation("CoreDepartmentHierarchy", fields: [parent_id], references: [id], onDelete: SetNull)
-  divisions       core_department[]             @relation("CoreDepartmentHierarchy")
-  module_access   core_department_module_access[]
-  users           iam_user[]
+  is_cost_center    Boolean                       @default(true) @map("is_cost_center")
+  is_active         Boolean                       @default(true) @map("is_active")
+  hierarchy_level   Int                           @default(1) @map("hierarchy_level")
+  materialized_path String                        @default("/") @map("materialized_path")
+  created_at        DateTime                      @default(now()) @map("created_at")
+  updated_at        DateTime                      @updatedAt @map("updated_at")
+  parent            core_department?              @relation("CoreDepartmentHierarchy", fields: [parent_id], references: [id], onDelete: SetNull)
+  divisions         core_department[]             @relation("CoreDepartmentHierarchy")
+  module_access     core_department_module_access[]
+  org_memberships   core_user_org_membership[]
+  users             iam_user[]
 
   @@unique([company_id, code], map: "uq_core_department_code")
   @@index([company_id, is_active], map: "idx_core_department_company_active")
@@ -301,14 +304,34 @@ model core_department_module_access {
   department_id String          @map("department_id")
   module_key    String          @map("module_key")
   can_read      Boolean         @default(true) @map("can_read")
-  can_write     Boolean         @default(true) @map("can_write")
-  can_approve   Boolean         @default(false) @map("can_approve")
-  created_at    DateTime        @default(now()) @map("created_at")
-  department    core_department @relation(fields: [department_id], references: [id], onDelete: Cascade)
+  can_write         Boolean         @default(true) @map("can_write")
+  can_approve       Boolean         @default(false) @map("can_approve")
+  default_role_code String?         @map("default_role_code")
+  created_at        DateTime        @default(now()) @map("created_at")
+  department        core_department @relation(fields: [department_id], references: [id], onDelete: Cascade)
 
   @@unique([department_id, module_key], map: "uq_dept_module_key")
   @@index([company_id, department_id], map: "idx_dept_mod_company")
   @@map("core_department_module_access")
+}
+
+model core_user_org_membership {
+  id             String          @id @default(uuid())
+  company_id     String          @map("company_id")
+  user_id        String          @map("user_id")
+  department_id  String          @map("department_id")
+  unit_role      String          @default("STAFF") @map("unit_role")
+  is_primary     Boolean         @default(true) @map("is_primary")
+  allocation_pct Decimal         @default(100) @db.Decimal(5, 2) @map("allocation_pct")
+  is_active      Boolean         @default(true) @map("is_active")
+  created_at     DateTime        @default(now()) @map("created_at")
+  updated_at     DateTime        @updatedAt @map("updated_at")
+  department     core_department @relation(fields: [department_id], references: [id], onDelete: Cascade)
+
+  @@unique([company_id, user_id, department_id], map: "uq_core_user_org_membership")
+  @@index([company_id, user_id, is_active], map: "idx_core_user_org_membership_user")
+  @@index([company_id, department_id, is_active], map: "idx_core_user_org_membership_dept")
+  @@map("core_user_org_membership")
 }
 
 model core_business_document {
@@ -855,10 +878,12 @@ model iam_user {
   is_staff       Boolean
   is_active      Boolean
   date_joined    DateTime
-  active_role_id String?             @map("active_role_id")
-  department_id  String?             @map("department_id")
-  role_level     DepartmentRoleLevel @default(STAFF) @map("role_level")
-  department     core_department?    @relation(fields: [department_id], references: [id], onDelete: SetNull)
+  active_role_id     String?             @map("active_role_id")
+  department_id      String?             @map("department_id")
+  role_level         DepartmentRoleLevel @default(STAFF) @map("role_level")
+  reports_to_user_id String?             @map("reports_to_user_id")
+  job_title          String              @default("") @map("job_title")
+  department         core_department?    @relation(fields: [department_id], references: [id], onDelete: SetNull)
 
   @@index([department_id, role_level], map: "idx_iam_user_department_role")
   @@map("iam_user")
@@ -976,6 +1001,22 @@ model iam_user_module_access {
   @@unique([user_id, module_code])
   @@index([tenant_id, company_id, user_id])
   @@map("iam_user_module_access")
+}
+
+model iam_user_dashboard_access {
+  id            String   @id @default(uuid())
+  tenant_id     String?  @map("tenant_id")
+  company_id    String   @map("company_id")
+  user_id       String   @map("user_id")
+  widget_code   String   @map("widget_code")
+  is_enabled    Boolean  @default(true) @map("is_enabled")
+  granted_by_id String?  @map("granted_by_id")
+  created_at    DateTime @default(now()) @map("created_at")
+  updated_at    DateTime @updatedAt @map("updated_at")
+
+  @@unique([company_id, user_id, widget_code], map: "uq_iam_user_dashboard_access")
+  @@index([company_id, user_id, is_enabled], map: "idx_iam_user_dashboard_access_user")
+  @@map("iam_user_dashboard_access")
 }
 
 model iam_role_permission {

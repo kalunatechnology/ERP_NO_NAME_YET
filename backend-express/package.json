@@ -12,6 +12,8 @@
     "seed": "ts-node prisma/seed.ts",
     "seed:master": "ts-node prisma/seed.master.ts",
     "seed:production": "ts-node prisma/seed.production.ts",
+    "seed:org-blueprint": "ts-node --files prisma/seed.org-blueprint.ts",
+    "translate:legacy-roles": "ts-node --files scripts/translate_legacy_roles_to_modular_access.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "deploy:hostinger:db": "node scripts/deploy_hostinger_migrations.js",
