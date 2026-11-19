@@ -308,6 +308,8 @@ export async function ensureInventoryV2SchemaAndBackfill(
         `ALTER TABLE "inv_outbox_event" ADD COLUMN IF NOT EXISTS "gl_error" TEXT`,
         `CREATE INDEX IF NOT EXISTS "idx_inv_outbox_event_gl_status" ON "inv_outbox_event"("company_id", "gl_status", "created_at")`,
         `ALTER TABLE "inv_stock_ledger_entry" DROP CONSTRAINT IF EXISTS "inv_stock_ledger_ent_source_document_id_190ee411_fk_core_busi"`,
+        `ALTER TABLE "inv_stock_ledger_entry" DROP CONSTRAINT IF EXISTS "inv_stock_ledger_ent_source_line_id_15aa25e7_fk_core_busi"`,
+        `DO $$ DECLARE r RECORD; BEGIN FOR r IN (SELECT conname, conrelid::regclass::text AS tbl FROM pg_constraint WHERE contype = 'f' AND conrelid::regclass::text IN ('inv_stock_ledger_entry','inv_stock_move','inv_stock_balance','inv_valuation_layer') AND confrelid::regclass::text IN ('core_business_document','core_business_document_line')) LOOP EXECUTE format('ALTER TABLE %s DROP CONSTRAINT IF EXISTS %I', r.tbl, r.conname); END LOOP; END $$`,
       ];
       for (const sql of statements) {
         await prisma.$executeRawUnsafe(sql);
