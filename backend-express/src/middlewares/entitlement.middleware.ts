@@ -29,7 +29,14 @@ function isSafeLegacyProjection(assignment: any): boolean {
   const code = String(assignment.legacy_role_code || '').trim().toUpperCase().replace(/^ROLE-/, '');
   const scope = String(assignment.data_scope || '').toUpperCase();
   const capabilities = new Set((assignment.capability_codes ?? []).map((item: unknown) => String(item).toUpperCase()));
-  const has = (capability: string) => capabilities.has(capability) || capabilities.has(`${String(assignment.module_code).toUpperCase()}:${capability}`);
+  const has = (capability: string) => {
+    const normalizedModule = String(assignment.module_code).toUpperCase();
+    if (capability === 'READ' && typeof assignment.allow_read === 'boolean') return assignment.allow_read;
+    if (capability === 'WRITE' && typeof assignment.allow_write === 'boolean') return assignment.allow_write;
+    if (capability === 'APPROVE' && typeof assignment.allow_approve === 'boolean') return assignment.allow_approve;
+    if (capability === 'MANAGE_USERS' && typeof assignment.allow_manage_users === 'boolean') return assignment.allow_manage_users;
+    return capabilities.has(capability) || capabilities.has(`${normalizedModule}:${capability}`);
+  };
   if (code === 'SALES') return scope === 'OWN' && has('READ');
   if (code === 'SUPERVISOR') return scope === 'TEAM' && has('WRITE');
   if (code === 'STAFF') return scope === 'OWN' && has('READ');
@@ -131,10 +138,16 @@ export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' =
         if (String((effectiveMode === 'read' ? readOverride : writeOverride)?.effect || '').toUpperCase() === 'DENY') {
           return next(new ForbiddenError(`Akses ${effectiveMode} modul ${normalizedModule} ditolak secara eksplisit.`));
         }
-        const hasRead = capabilities.has('READ') || capabilities.has(`${normalizedModule}:READ`)
-          || String(readOverride?.effect || '').toUpperCase() === 'ALLOW';
-        const hasWrite = capabilities.has('WRITE') || capabilities.has(`${normalizedModule}:WRITE`)
-          || String(writeOverride?.effect || '').toUpperCase() === 'ALLOW';
+        const hasRead = assignments.some((assignment: any) =>
+          typeof assignment.allow_read === 'boolean'
+            ? assignment.allow_read
+            : capabilities.has('READ') || capabilities.has(`${normalizedModule}:READ`),
+        ) || String(readOverride?.effect || '').toUpperCase() === 'ALLOW';
+        const hasWrite = assignments.some((assignment: any) =>
+          typeof assignment.allow_write === 'boolean'
+            ? assignment.allow_write
+            : capabilities.has('WRITE') || capabilities.has(`${normalizedModule}:WRITE`),
+        ) || String(writeOverride?.effect || '').toUpperCase() === 'ALLOW';
         if (effectiveMode === 'read' && !hasRead) {
           return next(new ForbiddenError(`Role modul ${normalizedModule} tidak memiliki capability READ.`));
         }

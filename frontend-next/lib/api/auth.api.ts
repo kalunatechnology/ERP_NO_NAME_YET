@@ -41,6 +41,13 @@ export interface UserProfile {
     profile_active?: boolean;
     status?: string;
     capability_codes?: string[];
+    data_scope?: string;
+    department_id?: string | null;
+    allow_read?: boolean;
+    allow_write?: boolean;
+    allow_approve?: boolean;
+    allow_delete?: boolean;
+    allow_manage_users?: boolean;
   }>;
   permission_overrides?: Array<{ module_code: string; action_code: string; effect: string }>;
   roles?: { role?: string; role_code?: string; role_name?: string; company_id?: string | number | null }[];
@@ -126,6 +133,8 @@ export async function getMyProfile(): Promise<UserProfile> {
         delegated_modules: raw.delegated_modules || raw.user.delegated_modules || [],
         module_access: raw.module_access || raw.user.module_access || [],
         module_access_modes: raw.module_access_modes || raw.user.module_access_modes || [],
+        module_assignments: raw.module_assignments || raw.user.module_assignments || [],
+        permission_overrides: raw.permission_overrides || raw.user.permission_overrides || [],
       }
     : raw;
 

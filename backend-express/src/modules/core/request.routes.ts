@@ -92,6 +92,8 @@ function activeUserId(req: Request): string {
 }
 
 function activeRoleCode(req: Request): string {
+  if (!req.user?.active_role_code && req.moduleAccess?.accessMode === 'ASSIGNMENT'
+    && req.moduleAccess.moduleCode === 'REQUESTS') return RoleCode.STAFF;
   if (!req.user?.active_role_code) throw new ForbiddenError('Role aktif diperlukan.');
   return String(req.user.active_role_code);
 }
@@ -206,8 +208,14 @@ requestRouter.get(
       const userId =
         req.user?.id;
 
-      const activeRole =
-        req.user?.active_role_code;
+      const requestAssignment = (req.user?.module_assignments ?? []).find((assignment: any) =>
+        String(assignment.module_code || '').toUpperCase() === 'REQUESTS'
+        && String(assignment.status || '').toUpperCase() === 'ACTIVE'
+        && Boolean(assignment.profile_id && assignment.profile_active)
+        && String(assignment.profile_code || '').toUpperCase().startsWith('REQUESTS:')
+      );
+      const assignmentMode = req.moduleAccess?.accessMode === 'ASSIGNMENT';
+      const activeRole = req.user?.active_role_code ?? (assignmentMode ? RoleCode.STAFF : null);
 
       if (!companyId) {
         throw new ForbiddenError(
@@ -221,7 +229,7 @@ requestRouter.get(
         );
       }
 
-      if (!activeRole) {
+      if (!activeRole && !assignmentMode) {
         throw new ForbiddenError(
           'Role aktif tidak tersedia untuk memuat request.',
         );
@@ -297,6 +305,9 @@ requestRouter.get(
          * Role isolation.
          */
         activeRole,
+        requestAssignment?.profile_code ?? '',
+        requestAssignment?.data_scope ?? '',
+        requestAssignment?.department_id ?? req.user?.department_id ?? '',
 
         /**
          * Query projection.
@@ -336,6 +347,10 @@ requestRouter.get(
                * NEW
                */
               activeRole,
+              dataScope: assignmentMode ? requestAssignment?.data_scope : undefined,
+              scopeDepartmentId: assignmentMode
+                ? requestAssignment?.department_id ?? req.user?.department_id ?? null
+                : undefined,
             }) as unknown as Record<string, unknown>;
           },
 

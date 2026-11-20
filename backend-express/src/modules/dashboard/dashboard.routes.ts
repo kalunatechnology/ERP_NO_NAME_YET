@@ -94,6 +94,33 @@ async function canReadSection(req: Request, section: DashboardSection, allowedWi
     return false;
   }
 
+  if (!req.companyId || !enabled.has(moduleCode)) return false;
+  const entitlement = await prisma.iam_company_module_access.findFirst({
+    where: { company_id: req.companyId, module_code: moduleCode, enabled: true },
+    select: { access_mode: true },
+  });
+  if (String(entitlement?.access_mode || 'LEGACY').toUpperCase() === 'ASSIGNMENT') {
+    const assignments = (req.user?.module_assignments ?? []).filter((assignment: any) =>
+      String(assignment.module_code || '').toUpperCase() === moduleCode
+      && String(assignment.status || '').toUpperCase() === 'ACTIVE'
+      && Boolean(assignment.profile_id && assignment.profile_active)
+      && String(assignment.profile_code || '').toUpperCase().startsWith(`${moduleCode}:`)
+    );
+    if (!assignments.length) return false;
+    const readOverride = (req.user as any)?.permission_overrides?.find((override: any) =>
+      String(override.module_code || '').toUpperCase() === moduleCode
+      && String(override.action_code || '').toUpperCase() === 'READ'
+    );
+    if (String(readOverride?.effect || '').toUpperCase() === 'DENY') return false;
+    const hasRead = assignments.some((assignment: any) => {
+      if (typeof assignment.allow_read === 'boolean') return assignment.allow_read;
+      return (assignment.capability_codes ?? []).some((code: unknown) =>
+        ['READ', `${moduleCode}:READ`].includes(String(code).toUpperCase())
+      );
+    });
+    return hasRead || String(readOverride?.effect || '').toUpperCase() === 'ALLOW';
+  }
+
   if (section === 'projects') {
     const hasWidget = Boolean(
       allowedWidgets?.has('DASH_PERSONAL') ||
@@ -104,31 +131,6 @@ async function canReadSection(req: Request, section: DashboardSection, allowedWi
   }
 
   if (section === 'finance') {
-    if (!req.companyId || !enabled.has('FINANCE')) return false;
-    const entitlement = await prisma.iam_company_module_access.findFirst({
-      where: { company_id: req.companyId, module_code: 'FINANCE', enabled: true },
-      select: { access_mode: true },
-    });
-    if (String(entitlement?.access_mode || 'LEGACY').toUpperCase() === 'ASSIGNMENT') {
-      const assignments = (req.user?.module_assignments ?? []).filter((assignment: any) =>
-        String(assignment.module_code || '').toUpperCase() === 'FINANCE'
-        && String(assignment.status || '').toUpperCase() === 'ACTIVE'
-        && Boolean(assignment.profile_id && assignment.profile_active)
-        && String(assignment.profile_code || '').toUpperCase().startsWith('FINANCE:')
-      );
-      if (!assignments.length) return false;
-      const readOverride = (req.user as any)?.permission_overrides?.find((override: any) =>
-        String(override.module_code || '').toUpperCase() === 'FINANCE'
-        && String(override.action_code || '').toUpperCase() === 'READ'
-      );
-      if (String(readOverride?.effect || '').toUpperCase() === 'DENY') return false;
-      const hasRead = assignments.some((assignment: any) =>
-        (assignment.capability_codes ?? []).some((code: unknown) =>
-          ['READ', 'FINANCE:READ'].includes(String(code).toUpperCase())
-        )
-      );
-      return hasRead || String(readOverride?.effect || '').toUpperCase() === 'ALLOW';
-    }
     const hasWidget = Boolean(
       allowedWidgets?.has('DASH_FINANCE') || allowedWidgets?.has('DASH_EXECUTIVE')
     );
@@ -1422,6 +1424,12 @@ dashboardRouter.get('/bootstrap', async (req: Request, res: Response, next: Next
       req.user!.id,
       req.user!.active_role_code,
       [...enabled].sort().join(','),
+      (req.user?.module_assignments ?? [])
+        .map((assignment: any) => [assignment.module_code, assignment.profile_code, assignment.status, assignment.data_scope, assignment.allow_read].join(':'))
+        .sort().join(','),
+      (req.user?.permission_overrides ?? [])
+        .map((override: any) => [override.module_code, override.action_code, override.effect].join(':'))
+        .sort().join(','),
       sortedWidgets.join(','),
       [...requested].sort().join(','),
       String(req.query.project_workspace ?? ''),

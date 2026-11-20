@@ -26,6 +26,7 @@ export interface UserModuleAssignmentContext {
   tier_level: number;
   position_title: string;
   data_scope: string;
+  department_id?: string | null;
   scope_resource_ids?: string[];
   reports_to_user_id: string | null;
   status: string;
@@ -459,6 +460,7 @@ export async function loadUserAccessContext(
       tier_level: tier,
       position_title: String(ma.position_title || (tier === 0 ? 'General Manager Oversight' : tier === 1 ? 'Module Head' : tier === 2 ? 'Supervisor / Lead' : 'Staff / Executor')),
       data_scope: String(ma.data_scope || (tier <= 1 ? 'ALL' : tier === 2 ? 'TEAM' : 'OWN')),
+      department_id: ma.department_id ? String(ma.department_id) : null,
       scope_resource_ids: Array.isArray(ma.scope_resource_ids) ? ma.scope_resource_ids.map(String) : [],
       reports_to_user_id: ma.reports_to_user_id ?? null,
       status: String(ma.status || 'ACTIVE'),

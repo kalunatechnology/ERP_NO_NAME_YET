@@ -1180,6 +1180,8 @@ static async getRequests(params: {
    * Active role dari authentication context.
    */
   activeRole?: RoleCode | string | null;
+  dataScope?: 'OWN' | 'TEAM' | 'ALL' | string | null;
+  scopeDepartmentId?: string | null;
 }) {
   const {
     type,
@@ -1187,6 +1189,8 @@ static async getRequests(params: {
     companyId,
     requesterUserId,
     activeRole,
+    dataScope,
+    scopeDepartmentId,
   } = params;
 
   const page = Math.max(
@@ -1233,6 +1237,10 @@ static async getRequests(params: {
   const isPMRole =
     normalizedRole === 'PROJECT_MANAGER' ||
     normalizedRole === 'ROLE-PROJECT-MANAGER';
+  const assignmentScope = String(dataScope || '').trim().toUpperCase();
+  const isAssignmentScoped = ['OWN', 'TEAM', 'ALL'].includes(assignmentScope);
+  const isAllScope = assignmentScope === 'ALL';
+  const isTeamScope = assignmentScope === 'TEAM';
 
   /**
    * Non-executive harus memiliki identity untuk membaca feed.
@@ -1421,6 +1429,27 @@ static async getRequests(params: {
 
         WHERE
           (
+            -- Module assignment scope is authoritative when the REQUESTS
+            -- module is in assignment mode; it does not require a global role.
+            (
+              ${isAssignmentScoped}::boolean = true
+              AND (
+                ${isAllScope}::boolean = true
+                OR (
+                  ${isTeamScope}::boolean = true
+                  AND ${scopeDepartmentId ?? null}::text IS NOT NULL
+                  AND rs.after_data ->> 'department_id' = ${scopeDepartmentId ?? null}::text
+                )
+                OR (
+                  rs.user_id = ${requesterUserId ?? null}::text
+                  OR rs.assignee_user_id = ${requesterUserId ?? null}::text
+                )
+              )
+            )
+
+            OR (
+            NOT ${isAssignmentScoped}::boolean
+            AND (
             -- Executive sees everything
             ${isExecutiveRole}::boolean = true
 
@@ -1453,6 +1482,7 @@ static async getRequests(params: {
                 rs.user_id = ${requesterUserId ?? null}::text
                 OR rs.assignee_user_id = ${requesterUserId ?? null}::text
               )
+            )
             )
           )
 

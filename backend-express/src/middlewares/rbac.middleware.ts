@@ -83,13 +83,29 @@ export function requireActiveRole(...allowedRoles: string[]) {
 function hasScopedProfileCapability(req: Request, _allowedRoles: string[]): boolean {
   if (req.moduleAccess?.accessMode !== 'ASSIGNMENT' || !req.moduleAccess.moduleCode) return false;
   const capability = requiredModuleCapability(req);
+  const moduleCode = req.moduleAccess.moduleCode;
+  const override = req.user?.permission_overrides?.find((item: any) =>
+    String(item.module_code || '').toUpperCase() === moduleCode
+    && String(item.action_code || '').toUpperCase() === capability,
+  );
+  if (String(override?.effect || '').toUpperCase() === 'DENY') return false;
+  if (String(override?.effect || '').toUpperCase() === 'ALLOW') return true;
+  const permissionField: Record<string, string> = {
+    READ: 'allow_read',
+    WRITE: 'allow_write',
+    APPROVE: 'allow_approve',
+    DELETE: 'allow_delete',
+  };
+  const field = permissionField[capability];
   return (req.user?.module_assignments ?? []).some((assignment: any) =>
     String(assignment.module_code || '').toUpperCase() === req.moduleAccess!.moduleCode
     && String(assignment.status || '').toUpperCase() === 'ACTIVE'
     && Boolean(assignment.profile_id && assignment.profile_active)
-    && Array.isArray(assignment.capability_codes)
-    && (assignment.capability_codes.includes(capability)
-      || assignment.capability_codes.includes(`${req.moduleAccess!.moduleCode}:${capability}`)),
+    && (field && typeof assignment[field] === 'boolean'
+      ? assignment[field]
+      : Array.isArray(assignment.capability_codes)
+        && (assignment.capability_codes.includes(capability)
+          || assignment.capability_codes.includes(`${req.moduleAccess!.moduleCode}:${capability}`))),
   );
 }
 
@@ -98,7 +114,7 @@ function requiredModuleCapability(req: Request): string {
   if (['GET', 'HEAD', 'OPTIONS'].includes(method)) return 'READ';
   if (method === 'DELETE') return 'DELETE';
   const path = req.originalUrl.split('?')[0] ?? req.path;
-  if (/\/(?:approve|reject|execute|close|post|verify|authorize)(?:\/|$)/i.test(path)) return 'APPROVE';
+  if (/\/(?:approve|reject|execute|close|post|verify|authorize|validate|disburse)(?:-[^/?]+)*(?:\/|$)/i.test(path)) return 'APPROVE';
   return 'WRITE';
 }
 

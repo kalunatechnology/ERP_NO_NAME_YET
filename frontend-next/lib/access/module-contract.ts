@@ -241,6 +241,12 @@ export interface FrontendAccessContext {
     profile_active?: boolean;
     status?: string;
     capability_codes?: readonly string[];
+    data_scope?: string;
+    allow_read?: boolean;
+    allow_write?: boolean;
+    allow_approve?: boolean;
+    allow_delete?: boolean;
+    allow_manage_users?: boolean;
   }[] | null;
   permissionOverrides?: readonly {
     module_code: string;
@@ -278,6 +284,7 @@ export function canRequestApi(url: string, access: FrontendAccessContext): boole
     );
     if (String(permissionOverride?.effect || "").toUpperCase() === "DENY") return false;
     const hasRead = assignments.some((assignment) => {
+      if (typeof assignment.allow_read === "boolean") return assignment.allow_read;
       const codes = new Set((assignment.capability_codes || []).map((code) => String(code).toUpperCase()));
       return codes.has("READ") || codes.has(`${contract.module}:READ`);
     });
@@ -322,6 +329,7 @@ export function canRequestDashboardSection(section: DashboardSection, access: Fr
     );
     if (String(readOverride?.effect || "").toUpperCase() === "DENY") return false;
     const hasRead = moduleAssignments.some((assignment) => {
+      if (typeof assignment.allow_read === "boolean") return assignment.allow_read;
       const codes = new Set((assignment.capability_codes || []).map((code) => String(code).toUpperCase()));
       return codes.has("READ") || codes.has(`${contract.module}:READ`);
     });

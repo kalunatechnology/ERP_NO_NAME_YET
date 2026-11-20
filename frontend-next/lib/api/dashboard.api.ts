@@ -132,6 +132,14 @@ function browserBootstrapScopeKey(
     activeRoleCode: access.activeRoleCode || '',
     enabledModules: [...(access.enabledModules || [])].map(String).sort(),
     delegatedModules: [...(access.delegatedModules || [])].map(String).sort(),
+    moduleAccessModes: [...(access.moduleAccessModes || [])]
+      .map((item) => `${item.module_code}:${item.access_mode}`).sort(),
+    moduleAssignments: [...(access.moduleAssignments || [])]
+      .map((item) => [item.module_code, item.profile_code, item.status, item.data_scope,
+        item.allow_read, [...(item.capability_codes || [])].map(String).sort().join('+')].join(':'))
+      .sort(),
+    permissionOverrides: [...(access.permissionOverrides || [])]
+      .map((item) => `${item.module_code}:${item.action_code}:${item.effect}`).sort(),
     isSuperAdmin: Boolean(access.isSuperAdmin),
     projectWorkspace: projectWorkspace ?? '',
   });
