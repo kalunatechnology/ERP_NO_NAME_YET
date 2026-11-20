@@ -924,8 +924,8 @@ export class AccountsService {
     if (!parsedRole) {
       throw new ValidationError(`Role code '${rawRoleCode}' tidak valid.`);
     }
-    if (parsedRole !== RoleCode.COMPANY_ADMIN) {
-      throw new ForbiddenError('Role operasional legacy tidak dikelola melalui assignment role global.');
+    if (parsedRole === RoleCode.SUPER_ADMIN) {
+      throw new ForbiddenError('Role Super Admin dikelola pada tata kelola platform.');
     }
 
     return prisma.$transaction(async (tx) => {
@@ -963,8 +963,9 @@ export class AccountsService {
         return { removed: false, message: 'User tidak memiliki role tersebut.' };
       }
 
-      // Proteksi: tidak boleh menghapus role terakhir
-      if (existingUserRoles.length <= 1) {
+      // Governance must retain at least one company role. Legacy operational
+      // roles may all be removed because module assignments are the authority.
+      if (parsedRole === RoleCode.COMPANY_ADMIN && existingUserRoles.length <= 1) {
         throw new ValidationError('User harus memiliki setidaknya satu role pada company.');
       }
 
@@ -976,12 +977,10 @@ export class AccountsService {
       // Jika role yang dihapus merupakan active_role_id, pindahkan ke role lain yang tersisa
       if (user.active_role_id === role.id) {
         const remainingRole = existingUserRoles.find((ur) => ur.role_id !== role.id);
-        if (remainingRole && remainingRole.role_id) {
-          await tx.iam_user.update({
-            where: { id: targetUserId },
-            data: { active_role_id: remainingRole.role_id },
-          });
-        }
+        await tx.iam_user.update({
+          where: { id: targetUserId },
+          data: { active_role_id: remainingRole?.role_id ?? null },
+        });
       }
 
       return {

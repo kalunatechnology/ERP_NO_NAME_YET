@@ -756,10 +756,10 @@ async function removeUserRole(req: Request, res: Response, next: NextFunction) {
     const roleCode = req.params.roleCode || req.body?.role_code || req.body?.roleCode;
     if (!roleCode) throw new ValidationError('role_code wajib diisi.');
     const parsedRole = parseRoleCode(String(roleCode));
-    if (parsedRole !== RoleCode.COMPANY_ADMIN) {
-      throw new ForbiddenError('Role operasional dikelola melalui Role Profile per modul.');
+    if (parsedRole === RoleCode.SUPER_ADMIN) {
+      throw new ForbiddenError('Role Super Admin dikelola pada tata kelola platform.');
     }
-    if (!isSuperAdmin(req.user?.roles ?? [])) {
+    if (parsedRole === RoleCode.COMPANY_ADMIN && !isSuperAdmin(req.user?.roles ?? [])) {
       throw new ForbiddenError('Hanya Super Admin yang dapat mencabut role Company Admin.');
     }
     const companyId = req.companyId;
@@ -1608,6 +1608,79 @@ async function deleteModuleAssignment(req: Request, res: Response, next: NextFun
   }
 }
 
+async function updateModuleRoleAssignment(req: Request, res: Response, next: NextFunction) {
+  try {
+    await ensureModuleHierarchyTables();
+    const companyId = req.companyId || String(req.header('X-Company-ID') || req.body.company_id || '').trim();
+    const tenantId = req.user?.tenant_id;
+    const { id } = req.params;
+    const scope = String(req.body.data_scope || '').trim().toUpperCase();
+    const allowedScopes = new Set(['OWN', 'TEAM', 'ALL', 'DEPARTMENT', 'DIVISION', 'PROJECT', 'WAREHOUSE']);
+    if (!companyId || !tenantId || !id || !allowedScopes.has(scope)) {
+      throw new ValidationError('company, id assignment, dan data_scope harus valid.');
+    }
+
+    const existing = await (prisma as any).iam_user_module_assignment.findFirst({
+      where: { id, company_id: companyId, tenant_id: tenantId },
+    });
+    if (!existing) throw new NotFoundError('Penugasan role modul tidak ditemukan pada company ini.');
+
+    const profileId = String(req.body.profile_id || '').trim();
+    const profile = await (prisma as any).iam_module_role_profile.findFirst({
+      where: { id: profileId, company_id: companyId, tenant_id: tenantId, module_code: existing.module_code, is_active: true },
+    });
+    if (!profile) throw new NotFoundError('Pilih role profile aktif dari modul yang sama.');
+
+    const effectiveFrom = req.body.effective_from ? new Date(req.body.effective_from) : existing.effective_from || new Date();
+    const effectiveUntil = req.body.effective_until === undefined
+      ? existing.effective_until
+      : req.body.effective_until ? new Date(req.body.effective_until) : null;
+    if (Number.isNaN(effectiveFrom.getTime()) || (effectiveUntil && Number.isNaN(effectiveUntil.getTime()))
+      || (effectiveUntil && effectiveUntil <= effectiveFrom)) {
+      throw new ValidationError('Periode assignment tidak valid.');
+    }
+    const scopeResourceIds = Array.isArray(req.body.scope_resource_ids)
+      ? [...new Set(req.body.scope_resource_ids.map((value: unknown) => String(value || '').trim()).filter(Boolean))]
+      : existing.scope_resource_ids;
+
+    const record = await prisma.$transaction(async (tx) => {
+      const assignment = await (tx as any).iam_user_module_assignment.update({
+        where: { id: existing.id },
+        data: {
+          profile_id: profile.id,
+          profile_code: profile.profile_code,
+          tier_level: Number(req.body.tier_level ?? existing.tier_level),
+          position_title: String(req.body.position_title ?? existing.position_title ?? profile.display_name).trim() || profile.display_name,
+          department_id: req.body.department_id === undefined ? existing.department_id : req.body.department_id || null,
+          reports_to_user_id: req.body.reports_to_user_id === undefined ? existing.reports_to_user_id : req.body.reports_to_user_id || null,
+          data_scope: scope,
+          scope_resource_ids: scopeResourceIds,
+          effective_from: effectiveFrom,
+          effective_until: effectiveUntil,
+        },
+      });
+      await (tx as any).iam_assignment_history.create({
+        data: {
+          tenant_id: tenantId,
+          company_id: companyId,
+          actor_id: req.user?.id || null,
+          target_user_id: existing.user_id,
+          module_code: existing.module_code,
+          change_type: 'UPDATED',
+          before_json: JSON.stringify({ profile_code: existing.profile_code, tier_level: existing.tier_level, position_title: existing.position_title, data_scope: existing.data_scope, scope_resource_ids: existing.scope_resource_ids }),
+          after_json: JSON.stringify({ profile_code: profile.profile_code, tier_level: assignment.tier_level, position_title: assignment.position_title, data_scope: assignment.data_scope, scope_resource_ids: scopeResourceIds }),
+          reason: String(req.body.reason || 'Perubahan role profile dan penugasan modul').trim(),
+        },
+      });
+      return assignment;
+    });
+
+    res.json({ success: true, assignment: record });
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function upsertCrossModuleCapability(req: Request, res: Response, next: NextFunction) {
   try {
     await ensureModuleHierarchyTables();
@@ -1799,6 +1872,7 @@ function mountAccountResources(router: Router) {
   router.get('/module-hierarchy', getModuleHierarchy);
   router.post('/module-role-profiles', requireCompanyAdmin, requireCompanyContextForWrite, upsertModuleRoleProfile);
   router.post('/module-role-assignments', requireCompanyAdmin, requireCompanyContextForWrite, assignModuleRoleProfile);
+  router.put('/module-role-assignments/:id', requireCompanyAdmin, requireCompanyContextForWrite, updateModuleRoleAssignment);
   router.post('/module-tiers', requireCompanyAdmin, requireCompanyContextForWrite, upsertModuleTier);
   router.post('/module-assignments', requireCompanyAdmin, requireCompanyContextForWrite, upsertModuleAssignment);
   router.delete('/module-assignments/:id', requireCompanyAdmin, requireCompanyContextForWrite, deleteModuleAssignment);

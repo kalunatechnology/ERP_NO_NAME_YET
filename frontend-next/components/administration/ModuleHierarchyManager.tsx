@@ -6,6 +6,7 @@ import {
   History,
   Layers,
   Plus,
+  Pencil,
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
@@ -105,6 +106,7 @@ export interface AssignmentHistoryRow {
 
 interface ModuleHierarchyManagerProps {
   companyId: string;
+  initialUserId?: string;
   users: Array<{ id: string; full_name?: string; email: string; role_level?: string }>;
   departments: Array<{ id: string; code: string; name: string }>;
 }
@@ -132,6 +134,7 @@ const HIERARCHY_MODULES = [
 
 export function ModuleHierarchyManager({
   companyId,
+  initialUserId,
   users,
   departments,
 }: ModuleHierarchyManagerProps) {
@@ -163,6 +166,7 @@ export function ModuleHierarchyManager({
   });
   const [profileForm, setProfileForm] = useState({ profile_code: "", display_name: "", legacy_role_code: "", capabilities: ["READ"] as string[] });
   const [submittingAssign, setSubmittingAssign] = useState(false);
+  const [editingAssignmentId, setEditingAssignmentId] = useState<string | null>(null);
 
   // Form: Cross-Module Capability
   const [capForm, setCapForm] = useState({
@@ -223,6 +227,12 @@ export function ModuleHierarchyManager({
   }, [loadHierarchy]);
 
   useEffect(() => {
+    if (initialUserId && !editingAssignmentId) {
+      setAssignForm((previous) => ({ ...previous, user_id: initialUserId }));
+    }
+  }, [initialUserId, editingAssignmentId]);
+
+  useEffect(() => {
     if (enabledModules.length && !enabledModules.includes(assignForm.module_code)) {
       setAssignForm((previous) => ({ ...previous, module_code: enabledModules[0], profile_id: "" }));
     }
@@ -236,17 +246,24 @@ export function ModuleHierarchyManager({
     }
     setSubmittingAssign(true);
     try {
-      await api.post(
-        "/api/v1/accounts/module-role-assignments",
-        {
-          company_id: companyId,
-          ...assignForm,
-          effective_until: undefined,
-          tier_level: Number(assignForm.tier_level),
-        },
-        { headers: { "X-Company-ID": companyId } },
-      );
-      toast.success("Role profile dan penugasan modul berhasil disimpan.");
+      const payload = {
+        company_id: companyId,
+        ...assignForm,
+        effective_until: undefined,
+        tier_level: Number(assignForm.tier_level),
+      };
+      if (editingAssignmentId) {
+        await api.put(`/api/v1/accounts/module-role-assignments/${editingAssignmentId}`, payload, {
+          headers: { "X-Company-ID": companyId },
+        });
+        toast.success("Role profile dan penugasan modul berhasil diperbarui.");
+      } else {
+        await api.post("/api/v1/accounts/module-role-assignments", payload, {
+          headers: { "X-Company-ID": companyId },
+        });
+        toast.success("Role profile dan penugasan modul berhasil disimpan.");
+      }
+      setEditingAssignmentId(null);
       setAssignForm((prev) => ({ ...prev, profile_id: "", position_title: "", reason: "" }));
       await loadHierarchy();
     } catch (error) {
@@ -275,6 +292,9 @@ export function ModuleHierarchyManager({
   const availableProfiles = roleProfiles.filter((profile) => profile.module_code === assignForm.module_code && profile.is_active);
 
   const handleDeleteAssignment = async (id: string) => {
+    const assignment = assignments.find((item) => item.id === id);
+    const userName = assignment ? userMap.get(assignment.user_id) || assignment.user_id : "pengguna ini";
+    if (!window.confirm(`Cabut role ${assignment?.module_code || "modul"} dari ${userName}?`)) return;
     try {
       await api.delete(`/api/v1/accounts/module-assignments/${id}`, {
         headers: { "X-Company-ID": companyId },
@@ -284,6 +304,37 @@ export function ModuleHierarchyManager({
     } catch (error) {
       toast.error(getUserFacingApiError(error, "Gagal menghapus penugasan modul."));
     }
+  };
+
+  const startEditAssignment = (assignment: ModuleAssignmentRow) => {
+    setEditingAssignmentId(assignment.id);
+    setSubTab("assignments");
+    setAssignForm({
+      user_id: assignment.user_id,
+      profile_id: assignment.profile_id || "",
+      module_code: assignment.module_code,
+      tier_level: assignment.tier_level,
+      position_title: assignment.position_title || "",
+      department_id: assignment.department_id || "",
+      reports_to_user_id: assignment.reports_to_user_id || "",
+      data_scope: assignment.data_scope || "OWN",
+      reason: "Perubahan role atau cakupan tanggung jawab",
+    });
+  };
+
+  const cancelEditAssignment = () => {
+    setEditingAssignmentId(null);
+    setAssignForm({
+      user_id: initialUserId || "",
+      profile_id: "",
+      module_code: enabledModules[0] || "PROJECTS",
+      tier_level: 3,
+      position_title: "",
+      department_id: "",
+      reports_to_user_id: "",
+      data_scope: "ALL",
+      reason: "",
+    });
   };
 
   const handleRevokeDirectModuleAccess = async (userId: string, moduleCode: string) => {
@@ -479,10 +530,12 @@ export function ModuleHierarchyManager({
           >
             <div>
               <h3 className="text-sm font-bold text-[#163D64]">
-                + Tetapkan Jabatan User pada Modul
+                {editingAssignmentId ? "Ubah Role & Penugasan Modul" : "+ Tetapkan Jabatan User pada Modul"}
               </h3>
               <p className="text-xs text-[#64748B]">
-                Tetapkan satu atau beberapa tanggung jawab modul. Capability ditentukan oleh profile dan cakupan data oleh assignment.
+                {editingAssignmentId
+                  ? "Perubahan memperbarui assignment yang dipilih. Role di modul lain tidak ikut berubah."
+                  : "Tetapkan satu atau beberapa tanggung jawab modul. Capability ditentukan oleh profile dan cakupan data oleh assignment."}
               </p>
             </div>
 
@@ -491,6 +544,7 @@ export function ModuleHierarchyManager({
               <select
                 value={assignForm.user_id}
                 onChange={(e) => setAssignForm((p) => ({ ...p, user_id: e.target.value }))}
+                disabled={Boolean(editingAssignmentId)}
                 className="h-10 w-full rounded-xl border border-[#CBD5E1] bg-white px-3 text-xs font-medium text-[#0F172A]"
                 required
               >
@@ -525,6 +579,7 @@ export function ModuleHierarchyManager({
                 <select
                   value={assignForm.module_code}
                   onChange={(e) => setAssignForm((p) => ({ ...p, module_code: e.target.value, profile_id: "" }))}
+                  disabled={Boolean(editingAssignmentId)}
                   className="h-10 w-full rounded-xl border border-[#CBD5E1] bg-white px-3 text-xs font-semibold text-[#0F172A]"
                 >
                   {HIERARCHY_MODULES.filter((m) => enabledModules.includes(m)).map((m) => (
@@ -601,12 +656,13 @@ export function ModuleHierarchyManager({
 
             <button
               type="submit"
-                disabled={submittingAssign || !assignForm.profile_id || !enabledModules.includes(assignForm.module_code)}
+              disabled={submittingAssign || !assignForm.profile_id || !enabledModules.includes(assignForm.module_code)}
               className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#163D64] px-4 text-xs font-bold text-white hover:bg-[#1D3A96] disabled:opacity-50"
             >
-              <Plus size={15} />
-              {submittingAssign ? "Menyimpan..." : "Simpan Penugasan Modul"}
+              {editingAssignmentId ? <Pencil size={14} /> : <Plus size={15} />}
+              {submittingAssign ? "Menyimpan..." : editingAssignmentId ? "Simpan Perubahan Role" : "Simpan Penugasan Modul"}
             </button>
+            {editingAssignmentId && <button type="button" onClick={cancelEditAssignment} className="h-9 w-full rounded-xl border border-[#CBD5E1] px-4 text-xs font-semibold text-[#475569] hover:bg-slate-50">Batal mengubah role</button>}
 
             <div className="border-t border-slate-200 pt-4">
               <h4 className="text-xs font-bold text-[#163D64]">Buat Role Profile untuk {assignForm.module_code}</h4>
@@ -747,6 +803,14 @@ export function ModuleHierarchyManager({
                               )}
                             </td>
                             <td className="py-3 pl-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => startEditAssignment(row)}
+                                className="mr-1 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#CBD5E1] text-[#163D64] hover:bg-[#E7F2FF]"
+                                title="Ubah role dan cakupan modul"
+                              >
+                                <Pencil size={14} />
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => void handleDeleteAssignment(row.id)}

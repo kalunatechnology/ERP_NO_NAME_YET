@@ -28,6 +28,7 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  Trash2,
   UserPlus,
   Users,
   Building,
@@ -350,6 +351,25 @@ export function AccessAdministration() {
       setLoadingUserRoles(false);
     }
   }, [contextCompany]);
+
+  async function revokeLegacyAccountRole(role: { raw_role_code: string; role_name: string }) {
+    if (!selectedUserId || !contextCompany) return;
+    const targetName = selectedUser?.full_name || selectedUser?.email || "user ini";
+    const confirmed = window.confirm(
+      `Cabut role legacy ${role.role_name} dari ${targetName}? Penugasan role pada masing-masing modul tidak ikut dihapus.`,
+    );
+    if (!confirmed) return;
+    try {
+      await api.delete(`/api/v1/accounts/users/${selectedUserId}/roles/${encodeURIComponent(role.raw_role_code)}`, {
+        headers: { "X-Company-ID": contextCompany },
+      });
+      await loadUserRoles(selectedUserId);
+      if (selectedUserId === user?.id) await refreshProfile();
+      toast.success(`Role legacy ${role.role_name} dicabut. Penugasan role modul tetap terpisah.`);
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, "Role legacy tidak berhasil dicabut."));
+    }
+  }
 
   useEffect(() => {
     if (selectedUserId) {
@@ -1002,6 +1022,7 @@ export function AccessAdministration() {
           {activeTab === "hierarchy" && (
             <ModuleHierarchyManager
               companyId={selectedCompany}
+              initialUserId={selectedUserId}
               users={users}
               departments={departments}
             />
@@ -1010,6 +1031,7 @@ export function AccessAdministration() {
       ) : companyViewTab === "hierarchy" ? (
         <ModuleHierarchyManager
           companyId={contextCompany}
+          initialUserId={selectedUserId}
           users={displayedUsers}
           departments={departments}
         />
@@ -1113,15 +1135,25 @@ export function AccessAdministration() {
                           Role global hanya untuk tata kelola. Role operasional diberikan sebagai profil pada masing-masing modul.
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => void loadUserRoles(selectedUserId)}
-                        disabled={loadingUserRoles}
-                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                      >
-                        <RefreshCw size={13} className={loadingUserRoles ? "animate-spin" : ""} />
-                        Muat ulang role
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => isSuper ? setActiveTab("hierarchy") : setCompanyViewTab("hierarchy")}
+                          className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#163D64] px-3 text-xs font-semibold text-white hover:bg-[#1D3A96]"
+                        >
+                          <KeyRound size={13} />
+                          Kelola role per modul
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void loadUserRoles(selectedUserId)}
+                          disabled={loadingUserRoles}
+                          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          <RefreshCw size={13} className={loadingUserRoles ? "animate-spin" : ""} />
+                          Muat ulang role
+                        </button>
+                      </div>
                     </div>
 
                     {userRolesError ? (
@@ -1144,6 +1176,17 @@ export function AccessAdministration() {
                               )}
                               {assignedRole.raw_role_code !== "ROLE-COMPANY-ADMIN" && assignedRole.raw_role_code !== "ROLE-SUPER-ADMIN" && (
                                 <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">Legacy</span>
+                              )}
+                              {assignedRole.raw_role_code !== "ROLE-COMPANY-ADMIN" && assignedRole.raw_role_code !== "ROLE-SUPER-ADMIN" && (
+                                <button
+                                  type="button"
+                                  onClick={() => void revokeLegacyAccountRole(assignedRole)}
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-red-200 text-red-600 hover:bg-red-50"
+                                  title={`Cabut role legacy ${assignedRole.role_name}`}
+                                  aria-label={`Cabut role legacy ${assignedRole.role_name}`}
+                                >
+                                  <Trash2 size={13} />
+                                </button>
                               )}
                             </div>
                           )) : (
