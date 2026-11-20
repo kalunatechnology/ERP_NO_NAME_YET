@@ -1794,7 +1794,10 @@ export default function ProjectsClient() {
   const currentLifecycleStage = normalizeProjectLifecycleStage(selectedProject?.lifecycle_status);
   const currentStepIdx = LIFECYCLE_FLOW_STAGES.indexOf(currentLifecycleStage as Exclude<ProjectLifecycleStage, "LOST">);
   const lifecycleTargets = allowedLifecycleTargets(currentLifecycleStage);
-  const roleCanAdvanceLifecycle = allowsProjectManagement && canAdvanceLifecycleForRole(currentLifecycleStage, user?.active_role_code || userRole);
+  const roleCanAdvanceLifecycle = allowsProjectManagement && canAdvanceLifecycleForRole(
+    currentLifecycleStage,
+    isActingProjectManager ? "PM" : (user?.active_role_code || userRole),
+  );
 
   return (
     <div className="workspace-container flex min-w-0 w-full max-w-full flex-col gap-5">

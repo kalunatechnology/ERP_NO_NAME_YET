@@ -1980,8 +1980,19 @@ export class ProjectsService {
         throw new ValidationError(`Transisi tidak valid dari ${currentStage} ke ${nextStage}.`);
       }
 
+      const actingSpvMembership = await tx.project_member.findFirst({
+        where: {
+          project_id: projectId,
+          company_id: companyId,
+          user_id: userId,
+          status: 'ACTIVE',
+          project_role: ACTING_PROJECT_MANAGER_ROLE,
+        },
+        select: { id: true },
+      });
       const normalizedRole = String(userRole ?? '').trim().toUpperCase() as RoleCode;
-      if (!stageRule.allowedRoles.includes(normalizedRole)) {
+      const effectiveStageRole = actingSpvMembership ? RoleCode.PROJECT_MANAGER : normalizedRole;
+      if (!stageRule.allowedRoles.includes(effectiveStageRole)) {
         throw new ForbiddenError(
           `Role ${userRole || '(kosong)'} tidak memiliki izin untuk memajukan proyek dari tahap ${currentStage}.`,
         );
@@ -1995,13 +2006,14 @@ export class ProjectsService {
         const isProjectOwnerOrAssignedPm =
           project.project_manager_id === userId ||
           project.created_by_id === userId ||
+          Boolean(actingSpvMembership) ||
           Boolean(await tx.project_member.findFirst({
             where: {
               project_id: projectId,
               company_id: companyId,
               user_id: userId,
               status: 'ACTIVE',
-              project_role: { in: ['PROJECT_MANAGER', ACTING_PROJECT_MANAGER_ROLE] },
+              project_role: 'PROJECT_MANAGER',
             },
             select: { id: true },
           }));
