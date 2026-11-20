@@ -1287,9 +1287,11 @@ export default function DashboardClient() {
   const requestsAssignments = moduleAssignments.filter((assignment) =>
     String(assignment.module_code || "").toUpperCase() === "REQUESTS"
     && String(assignment.status || "").toUpperCase() === "ACTIVE"
-    && Boolean(assignment.profile_id)
-    && Boolean(assignment.profile_active)
-    && String(assignment.profile_code || "").toUpperCase().startsWith("REQUESTS:")
+    && (assignment.profile_id
+      ? Boolean(assignment.profile_active) && String(assignment.profile_code || "").toUpperCase().startsWith("REQUESTS:")
+      : !assignment.profile_code && assignment.tier_level !== null && assignment.tier_level !== undefined
+        && String(assignment.tier_level).trim() !== '' && Number.isInteger(Number(assignment.tier_level))
+        && Number(assignment.tier_level) >= 0 && Number(assignment.tier_level) <= 3)
   );
   const hasRequestsCapability = (capability: "READ" | "WRITE") => {
     if (!requestsAssignments.length) return false;
@@ -1300,6 +1302,8 @@ export default function DashboardClient() {
     if (String(override?.effect || "").toUpperCase() === "DENY") return false;
     if (String(override?.effect || "").toUpperCase() === "ALLOW") return true;
     return requestsAssignments.some((assignment) => {
+      const permissionField = capability === "READ" ? "allow_read" : "allow_write";
+      if (typeof assignment[permissionField] === "boolean") return assignment[permissionField];
       const capabilities = new Set<string>(Array.isArray(assignment.capability_codes)
         ? assignment.capability_codes.map((item: unknown) => String(item).toUpperCase())
         : []);

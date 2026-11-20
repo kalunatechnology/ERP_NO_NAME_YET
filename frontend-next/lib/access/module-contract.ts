@@ -242,6 +242,8 @@ export interface FrontendAccessContext {
     status?: string;
     capability_codes?: readonly string[];
     data_scope?: string;
+    tier_level?: number;
+    allow_export?: boolean;
     allow_read?: boolean;
     allow_write?: boolean;
     allow_approve?: boolean;
@@ -258,6 +260,23 @@ export interface FrontendAccessContext {
   dashboardWidgets?: readonly string[] | null;
 }
 
+function isUsableModuleAssignment(
+  assignment: NonNullable<FrontendAccessContext['moduleAssignments']>[number],
+  moduleCode: string,
+): boolean {
+  if (String(assignment.module_code || '').toUpperCase() !== moduleCode
+    || String(assignment.status || '').toUpperCase() !== 'ACTIVE') return false;
+  if (assignment.profile_id) {
+    return Boolean(assignment.profile_active)
+      && String(assignment.profile_code || '').toUpperCase().startsWith(`${moduleCode}:`);
+  }
+  if (assignment.tier_level === null || assignment.tier_level === undefined
+    || String(assignment.tier_level).trim() === '') return false;
+  const tier = Number(assignment.tier_level);
+  return !assignment.profile_code && Number.isInteger(tier) && tier >= 0 && tier <= 3
+    && assignment.allow_read !== false;
+}
+
 export function canRequestApi(url: string, access: FrontendAccessContext): boolean {
   const contract = getApiAccessContract(url);
   if (!contract) return true;
@@ -271,11 +290,7 @@ export function canRequestApi(url: string, access: FrontendAccessContext): boole
   )?.access_mode?.toUpperCase();
   if (!superAdmin && moduleAccessMode === "ASSIGNMENT" && contract.module) {
     const assignments = (access.moduleAssignments ?? []).filter((assignment) =>
-      String(assignment.module_code || "").toUpperCase() === contract.module
-      && String(assignment.status || "").toUpperCase() === "ACTIVE"
-      && Boolean(assignment.profile_id)
-      && Boolean(assignment.profile_active)
-      && String(assignment.profile_code || "").toUpperCase().startsWith(`${contract.module}:`)
+      isUsableModuleAssignment(assignment, contract.module!)
     );
     if (!assignments.length) return false;
     const permissionOverride = access.permissionOverrides?.find((item) =>
@@ -316,10 +331,7 @@ export function canRequestDashboardSection(section: DashboardSection, access: Fr
     String(item.module_code || "").toUpperCase() === contract.module
   )?.access_mode?.toUpperCase();
   const moduleAssignments = access.moduleAssignments?.filter((assignment) =>
-    String(assignment.module_code || "").toUpperCase() === contract.module
-    && String(assignment.status || "").toUpperCase() === "ACTIVE"
-    && Boolean(assignment.profile_id && assignment.profile_active)
-    && String(assignment.profile_code || "").toUpperCase().startsWith(`${contract.module}:`)
+    isUsableModuleAssignment(assignment, contract.module)
   ) ?? [];
   if (moduleAccessMode === "ASSIGNMENT") {
     if (!moduleAssignments.length) return false;

@@ -1,4 +1,5 @@
 import { Request } from 'express';
+import { hasModuleAssignmentCapability, isUsableModuleAssignment } from './module-assignments';
 
 export interface ModulePermission {
   module_code: string;
@@ -14,6 +15,8 @@ export interface ModuleAssignmentSummary {
   profile_active?: boolean;
   capability_codes?: string[];
   allow_write?: boolean;
+  allow_read?: boolean;
+  status?: string;
 }
 
 /** Only the entitlement middleware may establish a module permission override. */
@@ -54,14 +57,15 @@ export function hasUserModuleManagerWrite(
   ) ?? [];
   if (assignments.some((assignment) => assignment.profile_id)) {
     return assignments.some((assignment) =>
-      Boolean(assignment.profile_id && assignment.profile_active && assignment.allow_write)
+      isUsableModuleAssignment(assignment, code)
+      && hasModuleAssignmentCapability(assignment, 'WRITE')
       && String(assignment.data_scope || '').toUpperCase() === 'ALL'
-      && (assignment.capability_codes ?? []).some((capability) =>
-        ['MANAGE_USERS', `${code}:MANAGE_USERS`].includes(String(capability).toUpperCase()),
-      ),
+      && hasModuleAssignmentCapability(assignment, 'MANAGE_USERS'),
     );
   }
-  return assignments.some((assignment) => Number(assignment.tier_level) <= 1);
+  return assignments.some((assignment) =>
+    isUsableModuleAssignment(assignment, code) && Number(assignment.tier_level) <= 1,
+  );
 }
 
 export function effectiveModuleOverrides(

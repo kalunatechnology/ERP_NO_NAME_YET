@@ -18,6 +18,7 @@ import { ForbiddenError, ValidationError } from '../../utils/errors';
 import { Prisma } from '@prisma/client';
 import { ReadThroughCache } from '../../utils/read-through-cache';
 import { mergeLegacyRoleTranslations } from '../accounts/org-policy-sync.service';
+import { hasModuleAssignmentCapability, isUsableModuleAssignment } from '../../utils/module-assignments';
 
 export const dashboardRouter = Router();
 
@@ -101,10 +102,7 @@ async function canReadSection(req: Request, section: DashboardSection, allowedWi
   });
   if (String(entitlement?.access_mode || 'LEGACY').toUpperCase() === 'ASSIGNMENT') {
     const assignments = (req.user?.module_assignments ?? []).filter((assignment: any) =>
-      String(assignment.module_code || '').toUpperCase() === moduleCode
-      && String(assignment.status || '').toUpperCase() === 'ACTIVE'
-      && Boolean(assignment.profile_id && assignment.profile_active)
-      && String(assignment.profile_code || '').toUpperCase().startsWith(`${moduleCode}:`)
+      isUsableModuleAssignment(assignment, moduleCode)
     );
     if (!assignments.length) return false;
     const readOverride = (req.user as any)?.permission_overrides?.find((override: any) =>
@@ -112,12 +110,7 @@ async function canReadSection(req: Request, section: DashboardSection, allowedWi
       && String(override.action_code || '').toUpperCase() === 'READ'
     );
     if (String(readOverride?.effect || '').toUpperCase() === 'DENY') return false;
-    const hasRead = assignments.some((assignment: any) => {
-      if (typeof assignment.allow_read === 'boolean') return assignment.allow_read;
-      return (assignment.capability_codes ?? []).some((code: unknown) =>
-        ['READ', `${moduleCode}:READ`].includes(String(code).toUpperCase())
-      );
-    });
+    const hasRead = assignments.some((assignment: any) => hasModuleAssignmentCapability(assignment, 'READ'));
     return hasRead || String(readOverride?.effect || '').toUpperCase() === 'ALLOW';
   }
 
@@ -189,8 +182,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean, allowedW
     (m: any) => String(m.module_code || '').toUpperCase() === 'PROJECTS'
   );
   const hasProjectsManagerTier = Boolean(projectsAssignment && String(projectsAssignment.data_scope || '').toUpperCase() === 'ALL'
-    && (!assignmentMode || (Boolean(projectsAssignment.profile_id && projectsAssignment.profile_active)
-      && Boolean(projectsAssignment.allow_read))));
+    && (!assignmentMode || (isUsableModuleAssignment(projectsAssignment, 'PROJECTS')
+      && hasModuleAssignmentCapability(projectsAssignment, 'READ'))));
   const isOperationalUser =
     !isCompanyPortfolioRole && !isProjectManagerRole && !hasProjectsManagerTier;
   const managedProjectRows = managementWorkspace && isOperationalUser

@@ -8,6 +8,7 @@
  */
 import { Request, Response, NextFunction } from 'express';
 import { ForbiddenError } from '../utils/errors';
+import { hasModuleAssignmentCapability, isUsableModuleAssignment } from '../utils/module-assignments';
 import { isSuperAdmin, RoleCode } from '../types/roles';
 import { hasModuleOverride } from '../utils/module-permissions';
 import prisma from '../config/database';
@@ -175,13 +176,10 @@ export function requireFinanceRole(roles: string[]) {
           : /\/(?:approve|reject|execute|close|post|verify|authorize)(?:\/|$)/i.test(path)
             ? 'APPROVE'
             : 'WRITE';
-      const hasCapability = ((req.user as any)?.module_assignments ?? []).some((assignment: any) => {
-        if (String(assignment.module_code || '').toUpperCase() !== 'FINANCE'
-          || String(assignment.status || '').toUpperCase() !== 'ACTIVE'
-          || !assignment.profile_id || !assignment.profile_active) return false;
-        const codes = new Set((assignment.capability_codes ?? []).map((code: unknown) => String(code).toUpperCase()));
-        return codes.has(capability) || codes.has(`FINANCE:${capability}`);
-      });
+      const hasCapability = ((req.user as any)?.module_assignments ?? []).some((assignment: any) =>
+        isUsableModuleAssignment(assignment, 'FINANCE')
+          && hasModuleAssignmentCapability(assignment, capability),
+      );
       return hasCapability
         ? next()
         : next(new ForbiddenError(`Role Profile Finance tidak memiliki capability ${capability}.`));

@@ -42,6 +42,7 @@ export interface UserProfile {
     status?: string;
     capability_codes?: string[];
     data_scope?: string;
+    tier_level?: number;
     department_id?: string | null;
     allow_read?: boolean;
     allow_write?: boolean;

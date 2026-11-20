@@ -10,6 +10,7 @@ import { Request, Response, NextFunction } from 'express';
 import prisma from '../config/database';
 import { ForbiddenError, UnauthorizedError } from '../utils/errors';
 import { isSuperAdmin } from '../types/roles';
+import { hasModuleAssignmentCapability, isUsableModuleAssignment } from '../utils/module-assignments';
 
 /**
  * Company Module Entitlement Middleware.
@@ -113,11 +114,7 @@ export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' =
       const accessMode = String((access as any).access_mode || 'LEGACY').trim().toUpperCase();
       if (accessMode === 'ASSIGNMENT') {
         const assignments = (req.user.module_assignments ?? []).filter((assignment: any) =>
-          String(assignment.module_code || '').toUpperCase() === normalizedModule
-          && String(assignment.status || '').toUpperCase() === 'ACTIVE'
-          && Boolean(assignment.profile_id)
-          && Boolean(assignment.profile_active)
-          && String(assignment.profile_code || '').toUpperCase().startsWith(`${normalizedModule}:`)
+          isUsableModuleAssignment(assignment, normalizedModule)
         );
         if (!assignments.length) {
           return next(new ForbiddenError(`Belum ada penugasan role aktif untuk modul ${normalizedModule}.`));
@@ -138,16 +135,10 @@ export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' =
         if (String((effectiveMode === 'read' ? readOverride : writeOverride)?.effect || '').toUpperCase() === 'DENY') {
           return next(new ForbiddenError(`Akses ${effectiveMode} modul ${normalizedModule} ditolak secara eksplisit.`));
         }
-        const hasRead = assignments.some((assignment: any) =>
-          typeof assignment.allow_read === 'boolean'
-            ? assignment.allow_read
-            : capabilities.has('READ') || capabilities.has(`${normalizedModule}:READ`),
-        ) || String(readOverride?.effect || '').toUpperCase() === 'ALLOW';
-        const hasWrite = assignments.some((assignment: any) =>
-          typeof assignment.allow_write === 'boolean'
-            ? assignment.allow_write
-            : capabilities.has('WRITE') || capabilities.has(`${normalizedModule}:WRITE`),
-        ) || String(writeOverride?.effect || '').toUpperCase() === 'ALLOW';
+        const hasRead = assignments.some((assignment: any) => hasModuleAssignmentCapability(assignment, 'READ'))
+          || String(readOverride?.effect || '').toUpperCase() === 'ALLOW';
+        const hasWrite = assignments.some((assignment: any) => hasModuleAssignmentCapability(assignment, 'WRITE'))
+          || String(writeOverride?.effect || '').toUpperCase() === 'ALLOW';
         if (effectiveMode === 'read' && !hasRead) {
           return next(new ForbiddenError(`Role modul ${normalizedModule} tidak memiliki capability READ.`));
         }

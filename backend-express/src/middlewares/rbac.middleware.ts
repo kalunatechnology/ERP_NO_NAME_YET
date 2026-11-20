@@ -10,6 +10,7 @@ import { Request, Response, NextFunction } from 'express';
 import { ForbiddenError, UnauthorizedError } from '../utils/errors';
 import { isSuperAdmin, RoleCode } from '../types/roles';
 import { hasModuleOverride } from '../utils/module-permissions';
+import { hasModuleAssignmentCapability, isUsableModuleAssignment } from '../utils/module-assignments';
 
 /**
  * RBAC Middleware — Role-Based Access Control.
@@ -98,14 +99,10 @@ function hasScopedProfileCapability(req: Request, _allowedRoles: string[]): bool
   };
   const field = permissionField[capability];
   return (req.user?.module_assignments ?? []).some((assignment: any) =>
-    String(assignment.module_code || '').toUpperCase() === req.moduleAccess!.moduleCode
-    && String(assignment.status || '').toUpperCase() === 'ACTIVE'
-    && Boolean(assignment.profile_id && assignment.profile_active)
-    && (field && typeof assignment[field] === 'boolean'
-      ? assignment[field]
-      : Array.isArray(assignment.capability_codes)
-        && (assignment.capability_codes.includes(capability)
-          || assignment.capability_codes.includes(`${req.moduleAccess!.moduleCode}:${capability}`))),
+    isUsableModuleAssignment(assignment, req.moduleAccess!.moduleCode)
+      && (field && typeof assignment[field] === 'boolean'
+        ? assignment[field]
+        : hasModuleAssignmentCapability(assignment, capability)),
   );
 }
 
@@ -312,21 +309,12 @@ export function requireModulePermission(
       }
       const capability = normalizedAction === 'MANAGE_USERS' ? 'MANAGE_USERS' : normalizedAction;
       const assignments: any[] = (req.user as any)?.module_assignments ?? [];
-      const hasAssignment = assignments.some((assignment) =>
-        String(assignment.module_code || '').toUpperCase() === normalizedModule
-        && String(assignment.status || '').toUpperCase() === 'ACTIVE'
-        && Boolean(assignment.profile_id)
-        && Boolean(assignment.profile_active),
-      );
+      const hasAssignment = assignments.some((assignment) => isUsableModuleAssignment(assignment, normalizedModule));
       if (!hasAssignment) return next(new ForbiddenError(`Tidak ada Role Profile aktif pada modul ${normalizedModule}.`));
       if (String(explicitOverride?.effect || '').toUpperCase() === 'ALLOW') return next();
       const granted = assignments.some((assignment) =>
-        String(assignment.module_code || '').toUpperCase() === normalizedModule
-        && String(assignment.status || '').toUpperCase() === 'ACTIVE'
-        && Boolean(assignment.profile_active)
-        && Array.isArray(assignment.capability_codes)
-        && (assignment.capability_codes.includes(capability)
-          || assignment.capability_codes.includes(`${normalizedModule}:${capability}`)),
+        isUsableModuleAssignment(assignment, normalizedModule)
+          && hasModuleAssignmentCapability(assignment, capability),
       );
       const bridges: any[] = (req.user as any)?.cross_module_capabilities ?? [];
       const crossModuleGrant = bridges.some((bridge) => {
@@ -336,9 +324,7 @@ export function requireModulePermission(
           && String(bridge.status || '').toUpperCase() === 'ACTIVE'
           && (allowedActions.includes(normalizedAction) || (action !== 'read' && allowedActions.includes('ACTION')))
           && (req.user?.enabled_modules ?? []).includes(sourceModule)
-          && assignments.some((assignment) => String(assignment.module_code || '').toUpperCase() === sourceModule
-            && String(assignment.status || '').toUpperCase() === 'ACTIVE'
-            && Boolean(assignment.profile_id && assignment.profile_active));
+          && assignments.some((assignment) => isUsableModuleAssignment(assignment, sourceModule));
       });
       if (granted || crossModuleGrant) return next();
       return next(new ForbiddenError(`Role profile ${normalizedModule} tidak memiliki capability ${capability}.`));
@@ -406,12 +392,7 @@ export function requireModuleCapability(moduleCode: string, capabilityCode: stri
     }
 
     const assignments: any[] = req.user.module_assignments ?? [];
-    const activeAssignments = assignments.filter((assignment) =>
-      String(assignment.module_code || '').toUpperCase() === normalizedModule
-      && String(assignment.status || '').toUpperCase() === 'ACTIVE'
-      && Boolean(assignment.profile_id)
-      && Boolean(assignment.profile_active)
-    );
+    const activeAssignments = assignments.filter((assignment) => isUsableModuleAssignment(assignment, normalizedModule));
     if (!activeAssignments.length) {
       return next(new ForbiddenError(`Tidak ada assignment aktif pada modul ${normalizedModule}.`));
     }
@@ -426,11 +407,7 @@ export function requireModuleCapability(moduleCode: string, capabilityCode: stri
     }
     if (String(matchingOverride?.effect || '').toUpperCase() === 'ALLOW') return next();
 
-    const granted = activeAssignments.some((assignment) =>
-      Array.isArray(assignment.capability_codes)
-      && (assignment.capability_codes.includes(normalizedCapability)
-        || assignment.capability_codes.includes(`${normalizedModule}:${normalizedCapability}`))
-    );
+    const granted = activeAssignments.some((assignment) => hasModuleAssignmentCapability(assignment, normalizedCapability));
     const bridges: any[] = (req.user as any)?.cross_module_capabilities ?? [];
     const crossModuleGrant = bridges.some((bridge) => {
       const sourceModule = String(bridge.source_module_code || '').toUpperCase();
@@ -439,9 +416,7 @@ export function requireModuleCapability(moduleCode: string, capabilityCode: stri
         && String(bridge.capability_code || '').toUpperCase() === normalizedCapability
         && String(bridge.status || '').toUpperCase() === 'ACTIVE'
         && (req.user?.enabled_modules ?? []).includes(sourceModule)
-        && assignments.some((assignment) => String(assignment.module_code || '').toUpperCase() === sourceModule
-          && String(assignment.status || '').toUpperCase() === 'ACTIVE'
-          && Boolean(assignment.profile_id && assignment.profile_active))
+        && assignments.some((assignment) => isUsableModuleAssignment(assignment, sourceModule))
         && (allowedActions.includes(normalizedCapability) || allowedActions.includes('ACTION'));
     });
     if (!granted && !crossModuleGrant) {
@@ -461,12 +436,8 @@ export function requireModuleTier(moduleCode: string, maxTierLevel: 1 | 2 | 3) {
     if (req.moduleAccess?.accessMode === 'ASSIGNMENT') {
       const capability = maxTierLevel === 1 ? 'MANAGE_USERS' : maxTierLevel === 2 ? 'APPROVE' : 'WRITE';
       const allowed = assignments.some((assignment) =>
-        String(assignment.module_code || '').toUpperCase() === normalizedModule
-        && String(assignment.status || '').toUpperCase() === 'ACTIVE'
-        && Boolean(assignment.profile_active)
-        && Array.isArray(assignment.capability_codes)
-        && (assignment.capability_codes.includes(capability)
-          || assignment.capability_codes.includes(`${normalizedModule}:${capability}`)),
+        isUsableModuleAssignment(assignment, normalizedModule)
+          && hasModuleAssignmentCapability(assignment, capability),
       );
       return allowed
         ? next()

@@ -16,6 +16,7 @@ import { requireActiveRole } from '../../middlewares/rbac.middleware';
 import { sendSuccess, sendError } from '../../utils/response';
 import prisma from '../../config/database';
 import { MeetingRequestService } from './meeting-request.service';
+import { isUsableModuleAssignment } from '../../utils/module-assignments';
 
 export const requestRouter = Router();
 
@@ -209,10 +210,7 @@ requestRouter.get(
         req.user?.id;
 
       const requestAssignment = (req.user?.module_assignments ?? []).find((assignment: any) =>
-        String(assignment.module_code || '').toUpperCase() === 'REQUESTS'
-        && String(assignment.status || '').toUpperCase() === 'ACTIVE'
-        && Boolean(assignment.profile_id && assignment.profile_active)
-        && String(assignment.profile_code || '').toUpperCase().startsWith('REQUESTS:')
+        isUsableModuleAssignment(assignment, 'REQUESTS')
       );
       const assignmentMode = req.moduleAccess?.accessMode === 'ASSIGNMENT';
       const activeRole = req.user?.active_role_code ?? (assignmentMode ? RoleCode.STAFF : null);

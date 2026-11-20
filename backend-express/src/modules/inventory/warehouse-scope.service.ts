@@ -11,15 +11,12 @@
 import prisma from '../../config/database';
 import { ForbiddenError } from '../../utils/errors';
 import { isCompanyAdmin, isSuperAdmin, parseRoleCode, RoleCode } from '../../types/roles';
+import { isUsableModuleAssignment } from '../../utils/module-assignments';
 
 export type WarehouseScopeAction = 'read' | 'write' | 'approve';
 
 function hasInventoryProfile(user: { module_assignments?: any[] } | undefined): boolean {
-  return Boolean(user?.module_assignments?.some((assignment) =>
-    String(assignment.module_code || '').toUpperCase() === 'INVENTORY'
-    && String(assignment.status || '').toUpperCase() === 'ACTIVE'
-    && Boolean(assignment.profile_id && assignment.profile_active),
-  ));
+  return Boolean(user?.module_assignments?.some((assignment) => isUsableModuleAssignment(assignment, 'INVENTORY')));
 }
 
 function hasGlobalWarehouseOversight(user: { roles?: string[]; active_role_code?: string | null; module_assignments?: any[] } | undefined): boolean {
@@ -44,8 +41,7 @@ export async function getAllowedWarehouseIds(
     .catch(() => []) ?? [];
   if (!scopes.length) {
     const inventoryAssignments = user.module_assignments?.filter((assignment) =>
-      String(assignment.module_code || '').toUpperCase() === 'INVENTORY'
-      && Boolean(assignment.profile_id && assignment.profile_active),
+      isUsableModuleAssignment(assignment, 'INVENTORY'),
     ) ?? [];
     const profileScopes = inventoryAssignments.flatMap((assignment) => Array.isArray(assignment.scope_resource_ids) ? assignment.scope_resource_ids.map(String) : []);
     if (inventoryAssignments.some((assignment) => String(assignment.data_scope || '').toUpperCase() === 'ALL')) return null;
@@ -64,8 +60,7 @@ export async function assertWarehouseScopeAccess(input: {
     return;
   }
   const profileAssignments = input.user.module_assignments?.filter((assignment) =>
-    String(assignment.module_code || '').toUpperCase() === 'INVENTORY'
-    && Boolean(assignment.profile_id && assignment.profile_active),
+    isUsableModuleAssignment(assignment, 'INVENTORY'),
   ) ?? [];
   if (profileAssignments.length) {
     const profileScopes = profileAssignments.flatMap((assignment) => Array.isArray(assignment.scope_resource_ids) ? assignment.scope_resource_ids.map(String) : []);
