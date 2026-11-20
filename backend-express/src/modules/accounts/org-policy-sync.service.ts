@@ -522,7 +522,11 @@ export async function getUserQuickAccess(companyId: string, userId: string) {
     roles: roleCodes,
     org_memberships: orgMemberships,
     modules: visibleModules,
-    dashboard_widgets: visibleWidgets,
+    // Return the administrator's saved display preferences to the editor.
+    // Runtime dashboard responses continue using visibleWidgets, which are
+    // filtered by company entitlement and active module assignments.
+    dashboard_widgets: enabledWidgets,
+    visible_dashboard_widgets: visibleWidgets,
     enabled_modules: Array.from(enabledModules),
     module_assignments: activeAssignments,
     catalog: DASHBOARD_WIDGET_CATALOG,

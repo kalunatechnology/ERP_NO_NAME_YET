@@ -412,6 +412,7 @@ export function QuickAccessPanel({
           role_level: roleLevel,
           reports_to_user_id: reportsToUserId || null,
           job_title: jobTitle.trim(),
+          dashboard_widgets: Array.from(new Set(["DASH_PERSONAL", ...selectedWidgets])),
           reason: "Quick Access Panel update by Company Admin",
         },
         { headers: { "X-Company-ID": companyId } }
@@ -535,7 +536,7 @@ export function QuickAccessPanel({
           </div>
 
           <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-900">
-            <b>Akses operasional sekarang dikelola per modul.</b> Pilih tab <b>Hirarki Modul</b> untuk membuat role profile (contoh CRM:SALES) dan menugaskannya kepada user. Hak dari satu modul tidak membuka modul lain.
+            <b>Akses operasional dikelola per modul.</b> Gunakan tab <b>Hirarki Modul</b> untuk menetapkan Role Profile. Pengaturan panel dashboard di bawah hanya mengatur tampilan; data tetap mengikuti entitlement modul dan capability <b>READ</b> user.
           </div>
 
           {/* Form 2-Kolom yang Proporsional & Bebas Clipping */}
@@ -555,7 +556,7 @@ export function QuickAccessPanel({
                 options={departmentOptions}
               />
               <p className="mt-1 text-[11px] text-slate-500">
-                Unit penempatan user untuk mewarisi hak akses modul unit.
+                Unit organisasi untuk pelaporan dan pengelompokan; tidak memberi akses modul.
               </p>
             </div>
 
@@ -575,7 +576,7 @@ export function QuickAccessPanel({
                 <option value="GM">GM (General Manager / Direksi)</option>
               </select>
               <p className="mt-1 text-[11px] text-slate-500">
-                Menentukan hierarki operasional dan batas wewenang internal unit.
+                Informasi jenjang organisasi. Wewenang operasional ditentukan oleh Role Profile pada tiap modul.
               </p>
             </div>
 
@@ -617,6 +618,53 @@ export function QuickAccessPanel({
             </div>
           </div>
         </div>
+
+        {/* Dashboard preferences choose visibility only; module authorization is checked separately. */}
+        <section className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-bold text-[#163D64]">Panel Dashboard</h3>
+              <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">
+                Pilih ringkasan yang ingin ditampilkan untuk user ini. Panel terkait modul hanya memuat data jika company mengaktifkan modulnya dan user memiliki penugasan aktif dengan capability READ.
+              </p>
+            </div>
+            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-blue-800">
+              Preferensi Tampilan
+            </span>
+          </div>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+            {catalog.map((widget) => {
+              const isBaseline = widget.is_baseline || widget.code === "DASH_PERSONAL";
+              const isEnabled = isBaseline || selectedWidgets.includes(widget.code);
+              return (
+                <label
+                  key={widget.code}
+                  className={`flex items-start gap-3 rounded-lg border p-3 ${isEnabled ? "border-blue-200 bg-blue-50/50" : "border-slate-200 bg-white"}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isEnabled}
+                    disabled={isBaseline || isSelfSelected || saving}
+                    onChange={() => toggleWidget(widget.code)}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-[#163D64] focus:ring-[#163D64]"
+                  />
+                  <span className="min-w-0">
+                    <span className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-800">
+                      {widget.title}
+                      {isBaseline && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">Wajib</span>}
+                    </span>
+                    <span className="mt-1 block text-[11px] leading-4 text-slate-500">{widget.description}</span>
+                    {widget.required_module && (
+                      <span className="mt-1.5 inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                        Modul: {widget.required_module}
+                      </span>
+                    )}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </section>
 
         {/* Bagian 2: Tabel Hak Akses Modul */}
         <div className="hidden" aria-hidden="true">
