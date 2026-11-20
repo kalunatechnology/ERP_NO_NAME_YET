@@ -1092,7 +1092,9 @@ projectsRouter.get('/:id/hierarchy', enforceProjectBoundary, handleHierarchy);
  */
 projectsRouter.post('/projects/:id/recalculate_health', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await ProjectsService.calculateProjectEVM(req.params.id, new Date(), activeCompanyId(req));
+    const companyId = activeCompanyId(req);
+    await ProjectsService.assertCanManageProject(req.user, req.params.id, companyId);
+    const result = await ProjectsService.calculateProjectEVM(req.params.id, new Date(), companyId);
     res.json(result);
   } catch (err) {
     next(err);

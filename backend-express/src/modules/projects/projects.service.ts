@@ -1954,6 +1954,29 @@ export class ProjectsService {
           `Role ${userRole || '(kosong)'} tidak memiliki izin untuk memajukan proyek dari tahap ${currentStage}.`,
         );
       }
+      const isGlobalOversight = ([
+        RoleCode.COMPANY_ADMIN,
+        RoleCode.DIRECTOR,
+        RoleCode.OPERATIONAL_MANAGER,
+      ] as RoleCode[]).includes(normalizedRole);
+      if (!isGlobalOversight) {
+        const isProjectOwnerOrAssignedPm =
+          project.project_manager_id === userId ||
+          project.created_by_id === userId ||
+          Boolean(await tx.project_member.findFirst({
+            where: {
+              project_id: projectId,
+              company_id: companyId,
+              user_id: userId,
+              status: 'ACTIVE',
+              project_role: { in: ['PROJECT_MANAGER', ACTING_PROJECT_MANAGER_ROLE] },
+            },
+            select: { id: true },
+          }));
+        if (!isProjectOwnerOrAssignedPm) {
+          throw new ForbiddenError('Anda tidak memiliki kewenangan untuk mengubah lifecycle proyek ini.');
+        }
+      }
 
       const normalizedReason = reason?.trim() ?? '';
       const normalizedPoContractNumber = poContractNumber?.trim() ?? '';

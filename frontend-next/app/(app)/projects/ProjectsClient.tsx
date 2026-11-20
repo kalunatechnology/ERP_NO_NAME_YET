@@ -638,15 +638,12 @@ export default function ProjectsClient() {
   const canCreateProject = useMemo(() => canPerform("project:create", userRole, { enabledModules: user?.enabled_modules, moduleAccess: user?.module_access }), [userRole, user?.enabled_modules, user?.module_access]);
   const canUpdateProject = useMemo(() => canPerform("project:update", userRole, { enabledModules: user?.enabled_modules, moduleAccess: user?.module_access }), [userRole, user?.enabled_modules, user?.module_access]);
   const canManageSelectedProject = allowsProjectManagement && Boolean(selectedAuthority?.can_manage_project);
-  const canUpdateSelectedProject = allowsProjectManagement && (canUpdateProject || isActingProjectManager);
+  const canUpdateSelectedProject = canManageSelectedProject;
   const canAssignProjectDepartment = allowsProjectManagement && (
-    isPM ||
-    userRole === "pm" ||
+    canManageSelectedProject ||
     userRole === "om" ||
     userRole === "executive" ||
-    userRole === "company_admin" ||
-    String(user?.role_level || "").toUpperCase() === "GM" ||
-    Boolean(selectedAuthority?.can_manage_project)
+    userRole === "company_admin"
   );
   // Financial data (biaya, dana, billing) hanya terlihat untuk role tertentu.
   // Array literal di bawah digunakan sebagai second-layer guard di frontend
