@@ -1302,7 +1302,27 @@ export class ProjectsService {
     if (!project) throw new NotFoundError('Project');
     await this.assertCanViewProject(user, projectId, companyId, db);
     const activeRole = this.activeRole(user);
-    const isCreatorPm = activeRole === RoleCode.PROJECT_MANAGER && project.created_by_id === user.id;
+    const isAssignedMemberPm = Boolean(
+      activeRole === RoleCode.PROJECT_MANAGER &&
+      user?.id &&
+      (
+        project.project_manager_id === user.id ||
+        project.created_by_id === user.id ||
+        Boolean(
+          await db.project_member.findFirst({
+            where: {
+              project_id: projectId,
+              company_id: companyId,
+              user_id: user.id,
+              status: 'ACTIVE',
+              project_role: 'PROJECT_MANAGER',
+            },
+            select: { id: true },
+          })
+        )
+      )
+    );
+    const isCreatorPm = isAssignedMemberPm;
     const isOm = activeRole === RoleCode.OPERATIONAL_MANAGER;
     const isAdmin = this.isCompanyAdmin(user);
 

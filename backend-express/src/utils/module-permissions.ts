@@ -50,7 +50,6 @@ export function hasUserModuleManagerWrite(
   } | undefined,
   moduleCode: string,
 ): boolean {
-  if (!hasUserModuleWrite(user, moduleCode)) return false;
   const code = moduleCode.toUpperCase();
   const assignments = user?.module_assignments?.filter(
     (item) => String(item.module_code || '').toUpperCase() === code,
@@ -63,8 +62,9 @@ export function hasUserModuleManagerWrite(
       && hasModuleAssignmentCapability(assignment, 'MANAGE_USERS'),
     );
   }
+  if (!hasUserModuleWrite(user, moduleCode)) return false;
   return assignments.some((assignment) =>
-    isUsableModuleAssignment(assignment, code) && Number(assignment.tier_level) <= 1,
+    isUsableModuleAssignment(assignment, code) && Number(assignment.tier_level) === 1,
   );
 }
 
