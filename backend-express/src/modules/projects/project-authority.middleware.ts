@@ -22,7 +22,6 @@ function matchesSelfService(path: string, method: string): boolean {
 async function projectIdForMutation(path: string, req: Request, companyId: string): Promise<string | null> {
   let match = path.match(/^\/projects\/([^/]+)(?:\/.*)?$/);
   if (match) {
-    if (['funding_requests', 'update_financials', 'advance_stage', 'advance-stage'].some((segment) => path.includes(`/${segment}`))) return null;
     if (path === `/projects/${match[1]}` || path === `/projects/${match[1]}/`) return req.method === 'DELETE' ? null : match[1];
     return match[1];
   }

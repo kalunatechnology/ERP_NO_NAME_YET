@@ -1344,7 +1344,7 @@ export class ProjectsService {
     const isPm = isCreatorPm;
     const moduleWrite = hasUserModuleWrite(user, 'PROJECTS');
     const moduleManagerWrite = hasUserModuleManagerWrite(user, 'PROJECTS');
-    const allowsManagement = !getUserModuleOverride(user, 'PROJECTS') || moduleWrite;
+    const allowsManagement = !getUserModuleOverride(user, 'PROJECTS') || moduleWrite || isActing;
     const canManage = !user?.roles?.includes(RoleCode.SUPER_ADMIN) && allowsManagement && (isAdmin || isOm || isPm || isActing || moduleManagerWrite);
     const canViewFinancials = isActing || ([
       RoleCode.SUPER_ADMIN,

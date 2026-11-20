@@ -241,7 +241,6 @@ export function createApp(): Express {
   apiV1.use(
     '/projects',
     requireModuleAccess('PROJECTS'),
-    requireActiveRole(...PROJECT_MODULE_ACCESS_ROLES),
     restrictActiveRoleMutations({
       restrictedRoles: [RoleCode.DIRECTOR],
       message: 'Role Director memiliki akses preview seluruh proyek.',
