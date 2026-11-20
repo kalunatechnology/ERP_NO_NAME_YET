@@ -314,8 +314,8 @@ export class ProjectsService {
     const scope = { company_id: companyId, ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}) };
     const managerRole = role === RoleCode.PROJECT_MANAGER;
     const supervisorRole = role === RoleCode.SUPERVISOR;
-    const managerialRole = role === RoleCode.OPERATIONAL_MANAGER || role === RoleCode.COMPANY_ADMIN;
-    const operationalRole = supervisorRole || role === RoleCode.STAFF;
+    const managerialRole = role === RoleCode.OPERATIONAL_MANAGER || role === RoleCode.COMPANY_ADMIN || hasUserModuleManagerWrite(user, 'PROJECTS');
+    const operationalRole = supervisorRole || role === RoleCode.STAFF || this.isOperationalAssignee(user);
     if (!managerRole && !managerialRole && !operationalRole) return [];
 
     const [managed, owned, namedManagers, managerMemberships, actingMemberships] = await Promise.all([

@@ -1264,10 +1264,6 @@ projectsRouter.get('/projects/:id/funding_requests', async (req: Request, res: R
 projectsRouter.post('/projects/:id/funding_requests', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = activeCompanyId(req);
-    const activeRole = req.user?.active_role_code;
-    if (!([RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.COMPANY_ADMIN] as RoleCode[]).includes(activeRole as RoleCode) && !hasModuleOverride(req, 'PROJECTS')) {
-      throw new ForbiddenError('Pengajuan dana project memerlukan role PM, OM, atau Company Admin.');
-    }
     const project = await prisma.project_project.findFirst({ where: { id: req.params.id, company_id: companyId } });
     if (!project) throw new NotFoundError('Project');
     await ProjectsService.assertCanManageProject(req.user, project.id, companyId);
@@ -1306,10 +1302,6 @@ projectsRouter.post('/projects/:id/funding_requests', async (req: Request, res: 
 projectsRouter.post('/projects/:id/update_financials', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = activeCompanyId(req);
-    const activeRole = req.user?.active_role_code;
-    if (!([RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.COMPANY_ADMIN] as RoleCode[]).includes(activeRole as RoleCode) && !hasModuleOverride(req, 'PROJECTS')) {
-      throw new ForbiddenError('Perubahan target finansial memerlukan role PM, OM, atau Company Admin.');
-    }
     const { budget_amount, contract_amount, target_margin_percent } = req.body;
     const project = await prisma.project_project.findFirst({
       where: { id: req.params.id, company_id: companyId },
