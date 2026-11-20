@@ -33,6 +33,15 @@ export interface UserProfile {
   enabled_modules?: string[];
   delegated_modules?: string[];
   module_access?: ModulePermission[];
+  module_assignments?: Array<{
+    module_code: string;
+    profile_id?: string | null;
+    profile_code?: string | null;
+    profile_active?: boolean;
+    status?: string;
+    capability_codes?: string[];
+  }>;
+  permission_overrides?: Array<{ module_code: string; action_code: string; effect: string }>;
   roles?: { role?: string; role_code?: string; role_name?: string; company_id?: string | number | null }[];
 }
 

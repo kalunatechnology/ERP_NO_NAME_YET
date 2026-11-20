@@ -758,19 +758,25 @@ export function ModuleHierarchyManager({
                   <p className="text-xs text-[#64748B]">
                     Menampilkan role profile, cakupan data, dan masa berlaku pada tiap modul.
                   </p>
+                  <p className="mt-1 text-[11px] text-[#64748B]">
+                    Tabel ini menampilkan assignment semua user. Filter di kanan hanya menyaring tabel; user di form sebelah kiri diatur secara terpisah.
+                  </p>
                 </div>
-                <select
-                  value={selectedModuleFilter}
-                  onChange={(e) => setSelectedModuleFilter(e.target.value)}
-                  className="h-9 rounded-xl border border-[#CBD5E1] bg-white px-3 text-xs font-semibold text-[#0F172A]"
-                >
-                  <option value="ALL">Semua Modul ({assignments.length})</option>
-                  {HIERARCHY_MODULES.map((m) => (
-                    <option key={m} value={m}>
-                      Modul {m}
-                    </option>
-                  ))}
-                </select>
+                <label className="flex items-center gap-2 text-[11px] font-semibold text-[#64748B]">
+                  Filter tabel
+                  <select
+                    value={selectedModuleFilter}
+                    onChange={(e) => setSelectedModuleFilter(e.target.value)}
+                    className="h-9 rounded-xl border border-[#CBD5E1] bg-white px-3 text-xs font-semibold text-[#0F172A]"
+                  >
+                    <option value="ALL">Semua Modul ({assignments.length})</option>
+                    {HIERARCHY_MODULES.map((m) => (
+                      <option key={m} value={m}>
+                        Modul {m}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
 
               {filteredAssignments.length === 0 ? (

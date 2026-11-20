@@ -4124,6 +4124,8 @@ export default function CrmClient() {
     try {
       const { data, dashboard } = await loadCRMData(Array.from(enabledModules), undefined, {
         delegatedModules: user?.delegated_modules,
+        moduleAssignments: user?.module_assignments,
+        permissionOverrides: user?.permission_overrides,
         activeRoleCode: user?.active_role_code,
         isSuperAdmin: userRole === "super_admin",
       });

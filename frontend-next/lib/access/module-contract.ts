@@ -233,6 +233,19 @@ export interface FrontendAccessContext {
   enabledModules?: readonly string[] | null;
   delegatedModules?: readonly string[] | null;
   moduleAccess?: readonly ModulePermission[] | null;
+  moduleAssignments?: readonly {
+    module_code: string;
+    profile_id?: string | null;
+    profile_code?: string | null;
+    profile_active?: boolean;
+    status?: string;
+    capability_codes?: readonly string[];
+  }[] | null;
+  permissionOverrides?: readonly {
+    module_code: string;
+    action_code: string;
+    effect: string;
+  }[] | null;
   activeRoleCode?: unknown;
   isSuperAdmin?: boolean;
   dashboardWidgets?: readonly string[] | null;
@@ -246,6 +259,26 @@ export function canRequestApi(url: string, access: FrontendAccessContext): boole
   if (!hasModuleEntitlement(access.enabledModules, contract.module, superAdmin)) return false;
   const override = getModuleOverride(access.moduleAccess, contract.module);
   if (!superAdmin && override && !override.allow_read) return false;
+  if (!superAdmin && access.moduleAssignments && contract.module) {
+    const assignments = access.moduleAssignments.filter((assignment) =>
+      String(assignment.module_code || "").toUpperCase() === contract.module
+      && String(assignment.status || "").toUpperCase() === "ACTIVE"
+      && Boolean(assignment.profile_id)
+      && Boolean(assignment.profile_active)
+      && String(assignment.profile_code || "").toUpperCase().startsWith(`${contract.module}:`)
+    );
+    if (!assignments.length) return false;
+    const permissionOverride = access.permissionOverrides?.find((item) =>
+      String(item.module_code || "").toUpperCase() === contract.module
+      && String(item.action_code || "").toUpperCase() === "READ"
+    );
+    if (String(permissionOverride?.effect || "").toUpperCase() === "DENY") return false;
+    const hasRead = assignments.some((assignment) => {
+      const codes = new Set((assignment.capability_codes || []).map((code) => String(code).toUpperCase()));
+      return codes.has("READ") || codes.has(`${contract.module}:READ`);
+    });
+    if (!hasRead && String(permissionOverride?.effect || "").toUpperCase() !== "ALLOW") return false;
+  }
   if (superAdmin || !contract.roles || contract.roles.includes(activeRole)) return true;
   if (contract.allowDelegation === false) return false;
   return Boolean(override?.allow_read || normalizeModuleCodes(access.delegatedModules).has(contract.module));
