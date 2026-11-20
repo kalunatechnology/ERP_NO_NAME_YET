@@ -487,8 +487,8 @@ export function QuickAccessPanel({
               {selectedUser?.is_active === false ? "Nonaktif" : "Aktif"}
             </span>
             {isSelfSelected && (
-              <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-                Akun Sendiri (Read-Only)
+              <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-[#163D64]">
+                Akun Anda (Company Admin)
               </span>
             )}
           </div>
@@ -509,7 +509,7 @@ export function QuickAccessPanel({
           </button>
           <button
             type="button"
-            disabled={isSelfSelected || saving || loading}
+            disabled={saving || loading}
             onClick={() => void handleSave()}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#163D64] px-4 text-xs font-semibold text-white hover:bg-[#0876CD] disabled:opacity-50"
           >
@@ -540,7 +540,7 @@ export function QuickAccessPanel({
                 Atur penempatan departemen, tingkat wewenang, jabatan bisnis, dan garis pelaporan.
               </p>
             </div>
-            {onCreateUnit && !isSelfSelected && (
+            {onCreateUnit && (
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -573,7 +573,7 @@ export function QuickAccessPanel({
             </p>
             <select
               id="quick-access-role-template"
-              disabled={isSelfSelected || saving || loading}
+              disabled={saving || loading}
               value={activePresetKey}
               onChange={(event) => handlePresetChange(event.target.value)}
               className="mt-3 h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-800 outline-none focus:border-[#163D64]"
@@ -608,7 +608,7 @@ export function QuickAccessPanel({
                 Departemen / Divisi
               </label>
               <SearchableSelect
-                disabled={isSelfSelected || saving}
+                disabled={saving}
                 value={departmentId}
                 onChange={(val) => setDepartmentId(val)}
                 placeholder="-- Pilih Unit --"
@@ -627,7 +627,7 @@ export function QuickAccessPanel({
                 Level Wewenang di Unit
               </label>
               <select
-                disabled={isSelfSelected || saving}
+                disabled={saving}
                 value={roleLevel}
                 onChange={(e) => setRoleLevel(e.target.value as "GM" | "SPV" | "STAFF")}
                 className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 outline-none focus:border-[#163D64]"
@@ -648,7 +648,7 @@ export function QuickAccessPanel({
               </label>
               <input
                 type="text"
-                disabled={isSelfSelected || saving}
+                disabled={saving}
                 value={jobTitle}
                 onChange={(e) => setJobTitle(e.target.value)}
                 placeholder="Contoh: Staff Finance / Project Manager / Sales Executive"
@@ -665,7 +665,7 @@ export function QuickAccessPanel({
                 Atasan Langsung (Reports To)
               </label>
               <SearchableSelect
-                disabled={isSelfSelected || saving}
+                disabled={saving}
                 value={reportsToUserId}
                 onChange={(val) => setReportsToUserId(val)}
                 placeholder="-- Pilih Atasan --"
@@ -705,7 +705,7 @@ export function QuickAccessPanel({
                   <input
                     type="checkbox"
                     checked={isEnabled}
-                    disabled={isBaseline || isSelfSelected || saving}
+                    disabled={isBaseline || saving}
                     onChange={() => toggleWidget(widget.code)}
                     className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-[#163D64] focus:ring-[#163D64]"
                   />
@@ -762,7 +762,7 @@ export function QuickAccessPanel({
                         <input
                           type="checkbox"
                           checked={isEnabled}
-                          disabled={!isEntitled || isSelfSelected || saving || loading}
+                          disabled={!isEntitled || saving || loading}
                           onChange={() => toggleModuleEnabled(mod.code)}
                           className="h-4 w-4 rounded border-slate-300 text-[#163D64] focus:ring-[#163D64]"
                         />
@@ -775,7 +775,7 @@ export function QuickAccessPanel({
                       <td className="px-3.5 py-2">
                         {isEnabled ? (
                           <select
-                            disabled={!isEntitled || isSelfSelected || saving || loading}
+                            disabled={!isEntitled || saving || loading}
                             value={currentTier}
                             onChange={(e) => updateModuleTier(mod.code, Number(e.target.value))}
                             className="h-8 w-full rounded border border-slate-300 bg-white px-2 text-xs text-slate-800 outline-none focus:border-[#163D64]"

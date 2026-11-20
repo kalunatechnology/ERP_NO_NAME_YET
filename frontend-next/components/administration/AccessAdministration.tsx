@@ -1216,6 +1216,9 @@ export function AccessAdministration() {
                       void loadBase();
                       void loadCompanyContext();
                       void loadUserRoles(selectedUserId);
+                      if (selectedUser.id === user?.id) {
+                        void refreshProfile();
+                      }
                     }}
                   />
                 </div>
