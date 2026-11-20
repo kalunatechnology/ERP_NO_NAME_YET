@@ -27,6 +27,7 @@ interface RequestReviewModalProps {
   isOpen: boolean;
   onClose: () => void;
   request: any | null;
+  canWrite?: boolean;
   onActionComplete: () => void;
 }
 
@@ -37,7 +38,7 @@ interface RequestReviewModalProps {
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-export function RequestReviewModal({ isOpen, onClose, request, onActionComplete }: RequestReviewModalProps) {
+export function RequestReviewModal({ isOpen, onClose, request, canWrite = true, onActionComplete }: RequestReviewModalProps) {
   const { userRole } = useAuth();
   const [remarks, setRemarks] = useState("");
   const [loading, setLoading] = useState(false);
@@ -147,13 +148,13 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
   const isSuperAdmin = userRole === "super_admin";
 
   // verify-lpj-om: requireActiveRole(OPERATIONAL_MANAGER)
-  const isOMRole = isSuperAdmin || userRole === "om";
+  const isOMRole = canWrite && (isSuperAdmin || userRole === "om");
 
   // Meeting deletion: PROJECT_MANAGER or DIRECTOR.
-  const isExecRole = userRole === "pm" || userRole === "executive";
+  const isExecRole = canWrite && (userRole === "pm" || userRole === "executive");
 
   // disburse & disbursement-accounts: requireActiveRole(FINANCE)
-  const isFinanceRole = isSuperAdmin || userRole === "finance";
+  const isFinanceRole = canWrite && (isSuperAdmin || userRole === "finance");
 
   // Stage gating: which action section to show
   const canDeleteMeeting = request.request_type === "MEETING" && isExecRole;
@@ -391,7 +392,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
               )}
             </div>
 
-            <div className="flex items-center gap-2 pt-1">
+            {canWrite && <div className="flex items-center gap-2 pt-1">
               <select
                 value={selectedAssigneeId}
                 onChange={(e) => setSelectedAssigneeId(e.target.value)}
@@ -420,7 +421,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                   <span>{displayedAssignee ? "Reassign" : "Assign"}</span>
                 )}
               </button>
-            </div>
+            </div>}
           </div>
 
           {/* Tagged People */}
@@ -448,7 +449,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
           )}
 
           {/* LPJ SUBMISSION FORM (When Disbursed or Registered) */}
-          {isDisbursedOrRegistered && request.request_type === "FUND_REQUEST" && (
+          {canWrite && isDisbursedOrRegistered && request.request_type === "FUND_REQUEST" && (
             <div className="p-4 rounded-[18px] bg-white border border-[#0876CD]/40 shadow-xs space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">

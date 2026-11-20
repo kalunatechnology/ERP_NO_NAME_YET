@@ -1267,6 +1267,34 @@ export default function DashboardClient() {
   const [selectedReviewRequest, setSelectedReviewRequest] = useState<any>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const enabledModules = new Set((user?.enabled_modules || []).map((module) => module.toUpperCase()));
+  const moduleAssignments: any[] = Array.isArray((user as any)?.module_assignments)
+    ? (user as any).module_assignments
+    : [];
+  const permissionOverrides: any[] = Array.isArray((user as any)?.permission_overrides)
+    ? (user as any).permission_overrides
+    : [];
+  const requestsAssignments = moduleAssignments.filter((assignment) =>
+    String(assignment.module_code || "").toUpperCase() === "REQUESTS"
+    && String(assignment.status || "").toUpperCase() === "ACTIVE"
+    && Boolean(assignment.profile_id)
+    && Boolean(assignment.profile_active)
+    && String(assignment.profile_code || "").toUpperCase().startsWith("REQUESTS:")
+  );
+  const hasRequestsCapability = (capability: "READ" | "WRITE") => {
+    if (!requestsAssignments.length) return false;
+    const override = permissionOverrides.find((item) =>
+      String(item.module_code || "").toUpperCase() === "REQUESTS"
+      && String(item.action_code || "").toUpperCase() === capability
+    );
+    if (String(override?.effect || "").toUpperCase() === "DENY") return false;
+    if (String(override?.effect || "").toUpperCase() === "ALLOW") return true;
+    return requestsAssignments.some((assignment) => {
+      const capabilities = new Set<string>(Array.isArray(assignment.capability_codes)
+        ? assignment.capability_codes.map((item: unknown) => String(item).toUpperCase())
+        : []);
+      return capabilities.has(capability) || capabilities.has(`REQUESTS:${capability}`);
+    });
+  };
   const userProfileWidgets: string[] = Array.isArray((user as any)?.dashboard_widgets)
     ? ((user as any).dashboard_widgets as string[])
     : [];
@@ -1274,7 +1302,9 @@ export default function DashboardClient() {
   const canUseFinance = userRole === "super_admin" || enabledModules.has("FINANCE");
   const canUseCrm = userRole === "super_admin" || enabledModules.has("CRM");
   const canUseInventory = userRole === "super_admin" || enabledModules.has("INVENTORY");
-  const canUseRequests = userRole === "super_admin" || enabledModules.has("REQUESTS");
+  const companyHasRequests = enabledModules.has("REQUESTS") || enabledModules.has("HRMS");
+  const canReadRequests = userRole !== "super_admin" && companyHasRequests && hasRequestsCapability("READ");
+  const canWriteRequests = canReadRequests && hasRequestsCapability("WRITE");
   const apiAccessContext = {
     delegatedModules: user?.delegated_modules,
     activeRoleCode: user?.active_role_code,
@@ -1417,7 +1447,7 @@ export default function DashboardClient() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {canUseRequests && userRole !== "super_admin" && <button
+          {canWriteRequests && <button
             onClick={() => setIsNewRequestModalOpen(true)}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[14px] bg-[#163D64] hover:bg-[#163D64] text-white text-xs font-extrabold shadow-sm hover:shadow-md transition-all select-none"
           >
@@ -1582,15 +1612,21 @@ export default function DashboardClient() {
       })()}
 
       {/* ── Marka+ Active Request Cards Feed ── */}
-      {canUseRequests && userRole !== "super_admin" && <section className="mt-2 pt-5 border-t border-[#E2E8F0]">
+      {canReadRequests && <section className="mt-2 pt-5 border-t border-[#E2E8F0]">
         <RequestCardFeed
           onRequestClick={(req) => setSelectedReviewRequest(req)}
           refreshTrigger={refreshTrigger}
         />
       </section>}
 
+      {companyHasRequests && userRole !== "super_admin" && !canReadRequests && <section className="mt-2 rounded-2xl border border-[#D9E2EE] bg-white p-6 text-center">
+        <h3 className="text-sm font-bold text-[#163D64]">Akses Request &amp; Meeting belum ditugaskan</h3>
+        <p className="mt-1 text-xs text-[#64748B]">Perusahaan sudah mengaktifkan modul ini, tetapi akun Anda belum memiliki role modul aktif dengan akses baca.</p>
+        {userRole === "company_admin" && <Link href="/administration" className="mt-3 inline-flex rounded-lg bg-[#E7F2FF] px-3 py-2 text-xs font-bold text-[#163D64] hover:bg-[#D7EAFE]">Kelola penugasan modul</Link>}
+      </section>}
+
       {/* ── Marka+ Interactive Modals ── */}
-      {canUseRequests && <NewCardRequestModal
+      {canWriteRequests && <NewCardRequestModal
         isOpen={isNewRequestModalOpen}
         onClose={() => setIsNewRequestModalOpen(false)}
         onSuccess={(data) => {
@@ -1601,16 +1637,17 @@ export default function DashboardClient() {
         }}
       />}
 
-      {canUseRequests && <RequestSuccessModal
+      {canReadRequests && <RequestSuccessModal
         isOpen={isSuccessModalOpen}
         onClose={() => setIsSuccessModalOpen(false)}
         requestData={successRequestData}
       />}
 
-      {canUseRequests && <RequestReviewModal
+      {canReadRequests && <RequestReviewModal
         isOpen={!!selectedReviewRequest}
         onClose={() => setSelectedReviewRequest(null)}
         request={selectedReviewRequest}
+        canWrite={canWriteRequests}
         onActionComplete={() => {
           setRefreshTrigger(prev => prev + 1);
         }}

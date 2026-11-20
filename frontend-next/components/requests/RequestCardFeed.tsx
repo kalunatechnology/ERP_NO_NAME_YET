@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { localDateKey } from "@/lib/utils";
 import api from "@/lib/api/axios";
+import { getUserFacingApiError } from "@/lib/api/error-message";
 
 interface RequestCardFeedProps {
   onRequestClick: (req: any) => void;
@@ -94,7 +95,7 @@ export function RequestCardFeed({ onRequestClick, refreshTrigger }: RequestCardF
       if (version !== requestVersionRef.current) return;
       if (!silent) {
         // Only show error state on hard load failures; silent refresh failures are non-destructive
-        setFetchError("Gagal memuat data request. Periksa koneksi dan coba lagi.");
+        setFetchError(getUserFacingApiError(err, "Data request tidak dapat dimuat. Coba lagi."));
       }
       // On silent refresh failure: keep existing data intact (no state change to requests)
     } finally {
