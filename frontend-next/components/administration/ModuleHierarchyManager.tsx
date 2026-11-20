@@ -241,8 +241,8 @@ export function ModuleHierarchyManager({
     }
   }, [enabledModules, assignForm.module_code]);
 
-  const handleAssignSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAssignSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!assignForm.user_id) {
       toast.error("Pilih pengguna terlebih dahulu.");
       return;
@@ -279,12 +279,15 @@ export function ModuleHierarchyManager({
   const handleCreateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.post("/api/v1/accounts/module-role-profiles", {
+      const response = await api.post("/api/v1/accounts/module-role-profiles", {
         company_id: companyId,
         module_code: assignForm.module_code,
         ...profileForm,
       }, { headers: { "X-Company-ID": companyId } });
       toast.success("Role profile berhasil disimpan.");
+      if (response.data?.profile?.id) {
+        setAssignForm((previous) => ({ ...previous, profile_id: response.data.profile.id }));
+      }
       setProfileForm({ profile_code: "", display_name: "", legacy_role_code: "", capabilities: ["READ"] });
       await loadHierarchy();
     } catch (error) {
@@ -536,10 +539,8 @@ export function ModuleHierarchyManager({
       {subTab === "assignments" && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           {/* Form Penugasan */}
-          <form
-            onSubmit={handleAssignSubmit}
-            className="lg:col-span-4 rounded-[24px] border border-[#E2E8F0] bg-white p-5 space-y-4 self-start"
-          >
+          <div className="lg:col-span-4 space-y-4 self-start">
+          <div className="rounded-[24px] border border-[#E2E8F0] bg-white p-5 space-y-4">
             <div>
               <h3 className="text-sm font-bold text-[#163D64]">
                 {editingAssignmentId ? "Ubah Role & Penugasan Modul" : "+ Tetapkan Jabatan User pada Modul"}
@@ -582,7 +583,18 @@ export function ModuleHierarchyManager({
                   <option key={profile.id} value={profile.id}>{profile.profile_code} — {profile.display_name}</option>
                 ))}
               </select>
-              <p className="text-[11px] text-slate-500">Role berlaku hanya di modul ini. Buat profil dulu jika belum tersedia.</p>
+              <p className="text-[11px] text-slate-500">Role berlaku hanya di modul ini.</p>
+              {availableProfiles.length === 0 && <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
+                <p className="text-xs font-semibold text-amber-900">Belum ada role profile aktif untuk {assignForm.module_code}.</p>
+                <p className="mt-1 text-[11px] text-amber-800">Buat profil untuk modul ini sebelum menetapkannya kepada user.</p>
+                <button
+                  type="button"
+                  onClick={() => document.getElementById("module-role-profile-creator")?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                  className="mt-2 inline-flex items-center gap-1 rounded-lg bg-amber-900 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-amber-800"
+                >
+                  <Plus size={12} /> Buat Role Profile {assignForm.module_code}
+                </button>
+              </div>}
             </div>
 
             <div className="grid grid-cols-1 gap-3">
@@ -667,7 +679,8 @@ export function ModuleHierarchyManager({
             </div>
 
             <button
-              type="submit"
+              type="button"
+              onClick={() => void handleAssignSubmit()}
               disabled={submittingAssign || !assignForm.profile_id || !enabledModules.includes(assignForm.module_code)}
               className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#163D64] px-4 text-xs font-bold text-white hover:bg-[#1D3A96] disabled:opacity-50"
             >
@@ -676,7 +689,7 @@ export function ModuleHierarchyManager({
             </button>
             {editingAssignmentId && <button type="button" onClick={cancelEditAssignment} className="h-9 w-full rounded-xl border border-[#CBD5E1] px-4 text-xs font-semibold text-[#475569] hover:bg-slate-50">Batal mengubah role</button>}
 
-            <div className="border-t border-slate-200 pt-4">
+            <div id="module-role-profile-creator" className="border-t border-slate-200 pt-4">
               <h4 className="text-xs font-bold text-[#163D64]">Buat Role Profile untuk {assignForm.module_code}</h4>
               <form onSubmit={handleCreateProfile} className="mt-3 space-y-2">
                 <input
@@ -730,7 +743,8 @@ export function ModuleHierarchyManager({
                 </button>
               </form>
             </div>
-          </form>
+          </div>
+          </div>
 
           {/* Daftar Penugasan & User 360 */}
           <div className="lg:col-span-8 space-y-5">
