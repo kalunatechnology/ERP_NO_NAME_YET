@@ -1520,7 +1520,6 @@ export function AccessAdministration() {
                     ...superInvite,
                     tenant_id: e.target.value,
                     company_id: "",
-                    role_code: "",
                   })}
                 >
                   <option value="">-- Pilih Tenant *</option>

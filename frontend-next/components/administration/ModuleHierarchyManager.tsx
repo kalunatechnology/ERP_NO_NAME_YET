@@ -649,7 +649,7 @@ export function ModuleHierarchyManager({
                         onChange={(e) => setProfileForm((p) => ({
                           ...p,
                           capabilities: e.target.checked
-                            ? [...new Set([...p.capabilities, capability])]
+                            ? Array.from(new Set([...p.capabilities, capability]))
                             : p.capabilities.filter((item) => item !== capability),
                         }))}
                       />
