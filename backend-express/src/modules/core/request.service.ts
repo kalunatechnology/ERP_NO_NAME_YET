@@ -1241,6 +1241,12 @@ static async getRequests(params: {
   const isAssignmentScoped = ['OWN', 'TEAM', 'ALL'].includes(assignmentScope);
   const isAllScope = assignmentScope === 'ALL';
   const isTeamScope = assignmentScope === 'TEAM';
+  const hasTeamDepartmentScope = isTeamScope && Boolean(scopeDepartmentId);
+  const effectiveScopeDepartmentId = hasTeamDepartmentScope ? String(scopeDepartmentId) : '';
+  const effectiveRequesterUserId = requesterUserId ? String(requesterUserId) : '';
+  const hasRequesterUserId = Boolean(effectiveRequesterUserId);
+  const hasCompanyId = Boolean(companyId);
+  const effectiveCompanyId = companyId ? String(companyId) : '';
 
   /**
    * Non-executive harus memiliki identity untuk membaca feed.
@@ -1436,13 +1442,15 @@ static async getRequests(params: {
               AND (
                 ${isAllScope}::boolean = true
                 OR (
-                  ${isTeamScope}::boolean = true
-                  AND ${scopeDepartmentId ?? null}::text IS NOT NULL
-                  AND rs.after_data ->> 'department_id' = ${scopeDepartmentId ?? null}::text
+                  ${hasTeamDepartmentScope}::boolean = true
+                  AND rs.after_data ->> 'department_id' = ${effectiveScopeDepartmentId}::text
                 )
                 OR (
-                  rs.user_id = ${requesterUserId ?? null}::text
-                  OR rs.assignee_user_id = ${requesterUserId ?? null}::text
+                  ${hasRequesterUserId}::boolean = true
+                  AND (
+                    rs.user_id = ${effectiveRequesterUserId}::text
+                    OR rs.assignee_user_id = ${effectiveRequesterUserId}::text
+                  )
                 )
               )
             )
@@ -1456,9 +1464,10 @@ static async getRequests(params: {
             -- OM: milik sendiri + di-assign ke sendiri; validasi awal OM dihapus
             OR (
               ${isOMRole}::boolean = true
+              AND ${hasRequesterUserId}::boolean = true
               AND (
-                rs.user_id = ${requesterUserId ?? null}::text
-                OR rs.assignee_user_id = ${requesterUserId ?? null}::text
+                rs.user_id = ${effectiveRequesterUserId}::text
+                OR rs.assignee_user_id = ${effectiveRequesterUserId}::text
               )
             )
 
@@ -1466,8 +1475,13 @@ static async getRequests(params: {
             OR (
               ${isPMRole}::boolean = true
               AND (
-                rs.user_id = ${requesterUserId ?? null}::text
-                OR rs.assignee_user_id = ${requesterUserId ?? null}::text
+                (
+                  ${hasRequesterUserId}::boolean = true
+                  AND (
+                    rs.user_id = ${effectiveRequesterUserId}::text
+                    OR rs.assignee_user_id = ${effectiveRequesterUserId}::text
+                  )
+                )
                 OR rs.after_data ->> 'request_type' = 'MEETING'
 
               )
@@ -1478,10 +1492,12 @@ static async getRequests(params: {
               NOT ${isExecutiveRole}::boolean
               AND NOT ${isOMRole}::boolean
               AND NOT ${isPMRole}::boolean
+              AND ${hasRequesterUserId}::boolean = true
               AND (
-                rs.user_id = ${requesterUserId ?? null}::text
-                OR rs.assignee_user_id = ${requesterUserId ?? null}::text
+                rs.user_id = ${effectiveRequesterUserId}::text
+                OR rs.assignee_user_id = ${effectiveRequesterUserId}::text
               )
+            )
             )
             )
           )
@@ -1542,11 +1558,10 @@ static async getRequests(params: {
                 logs.entity_id
 
               AND (
-                ${companyId ?? null}::text
-                  IS NULL
+                NOT ${hasCompanyId}::boolean
 
                 OR wa.company_id =
-                  ${companyId ?? null}::text
+                  ${effectiveCompanyId}::text
               )
           ),
           '[]'::jsonb
@@ -1559,11 +1574,10 @@ static async getRequests(params: {
           logs.entity_id
 
         AND (
-          ${companyId ?? null}::text
-            IS NULL
+          NOT ${hasCompanyId}::boolean
 
           OR wi.company_id =
-            ${companyId ?? null}::text
+            ${effectiveCompanyId}::text
         )
 
       /**

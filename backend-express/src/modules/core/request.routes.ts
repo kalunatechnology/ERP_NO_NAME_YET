@@ -79,7 +79,14 @@ requestRouter.use(async (req, _res, next) => {
       invalidateRequestFeedCache(); requestFeedCache.clear();
     }
     next();
-  } catch (error) { next(error); }
+  } catch (error) {
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      console.warn('[requests] non-blocking activatePendingRequests error:', error);
+      next();
+      return;
+    }
+    next(error);
+  }
 });
 
 function activeCompanyId(req: Request): string {
