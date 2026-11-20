@@ -101,23 +101,35 @@ export interface ProjectAuthority {
 }
 
 export class ProjectsService {
-  private static activeRole(user: any): string {
-    const hasProjectsProfile = (user?.module_assignments ?? []).some((assignment: any) =>
+  private static getActiveProjectsAssignment(user: any) {
+    return (user?.module_assignments ?? []).find((assignment: any) =>
       String(assignment.module_code || '').toUpperCase() === 'PROJECTS'
       && String(assignment.status || '').toUpperCase() === 'ACTIVE'
-      && Boolean(assignment.profile_id && assignment.profile_active),
+      && (
+        Boolean(assignment.profile_id && assignment.profile_active) ||
+        (assignment.tier_level !== null && assignment.tier_level !== undefined)
+      )
     );
-    if (hasProjectsProfile) return '';
+  }
+
+  private static activeRole(user: any): string {
+    const projectsAssignment = this.getActiveProjectsAssignment(user);
+    if (projectsAssignment) {
+      const tier = Number(projectsAssignment.tier_level);
+      const scope = String(projectsAssignment.data_scope || '').toUpperCase();
+      if ((Number.isFinite(tier) && tier >= 2) || ['OWN', 'TEAM'].includes(scope)) {
+        return '';
+      }
+    }
     return user?.active_role_code ?? user?.roles?.[0] ?? '';
   }
 
   private static isOperationalAssignee(user: any): boolean {
-    const projectProfiles = (user?.module_assignments ?? []).filter((assignment: any) =>
-      String(assignment.module_code || '').toUpperCase() === 'PROJECTS'
-      && Boolean(assignment.profile_id && assignment.profile_active),
-    );
-    if (projectProfiles.length) {
-      return projectProfiles.some((assignment: any) => ['OWN', 'TEAM'].includes(String(assignment.data_scope || '').toUpperCase()));
+    const projectsAssignment = this.getActiveProjectsAssignment(user);
+    if (projectsAssignment) {
+      const tier = Number(projectsAssignment.tier_level);
+      const scope = String(projectsAssignment.data_scope || '').toUpperCase();
+      return (Number.isFinite(tier) && tier >= 2) || ['OWN', 'TEAM'].includes(scope);
     }
     return ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[]).includes(this.activeRole(user) as RoleCode);
   }

@@ -966,19 +966,7 @@ const handleAssignProjectDepartment = async (req: Request, res: Response, next: 
     });
     if (!project) throw new NotFoundError('Project');
 
-    const activeRole = req.user?.active_role_code;
-    const isGmOrPmOrAdmin =
-      req.user?.role_level === 'GM' ||
-      ([
-        RoleCode.PROJECT_MANAGER,
-        RoleCode.OPERATIONAL_MANAGER,
-        RoleCode.DIRECTOR,
-        RoleCode.COMPANY_ADMIN,
-      ] as RoleCode[]).includes(activeRole as RoleCode);
-
-    if (!isGmOrPmOrAdmin) {
-      await ProjectsService.assertCanManageProject(req.user, projectId, companyId);
-    }
+    await ProjectsService.assertCanManageProject(req.user, projectId, companyId);
 
     const rawDeptId =
       req.body?.department_id !== undefined
