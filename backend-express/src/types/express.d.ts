@@ -14,9 +14,10 @@ export interface AuthenticatedUser {
   roles: string[];
   active_role_code: string | null;
   enabled_modules: string[];
-  /** Module codes granted directly to this user by its Company Admin or Department. */
+  /** Module codes available through active assignments or legacy user overrides. */
   delegated_modules?: string[];
   module_access?: ModulePermission[];
+  module_access_modes?: Array<{ module_code: string; access_mode: string }>;
   module_assignments?: any[];
   module_role_profiles?: string[];
   permission_overrides?: any[];

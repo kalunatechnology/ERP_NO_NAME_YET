@@ -165,13 +165,28 @@ export function requireFinanceRole(roles: string[]) {
   return (req: Request, _res: Response, next: NextFunction) => {
     const assignedRoles = req.user?.roles ?? [];
     const activeRole = req.user?.active_role_code ?? assignedRoles[0] ?? '';
-    if (roles.includes(activeRole) || isSuperAdmin(assignedRoles)) {
-      return next();
+    if (req.moduleAccess?.accessMode === 'ASSIGNMENT') {
+      const method = req.method.toUpperCase();
+      const path = req.originalUrl.split('?')[0] ?? req.path;
+      const capability = ['GET', 'HEAD', 'OPTIONS'].includes(method)
+        ? 'READ'
+        : method === 'DELETE'
+          ? 'DELETE'
+          : /\/(?:approve|reject|execute|close|post|verify|authorize)(?:\/|$)/i.test(path)
+            ? 'APPROVE'
+            : 'WRITE';
+      const hasCapability = ((req.user as any)?.module_assignments ?? []).some((assignment: any) => {
+        if (String(assignment.module_code || '').toUpperCase() !== 'FINANCE'
+          || String(assignment.status || '').toUpperCase() !== 'ACTIVE'
+          || !assignment.profile_id || !assignment.profile_active) return false;
+        const codes = new Set((assignment.capability_codes ?? []).map((code: unknown) => String(code).toUpperCase()));
+        return codes.has(capability) || codes.has(`FINANCE:${capability}`);
+      });
+      return hasCapability
+        ? next()
+        : next(new ForbiddenError(`Role Profile Finance tidak memiliki capability ${capability}.`));
     }
-    const financeAssignment = (req.user as any)?.module_assignments?.find(
-      (a: any) => String(a.module_code || '').toUpperCase() === 'FINANCE' && a.status === 'ACTIVE' && Number(a.tier_level) >= 1 && a.allow_write !== false
-    );
-    if (financeAssignment) {
+    if (roles.includes(activeRole) || isSuperAdmin(assignedRoles)) {
       return next();
     }
     if (hasModuleOverride(req, 'FINANCE') && String((req.user as any)?.role_level || '').toUpperCase() !== 'GM') {

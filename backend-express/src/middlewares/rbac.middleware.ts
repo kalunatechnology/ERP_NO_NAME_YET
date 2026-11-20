@@ -80,18 +80,9 @@ export function requireActiveRole(...allowedRoles: string[]) {
   };
 }
 
-function hasScopedProfileCapability(req: Request, allowedRoles: string[]): boolean {
+function hasScopedProfileCapability(req: Request, _allowedRoles: string[]): boolean {
   if (req.moduleAccess?.accessMode !== 'ASSIGNMENT' || !req.moduleAccess.moduleCode) return false;
-  const activeRole = String(req.user?.active_role_code || '').toUpperCase();
-  if (allowedRoles.includes(activeRole)) return true;
-  const normalizedAllowed = allowedRoles.map((role) => String(role).toUpperCase().replace(/^ROLE-/, ''));
-  const operationalRoles = normalizedAllowed.filter((role) => !['SUPER_ADMIN', 'COMPANY_ADMIN'].includes(role));
-  if (!operationalRoles.length) return false;
-  const requiresApproval = operationalRoles.some((role) =>
-    ['DIRECTOR', 'OPERATIONAL_MANAGER', 'PROJECT_MANAGER', 'CRM_LEAD', 'FINANCE', 'SUPERVISOR'].includes(role),
-  );
-  const isReadRequest = ['GET', 'HEAD', 'OPTIONS'].includes(req.method.toUpperCase());
-  const capability = isReadRequest ? 'READ' : requiresApproval ? 'APPROVE' : 'WRITE';
+  const capability = requiredModuleCapability(req);
   return (req.user?.module_assignments ?? []).some((assignment: any) =>
     String(assignment.module_code || '').toUpperCase() === req.moduleAccess!.moduleCode
     && String(assignment.status || '').toUpperCase() === 'ACTIVE'
@@ -100,6 +91,15 @@ function hasScopedProfileCapability(req: Request, allowedRoles: string[]): boole
     && (assignment.capability_codes.includes(capability)
       || assignment.capability_codes.includes(`${req.moduleAccess!.moduleCode}:${capability}`)),
   );
+}
+
+function requiredModuleCapability(req: Request): string {
+  const method = req.method.toUpperCase();
+  if (['GET', 'HEAD', 'OPTIONS'].includes(method)) return 'READ';
+  if (method === 'DELETE') return 'DELETE';
+  const path = req.originalUrl.split('?')[0] ?? req.path;
+  if (/\/(?:approve|reject|execute|close|post|verify|authorize)(?:\/|$)/i.test(path)) return 'APPROVE';
+  return 'WRITE';
 }
 
 export interface ActiveRoleMutationPolicy {

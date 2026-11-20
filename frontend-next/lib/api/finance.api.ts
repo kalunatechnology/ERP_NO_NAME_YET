@@ -340,7 +340,9 @@ export async function fetchRealMonthlyStackedData(params?: {
   const costs = costsResult.status === "fulfilled" ? normalizeList<any>(costsResult.value.data).rows : [];
 
   if (receiptsResult.status === "rejected" && paymentsResult.status === "rejected" && costsResult.status === "rejected") {
-    throw new Error("Data penerimaan dan biaya proyek gagal dimuat.");
+    // Preserve the backend reason so the UI can distinguish missing module
+    // assignment/capability from an actual Finance service outage.
+    throw receiptsResult.reason ?? paymentsResult.reason ?? costsResult.reason;
   }
 
   return buildMonthlyStackedData({

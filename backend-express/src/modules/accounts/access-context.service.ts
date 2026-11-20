@@ -61,6 +61,7 @@ export interface UserAccessContext {
   enabledModules: string[];
   delegatedModules: string[];
   moduleAccess: ModulePermission[];
+  moduleAccessModes: Array<{ module_code: string; access_mode: string }>;
   moduleAssignments?: UserModuleAssignmentContext[];
   permissionOverrides?: UserPermissionOverrideContext[];
   crossModuleCapabilities?: CrossModuleCapabilityContext[];
@@ -90,7 +91,7 @@ export interface KnownAccessRows {
   assignments?: iam_user_role[];
   membership?: iam_user_company_membership | null;
   roleRecords?: iam_role[];
-  moduleAccess?: Array<{ module_code: string; allow_write?: boolean }>;
+  moduleAccess?: Array<{ module_code: string; access_mode?: string; allow_write?: boolean }>;
   userModuleAccess?: Array<{ module_code: string; allow_read: boolean; allow_write: boolean }>;
   projectDelegated?: boolean;
 }
@@ -99,7 +100,7 @@ type AccessSnapshot = {
   assignments: iam_user_role[];
   membership: iam_user_company_membership | null;
   roles: Array<iam_role & { role_code: string }>;
-  company_modules: Array<{ module_code: string; allow_write: boolean }>;
+  company_modules: Array<{ module_code: string; access_mode: string; allow_write: boolean }>;
   user_modules: Array<{ module_code: string; allow_read: boolean; allow_write: boolean }>;
   project_delegated: boolean;
 };
@@ -123,7 +124,7 @@ export async function loadAuthenticationSnapshot(userId: string): Promise<Authen
       'assignments', COALESCE((SELECT jsonb_agg(to_jsonb(ur)) FROM iam_user_role ur WHERE ur.user_id=u.id), '[]'::jsonb),
       'membership', (SELECT to_jsonb(m) FROM membership m),
       'roles', COALESCE((SELECT jsonb_agg(to_jsonb(r)) FROM iam_role r JOIN iam_user_role ur ON ur.role_id=r.id WHERE ur.user_id=u.id AND r.tenant_id IS NOT DISTINCT FROM u.tenant_id), '[]'::jsonb),
-      'company_modules', COALESCE((SELECT jsonb_agg(jsonb_build_object('module_code',cma.module_code,'allow_write',cma.allow_write)) FROM iam_company_module_access cma JOIN membership m ON m.company_id=cma.company_id AND m.tenant_id=cma.tenant_id WHERE cma.enabled=true AND cma.allow_read=true AND (cma.effective_from IS NULL OR cma.effective_from<=${now}) AND (cma.effective_until IS NULL OR cma.effective_until>=${now})), '[]'::jsonb),
+      'company_modules', COALESCE((SELECT jsonb_agg(jsonb_build_object('module_code',cma.module_code,'access_mode',cma.access_mode,'allow_write',cma.allow_write)) FROM iam_company_module_access cma JOIN membership m ON m.company_id=cma.company_id AND m.tenant_id=cma.tenant_id WHERE cma.enabled=true AND cma.allow_read=true AND (cma.effective_from IS NULL OR cma.effective_from<=${now}) AND (cma.effective_until IS NULL OR cma.effective_until>=${now})), '[]'::jsonb),
       'user_modules', COALESCE((SELECT jsonb_agg(jsonb_build_object('module_code',uma.module_code,'allow_read',uma.allow_read,'allow_write',uma.allow_write)) FROM iam_user_module_access uma JOIN membership m ON m.company_id=uma.company_id AND m.tenant_id=uma.tenant_id WHERE uma.user_id=u.id), '[]'::jsonb),
       'project_delegated', EXISTS (
         SELECT 1 FROM project_member pm JOIN membership m ON m.company_id=pm.company_id AND m.tenant_id=pm.tenant_id
@@ -207,7 +208,7 @@ export async function loadUserAccessContext(
             WHERE ur.user_id = ${userId}::text AND r.tenant_id IS NOT DISTINCT FROM ${user.tenant_id}::text
           ), '[]'::jsonb),
           'company_modules', COALESCE((
-            SELECT jsonb_agg(jsonb_build_object('module_code', cma.module_code, 'allow_write', cma.allow_write))
+            SELECT jsonb_agg(jsonb_build_object('module_code', cma.module_code, 'access_mode', cma.access_mode, 'allow_write', cma.allow_write))
             FROM iam_company_module_access cma JOIN membership m ON m.company_id = cma.company_id AND m.tenant_id = cma.tenant_id
             WHERE cma.enabled = true AND cma.allow_read = true
               AND (cma.effective_from IS NULL OR cma.effective_from <= ${now})
@@ -301,7 +302,7 @@ export async function loadUserAccessContext(
               { OR: [{ effective_until: null }, { effective_until: { gte: now } }] },
             ],
           },
-          select: { module_code: true, allow_write: true },
+          select: { module_code: true, access_mode: true, allow_write: true },
         }),
         // A missing record deliberately preserves inheritance from company access.
         prisma.iam_user_module_access.findMany({
@@ -311,6 +312,10 @@ export async function loadUserAccessContext(
       ])
     : [[], []];
   const overrideByModule = new Map(userModuleAccess.map((item) => [item.module_code.toUpperCase(), item]));
+  const moduleAccessModeByCode = new Map(moduleAccess.map((item: any) => [
+    String(item.module_code || '').toUpperCase(),
+    String(item.access_mode || 'LEGACY').trim().toUpperCase(),
+  ]));
 
   // Load user's department, parent department, and role_level hierarchy safely
   const userWithDept = await (prisma.iam_user as any)
@@ -321,43 +326,21 @@ export async function loadUserAccessContext(
         role_level: true,
         reports_to_user_id: true,
         job_title: true,
-        department: {
-          include: {
-            module_access: true,
-            parent: {
-              include: { module_access: true },
-            },
-          },
-        },
+        department: { select: { code: true, name: true, unit_type: true } },
       },
     })
     .catch(() => null);
 
   const roleLevel = resolveEffectiveRoleLevel(userWithDept?.role_level);
   const deptRecord = userWithDept?.department ?? null;
-  const rawDeptModules: Array<{ module_key: string; can_read: boolean; can_write: boolean; can_approve: boolean }> =
-    Array.isArray(deptRecord?.module_access) && deptRecord.module_access.length > 0
-      ? deptRecord.module_access
-      : Array.isArray(deptRecord?.parent?.module_access)
-        ? deptRecord.parent.module_access
-        : [];
-
-  // Merge department module access + GM cross-department access + explicit user overrides
+  // Department membership provides organizational context and data scope only.
+  // Operational module access is granted by an active module assignment (or a
+  // company-admin user override in legacy mode), never by department membership.
   const mergedOverridesMap = new Map<string, ModulePermission>();
 
-  // 1. Department module delegations (excluding restricted domain modules CRM, SALES, FINANCE unless user has matching domain role or explicit assignment)
-  const STRICT_ROLE_MODULES = new Set(['CRM', 'SALES', 'FINANCE']);
-  for (const dm of rawDeptModules) {
-    const code = String(dm.module_key || '').trim().toUpperCase();
-    if (!code || STRICT_ROLE_MODULES.has(code)) continue;
-    mergedOverridesMap.set(code, {
-      module_code: code,
-      allow_read: Boolean(dm.can_read),
-      allow_write: Boolean(dm.can_write),
-    });
-  }
-
-  // 2. Dynamic 3-Tier Module Assignments (iam_user_module_assignment) + Tier Permissions + Overrides + Cross-Module Capabilities
+  // Dynamic module assignments + explicit permission overrides are the
+  // operational access sources. Department data remains available below for
+  // reporting and resource scoping, but does not create module grants.
   const activeCompanyId = superAdmin ? null : companyIds[0] ?? null;
   const [rawModuleAssignments, rawTierPermissions, rawPermOverrides, rawCrossCapabilities, rawDashboardWidgets] = activeCompanyId
     ? await Promise.all([
@@ -497,9 +480,10 @@ export async function loadUserAccessContext(
     });
   }
 
-  // 5. Explicit per-user overrides take highest precedence over department defaults
+  // 5. Explicit company-admin user overrides are applied last in legacy access mode.
   for (const uo of userModuleAccess) {
     const code = uo.module_code.toUpperCase();
+    if (moduleAccessModeByCode.get(code) === 'ASSIGNMENT') continue;
     mergedOverridesMap.set(code, {
       module_code: code,
       allow_read: uo.allow_read,
@@ -511,7 +495,8 @@ export async function loadUserAccessContext(
 
   const enabledModules = moduleAccess
     .map((item) => item.module_code.toUpperCase())
-    .filter((moduleCode) => overrideByModule.get(moduleCode)?.allow_read ?? true);
+    .filter((moduleCode) => moduleAccessModeByCode.get(moduleCode) === 'ASSIGNMENT'
+      || (overrideByModule.get(moduleCode)?.allow_read ?? true));
   const filteredDashboardWidgets = dashboardWidgets.filter((widgetCode) => {
     const requiredModule = DASHBOARD_WIDGET_CATALOG.find((widget) => widget.code === widgetCode)?.required_module;
     if (!requiredModule) return true;
@@ -548,6 +533,10 @@ export async function loadUserAccessContext(
     enabledModules,
     delegatedModules: [...delegatedModules],
     moduleAccess: effectiveModuleOverrides(moduleAccess, combinedUserAndDeptOverrides),
+    moduleAccessModes: moduleAccess.map((item: any) => ({
+      module_code: String(item.module_code || '').toUpperCase(),
+      access_mode: String(item.access_mode || 'LEGACY').trim().toUpperCase(),
+    })),
     moduleAssignments,
     permissionOverrides,
     crossModuleCapabilities,

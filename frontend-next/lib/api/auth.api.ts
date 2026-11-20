@@ -33,6 +33,7 @@ export interface UserProfile {
   enabled_modules?: string[];
   delegated_modules?: string[];
   module_access?: ModulePermission[];
+  module_access_modes?: Array<{ module_code: string; access_mode: string }>;
   module_assignments?: Array<{
     module_code: string;
     profile_id?: string | null;
@@ -124,6 +125,7 @@ export async function getMyProfile(): Promise<UserProfile> {
         enabled_modules: raw.enabled_modules || raw.user.enabled_modules || [],
         delegated_modules: raw.delegated_modules || raw.user.delegated_modules || [],
         module_access: raw.module_access || raw.user.module_access || [],
+        module_access_modes: raw.module_access_modes || raw.user.module_access_modes || [],
       }
     : raw;
 

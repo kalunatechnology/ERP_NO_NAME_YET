@@ -197,6 +197,13 @@ function profileStateSignature(user: UserProfile | null): string {
     enabled_modules: [...(user.enabled_modules || [])].map(String).sort(),
     delegated_modules: [...(user.delegated_modules || [])].map(String).sort(),
     module_access: [...(user.module_access || [])].sort((left, right) => left.module_code.localeCompare(right.module_code)),
+    module_access_modes: [...(user.module_access_modes || [])]
+      .sort((left, right) => left.module_code.localeCompare(right.module_code)),
+    module_assignments: [...(user.module_assignments || [])]
+      .sort((left, right) => `${left.module_code}:${left.profile_code || ""}:${left.status || ""}`
+        .localeCompare(`${right.module_code}:${right.profile_code || ""}:${right.status || ""}`)),
+    permission_overrides: [...(user.permission_overrides || [])]
+      .sort((left, right) => `${left.module_code}:${left.action_code}`.localeCompare(`${right.module_code}:${right.action_code}`)),
     is_superuser: Boolean(user.is_superuser),
     is_staff: Boolean(user.is_staff),
     is_active: value.is_active ?? true,

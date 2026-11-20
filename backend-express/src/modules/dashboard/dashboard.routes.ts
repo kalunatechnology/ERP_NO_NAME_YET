@@ -86,7 +86,7 @@ async function loadAllowedDashboardWidgets(req: Request): Promise<Set<string>> {
  * Determines whether the current identity may receive a dashboard section.
  * Company Admin remains an IAM operator and is intentionally excluded from operational data.
  */
-function canReadSection(req: Request, section: DashboardSection, allowedWidgets?: Set<string>): boolean {
+async function canReadSection(req: Request, section: DashboardSection, allowedWidgets?: Set<string>): Promise<boolean> {
   const moduleCode = section.toUpperCase();
   const enabled = new Set((req.user?.enabled_modules ?? []).map((item) => item.toUpperCase()));
   const activeRole = req.user?.active_role_code;
@@ -104,6 +104,31 @@ function canReadSection(req: Request, section: DashboardSection, allowedWidgets?
   }
 
   if (section === 'finance') {
+    if (!req.companyId || !enabled.has('FINANCE')) return false;
+    const entitlement = await prisma.iam_company_module_access.findFirst({
+      where: { company_id: req.companyId, module_code: 'FINANCE', enabled: true },
+      select: { access_mode: true },
+    });
+    if (String(entitlement?.access_mode || 'LEGACY').toUpperCase() === 'ASSIGNMENT') {
+      const assignments = (req.user?.module_assignments ?? []).filter((assignment: any) =>
+        String(assignment.module_code || '').toUpperCase() === 'FINANCE'
+        && String(assignment.status || '').toUpperCase() === 'ACTIVE'
+        && Boolean(assignment.profile_id && assignment.profile_active)
+        && String(assignment.profile_code || '').toUpperCase().startsWith('FINANCE:')
+      );
+      if (!assignments.length) return false;
+      const readOverride = (req.user as any)?.permission_overrides?.find((override: any) =>
+        String(override.module_code || '').toUpperCase() === 'FINANCE'
+        && String(override.action_code || '').toUpperCase() === 'READ'
+      );
+      if (String(readOverride?.effect || '').toUpperCase() === 'DENY') return false;
+      const hasRead = assignments.some((assignment: any) =>
+        (assignment.capability_codes ?? []).some((code: unknown) =>
+          ['READ', 'FINANCE:READ'].includes(String(code).toUpperCase())
+        )
+      );
+      return hasRead || String(readOverride?.effect || '').toUpperCase() === 'ALLOW';
+    }
     const hasWidget = Boolean(
       allowedWidgets?.has('DASH_FINANCE') || allowedWidgets?.has('DASH_EXECUTIVE')
     );
@@ -1383,7 +1408,11 @@ dashboardRouter.get('/bootstrap', async (req: Request, res: Response, next: Next
     if (!req.companyId) throw new ForbiddenError('Pilih satu company eksplisit untuk memuat dashboard operasional.');
     const requested = parseSections(req.query.sections);
     const allowedWidgets = await loadAllowedDashboardWidgets(req);
-    const denied = requested.filter((section) => !canReadSection(req, section, allowedWidgets));
+    const accessResults = await Promise.all(requested.map(async (section) => ({
+      section,
+      allowed: await canReadSection(req, section, allowedWidgets),
+    })));
+    const denied = accessResults.filter((result) => !result.allowed).map((result) => result.section);
     if (denied.length) throw new ForbiddenError(`Akses dashboard ditolak untuk section: ${denied.join(', ')}.`);
     const enabled = req.user?.enabled_modules ?? [];
     const sortedWidgets = [...allowedWidgets].sort();

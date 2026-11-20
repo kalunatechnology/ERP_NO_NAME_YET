@@ -33,6 +33,8 @@ import { buildMainTaskTimeline } from "@/lib/dashboard/project-timeline";
 import { ProjectMilestoneCard, ProjectSummary, MilestoneItem } from "@/components/ui/ProjectMilestoneCard";
 import { BudgetCheckStatusCard } from "@/components/ui/BudgetCheckStatusCard";
 import { MonthlyStackedBarChart } from "@/components/ui/MonthlyStackedBarChart";
+import { canRequestApi } from "@/lib/access/module-contract";
+import type { FrontendAccessContext } from "@/lib/access/module-contract";
 import { TeamAttendanceWidget } from "@/components/ui/TeamAttendanceWidget";
 import { NewCardRequestModal } from "@/components/requests/NewCardRequestModal";
 import { RequestSuccessModal } from "@/components/requests/RequestSuccessModal";
@@ -398,7 +400,12 @@ function PMDashboard({ projects, loading, userId }: { projects: Project[]; loadi
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData | null; loading: boolean }) {
+function FinanceDashboard({ finData, loading, financeAccess, canReadFinance }: {
+  finData: FinanceDashboardData | null;
+  loading: boolean;
+  financeAccess: FrontendAccessContext;
+  canReadFinance: boolean;
+}) {
   if (loading || !finData) return <LoadingDashboard />;
 
   const { kpis, pendingItems, recentTransactions, projectSummaries } = finData;
@@ -431,15 +438,16 @@ function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData 
       </section>
 
       {/* ── Monthly Financial Run-Rate Chart ── */}
-      <div className="w-full">
+      {canReadFinance && <div className="w-full">
         <MonthlyStackedBarChart
           title="Status Arus Kas (Financial Run-Rate)"
           subtitle="Pantau Realized Value dan Project Cost Allocation Arsalynk"
           primaryLabel="Realisasi Kas (Jt)"
           secondaryLabel="Alokasi WIP / Biaya Proyek (Jt)"
           autoFetch={true}
+          access={financeAccess}
         />
-      </div>
+      </div>}
 
       {/* Finance reads the project budget aggregate; inventory remains owned by Inventory. */}
       <div className="grid grid-cols-1 gap-5 items-stretch">
@@ -594,10 +602,12 @@ function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData 
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function ExecutiveDashboard({ projects, finData, loading }: {
+function ExecutiveDashboard({ projects, finData, loading, financeAccess, canReadFinance }: {
   projects: Project[];
   finData: FinanceDashboardData | null;
   loading: boolean;
+  financeAccess: FrontendAccessContext;
+  canReadFinance: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<"overview" | "daily_tasks" | "weekly_targets">("overview");
   const today = localDateKey();
@@ -768,15 +778,16 @@ function ExecutiveDashboard({ projects, finData, loading }: {
       </div>
 
       {/* ── Baris 2: Tren Pendapatan & Biaya Bulanan (Monthly Stacked Run-Rate) ── */}
-      <div className="w-full">
+      {canReadFinance && <div className="w-full">
         <MonthlyStackedBarChart
           title="Monthly Financial Run-Rate (Pendapatan vs Beban Proyek)"
           subtitle="Analisis arus kas termin (Realized Revenue) vs alokasi biaya WIP/material per bulan fiskal"
           primaryLabel="Realisasi Kas (Jt)"
           secondaryLabel="Alokasi WIP / Biaya Proyek (Jt)"
           autoFetch={true}
+          access={financeAccess}
         />
-      </div>
+      </div>}
 
       {/* ── Baris 3: 5 Pengeluaran Biaya Terbesar ── */}
       <div className="w-full">
@@ -1306,11 +1317,17 @@ export default function DashboardClient() {
   const canReadRequests = userRole !== "super_admin" && companyHasRequests && hasRequestsCapability("READ");
   const canWriteRequests = canReadRequests && hasRequestsCapability("WRITE");
   const apiAccessContext = {
+    enabledModules: user?.enabled_modules,
     delegatedModules: user?.delegated_modules,
+    moduleAccess: user?.module_access,
+    moduleAccessModes: user?.module_access_modes,
+    moduleAssignments: user?.module_assignments,
+    permissionOverrides: user?.permission_overrides,
     activeRoleCode: user?.active_role_code,
     isSuperAdmin: userRole === "super_admin",
     dashboardWidgets: allowedWidgets.length > 0 ? allowedWidgets : userProfileWidgets,
   };
+  const canReadFinance = canRequestApi("/api/v1/finance/customer-receipts/", apiAccessContext);
 
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -1556,13 +1573,13 @@ export default function DashboardClient() {
               </div>
             )}
             {showExec && (
-              <ExecutiveDashboard projects={projects} finData={finData} loading={loading} />
+              <ExecutiveDashboard projects={projects} finData={finData} loading={loading} financeAccess={apiAccessContext} canReadFinance={canReadFinance} />
             )}
             {showProjects && (
               <PMDashboard projects={projects} loading={loading} userId={user?.id} />
             )}
             {showFinance && (
-              <FinanceDashboard finData={finData} loading={loading} />
+              <FinanceDashboard finData={finData} loading={loading} financeAccess={apiAccessContext} canReadFinance={canReadFinance} />
             )}
             {showCrm && (
               <CRMDashboard

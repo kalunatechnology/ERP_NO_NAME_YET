@@ -11,6 +11,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import { cn } from "@/lib/utils";
 import { fetchRealMonthlyStackedData } from "@/lib/api/finance.api";
 import { getUserFacingApiError } from "@/lib/api/error-message";
+import { canRequestApi, FrontendAccessContext } from "@/lib/access/module-contract";
 import { RefreshCw, SlidersHorizontal, ChevronDown } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -37,6 +38,7 @@ export interface MonthlyStackedBarChartProps {
   initialWindowStart?: number; // 0 for Jan, 2 for Mar
   visibleCount?: number; // default 9 months visible
   autoFetch?: boolean; // default true (loads real database aggregations)
+  access?: FrontendAccessContext;
 }
 
 export const MAX_SCALE_OPTIONS = [
@@ -105,14 +107,23 @@ export function MonthlyStackedBarChart({
   initialWindowStart = 0,
   visibleCount = 9,
   autoFetch = true,
+  access,
 }: MonthlyStackedBarChartProps) {
   const [realData, setRealData] = useState<MonthlyBarItem[]>(data || DEFAULT_DATA);
   const [autoComputedMax, setAutoComputedMax] = useState<number>(500);
   const [selectedScale, setSelectedScale] = useState<number>(explicitMaxValue || 0); // 0 = Auto
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const canLoadFinance = Boolean(access && canRequestApi("/api/v1/finance/customer-receipts/", access));
 
   const loadRealFinancials = useCallback(async (isSilent = false) => {
+    // Shared dashboard charts must use the caller's Finance access contract.
+    if (!canLoadFinance) {
+      setRealData(DEFAULT_DATA);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     if (!isSilent) setLoading(true);
     else setRefreshing(true);
     try {
@@ -129,7 +140,7 @@ export function MonthlyStackedBarChart({
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [canLoadFinance]);
 
   useEffect(() => {
     if (data && data.length > 0) {
