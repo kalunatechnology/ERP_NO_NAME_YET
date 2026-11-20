@@ -839,7 +839,9 @@ export async function syncUserQuickAccess(input: SyncUserQuickAccessInput) {
     // never synthesize or prune global roles from permissions.
     const activeGrants = Array.from(moduleGrantMap.values());
     const remainingRoleCodes = new Set<RoleCode>(
-      beforeRoleCodes.map(parseRoleCode).filter((code): code is RoleCode => code !== null),
+      beforeRoleCodes
+        .map((value) => parseRoleCode(String(value ?? '')))
+        .filter((code): code is RoleCode => code !== null),
     );
 
     // 6. Audit log to iam_assignment_history

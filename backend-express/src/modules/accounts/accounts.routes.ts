@@ -1234,8 +1234,8 @@ async function upsertModuleRoleProfile(req: Request, res: Response, next: NextFu
     const profileCode = `${moduleCode}:${profileSuffix}`;
     const displayName = String(req.body.display_name || '').trim();
     const description = String(req.body.description || '').trim();
-    const capabilityCodes = Array.isArray(req.body.capabilities)
-      ? [...new Set(req.body.capabilities.map((code: unknown) => String(code || '').trim().toUpperCase()))]
+    const capabilityCodes: string[] = Array.isArray(req.body.capabilities)
+      ? [...new Set<string>(req.body.capabilities.map((code: unknown) => String(code || '').trim().toUpperCase()))]
       : [];
     const legacyRoleCode = req.body.legacy_role_code ? parseRoleCode(String(req.body.legacy_role_code)) : null;
 

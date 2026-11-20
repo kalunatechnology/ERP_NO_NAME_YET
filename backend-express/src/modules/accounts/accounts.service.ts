@@ -798,10 +798,6 @@ export class AccountsService {
       throw new ForbiddenError('Role operasional hanya dapat ditetapkan sebagai Role Profile per modul.');
     }
 
-    if (parsedRole === RoleCode.SUPER_ADMIN) {
-      throw new ForbiddenError('Super Admin role tidak dapat diberikan pada level company.');
-    }
-
     return prisma.$transaction(async (tx) => {
       // 1. Target user check
       const user = await tx.iam_user.findUnique({
