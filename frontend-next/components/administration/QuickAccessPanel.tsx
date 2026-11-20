@@ -26,6 +26,7 @@ export interface ModuleGrantItem {
 export interface QuickAccessPreset {
   preset_key: string;
   label: string;
+  description?: string;
   role_level: "GM" | "SPV" | "STAFF";
   default_job_title: string;
   modules: ModuleGrantItem[];
@@ -122,39 +123,51 @@ const DEFAULT_PRESETS: QuickAccessPreset[] = [
   {
     preset_key: "STAFF_BASELINE",
     label: "Staff Operasional (Default)",
+    description: "Akses personal untuk pekerjaan dan pengajuan sendiri. Tidak memberi kewenangan tim atau akses ke modul lain.",
     role_level: "STAFF",
     default_job_title: "Staff Operasional",
-    modules: [{ module_code: "PROJECTS", tier_level: 3, allow_read: true, allow_write: true, data_scope: "OWN" }],
+    modules: [
+      { module_code: "PROJECTS", tier_level: 3, allow_read: true, allow_write: true, data_scope: "OWN" },
+      { module_code: "REQUESTS", tier_level: 3, allow_read: true, allow_write: true, data_scope: "OWN" },
+    ],
     dashboard_widgets: ["DASH_PERSONAL"],
   },
   {
     preset_key: "SUPERVISOR",
     label: "Supervisor Tim",
+    description: "Mengelola pekerjaan dan pengajuan dalam cakupan tim, bukan seluruh portofolio perusahaan.",
     role_level: "SPV",
     default_job_title: "Supervisor",
-    modules: [{ module_code: "PROJECTS", tier_level: 2, allow_read: true, allow_write: true, data_scope: "TEAM" }],
+    modules: [
+      { module_code: "PROJECTS", tier_level: 2, allow_read: true, allow_write: true, data_scope: "TEAM" },
+      { module_code: "REQUESTS", tier_level: 2, allow_read: true, allow_write: true, data_scope: "TEAM" },
+    ],
     dashboard_widgets: ["DASH_PERSONAL", "DASH_PROJECTS"],
   },
   {
     preset_key: "PROJECT_MANAGER",
     label: "Project Manager (PM)",
+    description: "Mengelola portofolio dan WBS pada Projects serta melihat laporan terkait. Modul lain tetap terpisah.",
     role_level: "SPV",
     default_job_title: "Project Manager",
     modules: [
       { module_code: "PROJECTS", tier_level: 1, allow_read: true, allow_write: true, data_scope: "ALL" },
       { module_code: "REPORTING", tier_level: 2, allow_read: true, allow_write: false, data_scope: "ALL" },
+      { module_code: "REQUESTS", tier_level: 2, allow_read: true, allow_write: true, data_scope: "TEAM" },
     ],
     dashboard_widgets: ["DASH_PERSONAL", "DASH_PROJECTS"],
   },
   {
     preset_key: "OPERATIONAL_MANAGER",
     label: "Operational / Inventory Manager",
+    description: "Mengelola Projects, Inventory, dan Procurement. Berlaku hanya pada modul yang diaktifkan company dan dapat diedit.",
     role_level: "GM",
     default_job_title: "Operational Manager",
     modules: [
       { module_code: "INVENTORY", tier_level: 1, allow_read: true, allow_write: true, data_scope: "ALL" },
       { module_code: "PROJECTS", tier_level: 1, allow_read: true, allow_write: true, data_scope: "ALL" },
       { module_code: "PROCUREMENT", tier_level: 1, allow_read: true, allow_write: true, data_scope: "ALL" },
+      { module_code: "REQUESTS", tier_level: 2, allow_read: true, allow_write: true, data_scope: "TEAM" },
       { module_code: "REPORTING", tier_level: 2, allow_read: true, allow_write: false, data_scope: "ALL" },
     ],
     dashboard_widgets: ["DASH_PERSONAL", "DASH_INVENTORY", "DASH_PROJECTS"],
@@ -162,42 +175,43 @@ const DEFAULT_PRESETS: QuickAccessPreset[] = [
   {
     preset_key: "FINANCE",
     label: "Finance & Accounting",
+    description: "Mengelola Finance. Tidak otomatis memberi akses Projects, CRM, Inventory, atau Reporting.",
     role_level: "SPV",
     default_job_title: "Finance Officer",
     modules: [
       { module_code: "FINANCE", tier_level: 1, allow_read: true, allow_write: true, data_scope: "ALL" },
-      { module_code: "REPORTING", tier_level: 1, allow_read: true, allow_write: true, data_scope: "ALL" },
-      { module_code: "PROJECTS", tier_level: 3, allow_read: true, allow_write: true, data_scope: "OWN" },
+      { module_code: "REQUESTS", tier_level: 3, allow_read: true, allow_write: true, data_scope: "OWN" },
     ],
     dashboard_widgets: ["DASH_PERSONAL", "DASH_FINANCE"],
   },
   {
     preset_key: "CRM_LEAD",
     label: "CRM & Sales Lead",
+    description: "Mengelola pipeline CRM dan tim penjualan. Tidak otomatis memberi akses Projects.",
     role_level: "SPV",
     default_job_title: "CRM & Sales Lead",
     modules: [
       { module_code: "CRM", tier_level: 1, allow_read: true, allow_write: true, data_scope: "ALL" },
-      { module_code: "SALES", tier_level: 1, allow_read: true, allow_write: true, data_scope: "ALL" },
-      { module_code: "PROJECTS", tier_level: 3, allow_read: true, allow_write: true, data_scope: "OWN" },
+      { module_code: "REQUESTS", tier_level: 3, allow_read: true, allow_write: true, data_scope: "OWN" },
     ],
     dashboard_widgets: ["DASH_PERSONAL", "DASH_CRM"],
   },
   {
     preset_key: "SALES",
     label: "Sales Executive",
+    description: "Mengelola lead dan deal miliknya sendiri pada CRM, bukan seluruh data tim.",
     role_level: "STAFF",
     default_job_title: "Sales Executive",
     modules: [
       { module_code: "CRM", tier_level: 3, allow_read: true, allow_write: true, data_scope: "OWN" },
-      { module_code: "SALES", tier_level: 3, allow_read: true, allow_write: true, data_scope: "OWN" },
-      { module_code: "PROJECTS", tier_level: 3, allow_read: true, allow_write: true, data_scope: "OWN" },
+      { module_code: "REQUESTS", tier_level: 3, allow_read: true, allow_write: true, data_scope: "OWN" },
     ],
     dashboard_widgets: ["DASH_PERSONAL", "DASH_CRM"],
   },
   {
     preset_key: "DIRECTOR_360",
     label: "Direktur / Executive 360°",
+    description: "Membaca ringkasan lintas modul yang aktif. Template read-only; tidak memberi izin mengubah data operasional.",
     role_level: "GM",
     default_job_title: "Director",
     modules: [
@@ -206,6 +220,7 @@ const DEFAULT_PRESETS: QuickAccessPreset[] = [
       { module_code: "FINANCE", tier_level: 0, allow_read: true, allow_write: false, data_scope: "ALL" },
       { module_code: "CRM", tier_level: 0, allow_read: true, allow_write: false, data_scope: "ALL" },
       { module_code: "INVENTORY", tier_level: 0, allow_read: true, allow_write: false, data_scope: "ALL" },
+      { module_code: "REQUESTS", tier_level: 0, allow_read: true, allow_write: false, data_scope: "ALL" },
     ],
     dashboard_widgets: [
       "DASH_PERSONAL",
@@ -228,8 +243,8 @@ const CONFIGURABLE_MODULES: Array<{
     code: "PROJECTS",
     label: "Projects & Tugas",
     description: "Akses proyek, Weekly Task & Daily Task",
-    isBaseline: true,
   },
+  { code: "REQUESTS", label: "Requests & Meetings", description: "Permintaan operasional, rapat, dan agenda dalam scope yang dipilih." },
   {
     code: "CRM",
     label: "CRM & Penjualan",
@@ -250,6 +265,10 @@ const CONFIGURABLE_MODULES: Array<{
     label: "Laporan Manajemen",
     description: "Laporan Analitik & Evaluasi Kinerja",
   },
+  { code: "PROCUREMENT", label: "Procurement", description: "Pengadaan dan proses pembelian." },
+  { code: "HRMS", label: "HRMS", description: "Cuti, lembur, rapat, dan data kepegawaian." },
+  { code: "ASSETS", label: "Assets", description: "Pencatatan dan pengelolaan aset." },
+  { code: "SALES", label: "Sales", description: "Fitur penjualan bila entitlement modul ini diaktifkan." },
 ];
 
 export function QuickAccessPanel({
@@ -267,6 +286,8 @@ export function QuickAccessPanel({
   const [catalog, setCatalog] = useState<DashboardWidgetCatalogItem[]>(DEFAULT_CATALOG);
   const [presets, setPresets] = useState<QuickAccessPreset[]>(DEFAULT_PRESETS);
   const [activePresetKey, setActivePresetKey] = useState<string>("");
+  const [enabledModules, setEnabledModules] = useState<string[]>([]);
+  const [moduleConfigDirty, setModuleConfigDirty] = useState(false);
 
   const [departmentId, setDepartmentId] = useState("");
   const [roleLevel, setRoleLevel] = useState<"GM" | "SPV" | "STAFF">("STAFF");
@@ -304,12 +325,18 @@ export function QuickAccessPanel({
       }
       if (Array.isArray(payload.modules) && payload.modules.length > 0) {
         setModules(payload.modules);
+      } else {
+        setModules([]);
       }
+      setEnabledModules(Array.isArray(payload.enabled_modules)
+        ? payload.enabled_modules.map((module: unknown) => String(module).toUpperCase())
+        : []);
       if (Array.isArray(payload.roles)) {
         setDerivedRoles(payload.roles);
       }
       setIsLegacyTransition(Boolean(payload.is_legacy_transition));
       setActivePresetKey("");
+      setModuleConfigDirty(false);
     } catch {
       // Fallback gracefully
     } finally {
@@ -325,17 +352,18 @@ export function QuickAccessPanel({
     setActivePresetKey(presetKey);
     const preset = presets.find((p) => p.preset_key === presetKey);
     if (!preset) return;
-    setRoleLevel(preset.role_level);
     if (!jobTitle.trim() || presets.some((p) => p.default_job_title === jobTitle.trim())) {
       setJobTitle(preset.default_job_title);
     }
     setSelectedWidgets(Array.from(new Set(["DASH_PERSONAL", ...preset.dashboard_widgets])));
-    setModules(preset.modules.map((m) => ({ ...m })));
+    setModules(preset.modules
+      .filter((module) => enabledModules.includes(module.module_code.toUpperCase()))
+      .map((m) => ({ ...m })));
+    setModuleConfigDirty(true);
   };
 
   const toggleWidget = (code: string) => {
     if (code === "DASH_PERSONAL") return;
-    setActivePresetKey("");
     setSelectedWidgets((prev) => {
       const has = prev.includes(code);
       const next = has ? prev.filter((item) => item !== code) : [...prev, code];
@@ -347,17 +375,15 @@ export function QuickAccessPanel({
     modules.find((m) => m.module_code.toUpperCase() === code.toUpperCase());
 
   const toggleModuleEnabled = (code: string) => {
-    if (code === "PROJECTS") return;
-    setActivePresetKey("");
+    if (!enabledModules.includes(code.toUpperCase())) return;
+    setModuleConfigDirty(true);
     setModules((prev) => {
       const exists = prev.some((m) => m.module_code.toUpperCase() === code);
       if (exists) {
-        return prev.filter(
-          (m) => m.module_code.toUpperCase() !== code && !(code === "CRM" && m.module_code.toUpperCase() === "SALES")
-        );
+        return prev.filter((m) => m.module_code.toUpperCase() !== code);
       }
-      const defaultTier = roleLevel === "GM" ? 1 : roleLevel === "SPV" ? 2 : 3;
-      const defaultScope: "OWN" | "TEAM" | "ALL" = defaultTier <= 1 ? "ALL" : defaultTier === 2 ? "TEAM" : "OWN";
+      const defaultTier = 3;
+      const defaultScope: "OWN" | "TEAM" | "ALL" = "OWN";
       const next: ModuleGrantItem[] = [
         ...prev,
         {
@@ -368,26 +394,17 @@ export function QuickAccessPanel({
           data_scope: defaultScope,
         },
       ];
-      if (code === "CRM" && !prev.some((m) => m.module_code.toUpperCase() === "SALES")) {
-        next.push({
-          module_code: "SALES",
-          tier_level: defaultTier,
-          allow_read: true,
-          allow_write: true,
-          data_scope: defaultScope,
-        });
-      }
       return next;
     });
   };
 
   const updateModuleTier = (code: string, tier: number) => {
-    setActivePresetKey("");
+    setModuleConfigDirty(true);
     const scope: "OWN" | "TEAM" | "ALL" = tier <= 1 ? "ALL" : tier === 2 ? "TEAM" : "OWN";
     const allowWrite = tier !== 0;
     setModules((prev) =>
       prev.map((m) => {
-        if (m.module_code.toUpperCase() === code || (code === "CRM" && m.module_code.toUpperCase() === "SALES")) {
+        if (m.module_code.toUpperCase() === code.toUpperCase()) {
           return {
             ...m,
             tier_level: tier,
@@ -413,6 +430,12 @@ export function QuickAccessPanel({
           reports_to_user_id: reportsToUserId || null,
           job_title: jobTitle.trim(),
           dashboard_widgets: Array.from(new Set(["DASH_PERSONAL", ...selectedWidgets])),
+          ...(moduleConfigDirty
+            ? {
+                preset_key: activePresetKey || null,
+                modules: modules.map((module) => ({ ...module, enabled: true })),
+              }
+            : {}),
           reason: "Quick Access Panel update by Company Admin",
         },
         { headers: { "X-Company-ID": companyId } }
@@ -420,6 +443,7 @@ export function QuickAccessPanel({
       if (Array.isArray(res.data?.roles)) {
         setDerivedRoles(res.data.roles);
       }
+      setModuleConfigDirty(false);
       toast.success("Pengaturan user berhasil disimpan.");
       window.dispatchEvent(new CustomEvent("erp:data-mutated"));
       if (onSaved) onSaved();
@@ -444,6 +468,7 @@ export function QuickAccessPanel({
 
   const userDisplayName = selectedUser?.full_name || selectedUser?.email || "Pengguna";
   const userDisplayEmail = selectedUser?.email || "";
+  const activePreset = presets.find((preset) => preset.preset_key === activePresetKey);
 
   return (
     <div className="bg-white">
@@ -536,7 +561,43 @@ export function QuickAccessPanel({
           </div>
 
           <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-900">
-            <b>Akses operasional dikelola per modul.</b> Gunakan tab <b>Hirarki Modul</b> untuk menetapkan Role Profile. Pengaturan panel dashboard di bawah hanya mengatur tampilan; data tetap mengikuti entitlement modul dan capability <b>READ</b> user.
+            <b>Role di sini adalah template pengisian akses per modul.</b> Memilih template tidak mengubah role global user. Periksa dan sesuaikan modul serta tingkat akses sebelum menyimpan; modul yang tidak diaktifkan perusahaan tidak dapat diberi akses.
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <label className="block text-xs font-semibold text-slate-800" htmlFor="quick-access-role-template">
+              Template Role (opsional)
+            </label>
+            <p className="mt-1 text-[11px] leading-4 text-slate-500">
+              Template mengisi rancangan akses operasional. Anda tetap dapat mengubah tiap modul secara terpisah.
+            </p>
+            <select
+              id="quick-access-role-template"
+              disabled={isSelfSelected || saving || loading}
+              value={activePresetKey}
+              onChange={(event) => handlePresetChange(event.target.value)}
+              className="mt-3 h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-800 outline-none focus:border-[#163D64]"
+            >
+              <option value="">-- Pilih template role --</option>
+              {presets.map((preset) => (
+                <option key={preset.preset_key} value={preset.preset_key}>{preset.label}</option>
+              ))}
+            </select>
+            {activePreset?.description && (
+              <p className="mt-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-900">
+                <b>{activePreset.label}:</b> {activePreset.description}
+              </p>
+            )}
+            <details className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <summary className="cursor-pointer text-xs font-semibold text-slate-700">Arti setiap template role</summary>
+              <ul className="mt-2 grid gap-2 md:grid-cols-2">
+                {presets.map((preset) => (
+                  <li key={preset.preset_key} className="rounded-md bg-slate-50 px-3 py-2 text-[11px] leading-4 text-slate-600">
+                    <span className="font-semibold text-slate-800">{preset.label}.</span> {preset.description || "Template pengisian akses operasional per modul."}
+                  </li>
+                ))}
+              </ul>
+            </details>
           </div>
 
           {/* Form 2-Kolom yang Proporsional & Bebas Clipping */}
@@ -667,10 +728,18 @@ export function QuickAccessPanel({
         </section>
 
         {/* Bagian 2: Tabel Hak Akses Modul */}
-        <div className="hidden" aria-hidden="true">
-          <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-700">
-            2. Tabel Hak Akses Modul Operasional
-          </h3>
+        <section className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="mb-3">
+            <h3 className="text-sm font-bold text-[#163D64]">Akses Operasional per Modul</h3>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Setiap pilihan berlaku hanya untuk modul pada baris tersebut. Saat disimpan, daftar ini menjadi penugasan aktif user; modul yang tidak dicentang akan dicabut. Penugasan Role Profile yang ada akan diganti oleh pilihan template ini.
+            </p>
+            {moduleConfigDirty && (
+              <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                Perubahan akses modul belum disimpan. Pastikan daftar dan levelnya sudah benar.
+              </p>
+            )}
+          </div>
           <div className="overflow-x-auto rounded-lg border border-slate-200">
             <table className="w-full text-left text-xs">
               <thead>
@@ -684,7 +753,8 @@ export function QuickAccessPanel({
               <tbody className="divide-y divide-slate-200">
                 {CONFIGURABLE_MODULES.map((mod) => {
                   const grant = getModuleGrant(mod.code);
-                  const isEnabled = Boolean(mod.isBaseline || grant);
+                  const isEntitled = enabledModules.includes(mod.code);
+                  const isEnabled = Boolean(grant);
                   const currentTier = grant?.tier_level ?? 3;
                   return (
                     <tr key={mod.code} className={isEnabled ? "bg-white" : "bg-slate-50/50 text-slate-400"}>
@@ -692,24 +762,20 @@ export function QuickAccessPanel({
                         <input
                           type="checkbox"
                           checked={isEnabled}
-                          disabled={Boolean(mod.isBaseline) || isSelfSelected || saving}
+                          disabled={!isEntitled || isSelfSelected || saving || loading}
                           onChange={() => toggleModuleEnabled(mod.code)}
                           className="h-4 w-4 rounded border-slate-300 text-[#163D64] focus:ring-[#163D64]"
                         />
                       </td>
                       <td className="px-3.5 py-2.5 font-semibold text-slate-800">
                         {mod.label}
-                        {mod.isBaseline && (
-                          <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-normal text-slate-600">
-                            Wajib
-                          </span>
-                        )}
+                        {!isEntitled && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-normal text-amber-800">Belum aktif di company</span>}
                       </td>
                       <td className="px-3.5 py-2.5 text-slate-500">{mod.description}</td>
                       <td className="px-3.5 py-2">
                         {isEnabled ? (
                           <select
-                            disabled={isSelfSelected || saving}
+                            disabled={!isEntitled || isSelfSelected || saving || loading}
                             value={currentTier}
                             onChange={(e) => updateModuleTier(mod.code, Number(e.target.value))}
                             className="h-8 w-full rounded border border-slate-300 bg-white px-2 text-xs text-slate-800 outline-none focus:border-[#163D64]"
@@ -729,7 +795,7 @@ export function QuickAccessPanel({
               </tbody>
             </table>
           </div>
-        </div>
+        </section>
 
         {/* Bagian 3: Tabel Panel Dashboard */}
         <div className="hidden" aria-hidden="true">

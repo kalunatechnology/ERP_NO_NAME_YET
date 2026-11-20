@@ -79,6 +79,7 @@ export interface LegacyRoleTranslation {
   role_code: RoleCode;
   preset_key: string;
   label: string;
+  description?: string;
   role_level: DepartmentRoleLevel;
   default_job_title: string;
   modules: TranslatedModuleGrant[];
@@ -92,7 +93,10 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
     label: 'Baseline Staff',
     role_level: 'STAFF',
     default_job_title: 'Staff Operasional',
-    modules: [],
+    modules: [
+      { module_code: 'PROJECTS', tier_level: 3, allow_read: true, allow_write: true, data_scope: 'OWN' },
+      { module_code: 'REQUESTS', tier_level: 3, allow_read: true, allow_write: true, data_scope: 'OWN' },
+    ],
     dashboard_widgets: [],
   },
   STAFF: {
@@ -101,7 +105,10 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
     label: 'Baseline Staff',
     role_level: 'STAFF',
     default_job_title: 'Staff Operasional',
-    modules: [],
+    modules: [
+      { module_code: 'PROJECTS', tier_level: 3, allow_read: true, allow_write: true, data_scope: 'OWN' },
+      { module_code: 'REQUESTS', tier_level: 3, allow_read: true, allow_write: true, data_scope: 'OWN' },
+    ],
     dashboard_widgets: [],
   },
   'ROLE-SUPERVISOR': {
@@ -112,6 +119,7 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
     default_job_title: 'Supervisor',
     modules: [
       { module_code: 'PROJECTS', tier_level: 2, allow_read: true, allow_write: true, data_scope: 'TEAM' },
+      { module_code: 'REQUESTS', tier_level: 2, allow_read: true, allow_write: true, data_scope: 'TEAM' },
     ],
     dashboard_widgets: ['DASH_PERSONAL', 'DASH_PROJECTS'],
   },
@@ -123,6 +131,7 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
     default_job_title: 'Supervisor',
     modules: [
       { module_code: 'PROJECTS', tier_level: 2, allow_read: true, allow_write: true, data_scope: 'TEAM' },
+      { module_code: 'REQUESTS', tier_level: 2, allow_read: true, allow_write: true, data_scope: 'TEAM' },
     ],
     dashboard_widgets: ['DASH_PERSONAL', 'DASH_PROJECTS'],
   },
@@ -135,6 +144,7 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
     modules: [
       { module_code: 'PROJECTS', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
       { module_code: 'REPORTING', tier_level: 2, allow_read: true, allow_write: false, data_scope: 'ALL' },
+      { module_code: 'REQUESTS', tier_level: 2, allow_read: true, allow_write: true, data_scope: 'TEAM' },
     ],
     dashboard_widgets: ['DASH_PERSONAL', 'DASH_PROJECTS'],
   },
@@ -147,6 +157,7 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
     modules: [
       { module_code: 'PROJECTS', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
       { module_code: 'REPORTING', tier_level: 2, allow_read: true, allow_write: false, data_scope: 'ALL' },
+      { module_code: 'REQUESTS', tier_level: 2, allow_read: true, allow_write: true, data_scope: 'TEAM' },
     ],
     dashboard_widgets: ['DASH_PERSONAL', 'DASH_PROJECTS'],
   },
@@ -158,7 +169,7 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
     default_job_title: 'Finance Officer',
     modules: [
       { module_code: 'FINANCE', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
-      { module_code: 'REPORTING', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
+      { module_code: 'REQUESTS', tier_level: 3, allow_read: true, allow_write: true, data_scope: 'OWN' },
     ],
     dashboard_widgets: ['DASH_PERSONAL', 'DASH_FINANCE'],
   },
@@ -170,7 +181,7 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
     default_job_title: 'Finance Officer',
     modules: [
       { module_code: 'FINANCE', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
-      { module_code: 'REPORTING', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
+      { module_code: 'REQUESTS', tier_level: 3, allow_read: true, allow_write: true, data_scope: 'OWN' },
     ],
     dashboard_widgets: ['DASH_PERSONAL', 'DASH_FINANCE'],
   },
@@ -182,7 +193,7 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
     default_job_title: 'CRM & Sales Lead',
     modules: [
       { module_code: 'CRM', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
-      { module_code: 'SALES', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
+      { module_code: 'REQUESTS', tier_level: 3, allow_read: true, allow_write: true, data_scope: 'OWN' },
     ],
     dashboard_widgets: ['DASH_PERSONAL', 'DASH_CRM'],
   },
@@ -194,7 +205,7 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
     default_job_title: 'CRM & Sales Lead',
     modules: [
       { module_code: 'CRM', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
-      { module_code: 'SALES', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
+      { module_code: 'REQUESTS', tier_level: 3, allow_read: true, allow_write: true, data_scope: 'OWN' },
     ],
     dashboard_widgets: ['DASH_PERSONAL', 'DASH_CRM'],
   },
@@ -206,7 +217,7 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
     default_job_title: 'Sales Executive',
     modules: [
       { module_code: 'CRM', tier_level: 3, allow_read: true, allow_write: true, data_scope: 'OWN' },
-      { module_code: 'SALES', tier_level: 3, allow_read: true, allow_write: true, data_scope: 'OWN' },
+      { module_code: 'REQUESTS', tier_level: 3, allow_read: true, allow_write: true, data_scope: 'OWN' },
     ],
     dashboard_widgets: ['DASH_PERSONAL', 'DASH_CRM'],
   },
@@ -218,7 +229,7 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
     default_job_title: 'Sales Executive',
     modules: [
       { module_code: 'CRM', tier_level: 3, allow_read: true, allow_write: true, data_scope: 'OWN' },
-      { module_code: 'SALES', tier_level: 3, allow_read: true, allow_write: true, data_scope: 'OWN' },
+      { module_code: 'REQUESTS', tier_level: 3, allow_read: true, allow_write: true, data_scope: 'OWN' },
     ],
     dashboard_widgets: ['DASH_PERSONAL', 'DASH_CRM'],
   },
@@ -232,6 +243,7 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
       { module_code: 'INVENTORY', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
       { module_code: 'PROJECTS', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
       { module_code: 'PROCUREMENT', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
+      { module_code: 'REQUESTS', tier_level: 2, allow_read: true, allow_write: true, data_scope: 'TEAM' },
       { module_code: 'REPORTING', tier_level: 2, allow_read: true, allow_write: false, data_scope: 'ALL' },
     ],
     dashboard_widgets: ['DASH_PERSONAL', 'DASH_INVENTORY', 'DASH_PROJECTS'],
@@ -246,6 +258,7 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
       { module_code: 'INVENTORY', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
       { module_code: 'PROJECTS', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
       { module_code: 'PROCUREMENT', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
+      { module_code: 'REQUESTS', tier_level: 2, allow_read: true, allow_write: true, data_scope: 'TEAM' },
       { module_code: 'REPORTING', tier_level: 2, allow_read: true, allow_write: false, data_scope: 'ALL' },
     ],
     dashboard_widgets: ['DASH_PERSONAL', 'DASH_INVENTORY', 'DASH_PROJECTS'],
@@ -262,6 +275,7 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
       { module_code: 'FINANCE', tier_level: 0, allow_read: true, allow_write: false, data_scope: 'ALL' },
       { module_code: 'CRM', tier_level: 0, allow_read: true, allow_write: false, data_scope: 'ALL' },
       { module_code: 'INVENTORY', tier_level: 0, allow_read: true, allow_write: false, data_scope: 'ALL' },
+      { module_code: 'REQUESTS', tier_level: 0, allow_read: true, allow_write: false, data_scope: 'ALL' },
     ],
     dashboard_widgets: [
       'DASH_PERSONAL',
@@ -284,6 +298,7 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
       { module_code: 'FINANCE', tier_level: 0, allow_read: true, allow_write: false, data_scope: 'ALL' },
       { module_code: 'CRM', tier_level: 0, allow_read: true, allow_write: false, data_scope: 'ALL' },
       { module_code: 'INVENTORY', tier_level: 0, allow_read: true, allow_write: false, data_scope: 'ALL' },
+      { module_code: 'REQUESTS', tier_level: 0, allow_read: true, allow_write: false, data_scope: 'ALL' },
     ],
     dashboard_widgets: [
       'DASH_PERSONAL',
@@ -296,6 +311,17 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
   },
 };
 
+const QUICK_ACCESS_PRESET_DESCRIPTIONS: Record<string, string> = {
+  STAFF_BASELINE: 'Akses pekerjaan dan pengajuan milik sendiri. Tidak memberi akses ke seluruh tim atau modul lain.',
+  SUPERVISOR: 'Akses kerja dalam cakupan tim. Tingkat tiap modul tetap dapat diubah sesuai tanggung jawab.',
+  PROJECT_MANAGER: 'Mengelola proyek dan WBS; akses modul lain tetap terpisah dan harus diaktifkan secara eksplisit.',
+  OPERATIONAL_MANAGER: 'Template pengelolaan operasional untuk modul yang dipilih. Hapus modul yang bukan tanggung jawab user.',
+  FINANCE: 'Akses pekerjaan Finance. Tidak otomatis membuka Projects, CRM, Inventory, atau Reporting.',
+  CRM_LEAD: 'Akses pengelolaan pipeline CRM. Tidak otomatis membuka Projects atau Sales sebagai modul terpisah.',
+  SALES: 'Akses CRM untuk data milik sendiri. Cakupan tim tidak diberikan otomatis.',
+  DIRECTOR_360: 'Akses baca lintas modul yang aktif. Tidak memberikan izin mengubah data operasional.',
+};
+
 export const QUICK_ACCESS_PRESETS = [
   LEGACY_ROLE_TRANSLATION_MAP.STAFF,
   LEGACY_ROLE_TRANSLATION_MAP.SUPERVISOR,
@@ -305,7 +331,10 @@ export const QUICK_ACCESS_PRESETS = [
   LEGACY_ROLE_TRANSLATION_MAP.CRM_LEAD,
   LEGACY_ROLE_TRANSLATION_MAP.SALES,
   LEGACY_ROLE_TRANSLATION_MAP.DIRECTOR,
-];
+].map((preset) => ({
+  ...preset,
+  description: QUICK_ACCESS_PRESET_DESCRIPTIONS[preset.preset_key] || '',
+}));
 
 const SCOPE_RANK: Record<DataScopeType, number> = {
   OWN: 1,
@@ -740,16 +769,30 @@ export async function syncUserQuickAccess(input: SyncUserQuickAccessInput) {
       });
     }
 
-    // 4. Legacy quick access may only edit modules explicitly enabled in LEGACY mode.
+    // 4. A role preset is an editable draft of module assignments, never a global role grant.
     const moduleGrantMap = new Map<string, TranslatedModuleGrant>();
-    if (input.modules && input.modules.length > 0) {
+    if (input.modules !== undefined) {
       for (const m of input.modules) {
         const code = String(m.module_code || '').trim().toUpperCase();
         if (!code) continue;
         const enabled = m.enabled !== undefined ? Boolean(m.enabled) : Boolean(m.allow_read ?? true);
         const entitlement = entitlementByModule.get(code);
-        if (!enabled || !entitlement?.enabled || entitlement.access_mode !== 'LEGACY') continue;
+        const now = new Date();
+        const entitlementActive = Boolean(
+          entitlement?.enabled
+          && entitlement.allow_read
+          && (!entitlement.effective_from || entitlement.effective_from <= now)
+          && (!entitlement.effective_until || entitlement.effective_until >= now),
+        );
+        if (!enabled || !entitlementActive) continue;
         const tier = typeof m.tier_level === 'number' ? m.tier_level : 3;
+        if (!Number.isInteger(tier) || tier < 0 || tier > 3) {
+          throw new ValidationError(`Tingkat akses modul ${code} harus di antara 0 dan 3.`);
+        }
+        const requestedScope = String(m.data_scope || (tier <= 1 ? 'ALL' : tier === 2 ? 'TEAM' : 'OWN')).toUpperCase();
+        if (!['OWN', 'TEAM', 'ALL'].includes(requestedScope)) {
+          throw new ValidationError(`Cakupan data modul ${code} tidak valid.`);
+        }
         moduleGrantMap.set(code, {
           module_code: code,
           tier_level: tier,
@@ -758,9 +801,7 @@ export async function syncUserQuickAccess(input: SyncUserQuickAccessInput) {
             m.allow_write !== undefined
               ? Boolean(m.allow_write)
               : tier > 0,
-          data_scope: ((m.data_scope || (tier <= 1 ? 'ALL' : tier === 2 ? 'TEAM' : 'OWN'))
-            .toString()
-            .toUpperCase() as DataScopeType),
+          data_scope: requestedScope as DataScopeType,
         });
       }
     } else if (presetSpec) {
@@ -769,41 +810,56 @@ export async function syncUserQuickAccess(input: SyncUserQuickAccessInput) {
       }
     }
 
-    const ALL_KNOWN_MODULES = ['PROJECTS', 'FINANCE', 'CRM', 'SALES', 'INVENTORY', 'PROCUREMENT', 'REPORTING'];
+    const ALL_KNOWN_MODULES = ['PROJECTS', 'REQUESTS', 'FINANCE', 'CRM', 'SALES', 'INVENTORY', 'PROCUREMENT', 'REPORTING', 'HRMS', 'ASSETS'];
     for (const modCode of input.modules !== undefined || presetSpec ? ALL_KNOWN_MODULES : []) {
-      const grant = moduleGrantMap.get(modCode);
+      const entitlement = entitlementByModule.get(modCode);
+      const now = new Date();
+      const entitlementActive = Boolean(
+        entitlement?.enabled
+        && entitlement.allow_read
+        && (!entitlement.effective_from || entitlement.effective_from <= now)
+        && (!entitlement.effective_until || entitlement.effective_until >= now),
+      );
+      const grant = entitlementActive ? moduleGrantMap.get(modCode) : undefined;
+      const legacyMode = entitlement?.access_mode === 'LEGACY';
       if (grant) {
-        await tx.iam_user_module_access.upsert({
-          where: { user_id_module_code: { user_id: userId, module_code: modCode } },
-          update: {
-            company_id: companyId,
-            tenant_id: tenantId,
-            allow_read: grant.allow_read,
-            allow_write: grant.allow_write,
-            granted_by_id: actorId || null,
-          },
-          create: {
-            id: deterministicUuid(`mod-acc:${userId}:${modCode}`),
-            tenant_id: tenantId,
-            company_id: companyId,
-            user_id: userId,
-            module_code: modCode,
-            allow_read: grant.allow_read,
-            allow_write: grant.allow_write,
-            granted_by_id: actorId || null,
-          },
-        });
+        if (legacyMode) {
+          await tx.iam_user_module_access.upsert({
+            where: { user_id_module_code: { user_id: userId, module_code: modCode } },
+            update: {
+              company_id: companyId,
+              tenant_id: tenantId,
+              allow_read: grant.allow_read,
+              allow_write: grant.allow_write,
+              granted_by_id: actorId || null,
+            },
+            create: {
+              id: deterministicUuid(`mod-acc:${userId}:${modCode}`),
+              tenant_id: tenantId,
+              company_id: companyId,
+              user_id: userId,
+              module_code: modCode,
+              allow_read: grant.allow_read,
+              allow_write: grant.allow_write,
+              granted_by_id: actorId || null,
+            },
+          });
+        }
 
         const existingLegacyAssignment = await tx.iam_user_module_assignment.findFirst({
-          where: { company_id: companyId, user_id: userId, module_code: modCode, profile_id: null },
+          where: { company_id: companyId, user_id: userId, module_code: modCode },
           select: { id: true },
         });
         const assignmentData = {
+            profile_id: null,
+            profile_code: null,
             tier_level: grant.tier_level,
             position_title: resolvedJobTitle,
             department_id: targetDepartmentId,
             reports_to_user_id: resolvedReportsTo,
             data_scope: grant.data_scope,
+            effective_from: new Date(),
+            effective_until: null,
             status: 'ACTIVE',
         };
         if (existingLegacyAssignment) {
@@ -816,11 +872,16 @@ export async function syncUserQuickAccess(input: SyncUserQuickAccessInput) {
               company_id: companyId,
               user_id: userId,
               module_code: modCode,
+              profile_id: null,
+              profile_code: null,
               tier_level: grant.tier_level,
               position_title: resolvedJobTitle,
               department_id: targetDepartmentId,
               reports_to_user_id: resolvedReportsTo,
               data_scope: grant.data_scope,
+              effective_from: new Date(),
+              effective_until: null,
+              scope_resource_ids: [],
               is_primary: modCode === 'PROJECTS',
               status: 'ACTIVE',
               created_by_id: actorId || null,
@@ -828,12 +889,14 @@ export async function syncUserQuickAccess(input: SyncUserQuickAccessInput) {
           });
         }
       } else {
-        await tx.iam_user_module_access.updateMany({
-          where: { company_id: companyId, user_id: userId, module_code: modCode },
-          data: { allow_read: false, allow_write: false },
-        });
+        if (entitlement?.access_mode === 'LEGACY') {
+          await tx.iam_user_module_access.updateMany({
+            where: { company_id: companyId, user_id: userId, module_code: modCode },
+            data: { allow_read: false, allow_write: false },
+          });
+        }
         await tx.iam_user_module_assignment.updateMany({
-          where: { company_id: companyId, user_id: userId, module_code: modCode, profile_id: null },
+          where: { company_id: companyId, user_id: userId, module_code: modCode, status: 'ACTIVE' },
           data: { status: 'INACTIVE' },
         });
       }
