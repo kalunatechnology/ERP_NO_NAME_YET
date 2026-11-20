@@ -1023,6 +1023,7 @@ export function AccessAdministration() {
             <ModuleHierarchyManager
               companyId={selectedCompany}
               initialUserId={selectedUserId}
+              onBack={() => setActiveTab("users")}
               users={users}
               departments={departments}
             />
@@ -1032,6 +1033,7 @@ export function AccessAdministration() {
         <ModuleHierarchyManager
           companyId={contextCompany}
           initialUserId={selectedUserId}
+          onBack={() => setCompanyViewTab("members")}
           users={displayedUsers}
           departments={departments}
         />

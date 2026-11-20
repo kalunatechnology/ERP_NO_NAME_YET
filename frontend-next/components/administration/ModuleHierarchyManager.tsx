@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ArrowLeft,
   Check,
   History,
   Layers,
@@ -107,6 +108,7 @@ export interface AssignmentHistoryRow {
 interface ModuleHierarchyManagerProps {
   companyId: string;
   initialUserId?: string;
+  onBack?: () => void;
   users: Array<{ id: string; full_name?: string; email: string; role_level?: string }>;
   departments: Array<{ id: string; code: string; name: string }>;
 }
@@ -135,6 +137,7 @@ const HIERARCHY_MODULES = [
 export function ModuleHierarchyManager({
   companyId,
   initialUserId,
+  onBack,
   users,
   departments,
 }: ModuleHierarchyManagerProps) {
@@ -463,13 +466,22 @@ export function ModuleHierarchyManager({
               Setiap modul memiliki profil, capability, dan cakupan datanya sendiri. Role global hanya mengatur tata kelola company dan platform.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => void loadHierarchy()}
-            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3.5 text-xs font-semibold text-[#163D64] hover:bg-[#F8FAFC]"
-          >
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Segarkan Data
-          </button>
+          <div className="flex flex-wrap gap-2">
+            {onBack && <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3.5 text-xs font-semibold text-[#163D64] hover:bg-[#F8FAFC]"
+            >
+              <ArrowLeft size={14} /> Kembali ke Manajemen User
+            </button>}
+            <button
+              type="button"
+              onClick={() => void loadHierarchy()}
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3.5 text-xs font-semibold text-[#163D64] hover:bg-[#F8FAFC]"
+            >
+              <RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Segarkan Data
+            </button>
+          </div>
         </div>
 
         {/* Sub-navigation */}
