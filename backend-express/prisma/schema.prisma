@@ -968,6 +968,7 @@ model iam_company_module_access {
   tenant_id       String    @map("tenant_id")
   company_id      String    @map("company_id")
   module_code     String    @map("module_code")
+  access_mode     String    @default("ASSIGNMENT") @map("access_mode")
   enabled         Boolean   @default(false)
   allow_read      Boolean   @default(false)
   allow_write     Boolean   @default(false)
@@ -6462,12 +6463,15 @@ model iam_user_module_assignment {
   company_id         String    @map("company_id")
   user_id            String    @map("user_id")
   module_code        String    @map("module_code")
+  profile_id         String?   @map("profile_id")
+  profile_code       String?   @map("profile_code")
   tier_level         Int       @default(3) @map("tier_level")
   tier_config_id     String?   @map("tier_config_id")
   position_title     String    @default("") @map("position_title")
   department_id      String?   @map("department_id")
   reports_to_user_id String?   @map("reports_to_user_id")
   data_scope         String    @default("OWN") @map("data_scope")
+  scope_resource_ids Json?     @map("scope_resource_ids")
   permission_profile String    @default("STANDARD") @map("permission_profile")
   is_primary         Boolean   @default(false) @map("is_primary")
   status             String    @default("ACTIVE") @map("status")
@@ -6476,11 +6480,49 @@ model iam_user_module_assignment {
   created_by_id      String?   @map("created_by_id")
   created_at         DateTime  @default(now()) @map("created_at")
   updated_at         DateTime  @updatedAt @map("updated_at")
+  role_profile       iam_module_role_profile? @relation(fields: [profile_id], references: [id], onDelete: SetNull)
 
-  @@unique([company_id, user_id, module_code], map: "uq_iam_user_module_assignment")
+  @@index([company_id, user_id, module_code, status], map: "idx_iam_user_module_assignment_profile")
   @@index([company_id, module_code, tier_level, status], map: "idx_iam_user_module_assignment_lookup")
   @@index([user_id, status], map: "idx_iam_user_module_assignment_user")
   @@map("iam_user_module_assignment")
+}
+
+model iam_module_role_profile {
+  id                String    @id @default(uuid())
+  tenant_id         String    @map("tenant_id")
+  company_id        String    @map("company_id")
+  module_code       String    @map("module_code")
+  profile_code      String    @map("profile_code")
+  display_name      String    @map("display_name")
+  description       String    @default("")
+  legacy_role_code  String?   @map("legacy_role_code")
+  is_system         Boolean   @default(false) @map("is_system")
+  is_active         Boolean   @default(true) @map("is_active")
+  created_by_id     String?   @map("created_by_id")
+  created_at        DateTime  @default(now()) @map("created_at")
+  updated_at        DateTime  @updatedAt @map("updated_at")
+  capabilities      iam_module_role_capability[]
+  assignments       iam_user_module_assignment[]
+
+  @@unique([company_id, module_code, profile_code], map: "uq_iam_module_role_profile_code")
+  @@index([tenant_id, company_id, module_code, is_active], map: "idx_iam_module_role_profile_lookup")
+  @@map("iam_module_role_profile")
+}
+
+model iam_module_role_capability {
+  id             String    @id @default(uuid())
+  tenant_id      String    @map("tenant_id")
+  company_id     String    @map("company_id")
+  profile_id     String    @map("profile_id")
+  capability_code String   @map("capability_code")
+  effect         String    @default("ALLOW")
+  created_at     DateTime  @default(now()) @map("created_at")
+  profile        iam_module_role_profile @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+
+  @@unique([profile_id, capability_code], map: "uq_iam_module_role_capability")
+  @@index([company_id, profile_id], map: "idx_iam_module_role_capability_profile")
+  @@map("iam_module_role_capability")
 }
 
 model iam_module_tier_permission {

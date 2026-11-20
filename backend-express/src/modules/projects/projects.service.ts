@@ -102,10 +102,23 @@ export interface ProjectAuthority {
 
 export class ProjectsService {
   private static activeRole(user: any): string {
+    const hasProjectsProfile = (user?.module_assignments ?? []).some((assignment: any) =>
+      String(assignment.module_code || '').toUpperCase() === 'PROJECTS'
+      && String(assignment.status || '').toUpperCase() === 'ACTIVE'
+      && Boolean(assignment.profile_id && assignment.profile_active),
+    );
+    if (hasProjectsProfile) return '';
     return user?.active_role_code ?? user?.roles?.[0] ?? '';
   }
 
   private static isOperationalAssignee(user: any): boolean {
+    const projectProfiles = (user?.module_assignments ?? []).filter((assignment: any) =>
+      String(assignment.module_code || '').toUpperCase() === 'PROJECTS'
+      && Boolean(assignment.profile_id && assignment.profile_active),
+    );
+    if (projectProfiles.length) {
+      return projectProfiles.some((assignment: any) => ['OWN', 'TEAM'].includes(String(assignment.data_scope || '').toUpperCase()));
+    }
     return ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[]).includes(this.activeRole(user) as RoleCode);
   }
 
@@ -125,8 +138,14 @@ export class ProjectsService {
   }
 
   private static hasPortfolioRead(user: any): boolean {
-    return this.hasPlatformAdmin(user)
-      || ([RoleCode.OPERATIONAL_MANAGER, RoleCode.DIRECTOR] as RoleCode[]).includes(this.activeRole(user) as RoleCode);
+    if (this.hasPlatformAdmin(user)) return true;
+    return (user?.module_assignments ?? []).some((assignment: any) =>
+      String(assignment.module_code || '').toUpperCase() === 'PROJECTS'
+      && String(assignment.status || '').toUpperCase() === 'ACTIVE'
+      && Boolean(assignment.allow_read)
+      && String(assignment.data_scope || '').toUpperCase() === 'ALL'
+      && (!assignment.profile_id || Boolean(assignment.profile_active)),
+    );
   }
 
   static async managedProjectIds(user: any, companyId: string, db: any = prisma): Promise<string[]> {

@@ -412,9 +412,6 @@ export function QuickAccessPanel({
           role_level: roleLevel,
           reports_to_user_id: reportsToUserId || null,
           job_title: jobTitle.trim(),
-          preset_key: activePresetKey || null,
-          modules,
-          dashboard_widgets: selectedWidgets,
           reason: "Quick Access Panel update by Company Admin",
         },
         { headers: { "X-Company-ID": companyId } }
@@ -471,7 +468,6 @@ export function QuickAccessPanel({
           </div>
           <p className="text-xs text-slate-500">
             {userDisplayEmail}
-            {derivedRoles.length > 0 && ` · Role: ${derivedRoles.join(", ")}`}
           </p>
         </div>
 
@@ -502,8 +498,7 @@ export function QuickAccessPanel({
           <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-xs text-amber-900">
             <div className="font-bold">Transisi dari Role Lama ({derivedRoles.join(", ")})</div>
             <p className="mt-0.5 text-[11px] leading-relaxed text-amber-800">
-              Level wewenang, jabatan, dan hak akses modul di bawah ini telah dipetakan otomatis dari role lama pengguna ini. Periksa kembali lalu klik{" "}
-              <span className="font-semibold">Simpan Perubahan</span> untuk memigrasikan akses sepenuhnya ke sistem Departemen &amp; Hak Akses Modular.
+              Role lama ditampilkan hanya untuk kompatibilitas. Pengaturan ini tidak lagi mengubah hak modul; buat penugasan baru melalui tab <span className="font-semibold">Hirarki Modul</span>.
             </p>
           </div>
         )}
@@ -539,24 +534,8 @@ export function QuickAccessPanel({
             )}
           </div>
 
-          {/* Template Role / Preset Cepat */}
-          <div className="rounded-lg bg-slate-50 p-3 border border-slate-200/80">
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Template Role / Preset Cepat (Opsional)
-            </label>
-            <select
-              disabled={isSelfSelected || saving}
-              value={activePresetKey}
-              onChange={(e) => handlePresetChange(e.target.value)}
-              className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-800 outline-none focus:border-[#163D64]"
-            >
-              <option value="">-- Pilih Template Role untuk Otomatis Mengisi Wewenang &amp; Dashboard --</option>
-              {presets.map((p) => (
-                <option key={p.preset_key} value={p.preset_key}>
-                  {p.label} (Level: {p.role_level})
-                </option>
-              ))}
-            </select>
+          <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-900">
+            <b>Akses operasional sekarang dikelola per modul.</b> Pilih tab <b>Hirarki Modul</b> untuk membuat role profile (contoh CRM:SALES) dan menugaskannya kepada user. Hak dari satu modul tidak membuka modul lain.
           </div>
 
           {/* Form 2-Kolom yang Proporsional & Bebas Clipping */}
@@ -640,7 +619,7 @@ export function QuickAccessPanel({
         </div>
 
         {/* Bagian 2: Tabel Hak Akses Modul */}
-        <div>
+        <div className="hidden" aria-hidden="true">
           <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-700">
             2. Tabel Hak Akses Modul Operasional
           </h3>
@@ -705,7 +684,7 @@ export function QuickAccessPanel({
         </div>
 
         {/* Bagian 3: Tabel Panel Dashboard */}
-        <div>
+        <div className="hidden" aria-hidden="true">
           <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-700">
             3. Tabel Panel Dashboard yang Ditampilkan
           </h3>

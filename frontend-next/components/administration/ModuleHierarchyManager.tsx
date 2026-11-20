@@ -48,6 +48,8 @@ export interface ModuleAssignmentRow {
   company_id: string;
   user_id: string;
   module_code: string;
+  profile_code?: string | null;
+  profile_id?: string | null;
   tier_level: number;
   position_title?: string | null;
   department_id?: string | null;
@@ -56,6 +58,15 @@ export interface ModuleAssignmentRow {
   status: string;
   is_primary_position: boolean;
   updated_at?: string;
+}
+
+interface ModuleRoleProfile {
+  id: string;
+  module_code: string;
+  profile_code: string;
+  display_name: string;
+  is_active: boolean;
+  capabilities?: Array<{ capability_code: string; effect: string }>;
 }
 
 export interface CrossModuleCapabilityRow {
@@ -106,11 +117,16 @@ const TIER_BADGES: Record<number, { label: string; color: string }> = {
 };
 
 const HIERARCHY_MODULES = [
-  "FINANCE",
   "PROJECTS",
   "CRM",
+  "SALES",
+  "FINANCE",
   "INVENTORY",
+  "PROCUREMENT",
+  "REPORTING",
+  "REQUESTS",
   "HRMS",
+  "ASSETS",
   "MARBOT",
 ];
 
@@ -126,6 +142,8 @@ export function ModuleHierarchyManager({
   const [tierConfigs, setTierConfigs] = useState<TierConfigRow[]>([]);
   const [tierPermissions, setTierPermissions] = useState<TierPermissionRow[]>([]);
   const [assignments, setAssignments] = useState<ModuleAssignmentRow[]>([]);
+  const [roleProfiles, setRoleProfiles] = useState<ModuleRoleProfile[]>([]);
+  const [enabledModules, setEnabledModules] = useState<string[]>([]);
   const [userModuleAccess, setUserModuleAccess] = useState<Array<{ id?: string; user_id: string; module_code: string; allow_read: boolean; allow_write: boolean }>>([]);
   const [capabilities, setCapabilities] = useState<CrossModuleCapabilityRow[]>([]);
   const [delegations, setDelegations] = useState<ApprovalDelegationRow[]>([]);
@@ -134,15 +152,16 @@ export function ModuleHierarchyManager({
   // Form: Multi-Module User Assignment
   const [assignForm, setAssignForm] = useState({
     user_id: "",
-    system_role_code: "",
+    profile_id: "",
     module_code: "PROJECTS",
-    tier_level: 1,
+    tier_level: 3,
     position_title: "",
     department_id: "",
     reports_to_user_id: "",
-    data_scope: "ALL_MODULE",
+    data_scope: "ALL",
     reason: "",
   });
+  const [profileForm, setProfileForm] = useState({ profile_code: "", display_name: "", legacy_role_code: "", capabilities: ["READ"] as string[] });
   const [submittingAssign, setSubmittingAssign] = useState(false);
 
   // Form: Cross-Module Capability
@@ -183,6 +202,11 @@ export function ModuleHierarchyManager({
       setTierConfigs(Array.isArray(data.tier_configs) ? data.tier_configs : []);
       setTierPermissions(Array.isArray(data.tier_permissions) ? data.tier_permissions : []);
       setAssignments(Array.isArray(data.assignments) ? data.assignments : []);
+      const available = Array.isArray(data.module_entitlements)
+        ? data.module_entitlements.filter((item: any) => item.enabled && item.allow_read).map((item: any) => String(item.module_code).toUpperCase())
+        : [];
+      setEnabledModules(available);
+      setRoleProfiles(Array.isArray(data.role_profiles) ? data.role_profiles : []);
       setCapabilities(Array.isArray(data.cross_module_capabilities) ? data.cross_module_capabilities : []);
       setDelegations(Array.isArray(data.delegations) ? data.delegations : []);
       setHistory(Array.isArray(data.history) ? data.history : []);
@@ -198,6 +222,12 @@ export function ModuleHierarchyManager({
     void loadHierarchy();
   }, [loadHierarchy]);
 
+  useEffect(() => {
+    if (enabledModules.length && !enabledModules.includes(assignForm.module_code)) {
+      setAssignForm((previous) => ({ ...previous, module_code: enabledModules[0], profile_id: "" }));
+    }
+  }, [enabledModules, assignForm.module_code]);
+
   const handleAssignSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!assignForm.user_id) {
@@ -206,24 +236,18 @@ export function ModuleHierarchyManager({
     }
     setSubmittingAssign(true);
     try {
-      if (assignForm.system_role_code) {
-        await api.put(
-          `/api/v1/accounts/users/${assignForm.user_id}/roles`,
-          { role_code: assignForm.system_role_code },
-          { headers: { "X-Company-ID": companyId } },
-        );
-      }
       await api.post(
-        "/api/v1/accounts/module-assignments",
+        "/api/v1/accounts/module-role-assignments",
         {
           company_id: companyId,
           ...assignForm,
+          effective_until: undefined,
           tier_level: Number(assignForm.tier_level),
         },
         { headers: { "X-Company-ID": companyId } },
       );
-      toast.success("Role & penugasan posisi modul berhasil disimpan.");
-      setAssignForm((prev) => ({ ...prev, position_title: "", reason: "" }));
+      toast.success("Role profile dan penugasan modul berhasil disimpan.");
+      setAssignForm((prev) => ({ ...prev, profile_id: "", position_title: "", reason: "" }));
       await loadHierarchy();
     } catch (error) {
       toast.error(getUserFacingApiError(error, "Gagal menyimpan penugasan modul."));
@@ -231,6 +255,24 @@ export function ModuleHierarchyManager({
       setSubmittingAssign(false);
     }
   };
+
+  const handleCreateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await api.post("/api/v1/accounts/module-role-profiles", {
+        company_id: companyId,
+        module_code: assignForm.module_code,
+        ...profileForm,
+      }, { headers: { "X-Company-ID": companyId } });
+      toast.success("Role profile berhasil disimpan.");
+      setProfileForm({ profile_code: "", display_name: "", legacy_role_code: "", capabilities: ["READ"] });
+      await loadHierarchy();
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, "Gagal membuat role profile."));
+    }
+  };
+
+  const availableProfiles = roleProfiles.filter((profile) => profile.module_code === assignForm.module_code && profile.is_active);
 
   const handleDeleteAssignment = async (id: string) => {
     try {
@@ -361,13 +403,13 @@ export function ModuleHierarchyManager({
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-[#163D64] px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-white">
-              <Layers size={12} /> 3-Tier Dynamic Module Hierarchy & GM Umbrella
+              <Layers size={12} /> Role Profile & Capability per Modul
             </span>
             <h2 className="mt-2 text-lg font-bold text-[#0F172A]">
-              Manajemen Struktur Organisasi Modul (Level 0 GM • Level 1 Head • Level 2 SPV • Level 3 Staff)
+              Role Profile Modular
             </h2>
             <p className="mt-1 text-xs text-[#475569]">
-              Satu pengguna dapat memegang jabatan berbeda di beberapa modul secara independen (misal: Level 1 Head di Projects sekaligus Level 3 Staff di Finance) tanpa konflik hak akses.
+              Setiap modul memiliki profil, capability, dan cakupan datanya sendiri. Role global hanya mengatur tata kelola company dan platform.
             </p>
           </div>
           <button
@@ -392,16 +434,15 @@ export function ModuleHierarchyManager({
           >
             <Users size={14} /> Penugasan Multi-Modul User 360° ({assignments.length})
           </button>
-          <button
+            <button
             type="button"
-            onClick={() => setSubTab("tiers")}
+              disabled
             className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition ${
-              subTab === "tiers"
-                ? "bg-[#163D64] text-white shadow-sm"
-                : "bg-white text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
+              "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
             }`}
+              title="Tier global lama tidak dipakai oleh role profile per modul."
           >
-            <ShieldCheck size={14} /> Matriks 3-Tingkatan & Label Jabatan ({tierConfigs.length})
+              <ShieldCheck size={14} /> Tier Global Lama (Tidak Aktif)
           </button>
           <button
             type="button"
@@ -441,7 +482,7 @@ export function ModuleHierarchyManager({
                 + Tetapkan Jabatan User pada Modul
               </h3>
               <p className="text-xs text-[#64748B]">
-                Atur tingkatan kepemimpinan user per modul secara spesifik tanpa mengubah jabatan di modul lain.
+                Tetapkan satu atau beberapa tanggung jawab modul. Capability ditentukan oleh profile dan cakupan data oleh assignment.
               </p>
             </div>
 
@@ -463,35 +504,30 @@ export function ModuleHierarchyManager({
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-[#334155]">
-                Tetapkan Role Utama User (Opsional)
-              </label>
+              <label className="text-xs font-semibold text-[#334155]">Role Profile Modul</label>
               <select
-                value={assignForm.system_role_code}
-                onChange={(e) => setAssignForm((p) => ({ ...p, system_role_code: e.target.value }))}
+                value={assignForm.profile_id}
+                onChange={(e) => setAssignForm((p) => ({ ...p, profile_id: e.target.value }))}
                 className="h-10 w-full rounded-xl border border-[#CBD5E1] bg-white px-3 text-xs font-medium text-[#0F172A]"
+                required
               >
-                <option value="">-- Pertahankan Role Saat Ini --</option>
-                <option value="ROLE-DIRECTOR">Director (Eksekutif)</option>
-                <option value="ROLE-OM">Operational Manager</option>
-                <option value="ROLE-PM">Project Manager</option>
-                <option value="ROLE-CRM-LEAD">CRM Lead</option>
-                <option value="ROLE-FINANCE">Finance</option>
-                <option value="ROLE-SUPERVISOR">Supervisor</option>
-                <option value="ROLE-SALES">Sales</option>
-                <option value="ROLE-STAFF">Staff</option>
+                <option value="">-- Pilih Role Profile --</option>
+                {availableProfiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>{profile.profile_code} — {profile.display_name}</option>
+                ))}
               </select>
+              <p className="text-[11px] text-slate-500">Role berlaku hanya di modul ini. Buat profil dulu jika belum tersedia.</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3">
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-[#334155]">Modul</label>
                 <select
                   value={assignForm.module_code}
-                  onChange={(e) => setAssignForm((p) => ({ ...p, module_code: e.target.value }))}
+                  onChange={(e) => setAssignForm((p) => ({ ...p, module_code: e.target.value, profile_id: "" }))}
                   className="h-10 w-full rounded-xl border border-[#CBD5E1] bg-white px-3 text-xs font-semibold text-[#0F172A]"
                 >
-                  {HIERARCHY_MODULES.map((m) => (
+                  {HIERARCHY_MODULES.filter((m) => enabledModules.includes(m)).map((m) => (
                     <option key={m} value={m}>
                       {m}
                     </option>
@@ -499,23 +535,6 @@ export function ModuleHierarchyManager({
                 </select>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[#334155]">Tingkatan (Tier)</label>
-                <select
-                  value={assignForm.tier_level}
-                  onChange={(e) => {
-                    const lvl = Number(e.target.value);
-                    const defaultScope = lvl <= 1 ? "ALL_MODULE" : lvl === 2 ? "TEAM" : "OWN";
-                    setAssignForm((p) => ({ ...p, tier_level: lvl, data_scope: defaultScope }));
-                  }}
-                  className="h-10 w-full rounded-xl border border-[#CBD5E1] bg-white px-3 text-xs font-semibold text-[#0F172A]"
-                >
-                  <option value={0}>Level 0 — General Manager (GM Oversight)</option>
-                  <option value={1}>Level 1 — Module Head / Manager</option>
-                  <option value={2}>Level 2 — Supervisor / Team Lead</option>
-                  <option value={3}>Level 3 — Staff / Executor</option>
-                </select>
-              </div>
             </div>
 
             <div className="space-y-1">
@@ -539,7 +558,7 @@ export function ModuleHierarchyManager({
                   onChange={(e) => setAssignForm((p) => ({ ...p, data_scope: e.target.value }))}
                   className="h-10 w-full rounded-xl border border-[#CBD5E1] bg-white px-3 text-xs text-[#0F172A]"
                 >
-                  <option value="ALL_MODULE">ALL_MODULE (Seluruh Data Modul)</option>
+                  <option value="ALL">ALL (Seluruh Data Modul)</option>
                   <option value="DIVISION">DIVISION (Cakupan Divisi)</option>
                   <option value="DEPARTMENT">DEPARTMENT (Cakupan Departemen)</option>
                   <option value="TEAM">TEAM (Bawahan / Tim)</option>
@@ -582,12 +601,67 @@ export function ModuleHierarchyManager({
 
             <button
               type="submit"
-              disabled={submittingAssign}
+                disabled={submittingAssign || !assignForm.profile_id || !enabledModules.includes(assignForm.module_code)}
               className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#163D64] px-4 text-xs font-bold text-white hover:bg-[#1D3A96] disabled:opacity-50"
             >
               <Plus size={15} />
               {submittingAssign ? "Menyimpan..." : "Simpan Penugasan Modul"}
             </button>
+
+            <div className="border-t border-slate-200 pt-4">
+              <h4 className="text-xs font-bold text-[#163D64]">Buat Role Profile untuk {assignForm.module_code}</h4>
+              <form onSubmit={handleCreateProfile} className="mt-3 space-y-2">
+                <input
+                  required
+                  value={profileForm.profile_code}
+                  onChange={(e) => setProfileForm((p) => ({ ...p, profile_code: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_") }))}
+                  placeholder="Kode, misalnya SALES atau SUPERVISOR"
+                  className="h-9 w-full rounded-lg border border-[#CBD5E1] px-3 text-xs"
+                />
+                <select
+                  value={profileForm.legacy_role_code}
+                  onChange={(e) => setProfileForm((p) => ({ ...p, legacy_role_code: e.target.value }))}
+                  className="h-9 w-full rounded-lg border border-[#CBD5E1] bg-white px-3 text-xs"
+                >
+                  <option value="">Kompatibilitas endpoint lama (opsional)</option>
+                  {(assignForm.module_code === "CRM" || assignForm.module_code === "SALES"
+                    ? [["ROLE-SALES", "Sales"], ["ROLE-CRM-LEAD", "CRM Lead"]]
+                    : assignForm.module_code === "PROJECTS"
+                      ? [["ROLE-STAFF", "Staff"], ["ROLE-SUPERVISOR", "Supervisor"], ["ROLE-PM", "Project Manager"]]
+                      : assignForm.module_code === "FINANCE"
+                        ? [["ROLE-FINANCE", "Finance"]]
+                        : [["ROLE-OM", "Operational Manager"], ["ROLE-SUPERVISOR", "Supervisor"]]
+                  ).map(([code, label]) => <option key={code} value={code}>{label}</option>)}
+                </select>
+                <input
+                  required
+                  value={profileForm.display_name}
+                  onChange={(e) => setProfileForm((p) => ({ ...p, display_name: e.target.value }))}
+                  placeholder="Nama yang tampil"
+                  className="h-9 w-full rounded-lg border border-[#CBD5E1] px-3 text-xs"
+                />
+                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                  {["READ", "WRITE", "APPROVE", "DELETE", "MANAGE_USERS", "EXPORT"].map((capability) => (
+                    <label key={capability} className="flex items-center gap-1 text-[10px] text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={profileForm.capabilities.includes(capability)}
+                        onChange={(e) => setProfileForm((p) => ({
+                          ...p,
+                          capabilities: e.target.checked
+                            ? [...new Set([...p.capabilities, capability])]
+                            : p.capabilities.filter((item) => item !== capability),
+                        }))}
+                      />
+                      {capability}
+                    </label>
+                  ))}
+                </div>
+                <button type="submit" disabled={!enabledModules.includes(assignForm.module_code)} className="h-9 rounded-lg border border-[#CBD5E1] px-3 text-xs font-semibold text-[#163D64] disabled:opacity-50">
+                  Simpan Profile Modul
+                </button>
+              </form>
+            </div>
           </form>
 
           {/* Daftar Penugasan & User 360 */}
@@ -600,7 +674,7 @@ export function ModuleHierarchyManager({
                     Peta Jabatan Lintas Modul per Pengguna (User 360° Matrix)
                   </h3>
                   <p className="text-xs text-[#64748B]">
-                    Menampilkan kombinasi tingkatan posisi (GM / Level 1 / Level 2 / Level 3) setiap pengguna di berbagai modul.
+                    Menampilkan role profile, cakupan data, dan masa berlaku pada tiap modul.
                   </p>
                 </div>
                 <select
@@ -619,7 +693,7 @@ export function ModuleHierarchyManager({
 
               {filteredAssignments.length === 0 ? (
                 <div className="py-10 text-center text-xs text-[#64748B]">
-                  Belum ada penugasan modul 3-tingkat pada filter ini. Gunakan formulir di sebelah kiri untuk menetapkan Module Head (Level 1), Supervisor (Level 2), atau Staff (Level 3).
+                  Belum ada role profile yang ditugaskan pada filter ini. Buat profil modul, lalu tetapkan kepada user.
                 </div>
               ) : (
                 <div className="mt-4 overflow-x-auto">

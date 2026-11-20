@@ -11,16 +11,22 @@ import { Prisma, type iam_role, type iam_user, type iam_user_company_membership,
 import { ForbiddenError } from '../../utils/errors';
 import { isSuperAdmin, parseRoleCode, RoleCode } from '../../types/roles';
 import { effectiveModuleOverrides, ModulePermission } from '../../utils/module-permissions';
-import { mergeLegacyRoleTranslations } from './org-policy-sync.service';
+import { DASHBOARD_WIDGET_CATALOG, mergeLegacyRoleTranslations } from './org-policy-sync.service';
 
 export type DepartmentRoleLevelType = 'GM' | 'SPV' | 'STAFF';
 
 export interface UserModuleAssignmentContext {
   id: string;
   module_code: string;
+  profile_id?: string | null;
+  profile_code?: string | null;
+  legacy_role_code?: string | null;
+  profile_active?: boolean;
+  capability_codes?: string[];
   tier_level: number;
   position_title: string;
   data_scope: string;
+  scope_resource_ids?: string[];
   reports_to_user_id: string | null;
   status: string;
   allow_read: boolean;
@@ -72,40 +78,10 @@ export interface UserAccessContext {
 
 export function resolveEffectiveRoleLevel(
   explicitRoleLevel?: string | null,
-  activeRoleCode?: RoleCode | string | null,
 ): DepartmentRoleLevelType {
   const normalizedExplicit = String(explicitRoleLevel ?? '').trim().toUpperCase();
-  if (normalizedExplicit === 'GM' || normalizedExplicit === 'SPV') {
+  if (normalizedExplicit === 'GM' || normalizedExplicit === 'SPV' || normalizedExplicit === 'STAFF') {
     return normalizedExplicit;
-  }
-  const normalizedRole = String(activeRoleCode ?? '').trim().toUpperCase();
-  if (
-    [
-      RoleCode.SUPER_ADMIN,
-      RoleCode.COMPANY_ADMIN,
-      RoleCode.DIRECTOR,
-      RoleCode.OPERATIONAL_MANAGER,
-      'SUPER_ADMIN',
-      'COMPANY_ADMIN',
-      'DIRECTOR',
-      'OPERATIONAL_MANAGER',
-    ].includes(normalizedRole as any)
-  ) {
-    return 'GM';
-  }
-  if (
-    [
-      RoleCode.PROJECT_MANAGER,
-      RoleCode.SUPERVISOR,
-      RoleCode.CRM_LEAD,
-      RoleCode.FINANCE,
-      'PROJECT_MANAGER',
-      'SUPERVISOR',
-      'CRM_LEAD',
-      'FINANCE',
-    ].includes(normalizedRole as any)
-  ) {
-    return 'SPV';
   }
   return 'STAFF';
 }
@@ -357,7 +333,7 @@ export async function loadUserAccessContext(
     })
     .catch(() => null);
 
-  const roleLevel = resolveEffectiveRoleLevel(userWithDept?.role_level, activeRoleCode);
+  const roleLevel = resolveEffectiveRoleLevel(userWithDept?.role_level);
   const deptRecord = userWithDept?.department ?? null;
   const rawDeptModules: Array<{ module_key: string; can_read: boolean; can_write: boolean; can_approve: boolean }> =
     Array.isArray(deptRecord?.module_access) && deptRecord.module_access.length > 0
@@ -395,6 +371,7 @@ export async function loadUserAccessContext(
               { OR: [{ effective_until: null }, { effective_until: { gte: now } }] },
             ],
           },
+          include: { role_profile: { include: { capabilities: true } } },
         }).catch(() => []) ?? [],
         (prisma as any).iam_module_tier_permission?.findMany?.({
           where: { company_id: activeCompanyId },
@@ -472,17 +449,34 @@ export async function loadUserAccessContext(
     const code = String(ma.module_code || '').trim().toUpperCase();
     const tier = Number(ma.tier_level ?? 3);
     const tp = tierPermMap.get(`${code}:${tier}`);
-    const allowRead = applyOverride(code, 'READ', tp ? Boolean(tp.allow_read) : true);
-    const allowWrite = applyOverride(code, 'WRITE', tp ? Boolean(tp.allow_write) : (tier === 0 ? code !== 'FINANCE' : tier >= 1));
-    const allowApprove = applyOverride(code, 'APPROVE', tp ? Boolean(tp.allow_approve) : tier <= 2);
-    const allowDelete = applyOverride(code, 'DELETE', tp ? Boolean(tp.allow_delete) : tier === 1);
-    const allowManageUsers = applyOverride(code, 'MANAGE_USERS', tp ? Boolean(tp.allow_manage_users) : tier <= 1);
+    const profileCapabilities = new Set<string>(Array.isArray(ma.role_profile?.capabilities)
+      ? ma.role_profile.capabilities
+          .filter((capability: any) => String(capability.effect || 'ALLOW').toUpperCase() === 'ALLOW')
+          .map((capability: any) => String(capability.capability_code || '').trim().toUpperCase())
+      : []);
+    const profileHas = (action: string) => profileCapabilities.has(action) || profileCapabilities.has(`${code}:${action}`);
+    const hasProfile = Boolean(ma.profile_id && ma.role_profile?.is_active);
+    const allowRead = hasProfile ? profileHas('READ') : applyOverride(code, 'READ', tp ? Boolean(tp.allow_read) : true);
+    const allowWrite = hasProfile ? profileHas('WRITE') : applyOverride(code, 'WRITE', tp ? Boolean(tp.allow_write) : (tier === 0 ? code !== 'FINANCE' : tier >= 1));
+    const allowApprove = hasProfile ? profileHas('APPROVE') : applyOverride(code, 'APPROVE', tp ? Boolean(tp.allow_approve) : tier <= 2);
+    const allowDelete = hasProfile ? profileHas('DELETE') : applyOverride(code, 'DELETE', tp ? Boolean(tp.allow_delete) : tier === 1);
+    const allowManageUsers = hasProfile ? profileHas('MANAGE_USERS') : applyOverride(code, 'MANAGE_USERS', tp ? Boolean(tp.allow_manage_users) : tier <= 1);
     return {
       id: String(ma.id),
       module_code: code,
+      profile_id: ma.profile_id ? String(ma.profile_id) : null,
+      profile_code: ma.role_profile?.profile_code ? String(ma.role_profile.profile_code) : ma.profile_code ? String(ma.profile_code) : null,
+      legacy_role_code: ma.role_profile?.legacy_role_code ? String(ma.role_profile.legacy_role_code) : null,
+      profile_active: Boolean(ma.role_profile?.is_active),
+      capability_codes: Array.isArray(ma.role_profile?.capabilities)
+        ? ma.role_profile.capabilities
+            .filter((capability: any) => String(capability.effect || 'ALLOW').toUpperCase() === 'ALLOW')
+            .map((capability: any) => String(capability.capability_code || '').trim().toUpperCase())
+        : [],
       tier_level: tier,
       position_title: String(ma.position_title || (tier === 0 ? 'General Manager Oversight' : tier === 1 ? 'Module Head' : tier === 2 ? 'Supervisor / Lead' : 'Staff / Executor')),
       data_scope: String(ma.data_scope || (tier <= 1 ? 'ALL' : tier === 2 ? 'TEAM' : 'OWN')),
+      scope_resource_ids: Array.isArray(ma.scope_resource_ids) ? ma.scope_resource_ids.map(String) : [],
       reports_to_user_id: ma.reports_to_user_id ?? null,
       status: String(ma.status || 'ACTIVE'),
       allow_read: allowRead,
@@ -493,20 +487,7 @@ export async function loadUserAccessContext(
     };
   });
 
-  // 3. GM role level cross-department visibility & access (Strict modules CRM, SALES, FINANCE require explicit role or 3-tier module assignment)
-  if (roleLevel === 'GM') {
-    for (const gmMod of ['REPORTING', 'PROJECTS', 'REQUESTS']) {
-      if (!mergedOverridesMap.has(gmMod)) {
-        mergedOverridesMap.set(gmMod, {
-          module_code: gmMod,
-          allow_read: true,
-          allow_write: activeRoleCode !== RoleCode.DIRECTOR,
-        });
-      }
-    }
-  }
-
-  // 4. Apply Dynamic Module Assignments into module overrides
+  // Module assignments are the only operational source of module access.
   for (const ma of moduleAssignments) {
     if (!ma.module_code) continue;
     mergedOverridesMap.set(ma.module_code, {
@@ -531,6 +512,13 @@ export async function loadUserAccessContext(
   const enabledModules = moduleAccess
     .map((item) => item.module_code.toUpperCase())
     .filter((moduleCode) => overrideByModule.get(moduleCode)?.allow_read ?? true);
+  const filteredDashboardWidgets = dashboardWidgets.filter((widgetCode) => {
+    const requiredModule = DASHBOARD_WIDGET_CATALOG.find((widget) => widget.code === widgetCode)?.required_module;
+    if (!requiredModule) return true;
+    const normalizedModule = requiredModule.toUpperCase();
+    return enabledModules.includes(normalizedModule)
+      && moduleAssignments.some((assignment) => assignment.module_code === normalizedModule && assignment.status === 'ACTIVE');
+  });
   const projectDelegated = snapshot?.project_delegated
     ?? knownRows.projectDelegated
     ?? Boolean(membership && await prisma.project_member.findFirst({
@@ -570,8 +558,8 @@ export async function loadUserAccessContext(
     roleLevel,
     reportsToUserId: userWithDept?.reports_to_user_id ?? null,
     jobTitle: userWithDept?.job_title ?? '',
-    dashboardWidgets,
-    canApproveDivisionScope: roleLevel === 'SPV' || roleLevel === 'GM' || moduleAssignments.some((m) => m.allow_approve),
-    canOverrideBudget: roleLevel === 'GM',
+    dashboardWidgets: filteredDashboardWidgets,
+    canApproveDivisionScope: moduleAssignments.some((m) => m.allow_approve),
+    canOverrideBudget: moduleAssignments.some((m) => m.module_code === 'FINANCE' && m.allow_approve),
   };
 }

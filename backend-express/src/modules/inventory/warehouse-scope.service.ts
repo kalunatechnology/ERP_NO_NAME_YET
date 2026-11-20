@@ -14,8 +14,17 @@ import { isCompanyAdmin, isSuperAdmin, parseRoleCode, RoleCode } from '../../typ
 
 export type WarehouseScopeAction = 'read' | 'write' | 'approve';
 
-function hasGlobalWarehouseOversight(user: { roles?: string[]; active_role_code?: string | null } | undefined): boolean {
+function hasInventoryProfile(user: { module_assignments?: any[] } | undefined): boolean {
+  return Boolean(user?.module_assignments?.some((assignment) =>
+    String(assignment.module_code || '').toUpperCase() === 'INVENTORY'
+    && String(assignment.status || '').toUpperCase() === 'ACTIVE'
+    && Boolean(assignment.profile_id && assignment.profile_active),
+  ));
+}
+
+function hasGlobalWarehouseOversight(user: { roles?: string[]; active_role_code?: string | null; module_assignments?: any[] } | undefined): boolean {
   if (!user) return false;
+  if (hasInventoryProfile(user)) return false;
   const roles = user.roles || [];
   if (isSuperAdmin(roles) || isCompanyAdmin(roles)) return true;
   const active = user.active_role_code ? parseRoleCode(user.active_role_code) : null;
@@ -24,7 +33,7 @@ function hasGlobalWarehouseOversight(user: { roles?: string[]; active_role_code?
 
 export async function getAllowedWarehouseIds(
   companyId: string,
-  user: { id: string; roles?: string[]; active_role_code?: string | null } | undefined,
+  user: { id: string; roles?: string[]; active_role_code?: string | null; module_assignments?: any[] } | undefined,
 ): Promise<string[] | null> {
   if (!user?.id || hasGlobalWarehouseOversight(user)) return null; // null = unrestricted across company
   const scopes: any[] = await (prisma as any).inv_warehouse_user_scope
@@ -33,18 +42,37 @@ export async function getAllowedWarehouseIds(
       select: { warehouse_id: true },
     })
     .catch(() => []) ?? [];
-  if (!scopes.length) return null; // no explicit restriction configured for this user
+  if (!scopes.length) {
+    const inventoryAssignments = user.module_assignments?.filter((assignment) =>
+      String(assignment.module_code || '').toUpperCase() === 'INVENTORY'
+      && Boolean(assignment.profile_id && assignment.profile_active),
+    ) ?? [];
+    const profileScopes = inventoryAssignments.flatMap((assignment) => Array.isArray(assignment.scope_resource_ids) ? assignment.scope_resource_ids.map(String) : []);
+    if (inventoryAssignments.some((assignment) => String(assignment.data_scope || '').toUpperCase() === 'ALL')) return null;
+    return profileScopes.length ? [...new Set(profileScopes)] : inventoryAssignments.length ? [] : null;
+  }
   return scopes.map((s) => String(s.warehouse_id));
 }
 
 export async function assertWarehouseScopeAccess(input: {
   companyId: string;
-  user?: { id: string; roles?: string[]; active_role_code?: string | null };
+  user?: { id: string; roles?: string[]; active_role_code?: string | null; module_assignments?: any[] };
   warehouseId?: string | null;
   action: WarehouseScopeAction;
 }): Promise<void> {
   if (!input.user?.id || !input.warehouseId || hasGlobalWarehouseOversight(input.user)) {
     return;
+  }
+  const profileAssignments = input.user.module_assignments?.filter((assignment) =>
+    String(assignment.module_code || '').toUpperCase() === 'INVENTORY'
+    && Boolean(assignment.profile_id && assignment.profile_active),
+  ) ?? [];
+  if (profileAssignments.length) {
+    const profileScopes = profileAssignments.flatMap((assignment) => Array.isArray(assignment.scope_resource_ids) ? assignment.scope_resource_ids.map(String) : []);
+    const allWarehouses = profileAssignments.some((assignment) => String(assignment.data_scope || '').toUpperCase() === 'ALL');
+    if (!allWarehouses && !profileScopes.includes(String(input.warehouseId))) {
+      throw new ForbiddenError('Role profile Inventory tidak memiliki scope ke gudang ini.');
+    }
   }
   const allUserScopes: any[] = await (prisma as any).inv_warehouse_user_scope
     ?.findMany?.({

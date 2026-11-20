@@ -18,11 +18,6 @@ import {
 } from '../master_data/employee-provisioning.service';
 import { ROLE_BUNDLES } from './role-bundle.config';
 import { effectiveModuleOverrides } from '../../utils/module-permissions';
-import {
-  DASHBOARD_WIDGET_CATALOG,
-  deterministicUuid,
-  mergeLegacyRoleTranslations,
-} from './org-policy-sync.service';
 
 type LoginAccessSnapshot = {
   user_roles: Array<{
@@ -550,16 +545,18 @@ export class AccountsService {
     actorId?: string;
   }) {
     const { name, email, password, roleCodes, companyId, tenantId, departmentId, roleLevel, actorId } = input;
+    if (roleCodes.some((role) => role !== RoleCode.COMPANY_ADMIN && role !== RoleCode.SUPER_ADMIN)) {
+      throw new ValidationError('Role operasional harus diberikan melalui Role Profile per modul.');
+    }
+    if (roleCodes.includes(RoleCode.SUPER_ADMIN)) {
+      throw new ForbiddenError('Super Admin tidak dapat diundang sebagai anggota company.');
+    }
     const cleanEmail = email.trim().toLowerCase();
     const cleanUsername = cleanEmail.split('@')[0]!;
 
     if (!cleanEmail || !cleanEmail.includes('@')) {
       throw new ValidationError('Email valid wajib diisi.');
     }
-    if (!roleCodes.length) {
-      throw new ValidationError('Minimal satu role wajib dipilih.');
-    }
-
     const existing = await prisma.iam_user.findFirst({
       where: { OR: [{ email: cleanEmail }, { username: cleanUsername }] },
     });
@@ -714,66 +711,6 @@ export class AccountsService {
       tx,
     );
 
-    // Seed uniform baseline: PROJECTS (Tier 3, OWN) + DASH_PERSONAL (+ merged role grants)
-    try {
-      const mergedBaseline = mergeLegacyRoleTranslations(uniqueRoleCodes);
-      const widgetSet = new Set(mergedBaseline.dashboard_widgets);
-      for (const item of DASHBOARD_WIDGET_CATALOG) {
-        const isEnabled = item.code === 'DASH_PERSONAL' ? true : widgetSet.has(item.code);
-        await (tx as any).iam_user_dashboard_access?.upsert?.({
-          where: {
-            company_id_user_id_widget_code: {
-              company_id: companyId,
-              user_id: created.id,
-              widget_code: item.code,
-            },
-          },
-          update: { is_enabled: isEnabled },
-          create: {
-            id: deterministicUuid(`dash-acc:${companyId}:${created.id}:${item.code}`),
-            tenant_id: tenantId,
-            company_id: companyId,
-            user_id: created.id,
-            widget_code: item.code,
-            is_enabled: isEnabled,
-            granted_by_id: actorId ?? null,
-          },
-        });
-      }
-      for (const mod of mergedBaseline.modules) {
-        await (tx as any).iam_user_module_assignment?.upsert?.({
-          where: {
-            company_id_user_id_module_code: {
-              company_id: companyId,
-              user_id: created.id,
-              module_code: mod.module_code,
-            },
-          },
-          update: {
-            tier_level: mod.tier_level,
-            data_scope: mod.data_scope,
-            department_id: cleanDepartmentId,
-            status: 'ACTIVE',
-          },
-          create: {
-            id: deterministicUuid(`mod-asg:${companyId}:${created.id}:${mod.module_code}`),
-            tenant_id: tenantId,
-            company_id: companyId,
-            user_id: created.id,
-            module_code: mod.module_code,
-            tier_level: mod.tier_level,
-            data_scope: mod.data_scope,
-            department_id: cleanDepartmentId,
-            is_primary: mod.module_code === 'PROJECTS',
-            status: 'ACTIVE',
-            created_by_id: actorId ?? null,
-          },
-        });
-      }
-    } catch {
-      // Non-blocking if in-memory mock or pre-migration DB is used
-    }
-
     return created;
     });
 
@@ -855,6 +792,10 @@ export class AccountsService {
 
     if (!parsedRole) {
       throw new ValidationError(`Role code '${rawRoleCode}' tidak valid.`);
+    }
+
+    if (parsedRole !== RoleCode.COMPANY_ADMIN) {
+      throw new ForbiddenError('Role operasional hanya dapat ditetapkan sebagai Role Profile per modul.');
     }
 
     if (parsedRole === RoleCode.SUPER_ADMIN) {
@@ -986,6 +927,9 @@ export class AccountsService {
 
     if (!parsedRole) {
       throw new ValidationError(`Role code '${rawRoleCode}' tidak valid.`);
+    }
+    if (parsedRole !== RoleCode.COMPANY_ADMIN) {
+      throw new ForbiddenError('Role operasional legacy tidak dikelola melalui assignment role global.');
     }
 
     return prisma.$transaction(async (tx) => {

@@ -15,7 +15,7 @@ import { isSuperAdmin } from '../types/roles';
  * Company Module Entitlement Middleware.
  *
  * Implements pay-per-module feature toggling per company:
- * - Super Admin has universal governance & read access.
+ * - Super Admin manages entitlements outside operational module routes.
  * - For company users, validates against `iam_company_module_access`.
  * - Defaults to fail-closed if module access record does not exist or is disabled.
  */
@@ -24,6 +24,21 @@ const MODULE_ENTITLEMENT_ALIASES: Record<string, string[]> = {
   SALES: ['SALES', 'CRM'],
   ASSETS: ['ASSETS', 'INVENTORY'],
 };
+
+function isSafeLegacyProjection(assignment: any): boolean {
+  const code = String(assignment.legacy_role_code || '').trim().toUpperCase().replace(/^ROLE-/, '');
+  const scope = String(assignment.data_scope || '').toUpperCase();
+  const capabilities = new Set((assignment.capability_codes ?? []).map((item: unknown) => String(item).toUpperCase()));
+  const has = (capability: string) => capabilities.has(capability) || capabilities.has(`${String(assignment.module_code).toUpperCase()}:${capability}`);
+  if (code === 'SALES') return scope === 'OWN' && has('READ');
+  if (code === 'SUPERVISOR') return scope === 'TEAM' && has('WRITE');
+  if (code === 'STAFF') return scope === 'OWN' && has('READ');
+  if (code === 'DIRECTOR') return scope === 'ALL' && has('READ');
+  if (['CRM_LEAD', 'PROJECT_MANAGER', 'OPERATIONAL_MANAGER', 'FINANCE'].includes(code)) {
+    return scope === 'ALL' && has('MANAGE_USERS') && (has('APPROVE') || has('WRITE'));
+  }
+  return false;
+}
 
 export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' = 'read') {
   const normalizedModule = moduleCode.trim().toUpperCase();
@@ -35,9 +50,10 @@ export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' =
         return next(new UnauthorizedError());
       }
 
-      // Super Admin bypasses module entitlement checks
+      // Super Admin governs tenant/company entitlements and does not receive
+      // operational membership or module assignments.
       if (isSuperAdmin(req.user.roles)) {
-        return next();
+        return next(new ForbiddenError('Super Admin mengelola entitlement company dan tidak menggunakan modul operasional.'));
       }
 
       const companyId = req.companyId;
@@ -55,7 +71,6 @@ export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' =
       });
       const access =
         accessRows.find((r) => r.enabled) ??
-        accessRows.find((r) => r.allow_read) ??
         accessRows[0] ??
         null;
 
@@ -63,10 +78,6 @@ export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' =
       const effectiveMode = isWriteMethod ? 'write' : mode;
 
       if (!access || !access.enabled) {
-        // Read fallback if allow_read is explicitly granted even when module is not fully enabled
-        if (effectiveMode === 'read' && access?.allow_read) {
-          return next();
-        }
         return next(
           new ForbiddenError(
             `Modul ${normalizedModule} belum diaktifkan untuk company Anda. Hubungi Super Administrator.`,
@@ -92,6 +103,59 @@ export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' =
         );
       }
 
+      const accessMode = String((access as any).access_mode || 'LEGACY').trim().toUpperCase();
+      if (accessMode === 'ASSIGNMENT') {
+        const assignments = (req.user.module_assignments ?? []).filter((assignment: any) =>
+          String(assignment.module_code || '').toUpperCase() === normalizedModule
+          && String(assignment.status || '').toUpperCase() === 'ACTIVE'
+          && Boolean(assignment.profile_id)
+          && Boolean(assignment.profile_active)
+          && String(assignment.profile_code || '').toUpperCase().startsWith(`${normalizedModule}:`)
+        );
+        if (!assignments.length) {
+          return next(new ForbiddenError(`Belum ada penugasan role aktif untuk modul ${normalizedModule}.`));
+        }
+
+        const capabilities = new Set<string>(assignments.flatMap((assignment: any) =>
+          Array.isArray(assignment.capability_codes) ? assignment.capability_codes : []
+        ));
+        const overrides = req.user.permission_overrides ?? [];
+        const readOverride = overrides.find((override: any) =>
+          String(override.module_code || '').toUpperCase() === normalizedModule
+          && String(override.action_code || '').toUpperCase() === 'READ',
+        );
+        const writeOverride = overrides.find((override: any) =>
+          String(override.module_code || '').toUpperCase() === normalizedModule
+          && String(override.action_code || '').toUpperCase() === 'WRITE',
+        );
+        if (String((effectiveMode === 'read' ? readOverride : writeOverride)?.effect || '').toUpperCase() === 'DENY') {
+          return next(new ForbiddenError(`Akses ${effectiveMode} modul ${normalizedModule} ditolak secara eksplisit.`));
+        }
+        const hasRead = capabilities.has('READ') || capabilities.has(`${normalizedModule}:READ`)
+          || String(readOverride?.effect || '').toUpperCase() === 'ALLOW';
+        const hasWrite = capabilities.has('WRITE') || capabilities.has(`${normalizedModule}:WRITE`)
+          || String(writeOverride?.effect || '').toUpperCase() === 'ALLOW';
+        if (effectiveMode === 'read' && !hasRead) {
+          return next(new ForbiddenError(`Role modul ${normalizedModule} tidak memiliki capability READ.`));
+        }
+        if (effectiveMode === 'write' && !hasWrite) {
+          return next(new ForbiddenError(`Role modul ${normalizedModule} tidak memiliki capability WRITE.`));
+        }
+
+        // Transitional adapter: legacy route handlers receive a role code only
+        // inside this module-scoped request. It is never written to iam_user_role
+        // and cannot authorize another module's request.
+        const legacyRoleCodes = [...new Set(assignments
+          .filter(isSafeLegacyProjection)
+          .map((assignment: any) => String(assignment.legacy_role_code || '').trim().toUpperCase())
+          .filter(Boolean))];
+        req.user.active_role_code = legacyRoleCodes.length === 1 ? legacyRoleCodes[0] : null;
+        req.user.module_role_profiles = assignments.map((assignment: any) => assignment.profile_code);
+        req.user.module_access = [];
+        req.moduleAccess = { moduleCode: normalizedModule, delegated: false, allowRead: hasRead, allowWrite: hasWrite, accessMode: 'ASSIGNMENT' };
+        return next();
+      }
+
       // A Company Admin can tailor access for one user or via Department module
       // delegation, but never bypass the Super-Admin company entitlement checked above.
       const userOverride = await prisma.iam_user_module_access.findUnique({
@@ -107,7 +171,7 @@ export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' =
         if (effectiveMode === 'write' && !userOverride.allow_write) {
           return next(new ForbiddenError(`Akses tulis personal untuk modul ${normalizedModule} dinonaktifkan.`));
         }
-        req.moduleAccess = { moduleCode: normalizedModule, delegated: true, allowRead: userOverride.allow_read, allowWrite: userOverride.allow_write };
+        req.moduleAccess = { moduleCode: normalizedModule, delegated: true, allowRead: userOverride.allow_read, allowWrite: userOverride.allow_write, accessMode: 'LEGACY' };
       } else {
         const deptOrGmDelegation = req.user.module_access?.find((m) => m.module_code.toUpperCase() === normalizedModule);
         if (deptOrGmDelegation) {
@@ -122,9 +186,10 @@ export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' =
             delegated: true,
             allowRead: deptOrGmDelegation.allow_read,
             allowWrite: deptOrGmDelegation.allow_write,
+            accessMode: 'LEGACY',
           };
         } else {
-          req.moduleAccess = { moduleCode: normalizedModule, delegated: false, allowRead: access.allow_read, allowWrite: access.allow_write };
+          req.moduleAccess = { moduleCode: normalizedModule, delegated: false, allowRead: access.allow_read, allowWrite: access.allow_write, accessMode: 'LEGACY' };
         }
       }
 

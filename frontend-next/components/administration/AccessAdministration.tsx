@@ -139,7 +139,7 @@ export function AccessAdministration() {
   const [contextError, setContextError] = useState("");
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [invite, setInvite] = useState({ name: "", email: "", password: "", role_code: "ROLE-STAFF", department_id: "", role_level: "STAFF" });
+  const [invite, setInvite] = useState({ name: "", email: "", password: "", department_id: "", role_level: "STAFF" });
   const contextCompany = isSuper ? selectedCompany : (company || "");
 
   // Departments & Divisions (Cost Center) state
@@ -174,7 +174,7 @@ export function AccessAdministration() {
 
   // Super Admin invite user state
   const [superInviteOpen, setSuperInviteOpen] = useState(false);
-  const [superInvite, setSuperInvite] = useState({ name: "", email: "", password: "", tenant_id: "", company_id: "", role_code: "ROLE-STAFF", department_id: "", role_level: "STAFF" });
+  const [superInvite, setSuperInvite] = useState({ name: "", email: "", password: "", tenant_id: "", company_id: "", department_id: "", role_level: "STAFF" });
   const [superInviteSubmitting, setSuperInviteSubmitting] = useState(false);
   const [userSearch, setUserSearch] = useState("");
 
@@ -319,17 +319,6 @@ export function AccessAdministration() {
     return displayedUsers.filter((item) => !query || `${item.full_name || ""} ${item.email}`.toLowerCase().includes(query));
   }, [search, displayedUsers]);
 
-  const ASSIGNABLE_ROLES = [
-    { code: "ROLE-DIRECTOR", label: "Director (Eksekutif)" },
-    { code: "ROLE-OM", label: "Operational Manager" },
-    { code: "ROLE-PM", label: "Project Manager" },
-    { code: "ROLE-CRM-LEAD", label: "CRM Lead" },
-    { code: "ROLE-FINANCE", label: "Finance" },
-    { code: "ROLE-SUPERVISOR", label: "Supervisor" },
-    { code: "ROLE-SALES", label: "Sales" },
-    { code: "ROLE-STAFF", label: "Staff" },
-  ];
-
   const [userRolesData, setUserRolesData] = useState<{
     active_role_id?: string | null;
     roles: Array<{
@@ -343,11 +332,12 @@ export function AccessAdministration() {
   }>({ roles: [] });
   const [loadingUserRoles, setLoadingUserRoles] = useState(false);
   const [userRolesError, setUserRolesError] = useState<string | null>(null);
-  const [roleUpdatingKey, setRoleUpdatingKey] = useState<string | null>(null);
 
   const loadUserRoles = useCallback(async (userId: string) => {
     if (!userId || !contextCompany) return;
     setLoadingUserRoles(true);
+    setUserRolesData({ roles: [] });
+    setUserRolesError(null);
     try {
       const res = await api.get(`/api/v1/accounts/users/${userId}/roles`, {
         headers: { "X-Company-ID": contextCompany },
@@ -366,30 +356,6 @@ export function AccessAdministration() {
       void loadUserRoles(selectedUserId);
     }
   }, [selectedUserId, loadUserRoles]);
-
-  async function handleToggleUserRole(rawRoleCode: string, isAssigned: boolean) {
-    if (!selectedUserId || selectedUserId === user?.id) return;
-    setRoleUpdatingKey(rawRoleCode);
-    try {
-      if (isAssigned) {
-        await api.delete(`/api/v1/accounts/users/${selectedUserId}/roles/${rawRoleCode}`, {
-          headers: { "X-Company-ID": contextCompany },
-        });
-        toast.success(`Role ${rawRoleCode} dicabut.`);
-      } else {
-        await api.put(`/api/v1/accounts/users/${selectedUserId}/roles/${rawRoleCode}`, {}, {
-          headers: { "X-Company-ID": contextCompany },
-        });
-        toast.success(`Role ${rawRoleCode} berhasil ditugaskan.`);
-      }
-      await loadUserRoles(selectedUserId);
-      await loadBase();
-    } catch (err: any) {
-      toast.error(errorMessage(err, "Gagal memperbarui role pengguna."));
-    } finally {
-      setRoleUpdatingKey(null);
-    }
-  }
 
   /** Company Admin sets per-user access */
   async function setUserAccess(moduleCode: string, mode: AccessMode) {
@@ -426,9 +392,9 @@ export function AccessAdministration() {
         ...invite,
         department_id: invite.department_id || null,
         role_level: invite.role_level || "STAFF",
-        role_codes: [invite.role_code],
+        role_codes: [],
       });
-      setInvite({ name: "", email: "", password: "", role_code: "ROLE-STAFF", department_id: "", role_level: "STAFF" });
+      setInvite({ name: "", email: "", password: "", department_id: "", role_level: "STAFF" });
       setInviteOpen(false);
       await loadBase();
       await loadCompanyContext();
@@ -572,9 +538,9 @@ export function AccessAdministration() {
         company_id: superInvite.company_id,
         department_id: superInvite.department_id || null,
         role_level: superInvite.role_level || "STAFF",
-        role_codes: [superInvite.role_code],
+        role_codes: [],
       }, { headers: { "X-Company-ID": superInvite.company_id } });
-      setSuperInvite({ name: "", email: "", password: "", tenant_id: "", company_id: "", role_code: "ROLE-STAFF", department_id: "", role_level: "STAFF" });
+      setSuperInvite({ name: "", email: "", password: "", tenant_id: "", company_id: "", department_id: "", role_level: "STAFF" });
       setSuperInviteOpen(false);
       await loadBase();
       toast.success("User berhasil dibuat dan di-assign ke company.");
@@ -600,7 +566,7 @@ export function AccessAdministration() {
             <p className="mt-2 text-sm leading-6 text-[#64748B]">
               {isSuper
                 ? "Pusat tata kelola multi-tenant platform: kelola organisasi tenant, buat entitas legal perusahaan, dan atur lisensi komersial 17 modul ERP."
-                : "Pilih anggota tim, lalu tentukan akses operasional tanpa mengubah role utamanya. Hanya modul yang disetujui Super Admin yang tersedia."}
+                : "Pilih anggota tim untuk mengatur role akun, penempatan unit, hak akses modul, dan panel dashboard. Hanya modul yang disetujui Super Admin yang tersedia."}
             </p>
           </div>
 
@@ -1135,26 +1101,85 @@ export function AccessAdministration() {
 
             <main className="bg-slate-50/30">
               {selectedUser ? (
-                <QuickAccessPanel
-                  companyId={selectedCompany || contextCompany}
-                  selectedUserId={selectedUserId}
-                  selectedUser={selectedUser}
-                  isSelfSelected={selectedUser.id === user?.id}
-                  allUsers={displayedUsers}
-                  departments={departments}
-                  onCreateUnit={(unitType) => openNewDepartmentModal(unitType)}
-                  onSaved={() => {
-                    void loadBase();
-                    void loadCompanyContext();
-                    void loadUserRoles(selectedUserId);
-                  }}
-                />
+                <div className="space-y-4 p-4 sm:p-5">
+                  <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <KeyRound size={16} className="text-[#0876CD]" />
+                          <h2 className="text-sm font-bold text-[#163D64]">Role Akun</h2>
+                        </div>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                          Role global hanya untuk tata kelola. Role operasional diberikan sebagai profil pada masing-masing modul.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void loadUserRoles(selectedUserId)}
+                        disabled={loadingUserRoles}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        <RefreshCw size={13} className={loadingUserRoles ? "animate-spin" : ""} />
+                        Muat ulang role
+                      </button>
+                    </div>
+
+                    {userRolesError ? (
+                      <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                        {userRolesError}
+                      </div>
+                    ) : loadingUserRoles ? (
+                      <p className="mt-3 text-xs text-slate-500">Memuat role akun…</p>
+                    ) : (
+                      <>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {userRolesData.roles.length ? userRolesData.roles.map((assignedRole) => (
+                            <div
+                              key={assignedRole.user_role_id}
+                              className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                            >
+                              <span className="text-xs font-semibold text-slate-800">{assignedRole.role_name || assignedRole.role_code}</span>
+                              {assignedRole.is_active && (
+                                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800">Aktif</span>
+                              )}
+                              {assignedRole.raw_role_code !== "ROLE-COMPANY-ADMIN" && assignedRole.raw_role_code !== "ROLE-SUPER-ADMIN" && (
+                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">Legacy</span>
+                              )}
+                            </div>
+                          )) : (
+                            <span className="text-xs text-slate-500">Belum ada role untuk company ini.</span>
+                          )}
+                        </div>
+
+                        <p className="mt-2 flex items-start gap-1.5 text-[11px] leading-4 text-slate-500">
+                          <ShieldCheck size={13} className="mt-0.5 shrink-0" />
+                          Atur akses operasional di bagian <b>Penempatan unit & jabatan</b> dan tab <b>Hirarki Modul</b>. Role legacy yang tampil hanya untuk kompatibilitas migrasi.
+                        </p>
+                      </>
+                    )}
+                  </section>
+
+                  <QuickAccessPanel
+                    companyId={selectedCompany || contextCompany}
+                    selectedUserId={selectedUserId}
+                    selectedUser={selectedUser}
+                    isSelfSelected={selectedUser.id === user?.id}
+                    allUsers={displayedUsers}
+                    departments={departments}
+                    onCreateUnit={(unitType) => openNewDepartmentModal(unitType)}
+                    onSaved={() => {
+                      void loadBase();
+                      void loadCompanyContext();
+                      void loadUserRoles(selectedUserId);
+                    }}
+                  />
+                </div>
               ) : (
                 <div className="flex min-h-[480px] flex-col items-center justify-center p-8 text-center text-slate-500">
                   <Users size={36} className="text-slate-300 mb-2" />
                   <p className="text-sm font-semibold text-[#163D64]">Pilih Anggota Tim</p>
                   <p className="mt-1 text-xs text-slate-500 max-w-sm">
-                    Pilih salah satu user di panel sebelah kiri untuk mengatur penempatan unit, jabatan bisnis, izin modul, dan panel dashboard.
+                    Pilih salah satu user di panel sebelah kiri untuk mengatur role akun, penempatan unit, jabatan bisnis, izin modul, dan panel dashboard.
                   </p>
                 </div>
               )}
@@ -1394,21 +1419,9 @@ export function AccessAdministration() {
               value={invite.password}
               onChange={(e) => setInvite({ ...invite, password: e.target.value })}
             />
-            <select
-              required
-              className="h-11 rounded-[11px] border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#0876CD]"
-              value={invite.role_code}
-              onChange={(e) => setInvite({ ...invite, role_code: e.target.value })}
-            >
-              <option value="">-- Pilih Role Sistem *</option>
-              {roles
-                .filter((role) => role.role_code !== "ROLE-COMPANY-ADMIN" && role.role_code !== "ROLE-SUPER-ADMIN")
-                .map((role) => (
-                  <option key={role.id} value={role.role_code}>
-                    {role.role_name}
-                  </option>
-                ))}
-            </select>
+            <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5 text-xs leading-5 text-blue-900">
+              User dibuat tanpa role operasional global. Setelah diundang, tetapkan Role Profile pada setiap modul melalui tab <b>Hirarki Modul</b>.
+            </div>
             <select
               className="h-11 rounded-[11px] border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#0876CD]"
               value={invite.department_id}
@@ -1531,24 +1544,8 @@ export function AccessAdministration() {
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-[#64748B]">Role *</label>
-                <select
-                  required
-                  className="h-10 w-full rounded-xl border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#0876CD]"
-                  value={superInvite.role_code}
-                  onChange={(e) => setSuperInvite({ ...superInvite, role_code: e.target.value })}
-                >
-                  <option value="">-- Pilih Role *</option>
-                  {roles
-                    .filter((r) =>
-                      r.role_code !== "ROLE-SUPER-ADMIN" &&
-                      r.tenant_id === superInvite.tenant_id
-                    )
-                    .map((role) => (
-                      <option key={role.id} value={role.role_code}>{role.role_name}</option>
-                    ))}
-                </select>
+              <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5 text-xs leading-5 text-blue-900 md:col-span-2">
+                Undangan tidak membuat role operasional global. Tetapkan role profile terpisah per modul setelah user masuk ke company.
               </div>
               <div className="flex justify-end gap-2 border-t border-[#EFEFEF] pt-4">
                 <button

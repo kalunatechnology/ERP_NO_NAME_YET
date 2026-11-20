@@ -10,6 +10,10 @@ export interface ModuleAssignmentSummary {
   module_code: string;
   tier_level: number;
   data_scope?: string;
+  profile_id?: string | null;
+  profile_active?: boolean;
+  capability_codes?: string[];
+  allow_write?: boolean;
 }
 
 /** Only the entitlement middleware may establish a module permission override. */
@@ -45,13 +49,19 @@ export function hasUserModuleManagerWrite(
 ): boolean {
   if (!hasUserModuleWrite(user, moduleCode)) return false;
   const code = moduleCode.toUpperCase();
-  const assignment = user?.module_assignments?.find(
-    (item) => String(item.module_code || '').toUpperCase() === code
-  );
-  if (assignment) {
-    return Number(assignment.tier_level) <= 1;
+  const assignments = user?.module_assignments?.filter(
+    (item) => String(item.module_code || '').toUpperCase() === code,
+  ) ?? [];
+  if (assignments.some((assignment) => assignment.profile_id)) {
+    return assignments.some((assignment) =>
+      Boolean(assignment.profile_id && assignment.profile_active && assignment.allow_write)
+      && String(assignment.data_scope || '').toUpperCase() === 'ALL'
+      && (assignment.capability_codes ?? []).some((capability) =>
+        ['MANAGE_USERS', `${code}:MANAGE_USERS`].includes(String(capability).toUpperCase()),
+      ),
+    );
   }
-  return false;
+  return assignments.some((assignment) => Number(assignment.tier_level) <= 1);
 }
 
 export function effectiveModuleOverrides(

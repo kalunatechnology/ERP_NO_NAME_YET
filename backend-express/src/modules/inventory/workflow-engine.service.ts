@@ -22,16 +22,29 @@ export interface EvaluateWorkflowInput {
     id: string;
     roles?: string[];
     active_role_code?: string | null;
+    module_assignments?: any[];
   };
   lotIds?: string[];
 }
 
 async function resolveActorInventoryTier(companyId: string, user: EvaluateWorkflowInput['actorUser']): Promise<number> {
   const roles = user.roles || [];
-  if (isSuperAdmin(roles) || isCompanyAdmin(roles)) return 1;
+  if (isSuperAdmin(roles)) return 1;
   const active = user.active_role_code ? parseRoleCode(user.active_role_code) : null;
-  if (active === RoleCode.DIRECTOR || active === RoleCode.COMPANY_ADMIN) return 1;
-  if (active === RoleCode.OPERATIONAL_MANAGER) return 1;
+  const profileAssignments = (user.module_assignments ?? []).filter((assignment) =>
+    String(assignment.module_code || '').toUpperCase() === 'INVENTORY'
+    && String(assignment.status || '').toUpperCase() === 'ACTIVE'
+    && Boolean(assignment.profile_id && assignment.profile_active),
+  );
+  if (profileAssignments.length) {
+    const approverAssignments = profileAssignments.filter((assignment) =>
+      (assignment.capability_codes ?? []).some((code: string) => ['APPROVE', 'INVENTORY:APPROVE'].includes(String(code).toUpperCase()))
+      && String(assignment.data_scope || '').toUpperCase() === 'ALL',
+    );
+    return approverAssignments.length
+      ? Math.min(...approverAssignments.map((assignment) => Number(assignment.tier_level ?? 3)))
+      : 3;
+  }
 
   const assignment = await (prisma as any).iam_user_module_assignment
     ?.findFirst?.({
@@ -41,11 +54,14 @@ async function resolveActorInventoryTier(companyId: string, user: EvaluateWorkfl
         module_code: 'INVENTORY',
         status: 'ACTIVE',
       },
-      select: { tier_level: true },
+      select: { tier_level: true, profile_id: true, role_profile: { select: { is_active: true } } },
     })
     .catch(() => null);
 
+  if (assignment?.profile_id && assignment.role_profile?.is_active) return Number(assignment.tier_level ?? 3);
   if (assignment?.tier_level) return Number(assignment.tier_level);
+  if (isCompanyAdmin(roles) || active === RoleCode.COMPANY_ADMIN) return 3;
+  if (active === RoleCode.DIRECTOR || active === RoleCode.OPERATIONAL_MANAGER) return 1;
   if (active === RoleCode.SUPERVISOR || active === RoleCode.PROJECT_MANAGER) return 2;
   return 3;
 }

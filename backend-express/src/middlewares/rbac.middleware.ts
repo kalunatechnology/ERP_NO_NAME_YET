@@ -31,14 +31,19 @@ export function requireRole(...allowedRoles: string[]) {
     }
     if (isSuperAdmin(req.user.roles)) return next();
 
-    const activeRole = req.user.active_role_code ?? req.user.roles[0] ?? '';
-    const hasRole = allowedRoles.includes(activeRole);
+    const activeRole = req.moduleAccess?.accessMode === 'ASSIGNMENT'
+      ? req.user.active_role_code ?? ''
+      : req.user.active_role_code ?? req.user.roles[0] ?? '';
+    const hasProfileCapability = hasScopedProfileCapability(req, allowedRoles);
+    const hasRole = req.moduleAccess?.accessMode === 'ASSIGNMENT'
+      ? hasProfileCapability
+      : allowedRoles.includes(activeRole);
     const isWriteMethod = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
     const hasDelegatedModuleAccess = Boolean(
       req.moduleAccess?.delegated
       && (isWriteMethod ? req.moduleAccess.allowWrite : req.moduleAccess.allowRead),
     );
-    if (!hasRole && !hasDelegatedModuleAccess) {
+    if (!hasRole && !hasProfileCapability && !hasDelegatedModuleAccess) {
       return next(
         new ForbiddenError(
           `Akses ditolak untuk role aktif ${activeRole || 'tidak tersedia'}. Pilih salah satu role: ${allowedRoles.join(', ')}.`,
@@ -58,8 +63,14 @@ export function requireActiveRole(...allowedRoles: string[]) {
     if (!req.user) return next(new UnauthorizedError());
     if (isSuperAdmin(req.user.roles)) return next();
 
-    const activeRole = req.user.active_role_code ?? req.user.roles[0] ?? '';
-    if (!allowedRoles.includes(activeRole) && !hasModuleOverride(req)) {
+    const activeRole = req.moduleAccess?.accessMode === 'ASSIGNMENT'
+      ? req.user.active_role_code ?? ''
+      : req.user.active_role_code ?? req.user.roles[0] ?? '';
+    const legacyOverride = req.moduleAccess?.accessMode === 'ASSIGNMENT' ? false : hasModuleOverride(req);
+    const hasRole = req.moduleAccess?.accessMode === 'ASSIGNMENT'
+      ? hasScopedProfileCapability(req, allowedRoles)
+      : allowedRoles.includes(activeRole);
+    if (!hasRole && !legacyOverride) {
       return next(new ForbiddenError(
         `Aksi ini membutuhkan role aktif: ${allowedRoles.join(', ')}. ` +
         `Role aktif Anda: ${activeRole || 'tidak terdeteksi'}.`,
@@ -67,6 +78,28 @@ export function requireActiveRole(...allowedRoles: string[]) {
     }
     return next();
   };
+}
+
+function hasScopedProfileCapability(req: Request, allowedRoles: string[]): boolean {
+  if (req.moduleAccess?.accessMode !== 'ASSIGNMENT' || !req.moduleAccess.moduleCode) return false;
+  const activeRole = String(req.user?.active_role_code || '').toUpperCase();
+  if (allowedRoles.includes(activeRole)) return true;
+  const normalizedAllowed = allowedRoles.map((role) => String(role).toUpperCase().replace(/^ROLE-/, ''));
+  const operationalRoles = normalizedAllowed.filter((role) => !['SUPER_ADMIN', 'COMPANY_ADMIN'].includes(role));
+  if (!operationalRoles.length) return false;
+  const requiresApproval = operationalRoles.some((role) =>
+    ['DIRECTOR', 'OPERATIONAL_MANAGER', 'PROJECT_MANAGER', 'CRM_LEAD', 'FINANCE', 'SUPERVISOR'].includes(role),
+  );
+  const isReadRequest = ['GET', 'HEAD', 'OPTIONS'].includes(req.method.toUpperCase());
+  const capability = isReadRequest ? 'READ' : requiresApproval ? 'APPROVE' : 'WRITE';
+  return (req.user?.module_assignments ?? []).some((assignment: any) =>
+    String(assignment.module_code || '').toUpperCase() === req.moduleAccess!.moduleCode
+    && String(assignment.status || '').toUpperCase() === 'ACTIVE'
+    && Boolean(assignment.profile_id && assignment.profile_active)
+    && Array.isArray(assignment.capability_codes)
+    && (assignment.capability_codes.includes(capability)
+      || assignment.capability_codes.includes(`${req.moduleAccess!.moduleCode}:${capability}`)),
+  );
 }
 
 export interface ActiveRoleMutationPolicy {
@@ -90,9 +123,11 @@ export function restrictActiveRoleMutations(policy: ActiveRoleMutationPolicy) {
     if (!req.user) return next(new UnauthorizedError());
     if (isSuperAdmin(req.user.roles)) return next();
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method.toUpperCase())) return next();
-    if (hasModuleOverride(req)) return next();
+    if (req.moduleAccess?.accessMode !== 'ASSIGNMENT' && hasModuleOverride(req)) return next();
 
-    const activeRole = req.user.active_role_code ?? req.user.roles[0] ?? '';
+    const activeRole = req.moduleAccess?.accessMode === 'ASSIGNMENT'
+      ? req.user.active_role_code ?? ''
+      : req.user.active_role_code ?? req.user.roles[0] ?? '';
     if (!policy.restrictedRoles.includes(activeRole)) return next();
 
     const requestPath = req.originalUrl.split('?')[0] ?? req.path;
@@ -115,7 +150,9 @@ export function requireAllRoles(...requiredRoles: string[]) {
     if (!req.user) return next(new UnauthorizedError());
     if (isSuperAdmin(req.user.roles)) return next();
 
-    const hasAll = requiredRoles.every((r) => req.user!.roles.includes(r));
+    const hasAll = req.moduleAccess?.accessMode === 'ASSIGNMENT'
+      ? requiredRoles.every((role) => role === req.user!.active_role_code)
+      : requiredRoles.every((r) => req.user!.roles.includes(r));
     if (!hasAll) {
       return next(new ForbiddenError(`Akses ditolak. Diperlukan semua role: ${requiredRoles.join(', ')}.`));
     }
@@ -245,7 +282,51 @@ export function requireModulePermission(
   const normalizedAction = action.toUpperCase();
   return (req: Request, _res: Response, next: NextFunction): void => {
     if (!req.user) return next(new UnauthorizedError());
-    if (isSuperAdmin(req.user.roles) || req.user.active_role_code === RoleCode.COMPANY_ADMIN) return next();
+    if (isSuperAdmin(req.user.roles)) return next();
+    if (req.user.active_role_code === RoleCode.COMPANY_ADMIN && req.moduleAccess?.accessMode === 'LEGACY') return next();
+
+    if (req.moduleAccess?.accessMode === 'ASSIGNMENT') {
+      const overrides: any[] = (req.user as any)?.permission_overrides ?? [];
+      const explicitOverride = overrides.find(
+        (override) => String(override.module_code || '').toUpperCase() === normalizedModule
+          && String(override.action_code || '').toUpperCase() === normalizedAction,
+      );
+      if (String(explicitOverride?.effect || '').toUpperCase() === 'DENY') {
+        return next(new ForbiddenError(`Akses ditolak secara eksplisit untuk aksi '${action}' pada modul ${normalizedModule}.`));
+      }
+      const capability = normalizedAction === 'MANAGE_USERS' ? 'MANAGE_USERS' : normalizedAction;
+      const assignments: any[] = (req.user as any)?.module_assignments ?? [];
+      const hasAssignment = assignments.some((assignment) =>
+        String(assignment.module_code || '').toUpperCase() === normalizedModule
+        && String(assignment.status || '').toUpperCase() === 'ACTIVE'
+        && Boolean(assignment.profile_id)
+        && Boolean(assignment.profile_active),
+      );
+      if (!hasAssignment) return next(new ForbiddenError(`Tidak ada Role Profile aktif pada modul ${normalizedModule}.`));
+      if (String(explicitOverride?.effect || '').toUpperCase() === 'ALLOW') return next();
+      const granted = assignments.some((assignment) =>
+        String(assignment.module_code || '').toUpperCase() === normalizedModule
+        && String(assignment.status || '').toUpperCase() === 'ACTIVE'
+        && Boolean(assignment.profile_active)
+        && Array.isArray(assignment.capability_codes)
+        && (assignment.capability_codes.includes(capability)
+          || assignment.capability_codes.includes(`${normalizedModule}:${capability}`)),
+      );
+      const bridges: any[] = (req.user as any)?.cross_module_capabilities ?? [];
+      const crossModuleGrant = bridges.some((bridge) => {
+        const sourceModule = String(bridge.source_module_code || '').toUpperCase();
+        const allowedActions = Array.isArray(bridge.allowed_actions) ? bridge.allowed_actions.map((item: unknown) => String(item).toUpperCase()) : [];
+        return String(bridge.target_module_code || '').toUpperCase() === normalizedModule
+          && String(bridge.status || '').toUpperCase() === 'ACTIVE'
+          && (allowedActions.includes(normalizedAction) || (action !== 'read' && allowedActions.includes('ACTION')))
+          && (req.user?.enabled_modules ?? []).includes(sourceModule)
+          && assignments.some((assignment) => String(assignment.module_code || '').toUpperCase() === sourceModule
+            && String(assignment.status || '').toUpperCase() === 'ACTIVE'
+            && Boolean(assignment.profile_id && assignment.profile_active));
+      });
+      if (granted || crossModuleGrant) return next();
+      return next(new ForbiddenError(`Role profile ${normalizedModule} tidak memiliki capability ${capability}.`));
+    }
 
     const overrides: any[] = (req.user as any)?.permission_overrides ?? [];
     const explicitOverride = overrides.find(
@@ -261,18 +342,17 @@ export function requireModulePermission(
     }
 
     const assignments: any[] = (req.user as any)?.module_assignments ?? [];
-    const match = assignments.find(
+    const matches = assignments.filter(
       (a) => String(a.module_code || '').toUpperCase() === normalizedModule && a.status === 'ACTIVE'
     );
-    if (match) {
-      const ok =
-        action === 'read' ? match.allow_read !== false
-        : action === 'write' ? Boolean(match.allow_write)
-        : action === 'approve' ? Boolean(match.allow_approve)
-        : action === 'delete' ? Boolean(match.allow_delete)
-        : Boolean(match.allow_manage_users);
-      if (ok) return next();
-    }
+    const allowedByAssignment = matches.some((match) =>
+      action === 'read' ? match.allow_read !== false
+      : action === 'write' ? Boolean(match.allow_write)
+      : action === 'approve' ? Boolean(match.allow_approve)
+      : action === 'delete' ? Boolean(match.allow_delete)
+      : Boolean(match.allow_manage_users)
+    );
+    if (allowedByAssignment) return next();
 
     const capabilities: any[] = (req.user as any)?.cross_module_capabilities ?? [];
     const hasCrossBridge = capabilities.some(
@@ -294,13 +374,89 @@ export function requireModulePermission(
   };
 }
 
+/**
+ * Enforces one named module capability after the company entitlement gate.
+ * User ALLOW overrides can only refine an existing module assignment; they
+ * cannot create module access or a capability absent from the assigned profile.
+ */
+export function requireModuleCapability(moduleCode: string, capabilityCode: string) {
+  const normalizedModule = String(moduleCode || '').trim().toUpperCase();
+  const normalizedCapability = String(capabilityCode || '').trim().toUpperCase();
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    if (!req.user) return next(new UnauthorizedError());
+    if (isSuperAdmin(req.user.roles)) return next();
+    if (req.moduleAccess?.moduleCode !== normalizedModule) {
+      return next(new ForbiddenError(`Capability ${normalizedCapability} harus diperiksa setelah entitlement modul ${normalizedModule}.`));
+    }
+
+    const assignments: any[] = req.user.module_assignments ?? [];
+    const activeAssignments = assignments.filter((assignment) =>
+      String(assignment.module_code || '').toUpperCase() === normalizedModule
+      && String(assignment.status || '').toUpperCase() === 'ACTIVE'
+      && Boolean(assignment.profile_id)
+      && Boolean(assignment.profile_active)
+    );
+    if (!activeAssignments.length) {
+      return next(new ForbiddenError(`Tidak ada assignment aktif pada modul ${normalizedModule}.`));
+    }
+
+    const overrides: any[] = req.user.permission_overrides ?? [];
+    const matchingOverride = overrides.find((override) =>
+      String(override.module_code || '').toUpperCase() === normalizedModule
+      && String(override.action_code || '').toUpperCase() === normalizedCapability
+    );
+    if (String(matchingOverride?.effect || '').toUpperCase() === 'DENY') {
+      return next(new ForbiddenError(`Capability ${normalizedCapability} ditolak secara eksplisit.`));
+    }
+    if (String(matchingOverride?.effect || '').toUpperCase() === 'ALLOW') return next();
+
+    const granted = activeAssignments.some((assignment) =>
+      Array.isArray(assignment.capability_codes)
+      && (assignment.capability_codes.includes(normalizedCapability)
+        || assignment.capability_codes.includes(`${normalizedModule}:${normalizedCapability}`))
+    );
+    const bridges: any[] = (req.user as any)?.cross_module_capabilities ?? [];
+    const crossModuleGrant = bridges.some((bridge) => {
+      const sourceModule = String(bridge.source_module_code || '').toUpperCase();
+      const allowedActions = Array.isArray(bridge.allowed_actions) ? bridge.allowed_actions.map((item: unknown) => String(item).toUpperCase()) : [];
+      return String(bridge.target_module_code || '').toUpperCase() === normalizedModule
+        && String(bridge.capability_code || '').toUpperCase() === normalizedCapability
+        && String(bridge.status || '').toUpperCase() === 'ACTIVE'
+        && (req.user?.enabled_modules ?? []).includes(sourceModule)
+        && assignments.some((assignment) => String(assignment.module_code || '').toUpperCase() === sourceModule
+          && String(assignment.status || '').toUpperCase() === 'ACTIVE'
+          && Boolean(assignment.profile_id && assignment.profile_active))
+        && (allowedActions.includes(normalizedCapability) || allowedActions.includes('ACTION'));
+    });
+    if (!granted && !crossModuleGrant) {
+      return next(new ForbiddenError(`Role modul ${normalizedModule} tidak memiliki capability ${normalizedCapability}.`));
+    }
+    return next();
+  };
+}
+
 export function requireModuleTier(moduleCode: string, maxTierLevel: 1 | 2 | 3) {
   const normalizedModule = String(moduleCode || '').trim().toUpperCase();
   return (req: Request, _res: Response, next: NextFunction): void => {
     if (!req.user) return next(new UnauthorizedError());
-    if (isSuperAdmin(req.user.roles) || req.user.active_role_code === RoleCode.COMPANY_ADMIN) return next();
+    if (isSuperAdmin(req.user.roles)) return next();
 
     const assignments: any[] = (req.user as any)?.module_assignments ?? [];
+    if (req.moduleAccess?.accessMode === 'ASSIGNMENT') {
+      const capability = maxTierLevel === 1 ? 'MANAGE_USERS' : maxTierLevel === 2 ? 'APPROVE' : 'WRITE';
+      const allowed = assignments.some((assignment) =>
+        String(assignment.module_code || '').toUpperCase() === normalizedModule
+        && String(assignment.status || '').toUpperCase() === 'ACTIVE'
+        && Boolean(assignment.profile_active)
+        && Array.isArray(assignment.capability_codes)
+        && (assignment.capability_codes.includes(capability)
+          || assignment.capability_codes.includes(`${normalizedModule}:${capability}`)),
+      );
+      return allowed
+        ? next()
+        : next(new ForbiddenError(`Role profile ${normalizedModule} tidak memiliki capability ${capability}.`));
+    }
+
     const match = assignments.find(
       (a) => String(a.module_code || '').toUpperCase() === normalizedModule && a.status === 'ACTIVE'
     );

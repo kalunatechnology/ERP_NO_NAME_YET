@@ -85,14 +85,6 @@ export interface LegacyRoleTranslation {
   dashboard_widgets: DashboardWidgetCode[];
 }
 
-export const BASELINE_PROJECTS_GRANT: TranslatedModuleGrant = {
-  module_code: 'PROJECTS',
-  tier_level: 3,
-  allow_read: true,
-  allow_write: true,
-  data_scope: 'OWN',
-};
-
 export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> = {
   'ROLE-STAFF': {
     role_code: RoleCode.STAFF,
@@ -100,8 +92,8 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
     label: 'Baseline Staff',
     role_level: 'STAFF',
     default_job_title: 'Staff Operasional',
-    modules: [{ ...BASELINE_PROJECTS_GRANT }],
-    dashboard_widgets: ['DASH_PERSONAL'],
+    modules: [],
+    dashboard_widgets: [],
   },
   STAFF: {
     role_code: RoleCode.STAFF,
@@ -109,8 +101,8 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
     label: 'Baseline Staff',
     role_level: 'STAFF',
     default_job_title: 'Staff Operasional',
-    modules: [{ ...BASELINE_PROJECTS_GRANT }],
-    dashboard_widgets: ['DASH_PERSONAL'],
+    modules: [],
+    dashboard_widgets: [],
   },
   'ROLE-SUPERVISOR': {
     role_code: RoleCode.SUPERVISOR,
@@ -167,7 +159,6 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
     modules: [
       { module_code: 'FINANCE', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
       { module_code: 'REPORTING', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
-      { ...BASELINE_PROJECTS_GRANT },
     ],
     dashboard_widgets: ['DASH_PERSONAL', 'DASH_FINANCE'],
   },
@@ -180,7 +171,6 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
     modules: [
       { module_code: 'FINANCE', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
       { module_code: 'REPORTING', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
-      { ...BASELINE_PROJECTS_GRANT },
     ],
     dashboard_widgets: ['DASH_PERSONAL', 'DASH_FINANCE'],
   },
@@ -193,7 +183,6 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
     modules: [
       { module_code: 'CRM', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
       { module_code: 'SALES', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
-      { ...BASELINE_PROJECTS_GRANT },
     ],
     dashboard_widgets: ['DASH_PERSONAL', 'DASH_CRM'],
   },
@@ -206,7 +195,6 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
     modules: [
       { module_code: 'CRM', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
       { module_code: 'SALES', tier_level: 1, allow_read: true, allow_write: true, data_scope: 'ALL' },
-      { ...BASELINE_PROJECTS_GRANT },
     ],
     dashboard_widgets: ['DASH_PERSONAL', 'DASH_CRM'],
   },
@@ -219,7 +207,6 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
     modules: [
       { module_code: 'CRM', tier_level: 3, allow_read: true, allow_write: true, data_scope: 'OWN' },
       { module_code: 'SALES', tier_level: 3, allow_read: true, allow_write: true, data_scope: 'OWN' },
-      { ...BASELINE_PROJECTS_GRANT },
     ],
     dashboard_widgets: ['DASH_PERSONAL', 'DASH_CRM'],
   },
@@ -232,7 +219,6 @@ export const LEGACY_ROLE_TRANSLATION_MAP: Record<string, LegacyRoleTranslation> 
     modules: [
       { module_code: 'CRM', tier_level: 3, allow_read: true, allow_write: true, data_scope: 'OWN' },
       { module_code: 'SALES', tier_level: 3, allow_read: true, allow_write: true, data_scope: 'OWN' },
-      { ...BASELINE_PROJECTS_GRANT },
     ],
     dashboard_widgets: ['DASH_PERSONAL', 'DASH_CRM'],
   },
@@ -333,30 +319,16 @@ const ROLE_LEVEL_RANK: Record<DepartmentRoleLevel, number> = {
   GM: 3,
 };
 
-const MANAGED_DOMAIN_ROLE_CODES: RoleCode[] = [
-  RoleCode.DIRECTOR,
-  RoleCode.OPERATIONAL_MANAGER,
-  RoleCode.PROJECT_MANAGER,
-  RoleCode.SUPERVISOR,
-  RoleCode.FINANCE,
-  RoleCode.CRM_LEAD,
-  RoleCode.SALES,
-  RoleCode.STAFF,
-];
-
 export interface MergedRoleTranslationResult {
   role_level: DepartmentRoleLevel;
   modules: TranslatedModuleGrant[];
   dashboard_widgets: DashboardWidgetCode[];
 }
 
-/**
- * Union + Strongest-Tier Wins across multiple role codes.
- * Always preserves baseline PROJECTS (Tier 3, OWN) + DASH_PERSONAL so Weekly & Daily Tasks remain accessible.
- */
+/** Legacy-only translation for companies that have not migrated a module to profile assignments. */
 export function mergeLegacyRoleTranslations(roleCodes: Array<string | RoleCode>): MergedRoleTranslationResult {
   const moduleMap = new Map<string, TranslatedModuleGrant>();
-  const widgetSet = new Set<DashboardWidgetCode>(['DASH_PERSONAL']);
+  const widgetSet = new Set<DashboardWidgetCode>();
   let bestRoleLevel: DepartmentRoleLevel = 'STAFF';
 
   const upsertGrant = (grant: TranslatedModuleGrant) => {
@@ -384,9 +356,6 @@ export function mergeLegacyRoleTranslations(roleCodes: Array<string | RoleCode>)
     const key = String(rawCode || '').trim().toUpperCase();
     if (!key) continue;
     if (key === 'COMPANY_ADMIN' || key === 'ROLE-COMPANY-ADMIN' || key === 'SUPER_ADMIN' || key === 'ROLE-SUPER-ADMIN') {
-      if (ROLE_LEVEL_RANK.GM > ROLE_LEVEL_RANK[bestRoleLevel]) {
-        bestRoleLevel = 'GM';
-      }
       continue;
     }
     const spec = LEGACY_ROLE_TRANSLATION_MAP[key];
@@ -402,9 +371,6 @@ export function mergeLegacyRoleTranslations(roleCodes: Array<string | RoleCode>)
     }
   }
 
-  // Always enforce baseline PROJECTS so Weekly & Daily Task projection never breaks
-  upsertGrant(BASELINE_PROJECTS_GRANT);
-
   return {
     role_level: bestRoleLevel,
     modules: Array.from(moduleMap.values()),
@@ -417,63 +383,7 @@ export function deterministicUuid(seed: string): string {
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-${hash.slice(12, 16)}-${hash.slice(16, 20)}-${hash.slice(20, 32)}`;
 }
 
-/**
- * Derives compatibility RoleCodes from active module grants + dashboard widgets + role_level.
- * Note: PROJECTS Tier 3 OWN maps to ROLE-STAFF (never ROLE-PM).
- */
-export function deriveManagedRoleCodes(params: {
-  modules: TranslatedModuleGrant[];
-  dashboardWidgets: string[];
-  roleLevel?: DepartmentRoleLevel | string | null;
-}): RoleCode[] {
-  const derived = new Set<RoleCode>();
-  const widgetSet = new Set(params.dashboardWidgets.map((w) => String(w).toUpperCase()));
-  const activeModules = params.modules.filter((m) => m.allow_read);
-
-  if (widgetSet.has('DASH_EXECUTIVE')) {
-    derived.add(RoleCode.DIRECTOR);
-  }
-
-  for (const mod of activeModules) {
-    const code = mod.module_code.toUpperCase();
-    if (code === 'REPORTING' && mod.tier_level === 0) {
-      derived.add(RoleCode.DIRECTOR);
-    } else if (code === 'FINANCE') {
-      if (mod.allow_write || mod.tier_level <= 2) {
-        derived.add(RoleCode.FINANCE);
-      }
-    } else if (code === 'INVENTORY' || code === 'PROCUREMENT') {
-      if (mod.allow_write || mod.tier_level <= 2) {
-        derived.add(RoleCode.OPERATIONAL_MANAGER);
-      }
-    } else if (code === 'CRM' || code === 'SALES') {
-      if (mod.tier_level <= 2 && mod.data_scope === 'ALL') {
-        derived.add(RoleCode.CRM_LEAD);
-      } else if (mod.allow_write) {
-        derived.add(RoleCode.SALES);
-      }
-    } else if (code === 'PROJECTS') {
-      if (mod.tier_level === 1 && mod.allow_write) {
-        derived.add(RoleCode.PROJECT_MANAGER);
-      } else if (mod.tier_level === 2) {
-        derived.add(RoleCode.SUPERVISOR);
-      } else {
-        derived.add(RoleCode.STAFF);
-      }
-    }
-  }
-
-  if (String(params.roleLevel || '').toUpperCase() === 'SPV' && !derived.has(RoleCode.PROJECT_MANAGER)) {
-    derived.add(RoleCode.SUPERVISOR);
-  }
-
-  if (derived.size === 0) {
-    derived.add(RoleCode.STAFF);
-  }
-
-  return Array.from(derived);
-}
-
+/** Read-only legacy translation for profiles that predate module role assignments. */
 export async function getUserQuickAccess(companyId: string, userId: string) {
   const membership = await prisma.iam_user_company_membership.findFirst({
     where: { company_id: companyId, user_id: userId, status: 'ACTIVE' },
@@ -520,10 +430,11 @@ export async function getUserQuickAccess(companyId: string, userId: string) {
     .filter((c): c is RoleCode => c !== null);
 
   const fallbackMerged = mergeLegacyRoleTranslations(roleCodes);
+  const now = new Date();
 
   let enabledWidgets: DashboardWidgetCode[];
   if (dashboardRows.length > 0) {
-    const set = new Set<DashboardWidgetCode>(['DASH_PERSONAL']);
+    const set = new Set<DashboardWidgetCode>();
     for (const row of dashboardRows) {
       if (row.is_enabled) {
         set.add(row.widget_code as DashboardWidgetCode);
@@ -537,23 +448,37 @@ export async function getUserQuickAccess(companyId: string, userId: string) {
   const effectiveModules: TranslatedModuleGrant[] =
     moduleAssignments.length > 0
       ? moduleAssignments.map((ma) => {
-          const override = moduleAccessRows.find(
-            (r) => r.module_code.toUpperCase() === ma.module_code.toUpperCase()
-          );
-          return {
-            module_code: ma.module_code.toUpperCase(),
-            tier_level: ma.tier_level,
-            allow_read: override ? override.allow_read : true,
-            allow_write: override ? override.allow_write : ma.tier_level > 0,
-            data_scope: (ma.data_scope?.toUpperCase() as DataScopeType) || 'OWN',
-          };
-        })
+        const override = moduleAccessRows.find(
+          (r) => r.module_code.toUpperCase() === ma.module_code.toUpperCase()
+        );
+        return {
+          module_code: ma.module_code.toUpperCase(),
+          tier_level: ma.tier_level,
+          allow_read: override ? override.allow_read : true,
+          allow_write: override ? override.allow_write : ma.tier_level > 0,
+          data_scope: (ma.data_scope?.toUpperCase() as DataScopeType) || 'OWN',
+        };
+      })
       : fallbackMerged.modules;
 
-  // Ensure baseline PROJECTS is always represented
-  if (!effectiveModules.some((m) => m.module_code === 'PROJECTS')) {
-    effectiveModules.push({ ...BASELINE_PROJECTS_GRANT });
-  }
+  const entitlementRows = await prisma.iam_company_module_access.findMany({ where: { company_id: companyId } });
+  const enabledModules = new Set(entitlementRows.filter((row) =>
+    row.enabled
+    && row.allow_read
+    && (!row.effective_from || row.effective_from <= now)
+    && (!row.effective_until || row.effective_until >= now),
+  ).map((row) => row.module_code.toUpperCase()));
+  const activeAssignments = moduleAssignments.filter((assignment) =>
+    assignment.status === 'ACTIVE'
+    && enabledModules.has(assignment.module_code.toUpperCase())
+    && (!assignment.effective_from || assignment.effective_from <= now)
+    && (!assignment.effective_until || assignment.effective_until >= now),
+  );
+  const visibleModules = effectiveModules.filter((module) => enabledModules.has(module.module_code.toUpperCase()));
+  const visibleWidgets = enabledWidgets.filter((widget) => {
+    const requiredModule = DASHBOARD_WIDGET_CATALOG.find((item) => item.code === widget)?.required_module;
+    return !requiredModule || (enabledModules.has(requiredModule) && activeAssignments.some((a) => a.module_code.toUpperCase() === requiredModule));
+  });
 
   const isLegacyTransition =
     moduleAssignments.length === 0 &&
@@ -596,8 +521,10 @@ export async function getUserQuickAccess(companyId: string, userId: string) {
     legacy_roles: roleCodes,
     roles: roleCodes,
     org_memberships: orgMemberships,
-    modules: effectiveModules,
-    dashboard_widgets: enabledWidgets,
+    modules: visibleModules,
+    dashboard_widgets: visibleWidgets,
+    enabled_modules: Array.from(enabledModules),
+    module_assignments: activeAssignments,
     catalog: DASHBOARD_WIDGET_CATALOG,
     presets: QUICK_ACCESS_PRESETS,
   };
@@ -641,6 +568,8 @@ export async function syncUserQuickAccess(input: SyncUserQuickAccessInput) {
     }
 
     const tenantId = input.tenantId || membership.tenant_id;
+    const companyEntitlements = await tx.iam_company_module_access.findMany({ where: { company_id: companyId } });
+    const entitlementByModule = new Map(companyEntitlements.map((row) => [row.module_code.toUpperCase(), row]));
     const existingUser = await tx.iam_user.findUnique({ where: { id: userId } });
     if (!existingUser) {
       throw new NotFoundError('User tidak ditemukan.');
@@ -683,7 +612,7 @@ export async function syncUserQuickAccess(input: SyncUserQuickAccessInput) {
     // Resolve preset if presetKey was provided
     const presetSpec = input.presetKey
       ? QUICK_ACCESS_PRESETS.find((p) => p.preset_key === input.presetKey) ||
-        LEGACY_ROLE_TRANSLATION_MAP[input.presetKey]
+      LEGACY_ROLE_TRANSLATION_MAP[input.presetKey]
       : undefined;
 
     const resolvedRoleLevel: DepartmentRoleLevel =
@@ -747,13 +676,13 @@ export async function syncUserQuickAccess(input: SyncUserQuickAccessInput) {
       // Sync master_employee if linked by email or user_id
       const masterDept = targetDepartmentCode
         ? await tx.master_department.findFirst({
-            where: { company_id: companyId, department_code: targetDepartmentCode },
-          })
+          where: { company_id: companyId, department_code: targetDepartmentCode },
+        })
         : null;
       const masterCc = targetDepartmentCode
         ? await tx.master_cost_center.findFirst({
-            where: { company_id: companyId, cost_center_code: `CC-${targetDepartmentCode}` },
-          })
+          where: { company_id: companyId, cost_center_code: `CC-${targetDepartmentCode}` },
+        })
         : null;
       if (masterDept || masterCc) {
         await tx.master_employee.updateMany({
@@ -769,23 +698,20 @@ export async function syncUserQuickAccess(input: SyncUserQuickAccessInput) {
       }
     }
 
-    // 3. Resolve dashboard widgets (DASH_PERSONAL is always enabled)
-    const rawWidgets =
-      input.dashboardWidgets !== undefined
-        ? input.dashboardWidgets
-        : presetSpec
-        ? presetSpec.dashboard_widgets
-        : ['DASH_PERSONAL'];
-    const enabledWidgetSet = new Set<string>(['DASH_PERSONAL']);
-    for (const w of rawWidgets) {
+    // 3. Dashboard preferences never create module permissions.
+    const rawWidgets = input.dashboardWidgets !== undefined
+      ? input.dashboardWidgets
+      : presetSpec?.dashboard_widgets;
+    const enabledWidgetSet = new Set<string>();
+    for (const w of rawWidgets ?? []) {
       const upper = String(w || '').trim().toUpperCase();
       if (DASHBOARD_WIDGET_CATALOG.some((item) => item.code === upper)) {
         enabledWidgetSet.add(upper);
       }
     }
 
-    for (const item of DASHBOARD_WIDGET_CATALOG) {
-      const isEnabled = item.code === 'DASH_PERSONAL' ? true : enabledWidgetSet.has(item.code);
+    for (const item of rawWidgets ? DASHBOARD_WIDGET_CATALOG : []) {
+      const isEnabled = enabledWidgetSet.has(item.code);
       await tx.iam_user_dashboard_access.upsert({
         where: {
           company_id_user_id_widget_code: {
@@ -810,24 +736,23 @@ export async function syncUserQuickAccess(input: SyncUserQuickAccessInput) {
       });
     }
 
-    // 4. Resolve module grants (always keep PROJECTS baseline active)
+    // 4. Legacy quick access may only edit modules explicitly enabled in LEGACY mode.
     const moduleGrantMap = new Map<string, TranslatedModuleGrant>();
     if (input.modules && input.modules.length > 0) {
       for (const m of input.modules) {
         const code = String(m.module_code || '').trim().toUpperCase();
         if (!code) continue;
         const enabled = m.enabled !== undefined ? Boolean(m.enabled) : Boolean(m.allow_read ?? true);
-        if (!enabled && code !== 'PROJECTS') continue;
+        const entitlement = entitlementByModule.get(code);
+        if (!enabled || !entitlement?.enabled || entitlement.access_mode !== 'LEGACY') continue;
         const tier = typeof m.tier_level === 'number' ? m.tier_level : 3;
         moduleGrantMap.set(code, {
           module_code: code,
           tier_level: tier,
-          allow_read: code === 'PROJECTS' ? true : Boolean(m.allow_read ?? true),
+          allow_read: Boolean(m.allow_read ?? true),
           allow_write:
             m.allow_write !== undefined
               ? Boolean(m.allow_write)
-              : code === 'PROJECTS'
-              ? true
               : tier > 0,
           data_scope: ((m.data_scope || (tier <= 1 ? 'ALL' : tier === 2 ? 'TEAM' : 'OWN'))
             .toString()
@@ -840,33 +765,8 @@ export async function syncUserQuickAccess(input: SyncUserQuickAccessInput) {
       }
     }
 
-    // Guarantee baseline PROJECTS grant
-    if (!moduleGrantMap.has('PROJECTS')) {
-      moduleGrantMap.set('PROJECTS', { ...BASELINE_PROJECTS_GRANT });
-    }
-    // If a dashboard widget requires a module, ensure at least read access on that module
-    for (const item of DASHBOARD_WIDGET_CATALOG) {
-      if (enabledWidgetSet.has(item.code) && item.required_module) {
-        const reqMod = item.required_module.toUpperCase();
-        if (!moduleGrantMap.has(reqMod)) {
-          const isExecOnly = item.code === 'DASH_EXECUTIVE';
-          moduleGrantMap.set(reqMod, {
-            module_code: reqMod,
-            tier_level: isExecOnly ? 0 : 1,
-            allow_read: true,
-            allow_write: !isExecOnly,
-            data_scope: 'ALL',
-          });
-        }
-        if (reqMod === 'CRM' && !moduleGrantMap.has('SALES')) {
-          const crmGrant = moduleGrantMap.get('CRM')!;
-          moduleGrantMap.set('SALES', { ...crmGrant, module_code: 'SALES' });
-        }
-      }
-    }
-
     const ALL_KNOWN_MODULES = ['PROJECTS', 'FINANCE', 'CRM', 'SALES', 'INVENTORY', 'PROCUREMENT', 'REPORTING'];
-    for (const modCode of ALL_KNOWN_MODULES) {
+    for (const modCode of input.modules !== undefined || presetSpec ? ALL_KNOWN_MODULES : []) {
       const grant = moduleGrantMap.get(modCode);
       if (grant) {
         await tx.iam_user_module_access.upsert({
@@ -890,152 +790,57 @@ export async function syncUserQuickAccess(input: SyncUserQuickAccessInput) {
           },
         });
 
-        await tx.iam_user_module_assignment.upsert({
-          where: {
-            company_id_user_id_module_code: {
+        const existingLegacyAssignment = await tx.iam_user_module_assignment.findFirst({
+          where: { company_id: companyId, user_id: userId, module_code: modCode, profile_id: null },
+          select: { id: true },
+        });
+        const assignmentData = {
+            tier_level: grant.tier_level,
+            position_title: resolvedJobTitle,
+            department_id: targetDepartmentId,
+            reports_to_user_id: resolvedReportsTo,
+            data_scope: grant.data_scope,
+            status: 'ACTIVE',
+        };
+        if (existingLegacyAssignment) {
+          await tx.iam_user_module_assignment.update({ where: { id: existingLegacyAssignment.id }, data: assignmentData });
+        } else {
+          await tx.iam_user_module_assignment.create({
+            data: {
+              id: deterministicUuid(`mod-asg:${companyId}:${userId}:${modCode}`),
+              tenant_id: tenantId,
               company_id: companyId,
               user_id: userId,
               module_code: modCode,
+              tier_level: grant.tier_level,
+              position_title: resolvedJobTitle,
+              department_id: targetDepartmentId,
+              reports_to_user_id: resolvedReportsTo,
+              data_scope: grant.data_scope,
+              is_primary: modCode === 'PROJECTS',
+              status: 'ACTIVE',
+              created_by_id: actorId || null,
             },
-          },
-          update: {
-            tier_level: grant.tier_level,
-            position_title: resolvedJobTitle,
-            department_id: targetDepartmentId,
-            reports_to_user_id: resolvedReportsTo,
-            data_scope: grant.data_scope,
-            status: 'ACTIVE',
-          },
-          create: {
-            id: deterministicUuid(`mod-asg:${companyId}:${userId}:${modCode}`),
-            tenant_id: tenantId,
-            company_id: companyId,
-            user_id: userId,
-            module_code: modCode,
-            tier_level: grant.tier_level,
-            position_title: resolvedJobTitle,
-            department_id: targetDepartmentId,
-            reports_to_user_id: resolvedReportsTo,
-            data_scope: grant.data_scope,
-            is_primary: modCode === 'PROJECTS',
-            status: 'ACTIVE',
-            created_by_id: actorId || null,
-          },
-        });
+          });
+        }
       } else {
         await tx.iam_user_module_access.updateMany({
           where: { company_id: companyId, user_id: userId, module_code: modCode },
           data: { allow_read: false, allow_write: false },
         });
         await tx.iam_user_module_assignment.updateMany({
-          where: { company_id: companyId, user_id: userId, module_code: modCode },
+          where: { company_id: companyId, user_id: userId, module_code: modCode, profile_id: null },
           data: { status: 'INACTIVE' },
         });
       }
     }
 
-    // 5. Full Reconcile & Prune iam_user_role (protect COMPANY_ADMIN & SUPER_ADMIN)
+    // Global iam_user_role is governance/legacy identity data. Module edits must
+    // never synthesize or prune global roles from permissions.
     const activeGrants = Array.from(moduleGrantMap.values());
-    const derivedRoleCodes = deriveManagedRoleCodes({
-      modules: activeGrants,
-      dashboardWidgets: Array.from(enabledWidgetSet),
-      roleLevel: resolvedRoleLevel,
-    });
-    const derivedSet = new Set<RoleCode>(derivedRoleCodes);
-
-    // Map RoleCode -> best iam_role record for this tenant
-    const roleRecordByCode = new Map<RoleCode, { id: string; role_code: RoleCode }>();
-    for (const r of allCompanyRoles) {
-      const parsed = parseRoleCode(r.role_code);
-      if (!parsed) continue;
-      const existing = roleRecordByCode.get(parsed);
-      if (!existing || r.tenant_id === tenantId) {
-        roleRecordByCode.set(parsed, { id: r.id, role_code: parsed });
-      }
-    }
-
-    const existingRoleCodeSet = new Set<RoleCode>();
-    const roleRowsToDelete: string[] = [];
-    const protectedRoleIds = new Set<string>();
-
-    for (const ur of existingRoleRows) {
-      const roleObj = ur.role_id ? roleById.get(ur.role_id) : undefined;
-      const parsed = roleObj ? parseRoleCode(roleObj.role_code) : null;
-      if (!parsed) continue;
-
-      if (parsed === RoleCode.COMPANY_ADMIN || parsed === RoleCode.SUPER_ADMIN) {
-        protectedRoleIds.add(ur.role_id!);
-        existingRoleCodeSet.add(parsed);
-        continue;
-      }
-
-      if (MANAGED_DOMAIN_ROLE_CODES.includes(parsed) && !derivedSet.has(parsed)) {
-        roleRowsToDelete.push(ur.id);
-      } else {
-        existingRoleCodeSet.add(parsed);
-      }
-    }
-
-    if (roleRowsToDelete.length > 0) {
-      await tx.iam_user_role.deleteMany({
-        where: { id: { in: roleRowsToDelete } },
-      });
-    }
-
-    for (const code of derivedRoleCodes) {
-      if (!existingRoleCodeSet.has(code)) {
-        const targetRole = roleRecordByCode.get(code);
-        if (targetRole) {
-          await tx.iam_user_role.create({
-            data: {
-              id: deterministicUuid(`user-role:${companyId}:${userId}:${targetRole.id}:${Date.now()}`),
-              tenant_id: tenantId,
-              company_id: companyId,
-              user_id: userId,
-              role_id: targetRole.id,
-              created_by_id: actorId || null,
-            },
-          });
-        }
-      }
-    }
-
-    // Reconcile active_role_id if previous active role was pruned
-    const remainingRoleCodes = new Set<RoleCode>([
-      ...Array.from(existingRoleCodeSet).filter((c) =>
-        c === RoleCode.COMPANY_ADMIN || c === RoleCode.SUPER_ADMIN || derivedSet.has(c)
-      ),
-      ...derivedRoleCodes,
-    ]);
-    const currentActiveRoleObj = existingUser.active_role_id
-      ? roleById.get(existingUser.active_role_id)
-      : undefined;
-    const currentActiveParsed = currentActiveRoleObj
-      ? parseRoleCode(currentActiveRoleObj.role_code)
-      : null;
-
-    if (!currentActiveParsed || !remainingRoleCodes.has(currentActiveParsed)) {
-      const preferredOrder: RoleCode[] = [
-        RoleCode.COMPANY_ADMIN,
-        RoleCode.DIRECTOR,
-        RoleCode.OPERATIONAL_MANAGER,
-        RoleCode.PROJECT_MANAGER,
-        RoleCode.FINANCE,
-        RoleCode.CRM_LEAD,
-        RoleCode.SUPERVISOR,
-        RoleCode.SALES,
-        RoleCode.STAFF,
-      ];
-      const nextPrimaryCode =
-        preferredOrder.find((c) => remainingRoleCodes.has(c)) || derivedRoleCodes[0] || RoleCode.STAFF;
-      const nextRoleRec = roleRecordByCode.get(nextPrimaryCode);
-      if (nextRoleRec) {
-        await tx.iam_user.update({
-          where: { id: userId },
-          data: { active_role_id: nextRoleRec.id },
-        });
-      }
-    }
+    const remainingRoleCodes = new Set<RoleCode>(
+      beforeRoleCodes.map(parseRoleCode).filter((code): code is RoleCode => code !== null),
+    );
 
     // 6. Audit log to iam_assignment_history
     await tx.iam_assignment_history.create({

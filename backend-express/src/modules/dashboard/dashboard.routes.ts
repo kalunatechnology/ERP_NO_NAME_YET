@@ -150,21 +150,20 @@ async function loadProjectBundle(req: Request, includeFinance: boolean, allowedW
     );
   }
 
-  const isCompanyPortfolioRole = ([
+  const assignmentMode = req.moduleAccess?.accessMode === 'ASSIGNMENT';
+  const isCompanyPortfolioRole = !assignmentMode && ([
     RoleCode.SUPER_ADMIN,
     RoleCode.COMPANY_ADMIN,
     RoleCode.DIRECTOR,
     RoleCode.OPERATIONAL_MANAGER,
   ] as RoleCode[]).includes(activeRole as RoleCode);
-  const isProjectManagerRole = activeRole === RoleCode.PROJECT_MANAGER;
+  const isProjectManagerRole = !assignmentMode && activeRole === RoleCode.PROJECT_MANAGER;
   const projectsAssignment = (req.user as any)?.module_assignments?.find(
     (m: any) => String(m.module_code || '').toUpperCase() === 'PROJECTS'
   );
-  const hasProjectsManagerTier = Boolean(
-    projectsAssignment &&
-      Number(projectsAssignment.tier_level) <= 1 &&
-      String(projectsAssignment.data_scope || '').toUpperCase() === 'ALL'
-  );
+  const hasProjectsManagerTier = Boolean(projectsAssignment && String(projectsAssignment.data_scope || '').toUpperCase() === 'ALL'
+    && (!assignmentMode || (Boolean(projectsAssignment.profile_id && projectsAssignment.profile_active)
+      && Boolean(projectsAssignment.allow_read))));
   const isOperationalUser =
     !isCompanyPortfolioRole && !isProjectManagerRole && !hasProjectsManagerTier;
   const managedProjectRows = managementWorkspace && isOperationalUser

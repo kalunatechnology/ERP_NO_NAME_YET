@@ -18,6 +18,7 @@ export interface AuthenticatedUser {
   delegated_modules?: string[];
   module_access?: ModulePermission[];
   module_assignments?: any[];
+  module_role_profiles?: string[];
   permission_overrides?: any[];
   cross_module_capabilities?: any[];
   department_id?: string | null;
@@ -38,7 +39,7 @@ declare global {
       requestId?: string;
       /** Set by entitlement middleware so downstream role checks know whether
        * the request is an explicit Company-Admin delegation. */
-      moduleAccess?: { moduleCode: string; delegated: boolean; allowRead: boolean; allowWrite: boolean };
+      moduleAccess?: { moduleCode: string; delegated: boolean; allowRead: boolean; allowWrite: boolean; accessMode?: 'LEGACY' | 'ASSIGNMENT' };
     }
   }
 }
