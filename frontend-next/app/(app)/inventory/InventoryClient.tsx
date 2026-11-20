@@ -90,8 +90,15 @@ function downloadProductTemplate() {
 export default function InventoryClient() {
   const { user, userRole, isLoading: authLoading } = useAuth();
   const isAllowed = !authLoading && canAccessRoute({
-    pathname: "/inventory", enabledModules: user?.enabled_modules, delegatedModules: user?.delegated_modules,
-    moduleAccess: user?.module_access, activeRoleCode: user?.active_role_code, isSuperAdmin: userRole === "super_admin",
+    pathname: "/inventory",
+    enabledModules: user?.enabled_modules,
+    moduleAccessModes: user?.module_access_modes,
+    delegatedModules: user?.delegated_modules,
+    moduleAccess: user?.module_access,
+    moduleAssignments: user?.module_assignments,
+    permissionOverrides: user?.permission_overrides,
+    activeRoleCode: user?.active_role_code,
+    isSuperAdmin: userRole === "super_admin",
   });
   const [tab, setTab] = useState<TabKey>("overview");
   const [warehouseSubTab, setWarehouseSubTab] = useState<"warehouses" | "locations" | "virtual" | "categories" | "products" | "serials">("warehouses");

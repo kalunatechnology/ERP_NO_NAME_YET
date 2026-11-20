@@ -4080,7 +4080,11 @@ export default function CrmClient() {
   const isAllowed = !authLoading && canAccessRoute({
     pathname: "/crm",
     enabledModules: user?.enabled_modules,
+    moduleAccessModes: user?.module_access_modes,
     delegatedModules: user?.delegated_modules,
+    moduleAccess: user?.module_access,
+    moduleAssignments: user?.module_assignments,
+    permissionOverrides: user?.permission_overrides,
     activeRoleCode: user?.active_role_code,
     isSuperAdmin: isSuper,
   });
@@ -4123,7 +4127,9 @@ export default function CrmClient() {
     setLoadError(null);
     try {
       const { data, dashboard } = await loadCRMData(Array.from(enabledModules), undefined, {
+        moduleAccessModes: user?.module_access_modes,
         delegatedModules: user?.delegated_modules,
+        moduleAccess: user?.module_access,
         moduleAssignments: user?.module_assignments,
         permissionOverrides: user?.permission_overrides,
         activeRoleCode: user?.active_role_code,

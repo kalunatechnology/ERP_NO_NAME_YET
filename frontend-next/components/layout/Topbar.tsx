@@ -58,8 +58,11 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
   const canOpenReporting = canAccessRoute({
     pathname: "/reporting",
     enabledModules: user?.enabled_modules,
+    moduleAccessModes: user?.module_access_modes,
     delegatedModules: user?.delegated_modules,
     moduleAccess: user?.module_access,
+    moduleAssignments: user?.module_assignments,
+    permissionOverrides: user?.permission_overrides,
     activeRoleCode: user?.active_role_code,
     isSuperAdmin: userRole === "super_admin",
   });

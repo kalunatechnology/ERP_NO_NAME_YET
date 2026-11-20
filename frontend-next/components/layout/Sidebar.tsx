@@ -58,15 +58,21 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
   const badgeStyle = getRoleBadgeStyle(userRole);
   const navItems = getNavigationEntries({
     enabledModules: user?.enabled_modules,
+    moduleAccessModes: user?.module_access_modes,
     delegatedModules: user?.delegated_modules,
     moduleAccess: user?.module_access,
+    moduleAssignments: user?.module_assignments,
+    permissionOverrides: user?.permission_overrides,
     activeRoleCode: user?.active_role_code,
     isSuperAdmin: userRole === "super_admin",
   }).map((entry) => ({ ...entry, icon: NAV_ICONS[entry.href] ?? FileText }));
   const recentAccess = {
     enabledModules: user?.enabled_modules,
+    moduleAccessModes: user?.module_access_modes,
     delegatedModules: user?.delegated_modules,
     moduleAccess: user?.module_access,
+    moduleAssignments: user?.module_assignments,
+    permissionOverrides: user?.permission_overrides,
     activeRoleCode: user?.active_role_code,
     isSuperAdmin: userRole === "super_admin",
   };

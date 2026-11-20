@@ -123,8 +123,11 @@ export function hasModuleEntitlement(
 export function canAccessRoute(input: {
   pathname: string;
   enabledModules?: readonly string[] | null;
+  moduleAccessModes?: FrontendAccessContext['moduleAccessModes'];
   delegatedModules?: readonly string[] | null;
   moduleAccess?: readonly ModulePermission[] | null;
+  moduleAssignments?: FrontendAccessContext['moduleAssignments'];
+  permissionOverrides?: FrontendAccessContext['permissionOverrides'];
   activeRoleCode?: unknown;
   isSuperAdmin?: boolean;
 }): boolean {
@@ -136,6 +139,29 @@ export function canAccessRoute(input: {
 
   const bypassesModule = Boolean(contract.moduleBypassRoles?.includes(activeRole));
   if (!bypassesModule && !hasModuleEntitlement(input.enabledModules, contract.module)) return false;
+
+  const moduleAccessMode = input.moduleAccessModes?.find((item) =>
+    String(item.module_code || "").toUpperCase() === contract.module
+  )?.access_mode?.toUpperCase();
+  if (moduleAccessMode === "ASSIGNMENT" && contract.module) {
+    const assignments = (input.moduleAssignments ?? []).filter((assignment) =>
+      isUsableModuleAssignment(assignment, contract.module!)
+    );
+    if (!assignments.length) return false;
+    const readOverride = input.permissionOverrides?.find((item) =>
+      String(item.module_code || "").toUpperCase() === contract.module
+      && String(item.action_code || "").toUpperCase() === "READ"
+    );
+    if (String(readOverride?.effect || "").toUpperCase() === "DENY") return false;
+    const hasRead = assignments.some((assignment) => {
+      if (typeof assignment.allow_read === "boolean") return assignment.allow_read;
+      const codes = new Set((assignment.capability_codes || []).map((code: string) => String(code).toUpperCase()));
+      return codes.has("READ") || codes.has(`${contract.module}:READ`);
+    });
+    if (!hasRead && String(readOverride?.effect || "").toUpperCase() !== "ALLOW") return false;
+    if (!contract.roles || contract.allowDelegation !== false) return true;
+  }
+
   const override = contract.module && getModuleOverride(input.moduleAccess, contract.module);
   if (override && !override.allow_read) return false;
   if (!contract.roles || contract.roles.includes(activeRole)) return true;
