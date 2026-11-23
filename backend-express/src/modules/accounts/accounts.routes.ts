@@ -15,6 +15,28 @@ import {
   extractCookie,
   setSessionCookies,
 } from '../../utils/session-cookie';
+import {
+  checkMfaVerifyRateLimit,
+  clearMfaFailures,
+  loginRateLimiter,
+  recordAuthFailure,
+  recordAuthSuccess,
+  recordMfaFailure,
+  unlockAuthAccount,
+} from '../../middlewares/auth-rate-limit.middleware';
+import {
+  buildOtpAuthUri,
+  decryptMfaSecret,
+  encryptMfaSecret,
+  ensureMfaColumns,
+  generateBase32Secret,
+  generateRecoveryCodes,
+  hashRecoveryCode,
+  signMfaChallengeToken,
+  verifyMfaChallengeToken,
+  verifyTotpCode,
+} from '../../utils/mfa';
+import { signTokenPair } from '../../utils/jwt';
 import { createCrudRouter } from '../../utils/crud-factory';
 import prisma from '../../config/database';
 import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
@@ -50,22 +72,248 @@ export const accountsRouter = Router();
  * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-publicAuthRouter.post('/token', async (req: Request, res: Response, next: NextFunction) => {
+async function checkAdminMfaRequirement(userId: string, roles: Array<string | { role_code?: string | null }>): Promise<{
+  required: boolean;
+  setupRequired: boolean;
+}> {
+  await ensureMfaColumns();
+  const rows = await prisma.$queryRawUnsafe<Array<{ mfa_enabled: boolean }>>(
+    `SELECT COALESCE("mfa_enabled", false) AS mfa_enabled FROM "iam_user" WHERE "id" = $1 LIMIT 1`,
+    userId,
+  ).catch(() => []);
+  const mfaEnabled = Boolean(rows[0]?.mfa_enabled);
+  if (mfaEnabled) return { required: true, setupRequired: false };
+  const roleCodes = roles.map((r) => String(typeof r === 'string' ? r : (r?.role_code ?? '')).trim().toUpperCase());
+  const isPrivileged = roleCodes.some((r) => r === RoleCode.SUPER_ADMIN || r === RoleCode.COMPANY_ADMIN);
+  if (isPrivileged && process.env.ERP_ENFORCE_ADMIN_MFA === 'true') {
+    return { required: false, setupRequired: true };
+  }
+  return { required: false, setupRequired: false };
+}
+
+publicAuthRouter.post('/token', loginRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
   const startedAt = performance.now();
+  const identifier = String(req.body.email || req.body.username || '');
+  const password = String(req.body.password || '');
   try {
-    const identifier = req.body.email || req.body.username || '';
-    const password = req.body.password || '';
     const result = await AccountsService.login(identifier, password);
+    recordAuthSuccess(String(req.ip || ''), identifier);
     applyNoStoreHeaders(res);
+
+    const mfaState = await checkAdminMfaRequirement(result.user.id, result.user.roles ?? []);
+    if (mfaState.required) {
+      res.setHeader('Server-Timing', `auth;dur=${(performance.now() - startedAt).toFixed(1)}`);
+      res.json({
+        status: 'MFA_REQUIRED',
+        mfa_token: signMfaChallengeToken(result.user.id, 'mfa_pending'),
+      });
+      return;
+    }
+    if (mfaState.setupRequired) {
+      res.setHeader('Server-Timing', `auth;dur=${(performance.now() - startedAt).toFixed(1)}`);
+      res.json({
+        status: 'MFA_SETUP_REQUIRED',
+        setup_token: signMfaChallengeToken(result.user.id, 'mfa_setup'),
+      });
+      return;
+    }
+
     setSessionCookies(req, res, { access: result.access, refresh: result.refresh });
     res.setHeader('Server-Timing', `auth;dur=${(performance.now() - startedAt).toFixed(1)}`);
     res.json(result);
   } catch (err) {
+    const failure = recordAuthFailure(String(req.ip || ''), identifier);
     if (!res.headersSent) res.setHeader('Server-Timing', `auth;dur=${(performance.now() - startedAt).toFixed(1)}`);
+    if (failure.locked) {
+      res.status(423).json({
+        success: false,
+        error_code: 'ACCOUNT_LOCKED',
+        message:
+          'Akun dikunci karena 5 kali percobaan login gagal. Hubungi Administrator TI untuk membuka kunci akun.',
+      });
+      return;
+    }
     next(err);
   } finally {
     const totalMs = performance.now() - startedAt;
     if (totalMs > 10000) console.warn(`[auth-latency] stage=login-total duration_ms=${totalMs.toFixed(0)}`);
+  }
+});
+
+// MFA Endpoints (/api/v1/auth/mfa/*)
+publicAuthRouter.post('/mfa/enroll', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await ensureMfaColumns();
+    applyNoStoreHeaders(res);
+    const setupToken = String(req.body.setup_token || '').trim();
+    let userId = '';
+    if (setupToken) {
+      const challenge = verifyMfaChallengeToken(setupToken, 'mfa_setup');
+      if (!challenge) throw new ForbiddenError('Token setup MFA tidak valid atau kedaluwarsa.');
+      userId = challenge.userId;
+    } else {
+      await new Promise<void>((resolve, reject) =>
+        authenticate(req, res, (err?: any) => (err ? reject(err) : resolve())),
+      );
+      userId = req.user!.id;
+    }
+    const user = await prisma.iam_user.findUnique({ where: { id: userId }, select: { id: true, email: true } });
+    if (!user) throw new NotFoundError('User');
+    const secret = generateBase32Secret();
+    const encrypted = encryptMfaSecret(secret);
+    await prisma.$executeRawUnsafe(
+      `UPDATE "iam_user" SET "mfa_secret_encrypted" = $1, "mfa_enabled" = false WHERE "id" = $2`,
+      encrypted,
+      user.id,
+    );
+    res.json({
+      success: true,
+      secret,
+      otpauth_uri: buildOtpAuthUri(user.email, secret),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+publicAuthRouter.post('/mfa/confirm', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await ensureMfaColumns();
+    applyNoStoreHeaders(res);
+    const setupToken = String(req.body.setup_token || '').trim();
+    const code = String(req.body.code || '').trim();
+    let userId = '';
+    if (setupToken) {
+      const challenge = verifyMfaChallengeToken(setupToken, 'mfa_setup');
+      if (!challenge) throw new ForbiddenError('Token setup MFA tidak valid atau kedaluwarsa.');
+      userId = challenge.userId;
+    } else {
+      await new Promise<void>((resolve, reject) =>
+        authenticate(req, res, (err?: any) => (err ? reject(err) : resolve())),
+      );
+      userId = req.user!.id;
+    }
+    const rows = await prisma.$queryRawUnsafe<Array<{ mfa_secret_encrypted: string | null }>>(
+      `SELECT "mfa_secret_encrypted" FROM "iam_user" WHERE "id" = $1 LIMIT 1`,
+      userId,
+    );
+    const encrypted = rows[0]?.mfa_secret_encrypted;
+    if (!encrypted) throw new ValidationError('Inisiasi enroll MFA terlebih dahulu.');
+    const secret = decryptMfaSecret(encrypted);
+    if (!verifyTotpCode(secret, code)) {
+      throw new ValidationError('Kode OTP 6 digit tidak valid.');
+    }
+    const recovery = generateRecoveryCodes(8);
+    await prisma.$executeRawUnsafe(
+      `UPDATE "iam_user" SET "mfa_enabled" = true, "mfa_recovery_codes" = $1::jsonb, "mfa_verified_at" = NOW() WHERE "id" = $2`,
+      JSON.stringify(recovery.hashes),
+      userId,
+    );
+    const userContext = await AccountsService.getCurrentUser(userId);
+    const tokens = signTokenPair({
+      userId: userContext.id,
+      email: userContext.email,
+      full_name: userContext.full_name ?? '',
+      tenant_id: userContext.tenant_id ?? null,
+      roles: (userContext.roles ?? []).map((r: any) => String(typeof r === 'string' ? r : (r?.role_code ?? ''))).filter(Boolean),
+    });
+    setSessionCookies(req, res, tokens);
+    res.json({
+      success: true,
+      recovery_codes: recovery.plain,
+      ...tokens,
+      user: userContext,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+publicAuthRouter.post('/mfa/verify', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await ensureMfaColumns();
+    applyNoStoreHeaders(res);
+    const mfaToken = String(req.body.mfa_token || '').trim();
+    const code = String(req.body.code || '').trim();
+    const challenge = verifyMfaChallengeToken(mfaToken, 'mfa_pending');
+    if (!challenge) throw new ForbiddenError('Sesi verifikasi MFA tidak valid atau kedaluwarsa. Silakan login ulang.');
+    const rate = checkMfaVerifyRateLimit(`mfa:${challenge.userId}`);
+    if (!rate.allowed) {
+      res.setHeader('Retry-After', String(rate.retryAfter));
+      res.status(429).json({
+        success: false,
+        error_code: 'MFA_RATE_LIMITED',
+        message: 'Terlalu banyak percobaan kode MFA gagal. Silakan login ulang dari awal.',
+      });
+      return;
+    }
+    const rows = await prisma.$queryRawUnsafe<Array<{ mfa_secret_encrypted: string | null; mfa_enabled: boolean }>>(
+      `SELECT "mfa_secret_encrypted", "mfa_enabled" FROM "iam_user" WHERE "id" = $1 LIMIT 1`,
+      challenge.userId,
+    );
+    if (!rows[0]?.mfa_enabled || !rows[0]?.mfa_secret_encrypted) {
+      throw new ValidationError('MFA belum diaktifkan pada akun ini.');
+    }
+    const secret = decryptMfaSecret(rows[0].mfa_secret_encrypted);
+    if (!verifyTotpCode(secret, code)) {
+      recordMfaFailure(`mfa:${challenge.userId}`);
+      throw new ValidationError('Kode MFA tidak valid.');
+    }
+    clearMfaFailures(`mfa:${challenge.userId}`);
+    await prisma.$executeRawUnsafe(`UPDATE "iam_user" SET "mfa_verified_at" = NOW() WHERE "id" = $1`, challenge.userId);
+    const userContext = await AccountsService.getCurrentUser(challenge.userId);
+    const tokens = signTokenPair({
+      userId: userContext.id,
+      email: userContext.email,
+      full_name: userContext.full_name ?? '',
+      tenant_id: userContext.tenant_id ?? null,
+      roles: (userContext.roles ?? []).map((r: any) => String(typeof r === 'string' ? r : (r?.role_code ?? ''))).filter(Boolean),
+    });
+    setSessionCookies(req, res, tokens);
+    res.json({ success: true, ...tokens, user: userContext });
+  } catch (err) {
+    next(err);
+  }
+});
+
+publicAuthRouter.post('/mfa/recovery', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await ensureMfaColumns();
+    applyNoStoreHeaders(res);
+    const mfaToken = String(req.body.mfa_token || '').trim();
+    const recoveryCode = String(req.body.recovery_code || '').trim();
+    const challenge = verifyMfaChallengeToken(mfaToken, 'mfa_pending');
+    if (!challenge) throw new ForbiddenError('Sesi verifikasi MFA tidak valid atau kedaluwarsa.');
+    const rows = await prisma.$queryRawUnsafe<Array<{ mfa_recovery_codes: string[] | null; mfa_enabled: boolean }>>(
+      `SELECT "mfa_recovery_codes", "mfa_enabled" FROM "iam_user" WHERE "id" = $1 LIMIT 1`,
+      challenge.userId,
+    );
+    const hashes = Array.isArray(rows[0]?.mfa_recovery_codes) ? rows[0].mfa_recovery_codes : [];
+    const targetHash = hashRecoveryCode(recoveryCode);
+    const idx = hashes.indexOf(targetHash);
+    if (!rows[0]?.mfa_enabled || idx === -1) {
+      recordMfaFailure(`mfa:${challenge.userId}`);
+      throw new ValidationError('Recovery code tidak valid atau sudah digunakan.');
+    }
+    clearMfaFailures(`mfa:${challenge.userId}`);
+    const remaining = hashes.filter((_, i) => i !== idx);
+    await prisma.$executeRawUnsafe(
+      `UPDATE "iam_user" SET "mfa_recovery_codes" = $1::jsonb, "mfa_verified_at" = NOW() WHERE "id" = $2`,
+      JSON.stringify(remaining),
+      challenge.userId,
+    );
+    const userContext = await AccountsService.getCurrentUser(challenge.userId);
+    const tokens = signTokenPair({
+      userId: userContext.id,
+      email: userContext.email,
+      full_name: userContext.full_name ?? '',
+      tenant_id: userContext.tenant_id ?? null,
+      roles: (userContext.roles ?? []).map((r: any) => String(typeof r === 'string' ? r : (r?.role_code ?? ''))).filter(Boolean),
+    });
+    setSessionCookies(req, res, tokens);
+    res.json({ success: true, remaining_recovery_codes: remaining.length, ...tokens, user: userContext });
+  } catch (err) {
+    next(err);
   }
 });
 
@@ -289,7 +537,7 @@ accountsRouter.post('/auth/active-role', authenticate, handleActiveRole);
  * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-accountsRouter.post('/auth/login', async (req: Request, res: Response, next: NextFunction) => {
+accountsRouter.post('/auth/login', loginRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const identifier = req.body.email || req.body.username || '';
     const password = req.body.password || '';
@@ -1883,6 +2131,34 @@ function mountAccountResources(router: Router) {
   router.get('/dashboard-widget-catalog', getDashboardWidgetCatalogHandler);
   router.get('/users/:userId/quick-access', requireCompanyAdmin, getUserQuickAccessHandler);
   router.put('/users/:userId/quick-access', requireCompanyAdmin, requireCompanyContextForWrite, putUserQuickAccessHandler);
+  router.post('/users/:userId/unlock-auth', requireCompanyAdmin, async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const targetUser = await prisma.iam_user.findUnique({
+        where: { id: req.params.userId },
+        select: { id: true, email: true, username: true },
+      });
+      if (!targetUser) throw new NotFoundError('User');
+      const unlockedEmail = unlockAuthAccount(targetUser.email);
+      const unlockedUsername = unlockAuthAccount(targetUser.username);
+      res.json({ success: true, unlocked: unlockedEmail || unlockedUsername });
+    } catch (err) {
+      next(err);
+    }
+  });
+  router.post('/users/:userId/reset-mfa', requireSuperAdminForWrite, async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await ensureMfaColumns();
+      const targetUser = await prisma.iam_user.findUnique({ where: { id: req.params.userId }, select: { id: true } });
+      if (!targetUser) throw new NotFoundError('User');
+      await prisma.$executeRawUnsafe(
+        `UPDATE "iam_user" SET "mfa_enabled" = false, "mfa_secret_encrypted" = NULL, "mfa_recovery_codes" = NULL, "mfa_verified_at" = NULL WHERE "id" = $1`,
+        targetUser.id,
+      );
+      res.json({ success: true, mfa_reset: true });
+    } catch (err) {
+      next(err);
+    }
+  });
   router.get('/module-hierarchy', getModuleHierarchy);
   router.post('/module-role-profiles', requireCompanyAdmin, requireCompanyContextForWrite, upsertModuleRoleProfile);
   router.post('/module-role-assignments', requireCompanyAdmin, requireCompanyContextForWrite, assignModuleRoleProfile);

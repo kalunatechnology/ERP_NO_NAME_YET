@@ -29,6 +29,7 @@ import { requireModuleAccess } from './middlewares/entitlement.middleware';
 import { errorHandler } from './middlewares/error.middleware';
 import { enforceTransactionIdempotency } from './middlewares/idempotency.middleware';
 import { noStoreMiddleware } from './utils/session-cookie';
+import { governanceRouter, publicGovernanceRouter } from './modules/governance/governance.routes';
 import { notFound } from './middlewares/not-found.middleware';
 import { normalizeRequestPath } from './middlewares/path-normalization.middleware';
 
@@ -80,6 +81,7 @@ const MARKASUIT_APP_ORIGIN_PATTERN = /^https?:\/\/app\.markasuit\.com(:\d+)?$/i;
  */
 export function createApp(): Express {
   const app = express();
+  app.set('trust proxy', 1);
 
   // Canonicalize paths before any route/security middleware. A client that
   // combines a base URL ending in `/` with `/api/...` otherwise reaches Express
@@ -191,6 +193,7 @@ export function createApp(): Express {
 
   // Public authentication endpoints are explicitly allow-listed.
   apiV1.use('/auth', noStoreMiddleware, publicAuthRouter);
+  apiV1.use('/governance', noStoreMiddleware, publicGovernanceRouter);
   // Customer portal uses a party-scoped opaque API key, never an employee JWT.
   apiV1.use('/portal', crmPortalRouter);
   // Signed system-to-system endpoint. It authenticates each request with the
@@ -285,6 +288,7 @@ export function createApp(): Express {
   );
   apiV1.use('/commands', commandsRouter);
   apiV1.use('/dashboard', dashboardRouter);
+  apiV1.use('/governance', noStoreMiddleware, governanceRouter);
 
   app.use('/api/v1', apiV1);
   app.use(

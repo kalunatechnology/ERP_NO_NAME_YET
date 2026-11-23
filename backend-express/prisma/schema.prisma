@@ -612,6 +612,74 @@ model core_audit_event {
   @@map("core_audit_event")
 }
 
+model gov_website_state {
+  id                   String   @id @default(uuid())
+  status               String   @default("staging")
+  legal_entity_name    String   @default("PT Arsalynk Teknologi Indonesia")
+  legal_entity_address String   @default("")
+  contact_email        String   @default("privacy@arsalynk.com")
+  pic_name             String   @default("Data Protection Officer")
+  tdpse_number         String   @default("")
+  canonical_domain     String   @default("https://marka.arsalynk.com")
+  server_region        String   @default("Indonesia / Asia-Pacific")
+  feature_flags_json   Json     @default("{}")
+  updated_by_id        String?
+  updated_at           DateTime @updatedAt
+
+  @@map("gov_website_state")
+}
+
+model gov_legal_document_version {
+  id                 String   @id @default(uuid())
+  doc_type           String
+  version            String
+  title              String
+  summary_of_changes String   @default("")
+  content_hash       String   @default("")
+  is_material        Boolean  @default(false)
+  is_active          Boolean  @default(true)
+  effective_at       DateTime @default(now())
+  created_at         DateTime @default(now())
+
+  @@unique([doc_type, version])
+  @@map("gov_legal_document_version")
+}
+
+model gov_consent_ledger {
+  id               String   @id @default(uuid())
+  user_id          String?
+  email            String   @default("")
+  consent_type     String
+  document_version String
+  document_hash    String   @default("")
+  granted          Boolean  @default(true)
+  ip_address       String   @default("")
+  user_agent       String   @default("")
+  created_at       DateTime @default(now())
+
+  @@index([email, consent_type])
+  @@map("gov_consent_ledger")
+}
+
+model gov_dsr_request {
+  id              String    @id @default(uuid())
+  ticket_number   String    @unique
+  user_id         String?
+  requester_email String
+  request_type    String
+  description     String    @default("")
+  status          String    @default("OPEN")
+  due_at          DateTime
+  assigned_to_id  String?
+  resolution_note String    @default("")
+  resolved_at     DateTime?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  @@index([status, due_at])
+  @@map("gov_dsr_request")
+}
+
 model core_notification {
   created_by_id      String?   @map("created_by_id")
   updated_at         DateTime? @updatedAt
@@ -883,6 +951,10 @@ model iam_user {
   role_level         DepartmentRoleLevel @default(STAFF) @map("role_level")
   reports_to_user_id String?             @map("reports_to_user_id")
   job_title          String              @default("") @map("job_title")
+  mfa_enabled          Boolean             @default(false) @map("mfa_enabled")
+  mfa_secret_encrypted String?             @map("mfa_secret_encrypted")
+  mfa_recovery_codes   Json?               @map("mfa_recovery_codes")
+  mfa_verified_at      DateTime?           @map("mfa_verified_at")
   department         core_department?    @relation(fields: [department_id], references: [id], onDelete: SetNull)
 
   @@index([department_id, role_level], map: "idx_iam_user_department_role")

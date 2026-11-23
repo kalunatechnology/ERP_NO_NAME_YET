@@ -8,6 +8,7 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import {
@@ -20,6 +21,7 @@ import {
   Check,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import api from "@/lib/api/axios";
 import { cn } from "@/lib/utils";
 import { MarkaWordmark } from "@/components/brand/MarkaWordmark";
 import toast from "react-hot-toast";
@@ -200,6 +202,9 @@ function LoginFormContent() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isLocalDev, setIsLocalDev] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [consentTerms, setConsentTerms] = useState(true);
+  const [consentPrivacy, setConsentPrivacy] = useState(true);
+  const [consentMarketing, setConsentMarketing] = useState(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -247,9 +252,22 @@ function LoginFormContent() {
       return;
     }
 
+    if (!consentTerms || !consentPrivacy) {
+      toast.error("Anda wajib menyetujui Syarat & Ketentuan serta Pemberitahuan Privasi.");
+      return;
+    }
+
     setSubmitting(true);
     try {
       await login(ident, data.password);
+      void api.post("/api/v1/governance/public/consent", {
+        email: ident,
+        consents: [
+          { consent_type: "TERMS", document_version: "1.0", granted: true },
+          { consent_type: "PRIVACY_NOTICE", document_version: "1.0", granted: true },
+          { consent_type: "MARKETING", document_version: "1.0", granted: consentMarketing },
+        ],
+      }).catch(() => {});
       
       // Authentication has completed; do not add an artificial delay to the
       // critical transition. Return to the protected route that requested
@@ -442,6 +460,53 @@ function LoginFormContent() {
                   )}
                 </div>
 
+                {/* Unbundled Consent Checkboxes (UU PDP Pasal 20) */}
+                <div className="flex flex-col gap-1.5 rounded-xl border border-slate-200/80 bg-slate-50/70 p-2.5 text-[11px] text-slate-600">
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={consentTerms}
+                      onChange={(e) => setConsentTerms(e.target.checked)}
+                      className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-[#0876CD]"
+                    />
+                    <span>
+                      Saya menyetujui{" "}
+                      <Link href="/terms" className="font-semibold text-[#0876CD] hover:underline">
+                        Syarat &amp; Ketentuan
+                      </Link>{" "}
+                      layanan MarkaSuite.
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={consentPrivacy}
+                      onChange={(e) => setConsentPrivacy(e.target.checked)}
+                      className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-[#0876CD]"
+                    />
+                    <span>
+                      Saya telah membaca{" "}
+                      <Link href="/privacy-policy" className="font-semibold text-[#0876CD] hover:underline">
+                        Kebijakan Privasi (UU PDP)
+                      </Link>{" "}
+                      &amp;{" "}
+                      <Link href="/cookie-policy" className="font-semibold text-[#0876CD] hover:underline">
+                        Kebijakan Cookie
+                      </Link>
+                      .
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={consentMarketing}
+                      onChange={(e) => setConsentMarketing(e.target.checked)}
+                      className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-[#0876CD]"
+                    />
+                    <span>(Opsional) Saya bersedia menerima pembaruan produk &amp; informasi layanan.</span>
+                  </label>
+                </div>
+
                 {/* Submit Button (Minimalist active pill indicator - matching reference) */}
                 <div className="mk-fade-up-5 flex flex-col gap-3">
                   <button
@@ -502,6 +567,18 @@ function LoginFormContent() {
                   </button>
                 </div>
               </form>
+              <div className="mt-4 border-t border-slate-100 pt-3 text-center text-[10px] leading-4 text-slate-500">
+                <div className="font-semibold text-slate-600">
+                  PT Arsalynk Teknologi Indonesia &bull; Kontak Privasi/DPO: privacy@arsalynk.com
+                </div>
+                <div className="mt-1 flex flex-wrap items-center justify-center gap-3">
+                  <Link href="/privacy-policy" className="text-[#0876CD] hover:underline">Kebijakan Privasi</Link>
+                  <span>&bull;</span>
+                  <Link href="/terms" className="text-[#0876CD] hover:underline">Syarat &amp; Ketentuan</Link>
+                  <span>&bull;</span>
+                  <Link href="/cookie-policy" className="text-[#0876CD] hover:underline">Kebijakan Cookie</Link>
+                </div>
+              </div>
             </div>
           </div>
         </div>

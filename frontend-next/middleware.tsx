@@ -36,10 +36,11 @@ export function middleware(request: NextRequest) {
   // Periksa HttpOnly cookie dari backend atau routing flag sesi
   const token = request.cookies.get('access_token')?.value || request.cookies.get('erp_session')?.value;
   const isLoginPage = pathname === '/login';
+  const isPublicLegalPage = pathname === '/privacy-policy' || pathname === '/terms' || pathname === '/cookie-policy';
   const isPublicErrorPage = pathname === '/error' || pathname.startsWith('/error/');
 
   // 1. Jika belum login dan mengakses halaman selain /login -> redirect ke /login
-  if (!token && !isLoginPage && !isPublicErrorPage) {
+  if (!token && !isLoginPage && !isPublicLegalPage && !isPublicErrorPage) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('callbackUrl', `${pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(loginUrl);

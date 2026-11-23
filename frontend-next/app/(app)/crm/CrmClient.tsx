@@ -1953,7 +1953,16 @@ function TabEstimate({ data, approvals, onRefresh, onNavigate, readOnly = false,
                       </div>
                       <StatusBadge status={e.status || "DRAFT"} />
                     </div>
-                    {canManageEstimate && (
+                    {canManageEstimate && (() => {
+                      const existingOppQuotation = e.opportunity_id
+                        ? (data.quotations || []).find((q: any) =>
+                            String(q.opportunity_id ?? q.opportunity ?? "") === String(e.opportunity_id)
+                            && !["CANCELLED", "REJECTED"].includes(String(q.status || "").toUpperCase()),
+                          )
+                        : null;
+                      const quoteExistsForOpp = Boolean(existingOppQuotation) || isEstimateLocked;
+                      const existingQuoteCode = existingOppQuotation?.quotation_code || existingOppQuotation?.quotation_number || "";
+                      return (
                       <div className="flex flex-wrap items-center gap-1.5 flex-shrink-0">
                         <ActionBtn
                           onClick={async () => {
@@ -1974,17 +1983,30 @@ function TabEstimate({ data, approvals, onRefresh, onNavigate, readOnly = false,
                           disabled={calculatingEstimateId === String(e.id) || isEstimateLocked}
                           title={isEstimateLocked ? "Estimate sudah terikat quotation; hitung ulang tanpa revisi dapat membuat nilai dokumen berbeda." : "Jumlahkan seluruh biaya langsung, overhead, dan contingency; hitung harga penawaran dari markup."}
                         />
-                        <ActionBtn onClick={async () => {
-                          try {
-                            const result = await createQuotationFromEstimate(e.id);
-                            toast.success(result?.created === false
-                              ? `Quotation sudah ada dengan status ${result.status}. Untuk mengubah nilai, buat revisi baru.`
-                              : "Draft quotation berhasil dibuat. Lanjutkan dengan persetujuan, kirim ke pelanggan, lalu catat keputusannya.");
-                            onRefresh();
-                          } catch (error: any) {
-                            toast.error(error?.response?.data?.detail || error?.response?.data?.message || "Quotation belum berhasil dibuat. Periksa status estimasi dan data pelanggan, lalu coba lagi.");
-                          }
-                        }} label="📄 Buat Quotation" small title="Buat dokumen penawaran dari hasil estimasi ini; quotation masih perlu approval dan keputusan customer." />
+                        {quoteExistsForOpp ? (
+                          <ActionBtn
+                            onClick={() => {
+                              if (existingQuoteCode) setQuotationSearch(existingQuoteCode);
+                              toast.success("Quotation untuk opportunity ini sudah tersedia. Silakan edit atau kelola di daftar Sales Quotations di bawah.");
+                            }}
+                            label="✏️ Edit Quotation"
+                            small
+                            variant="ghost"
+                            title="Opportunity ini sudah memiliki quotation aktif; hanya dapat diedit atau direvisi."
+                          />
+                        ) : (
+                          <ActionBtn onClick={async () => {
+                            try {
+                              const result = await createQuotationFromEstimate(e.id);
+                              toast.success(result?.created === false
+                                ? `Quotation sudah ada dengan status ${result.status}. Untuk mengubah nilai, edit quotation atau buat revisi.`
+                                : "Draft quotation berhasil dibuat. Lanjutkan dengan persetujuan, kirim ke pelanggan, lalu catat keputusannya.");
+                              onRefresh();
+                            } catch (error: any) {
+                              toast.error(error?.response?.data?.detail || error?.response?.data?.message || "Quotation belum berhasil dibuat. Periksa status estimasi dan data pelanggan, lalu coba lagi.");
+                            }
+                          }} label="📄 Buat Quotation" small title="Buat dokumen penawaran dari hasil estimasi ini; quotation masih perlu approval dan keputusan customer." />
+                        )}
                         <button
                           onClick={async () => {
                             if (isEstimateLocked) return;
@@ -2004,7 +2026,8 @@ function TabEstimate({ data, approvals, onRefresh, onNavigate, readOnly = false,
                           <Trash2 size={13} />
                         </button>
                       </div>
-                    )}
+                      );
+                    })()}
                   </div>
                   <div className={cn("rounded-xl border p-4 sm:p-5", isCalculated ? "border-emerald-200 bg-emerald-50/50" : "border-amber-200 bg-amber-50/50")}>
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

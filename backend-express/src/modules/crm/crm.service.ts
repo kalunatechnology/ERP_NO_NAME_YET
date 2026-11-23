@@ -467,6 +467,26 @@ export class CRMService {
         };
       }
 
+      if (estimate.opportunity_id) {
+        const existingForOpportunity = await tx.sales_quotation.findFirst({
+          where: {
+            opportunity_id: estimate.opportunity_id,
+            company_id: companyId,
+            status: { notIn: ['CANCELLED', 'REJECTED'] },
+          },
+          orderBy: { created_at: 'desc' },
+          select: { id: true, status: true },
+        });
+        if (existingForOpportunity) {
+          return {
+            quotation_id: existingForOpportunity.id,
+            status: existingForOpportunity.status,
+            created: false,
+            existing_for_opportunity: true,
+          };
+        }
+      }
+
       if (!estimate.opportunity_id) {
         throw new ValidationError('Hubungkan estimasi ke opportunity sebelum membuat quotation.');
       }
