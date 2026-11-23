@@ -35,6 +35,9 @@ export function AppShell({ children }: AppShellProps) {
 
   // Dock only when there is room for both navigation and the workspace.
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  // Desktop left sidebar collapse (mini 72px) & hide (0px) states
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarHidden, setSidebarHidden] = useState(false);
   // Mobile left sidebar state
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   // Mobile right panel (notifications/feed) state
@@ -42,10 +45,12 @@ export function AppShell({ children }: AppShellProps) {
   // AI Chatbot drawer state
   const [isChatbotOpen, setIsChatbotOpen] = useState(false);
 
-  /* Restore persisted right-panel collapse state */
+  /* Restore persisted sidebar & right-panel states */
   useEffect(() => {
     const stored = localStorage.getItem("erp.rightPanel");
     if (stored === "true") setRightPanelOpen(true);
+    if (localStorage.getItem("erp.leftSidebarCollapsed") === "true") setSidebarCollapsed(true);
+    if (localStorage.getItem("erp.leftSidebarHidden") === "true") setSidebarHidden(true);
   }, []);
 
   /* Close mobile drawers on route change */
@@ -88,6 +93,22 @@ export function AppShell({ children }: AppShellProps) {
       localStorage.setItem("erp.rightPanel", String(next));
     }
   }, [rightPanelOpen]);
+
+  const toggleSidebarCollapse = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem("erp.leftSidebarCollapsed", String(next));
+      return next;
+    });
+  }, []);
+
+  const toggleSidebarHidden = useCallback(() => {
+    setSidebarHidden((prev) => {
+      const next = !prev;
+      localStorage.setItem("erp.leftSidebarHidden", String(next));
+      return next;
+    });
+  }, []);
 
   const openMobileSidebar   = useCallback(() => setMobileSidebarOpen(true),  []);
   const closeMobileSidebar  = useCallback(() => setMobileSidebarOpen(false), []);
@@ -132,9 +153,17 @@ export function AppShell({ children }: AppShellProps) {
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-bg-lighter">
 
-      {/* ── Desktop Sidebar (hidden below lg) ── */}
-      <div className="hidden lg:flex flex-shrink-0">
-        <Sidebar onChatbotOpen={() => setIsChatbotOpen(true)} />
+      {/* ── Desktop Sidebar (hidden below lg, collapsible / hideable on desktop) ── */}
+      <div
+        className="hidden lg:flex flex-shrink-0 transition-[width] duration-200 overflow-hidden"
+        style={{ width: sidebarHidden ? "0px" : sidebarCollapsed ? "72px" : "280px" }}
+        aria-hidden={sidebarHidden || undefined}
+      >
+        <Sidebar
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={toggleSidebarCollapse}
+          onChatbotOpen={() => setIsChatbotOpen(true)}
+        />
       </div>
 
       {/* ── Mobile Left Sidebar Overlay (shown below lg) ── */}
@@ -181,6 +210,8 @@ export function AppShell({ children }: AppShellProps) {
         {/* Topbar */}
         <Topbar
           onMenuToggle={openMobileSidebar}
+          onDesktopSidebarToggle={toggleSidebarHidden}
+          sidebarHidden={sidebarHidden}
           onNotificationClick={toggleRightPanel}
           onAiChatToggle={() => setIsChatbotOpen((prev) => !prev)}
         />

@@ -10,7 +10,7 @@
 import { useState, useRef, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Search, Bell, CalendarCheck, Menu, ChevronDown, ChevronRight, Check, Building2, LogOut, ShieldCheck, Lock, Globe2 } from "lucide-react";
+import { Search, Bell, CalendarCheck, Menu, ChevronDown, ChevronRight, Check, Building2, LogOut, ShieldCheck, Lock, Globe2, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,8 @@ import toast from "react-hot-toast";
 
 interface TopbarProps {
   onMenuToggle?: () => void;
+  onDesktopSidebarToggle?: () => void;
+  sidebarHidden?: boolean;
   onNotificationClick?: () => void;
   onAiChatToggle?: () => void;
 }
@@ -49,7 +51,7 @@ import { GlobalCommandPalette } from "./GlobalCommandPalette";
 import { UserProfileSettingsModal } from "@/components/ui/UserProfileSettingsModal";
 import { User, KeyRound, Sparkles } from "lucide-react";
 
-export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: TopbarProps) {
+export function Topbar({ onMenuToggle, onDesktopSidebarToggle, sidebarHidden = false, onNotificationClick, onAiChatToggle }: TopbarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, userRole, logout, company, setCompany, companies, setActiveRole } = useAuth();
@@ -143,6 +145,20 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
         >
           <Menu size={20} aria-hidden="true" />
         </button>
+
+        {/* Desktop sidebar hide/show toggle */}
+        {onDesktopSidebarToggle && (
+          <button
+            type="button"
+            onClick={onDesktopSidebarToggle}
+            className="hidden lg:inline-flex flex-shrink-0 p-1.5 rounded-lg text-[#64748B] hover:text-[#163D64] hover:bg-[#E7F2FF] transition-colors cursor-pointer"
+            id="topbar-desktop-sidebar-toggle"
+            title={sidebarHidden ? "Tampilkan sidebar" : "Sembunyikan sidebar"}
+            aria-label={sidebarHidden ? "Tampilkan sidebar" : "Sembunyikan sidebar"}
+          >
+            {sidebarHidden ? <PanelLeftOpen size={18} aria-hidden="true" /> : <PanelLeftClose size={18} aria-hidden="true" />}
+          </button>
+        )}
 
         <nav aria-label="Breadcrumb" className="min-w-0">
           <ol className="flex items-center gap-1.5 sm:gap-2 min-w-0">
