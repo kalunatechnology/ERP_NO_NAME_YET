@@ -41,7 +41,7 @@ import { InventoryBridgePanel } from "@/components/finance/InventoryBridgePanel"
 import { AccessDeniedState, isForbiddenError } from "@/components/ui/AccessDeniedState";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
-import { canRequestApi } from "@/lib/access/module-contract";
+import { canRequestApi, isLevel1FinanceUser } from "@/lib/access/module-contract";
 import { canPerform } from "@/lib/access/capability-contract";
 import { FinanceModuleSidebar } from "@/components/finance/FinanceModuleSidebar";
 import dynamic from "next/dynamic";
@@ -722,7 +722,7 @@ export default function FinanceClient() {
         await api.post(`/api/v1/finance/project-cost-entries/${entry.id}/validate`);
         toast.success("Cost entry berhasil divalidasi.");
       } else if (entry.status === "VALIDATED") {
-        if (isCostEntryCreator(entry, user?.id)) {
+        if (!isLevel1FinanceUser(user) && isCostEntryCreator(entry, user?.id)) {
           toast.error("Posting WIP menunggu checker: Anda adalah pembuat cost entry ini. Minta user Finance lain untuk melakukan posting.");
           return;
         }
@@ -1441,7 +1441,7 @@ export default function FinanceClient() {
                     <tbody>
                       {costEntries.map(c => {
                         const readiness = wipPostingReadiness[String(c.id)];
-                        const waitingForChecker = c.status === "VALIDATED" && (
+                        const waitingForChecker = c.status === "VALIDATED" && !isLevel1FinanceUser(user) && (
                           readiness?.reason === "MAKER_CHECKER_REQUIRED" || isCostEntryCreator(c, user?.id)
                         );
                         return (

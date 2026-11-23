@@ -16,7 +16,7 @@ import { FinanceHardeningService } from './finance-hardening.service';
 import { PeriodClosingService } from './period-closing.service';
 import { AuditService } from '../core/audit.service';
 import { createCrudRouter } from '../../utils/crud-factory';
-import { enforceSoD, requireFinanceRole, requireSuperadmin } from '../../middleware/sod.middleware';
+import { enforceSoD, hasLevel1FinanceBypass, requireFinanceRole, requireSuperadmin } from '../../middleware/sod.middleware';
 import { DocumentFSM } from '../../utils/fsm';
 import { sendSuccess, sendError } from '../../utils/response';
 import { RoleCode } from '../../types/roles';
@@ -114,6 +114,7 @@ type WipPostingReadiness = {
 function describeWipPostingReadiness(
   entry: { id: string; status: string; created_by_id: string | null },
   userId: string,
+  allowSelfApproval = false,
 ): WipPostingReadiness {
   if (entry.status !== 'VALIDATED') {
     return {
@@ -126,7 +127,7 @@ function describeWipPostingReadiness(
     };
   }
 
-  if (entry.created_by_id === userId) {
+  if (!allowSelfApproval && entry.created_by_id === userId) {
     return {
       entry_id: entry.id,
       can_post: false,
@@ -209,7 +210,9 @@ financeRouter.post('/period-closings/:id/approve', requireFinanceRole([RoleCode.
     const record = await prisma.fin_period_closing.findFirst({ where: { id: req.params.id, company_id: req.companyId } });
     if (!record) throw new NotFoundError('Period closing');
     if (record.status !== 'PENDING_APPROVAL') throw new ValidationError(`Closing berstatus ${record.status}.`);
-    if (record.requested_by === req.user?.id) throw new ForbiddenError('Requester tidak boleh menyetujui closing yang sama.');
+    if (!hasLevel1FinanceBypass(req.user) && record.requested_by === req.user?.id) {
+      throw new ForbiddenError('Requester tidak boleh menyetujui closing yang sama.');
+    }
     const updated = await prisma.fin_period_closing.update({
       where: { id: record.id }, data: {
         status: 'APPROVED', approved_by: req.user?.id, approved_at: new Date(),
@@ -234,7 +237,7 @@ financeRouter.post('/period-closings/:id/execute', requireFinanceRole([RoleCode.
     if (!record) throw new NotFoundError('Period closing');
     if (record.status !== 'APPROVED' || !record.approved_by) throw new ValidationError('Closing belum disetujui Finance.');
     const count = await financeUserCount(req.companyId);
-    if (count >= 2 && (record.approved_by === req.user?.id || record.requested_by === req.user?.id)) {
+    if (!hasLevel1FinanceBypass(req.user) && count >= 2 && (record.approved_by === req.user?.id || record.requested_by === req.user?.id)) {
       throw new ForbiddenError('Company dengan dua atau lebih user Finance wajib memisahkan requester, approver, dan executor.');
     }
     const result = record.closing_type === 'YEAR_END'
@@ -338,13 +341,13 @@ financeRouter.post('/payroll/runs/:id/approve', requireFinanceRole([RoleCode.FIN
   getCreatorId: async (req) => (await prisma.fin_payroll_run.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) }, select: { created_by_id: true } }))?.created_by_id ?? null,
   action: 'approve-payroll-run',
 }), async (req, res, next) => {
-  try { sendSuccess(res, await PayrollService.setStatus(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), 'APPROVE')); } catch (err) { next(err); }
+  try { sendSuccess(res, await PayrollService.setStatus(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), 'APPROVE', hasLevel1FinanceBypass(req.user))); } catch (err) { next(err); }
 });
 financeRouter.post('/payroll/runs/:id/post', requireFinanceRole([RoleCode.FINANCE]), enforceSoD({
   getCreatorId: async (req) => (await prisma.fin_payroll_run.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) }, select: { created_by_id: true } }))?.created_by_id ?? null,
   action: 'post-payroll-run',
 }), async (req, res, next) => {
-  try { sendSuccess(res, await PayrollService.post(activeCompanyId(req), req.tenantId ?? null, req.params.id, authenticatedFinanceUserId(req))); } catch (err) { next(err); }
+  try { sendSuccess(res, await PayrollService.post(activeCompanyId(req), req.tenantId ?? null, req.params.id, authenticatedFinanceUserId(req), hasLevel1FinanceBypass(req.user))); } catch (err) { next(err); }
 });
 financeRouter.post('/payroll/runs/:id/pay', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
   try { sendSuccess(res, await PayrollService.pay(activeCompanyId(req), req.tenantId ?? null, req.params.id, authenticatedFinanceUserId(req), req.body)); } catch (err) { next(err); }
@@ -1047,7 +1050,8 @@ financeRouter.get(
         take: entryId ? 1 : 200,
       });
       if (entryId && entries.length === 0) throw new NotFoundError('ProjectCostEntry');
-      sendSuccess(res, entries.map((entry) => describeWipPostingReadiness(entry, userId)));
+      const allowSelfApproval = hasLevel1FinanceBypass(req.user);
+      sendSuccess(res, entries.map((entry) => describeWipPostingReadiness(entry, userId, allowSelfApproval)));
     } catch (err) { next(err); }
   },
 );
@@ -1067,7 +1071,7 @@ financeRouter.post(
         throw new NotFoundError('ProjectCostEntry');
       }
       await assertFinancialDateOpen(req, entry.transaction_date);
-      const readiness = describeWipPostingReadiness(entry, userId);
+      const readiness = describeWipPostingReadiness(entry, userId, hasLevel1FinanceBypass(req.user));
       if (!readiness.can_post) {
         return sendError(
           res,
@@ -1206,7 +1210,7 @@ financeRouter.post(
       if (!payment) return sendError(res, 'Payment tidak ditemukan.', 404);
       await assertFinancialDateOpen(req, payment.payment_date);
 
-      if (payment.payment_type === 'CUSTOMER_RECEIPT') CustomerReceiptService.assertReviewer(payment, authenticatedFinanceUserId(req));
+      if (payment.payment_type === 'CUSTOMER_RECEIPT') CustomerReceiptService.assertReviewer(payment, authenticatedFinanceUserId(req), hasLevel1FinanceBypass(req.user));
 
       const fsm = new DocumentFSM('PAYMENT');
       const { nextState } = fsm.apply(payment.status as any, 'approve');
@@ -1265,7 +1269,7 @@ financeRouter.get('/customer-receipts/workflow-readiness', async (req, res, next
         if (action === 'submit' && payment.created_by_id !== userId) {
           allowed = false; message = 'Pengajuan dilakukan oleh Finance pembuat penerimaan.';
         }
-        const enforceSoD = process.env.ERP_ENFORCE_IAM !== 'false' && process.env.ERP_ENFORCE_SOD !== 'false';
+        const enforceSoD = !hasLevel1FinanceBypass(req.user) && process.env.ERP_ENFORCE_IAM !== 'false' && process.env.ERP_ENFORCE_SOD !== 'false';
         if (enforceSoD && action !== 'submit' && (payment.created_by_id || payment.submitted_by_id) === userId) {
           allowed = false; message = 'Menunggu Finance kedua untuk Setujui & Posting. Pembuat tidak dapat memproses penerimaan sendiri.';
         }
@@ -1277,7 +1281,7 @@ financeRouter.get('/customer-receipts/workflow-readiness', async (req, res, next
 
 financeRouter.post('/customer-receipts/:id/approve-and-post', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
   try {
-    sendSuccess(res, await CustomerReceiptService.approveAndPost(req.params.id, authenticatedFinanceUserId(req), activeCompanyId(req)));
+    sendSuccess(res, await CustomerReceiptService.approveAndPost(req.params.id, authenticatedFinanceUserId(req), activeCompanyId(req), hasLevel1FinanceBypass(req.user)));
   } catch (error) { next(error); }
 });
 
@@ -1287,7 +1291,7 @@ financeRouter.post('/customer-receipts/:id/post', requireFinanceRole([RoleCode.F
     const userId = authenticatedFinanceUserId(req);
     const payment = await prisma.fin_payment.findFirst({ where: { id: req.params.id, company_id: companyId, payment_type: 'CUSTOMER_RECEIPT' } });
     if (!payment) throw new NotFoundError('Penerimaan pelanggan');
-    CustomerReceiptService.assertReviewer(payment, userId);
+    CustomerReceiptService.assertReviewer(payment, userId, hasLevel1FinanceBypass(req.user));
     sendSuccess(res, await CustomerReceiptService.post(payment.id, userId, companyId));
   } catch (error) { next(error); }
 });
@@ -1301,7 +1305,7 @@ financeRouter.post('/payments/:id/execute', requireFinanceRole([RoleCode.FINANCE
     if (!payment) throw new NotFoundError('Payment');
     await assertFinancialDateOpen(req, payment.payment_date);
     const count = await financeUserCount(activeCompanyId(req));
-    if (count >= 2 && [payment.created_by_id, payment.submitted_by_id, payment.approved_by_id].includes(req.user?.id ?? '')) {
+    if (!hasLevel1FinanceBypass(req.user) && count >= 2 && [payment.created_by_id, payment.submitted_by_id, payment.approved_by_id].includes(req.user?.id ?? '')) {
       throw new ForbiddenError('Eksekutor payment harus berbeda dari pembuat, submitter, dan approver ketika tersedia minimal dua user Finance.');
     }
     sendSuccess(res, await FinanceHardeningService.executePayment(
@@ -2013,22 +2017,22 @@ financeRouter.post('/budgets/:id/submit', requireFinanceRole([RoleCode.FINANCE])
   try { sendSuccess(res, await BudgetingService.submitPlan(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req))); } catch (err) { next(err); }
 });
 financeRouter.post('/budgets/:id/approve', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
-  try { sendSuccess(res, await BudgetingService.approvePlan(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req))); } catch (err) { next(err); }
+  try { sendSuccess(res, await BudgetingService.approvePlan(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), hasLevel1FinanceBypass(req.user))); } catch (err) { next(err); }
 });
 financeRouter.post('/budgets/:id/reject', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
-  try { sendSuccess(res, await BudgetingService.rejectPlan(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), req.body?.reason)); } catch (err) { next(err); }
+  try { sendSuccess(res, await BudgetingService.rejectPlan(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), req.body?.reason, hasLevel1FinanceBypass(req.user))); } catch (err) { next(err); }
 });
 financeRouter.post('/budgets/:id/close', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
-  try { sendSuccess(res, await BudgetingService.closePlan(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), req.body?.reason)); } catch (err) { next(err); }
+  try { sendSuccess(res, await BudgetingService.closePlan(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), req.body?.reason, hasLevel1FinanceBypass(req.user))); } catch (err) { next(err); }
 });
 financeRouter.post('/budget-reservations', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
   try { sendSuccess(res, await BudgetingService.createReservation(activeCompanyId(req), req.tenantId ?? null, authenticatedFinanceUserId(req), req.body), 201); } catch (err) { next(err); }
 });
 financeRouter.post('/budget-reservations/:id/approve', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
-  try { sendSuccess(res, await BudgetingService.approveReservation(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req))); } catch (err) { next(err); }
+  try { sendSuccess(res, await BudgetingService.approveReservation(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), hasLevel1FinanceBypass(req.user))); } catch (err) { next(err); }
 });
 financeRouter.post('/budget-reservations/:id/reject', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
-  try { sendSuccess(res, await BudgetingService.rejectReservation(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), req.body?.reason)); } catch (err) { next(err); }
+  try { sendSuccess(res, await BudgetingService.rejectReservation(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), req.body?.reason, hasLevel1FinanceBypass(req.user))); } catch (err) { next(err); }
 });
 financeRouter.post('/budget-reservations/:id/release', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
   try { sendSuccess(res, await BudgetingService.releaseReservation(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), req.body)); } catch (err) { next(err); }
@@ -2040,19 +2044,19 @@ financeRouter.post('/budget-revisions', requireFinanceRole([RoleCode.FINANCE]), 
   try { sendSuccess(res, await BudgetingService.requestRevision(activeCompanyId(req), authenticatedFinanceUserId(req), req.body), 201); } catch (err) { next(err); }
 });
 financeRouter.post('/budget-revisions/:id/approve', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
-  try { sendSuccess(res, await BudgetingService.approveRevision(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req))); } catch (err) { next(err); }
+  try { sendSuccess(res, await BudgetingService.approveRevision(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), hasLevel1FinanceBypass(req.user))); } catch (err) { next(err); }
 });
 financeRouter.post('/budget-revisions/:id/reject', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
-  try { sendSuccess(res, await BudgetingService.rejectRevision(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), req.body?.reason)); } catch (err) { next(err); }
+  try { sendSuccess(res, await BudgetingService.rejectRevision(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), req.body?.reason, hasLevel1FinanceBypass(req.user))); } catch (err) { next(err); }
 });
 financeRouter.post('/budget-transfers', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
   try { sendSuccess(res, await BudgetingService.requestTransfer(activeCompanyId(req), authenticatedFinanceUserId(req), req.body), 201); } catch (err) { next(err); }
 });
 financeRouter.post('/budget-transfers/:id/approve', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
-  try { sendSuccess(res, await BudgetingService.approveTransfer(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req))); } catch (err) { next(err); }
+  try { sendSuccess(res, await BudgetingService.approveTransfer(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), hasLevel1FinanceBypass(req.user))); } catch (err) { next(err); }
 });
 financeRouter.post('/budget-transfers/:id/reject', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
-  try { sendSuccess(res, await BudgetingService.rejectTransfer(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), req.body?.reason)); } catch (err) { next(err); }
+  try { sendSuccess(res, await BudgetingService.rejectTransfer(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), req.body?.reason, hasLevel1FinanceBypass(req.user))); } catch (err) { next(err); }
 });
 financeRouter.use('/project-cost-entries', createCrudRouter({
   modelName: 'fin_project_cost_entry', searchFields: ['description'],

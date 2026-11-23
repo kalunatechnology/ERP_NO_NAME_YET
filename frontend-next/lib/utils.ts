@@ -22,13 +22,16 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/* ── Format Rupiah (Full / Short) ──────────── */
+/* ── Format Rupiah (Standar Akuntansi Penuh) ──────────── */
 export function formatMoney(value: number | string | null | undefined): string {
   const num = Number(value || 0);
-  if (num >= 1_000_000_000) return `Rp ${(num / 1_000_000_000).toFixed(1)}M`;
-  if (num >= 1_000_000) return `Rp ${(num / 1_000_000).toFixed(1)}jt`;
-  if (num >= 1_000) return `Rp ${(num / 1_000).toFixed(0)}rb`;
-  return `Rp ${num.toLocaleString("id-ID")}`;
+  if (!Number.isFinite(num)) return "Rp 0";
+  const abs = Math.abs(num);
+  const formatted = abs.toLocaleString("id-ID", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+  return num < 0 ? `(Rp ${formatted})` : `Rp ${formatted}`;
 }
 
 /**

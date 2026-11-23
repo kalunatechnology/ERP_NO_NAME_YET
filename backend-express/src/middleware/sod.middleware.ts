@@ -72,6 +72,17 @@ export async function findActiveDelegationOfAuthority(params: {
   }
 }
 
+export function hasLevel1FinanceBypass(user: any): boolean {
+  if (!user) return false;
+  if (isSuperAdmin(user.roles ?? [])) return true;
+  const assignments = Array.isArray(user.module_assignments) ? user.module_assignments : [];
+  return assignments.some(
+    (assignment: any) =>
+      isUsableModuleAssignment(assignment, 'FINANCE') &&
+      Number(assignment.tier_level) === 1,
+  );
+}
+
 export function enforceSoD(options: {
   getCreatorId:     (req: Request) => Promise<string | null | undefined>;
   getAmountValue?:  (req: Request) => Promise<number | null>;
@@ -104,6 +115,14 @@ export function enforceSoD(options: {
           res.setHeader('X-SoD-Amount',    String(resolvedAmount));
           return next();
         }
+      }
+
+      // ==== LEVEL 1 SINGLE-USER FINANCE BYPASS ====
+      if (hasLevel1FinanceBypass(req.user)) {
+        res.setHeader('X-SoD-Status', 'BYPASSED_LEVEL_1');
+        res.setHeader('X-SoD-Maker', creatorId);
+        res.setHeader('X-SoD-Checker', currentUserId);
+        return next();
       }
 
       // ==== MAKER === CHECKER CHECK ====

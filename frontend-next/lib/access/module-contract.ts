@@ -346,6 +346,25 @@ const DASHBOARD_SECTION_CONTRACTS: Record<DashboardSection, { module: ModuleCode
 };
 
 /** Mirrors Dashboard BFF `SECTION_ROLES` and modular dashboard widgets without treating its sections as direct module URLs. */
+export function isLevel1FinanceUser(user: {
+  roles?: readonly (string | { role?: string; role_code?: string })[] | null;
+  active_role_code?: unknown;
+  is_superuser?: boolean;
+  module_assignments?: FrontendAccessContext['moduleAssignments'];
+} | null | undefined): boolean {
+  if (!user) return false;
+  const activeRole = normalizeRoleCode(user.active_role_code);
+  const roles = (user.roles ?? []).map((r) =>
+    normalizeRoleCode(typeof r === 'string' ? r : (r?.role_code ?? r?.role)),
+  );
+  if (user.is_superuser || activeRole === ROLE_CODES.superAdmin || roles.includes(ROLE_CODES.superAdmin)) {
+    return true;
+  }
+  return (user.module_assignments ?? []).some(
+    (assignment) => isUsableModuleAssignment(assignment, 'FINANCE') && Number(assignment.tier_level) === 1,
+  );
+}
+
 export function canRequestDashboardSection(section: DashboardSection, access: FrontendAccessContext): boolean {
   const contract = DASHBOARD_SECTION_CONTRACTS[section];
   const activeRole = normalizeRoleCode(access.activeRoleCode);

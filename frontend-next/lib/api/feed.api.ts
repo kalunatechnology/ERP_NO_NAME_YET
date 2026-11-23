@@ -529,7 +529,7 @@ export async function fetchDynamicRightPanelData(access: FrontendAccessContext =
   fundings.filter(f => f.status === "PENDING").slice(0, 2).forEach(f => {
     notifications.push({
       id: `funding-${f.id}`,
-      label: `Funding Proyek Rp ${Math.round(Number(f.amount || 0) / 1000000)}jt`,
+      label: `Funding Proyek ${formatMoney(f.amount)}`,
       sublabel: `Perlu persetujuan Finance Controller`,
       time: timeAgo(f.created_at),
       color: "#F59E0B",

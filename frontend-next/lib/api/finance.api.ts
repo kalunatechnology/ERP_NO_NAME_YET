@@ -232,9 +232,7 @@ export interface BuildMonthlyStackedOptions {
 
 function formatMonthNoteAmount(valueInJt: number): string {
   if (valueInJt <= 0) return "Rp 0";
-  if (valueInJt >= 1) return `Rp ${valueInJt.toLocaleString("id-ID", { maximumFractionDigits: 2 })} Jt`;
   const valueInRp = Math.round(valueInJt * 1_000_000);
-  if (valueInRp >= 1_000) return `Rp ${(valueInRp / 1_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} rb`;
   return `Rp ${valueInRp.toLocaleString("id-ID")}`;
 }
 

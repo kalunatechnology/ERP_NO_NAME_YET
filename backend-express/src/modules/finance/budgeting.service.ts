@@ -620,12 +620,12 @@ export class BudgetingService {
     });
   }
 
-  static async approvePlan(companyId: string, planId: string, userId: string) {
+  static async approvePlan(companyId: string, planId: string, userId: string, allowSelfApproval = false) {
     return prisma.$transaction(async (tx) => {
       const plan = await tx.fin_budget.findFirst({ where: { id: planId, company_id: companyId }, include: { allocations: true } });
       if (!plan) throw new NotFoundError('Budget plan');
       if (plan.status !== 'PENDING_APPROVAL') throw new ConflictError('Rencana anggaran tidak sedang menunggu persetujuan.');
-      if (plan.submitted_by === userId || plan.created_by_id === userId) throw new ForbiddenError('Pembuat/pengaju anggaran tidak boleh menyetujui rencananya sendiri.');
+      if (!allowSelfApproval && (plan.submitted_by === userId || plan.created_by_id === userId)) throw new ForbiddenError('Pembuat/pengaju anggaran tidak boleh menyetujui rencananya sendiri.');
       const activePlans = await tx.fin_budget.findMany({ where: { company_id: companyId, fiscal_year_id: plan.fiscal_year_id, status: 'ACTIVE', id: { not: planId } }, include: { allocations: true } });
       const overlaps = activePlans.some((active) => active.allocations.some((existing: any) => plan.allocations.some((candidate: any) =>
         existing.account_id === candidate.account_id && existing.cost_center_id === candidate.cost_center_id &&
@@ -644,22 +644,22 @@ export class BudgetingService {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
-  static async rejectPlan(companyId: string, planId: string, userId: string, note: string) {
+  static async rejectPlan(companyId: string, planId: string, userId: string, note: string, allowSelfApproval = false) {
     const reason = requiredText(note, 'Alasan penolakan', 1000);
     const plan = await prisma.fin_budget.findFirst({ where: { id: planId, company_id: companyId } });
     if (!plan) throw new NotFoundError('Budget plan');
     if (plan.status !== 'PENDING_APPROVAL') throw new ConflictError('Rencana tidak sedang menunggu persetujuan.');
-    if (plan.submitted_by === userId || plan.created_by_id === userId) throw new ForbiddenError('Pengaju anggaran tidak boleh menolak pengajuannya sendiri.');
+    if (!allowSelfApproval && (plan.submitted_by === userId || plan.created_by_id === userId)) throw new ForbiddenError('Pengaju anggaran tidak boleh menolak pengajuannya sendiri.');
     return prisma.fin_budget.update({ where: { id: plan.id }, data: { status: 'REJECTED', rejected_by: userId, approval_note: reason } });
   }
 
-  static async closePlan(companyId: string, planId: string, userId: string, note: string) {
+  static async closePlan(companyId: string, planId: string, userId: string, note: string, allowSelfApproval = false) {
     const reason = requiredText(note, 'Alasan penutupan', 1000);
     return prisma.$transaction(async (tx) => {
       const plan = await tx.fin_budget.findFirst({ where: { id: planId, company_id: companyId }, include: { allocations: true } });
       if (!plan) throw new NotFoundError('Budget plan');
       if (plan.status !== 'ACTIVE') throw new ConflictError('Hanya anggaran aktif yang dapat ditutup.');
-      if (plan.approved_by === userId) throw new ForbiddenError('Penyetuju anggaran tidak boleh menutup anggaran yang sama.');
+      if (!allowSelfApproval && plan.approved_by === userId) throw new ForbiddenError('Penyetuju anggaran tidak boleh menutup anggaran yang sama.');
       const openReservations = await tx.fin_budget_reservation.count({ where: { company_id: companyId, budget_id: planId, status: { in: ['OPEN', 'PARTIALLY_RELEASED', 'PENDING_APPROVAL'] } } });
       if (openReservations) throw new ConflictError('Selesaikan atau tolak semua komitmen terbuka sebelum menutup anggaran.');
       await tx.fin_budget.update({ where: { id: planId }, data: { status: 'CLOSED', close_note: reason, closed_by: userId, closed_at: new Date() } });
@@ -745,12 +745,12 @@ export class BudgetingService {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
-  static async approveReservation(companyId: string, reservationId: string, userId: string) {
+  static async approveReservation(companyId: string, reservationId: string, userId: string, allowSelfApproval = false) {
     return prisma.$transaction(async (tx) => {
       const reservation = await tx.fin_budget_reservation.findFirst({ where: { id: reservationId, company_id: companyId } });
       if (!reservation) throw new NotFoundError('Reservasi anggaran');
       if (reservation.status !== 'PENDING_APPROVAL') throw new ConflictError('Reservasi tidak menunggu persetujuan.');
-      if (reservation.created_by_id === userId) throw new ForbiddenError('Pembuat reservasi tidak boleh menyetujui reservasinya sendiri.');
+      if (!allowSelfApproval && reservation.created_by_id === userId) throw new ForbiddenError('Pembuat reservasi tidak boleh menyetujui reservasinya sendiri.');
       await tx.fin_budget_ledger.create({ data: {
         id: crypto.randomUUID(), tenant_id: reservation.tenant_id, company_id: companyId, budget_id: reservation.budget_id, allocation_id: reservation.allocation_id,
         fiscal_period_id: reservation.fiscal_period_id, source_type: 'RESERVATION', source_id: reservation.id, source_line_id: reservation.source_line_id,
@@ -761,12 +761,12 @@ export class BudgetingService {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
-  static async rejectReservation(companyId: string, reservationId: string, userId: string, note: string) {
+  static async rejectReservation(companyId: string, reservationId: string, userId: string, note: string, allowSelfApproval = false) {
     const reason = requiredText(note, 'Alasan penolakan', 1000);
     const reservation = await prisma.fin_budget_reservation.findFirst({ where: { id: reservationId, company_id: companyId } });
     if (!reservation) throw new NotFoundError('Reservasi anggaran');
     if (reservation.status !== 'PENDING_APPROVAL') throw new ConflictError('Reservasi tidak sedang menunggu persetujuan.');
-    if (reservation.created_by_id === userId) throw new ForbiddenError('Pembuat reservasi tidak boleh menolak reservasinya sendiri.');
+    if (!allowSelfApproval && reservation.created_by_id === userId) throw new ForbiddenError('Pembuat reservasi tidak boleh menolak reservasinya sendiri.');
     return prisma.fin_budget_reservation.update({ where: { id: reservation.id }, data: { status: 'REJECTED', description: `${reservation.description ?? ''}${reservation.description ? '\n' : ''}Ditolak: ${reason}` } });
   }
 
@@ -810,12 +810,12 @@ export class BudgetingService {
     } });
   }
 
-  static async approveRevision(companyId: string, revisionId: string, userId: string) {
+  static async approveRevision(companyId: string, revisionId: string, userId: string, allowSelfApproval = false) {
     return prisma.$transaction(async (tx) => {
       const revision = await tx.fin_budget_revision.findFirst({ where: { id: revisionId, company_id: companyId } });
       if (!revision) throw new NotFoundError('Revisi anggaran');
       if (revision.status !== 'PENDING_APPROVAL') throw new ConflictError('Revisi tidak sedang menunggu persetujuan.');
-      if (revision.requested_by === userId) throw new ForbiddenError('Pengaju revisi tidak boleh menyetujui revisinya sendiri.');
+      if (!allowSelfApproval && revision.requested_by === userId) throw new ForbiddenError('Pengaju revisi tidak boleh menyetujui revisinya sendiri.');
       const allocation = await tx.fin_budget_line.findFirst({ where: { id: revision.allocation_id, company_id: companyId }, include: { budget: true, period_allocations: true } });
       if (!allocation || !allocation.budget || !allocation.budget_id || allocation.budget.status !== 'ACTIVE') throw new ConflictError('Alokasi anggaran tidak lagi aktif.');
       const sign = revision.revision_type === 'DECREASE' ? -1 : 1;
@@ -837,12 +837,12 @@ export class BudgetingService {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
-  static async rejectRevision(companyId: string, revisionId: string, userId: string, note: string) {
+  static async rejectRevision(companyId: string, revisionId: string, userId: string, note: string, allowSelfApproval = false) {
     const reason = requiredText(note, 'Alasan penolakan', 1000);
     const revision = await prisma.fin_budget_revision.findFirst({ where: { id: revisionId, company_id: companyId } });
     if (!revision) throw new NotFoundError('Revisi anggaran');
     if (revision.status !== 'PENDING_APPROVAL') throw new ConflictError('Revisi tidak sedang menunggu persetujuan.');
-    if (revision.requested_by === userId) throw new ForbiddenError('Pengaju revisi tidak boleh menolak pengajuannya sendiri.');
+    if (!allowSelfApproval && revision.requested_by === userId) throw new ForbiddenError('Pengaju revisi tidak boleh menolak pengajuannya sendiri.');
     return prisma.fin_budget_revision.update({ where: { id: revision.id }, data: { status: 'REJECTED', rejected_by: userId, approval_note: reason } });
   }
 
@@ -865,12 +865,12 @@ export class BudgetingService {
     } });
   }
 
-  static async approveTransfer(companyId: string, transferId: string, userId: string) {
+  static async approveTransfer(companyId: string, transferId: string, userId: string, allowSelfApproval = false) {
     return prisma.$transaction(async (tx) => {
       const transfer = await tx.fin_budget_transfer.findFirst({ where: { id: transferId, company_id: companyId } });
       if (!transfer) throw new NotFoundError('Transfer anggaran');
       if (transfer.status !== 'PENDING_APPROVAL') throw new ConflictError('Transfer tidak sedang menunggu persetujuan.');
-      if (transfer.requested_by === userId) throw new ForbiddenError('Pengaju transfer tidak boleh menyetujui transfernya sendiri.');
+      if (!allowSelfApproval && transfer.requested_by === userId) throw new ForbiddenError('Pengaju transfer tidak boleh menyetujui transfernya sendiri.');
       const from = await tx.fin_budget_line.findFirst({ where: { id: transfer.from_allocation_id, company_id: companyId }, include: { budget: true } });
       const to = await tx.fin_budget_line.findFirst({ where: { id: transfer.to_allocation_id, company_id: companyId }, include: { budget: true } });
       if (!from || !to || !from.budget || !to.budget || from.budget.status !== 'ACTIVE' || to.budget.status !== 'ACTIVE') throw new ConflictError('Alokasi transfer tidak aktif.');
@@ -885,12 +885,12 @@ export class BudgetingService {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
-  static async rejectTransfer(companyId: string, transferId: string, userId: string, note: string) {
+  static async rejectTransfer(companyId: string, transferId: string, userId: string, note: string, allowSelfApproval = false) {
     const reason = requiredText(note, 'Alasan penolakan', 1000);
     const transfer = await prisma.fin_budget_transfer.findFirst({ where: { id: transferId, company_id: companyId } });
     if (!transfer) throw new NotFoundError('Transfer anggaran');
     if (transfer.status !== 'PENDING_APPROVAL') throw new ConflictError('Transfer tidak sedang menunggu persetujuan.');
-    if (transfer.requested_by === userId) throw new ForbiddenError('Pengaju transfer tidak boleh menolak pengajuannya sendiri.');
+    if (!allowSelfApproval && transfer.requested_by === userId) throw new ForbiddenError('Pengaju transfer tidak boleh menolak pengajuannya sendiri.');
     return prisma.fin_budget_transfer.update({ where: { id: transfer.id }, data: { status: 'REJECTED', rejected_by: userId, approval_note: reason } });
   }
 

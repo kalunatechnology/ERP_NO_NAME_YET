@@ -9,9 +9,13 @@ import { PeriodClosingService } from './period-closing.service';
 import { CRMService } from '../crm/crm.service';
 
 export class CustomerReceiptService {
-  static assertReviewer(payment: { created_by_id?: string | null; submitted_by_id?: string | null }, userId: string) {
+  static assertReviewer(
+    payment: { created_by_id?: string | null; submitted_by_id?: string | null },
+    userId: string,
+    allowSelfApproval = false,
+  ) {
     if (!userId) throw new ValidationError('User penerimaan tidak valid.');
-    if (process.env.ERP_ENFORCE_IAM === 'false' || process.env.ERP_ENFORCE_SOD === 'false') {
+    if (allowSelfApproval || process.env.ERP_ENFORCE_IAM === 'false' || process.env.ERP_ENFORCE_SOD === 'false') {
       return;
     }
     const makerId = payment.created_by_id || payment.submitted_by_id;
@@ -21,11 +25,11 @@ export class CustomerReceiptService {
   }
 
   /** Finance A creates/submits; Finance B approves and posts in one transaction. */
-  static async approveAndPost(paymentId: string, userId: string, companyId: string) {
+  static async approveAndPost(paymentId: string, userId: string, companyId: string, allowSelfApproval = false) {
     return prisma.$transaction(async tx => {
       const payment = await tx.fin_payment.findFirst({ where: { id: paymentId, company_id: companyId, payment_type: 'CUSTOMER_RECEIPT' } });
       if (!payment) throw new NotFoundError('Penerimaan pelanggan');
-      this.assertReviewer(payment, userId);
+      this.assertReviewer(payment, userId, allowSelfApproval);
       if (payment.status === 'SUBMITTED') {
         const approved = await tx.fin_payment.updateMany({
           where: { id: payment.id, company_id: companyId, status: 'SUBMITTED' },
