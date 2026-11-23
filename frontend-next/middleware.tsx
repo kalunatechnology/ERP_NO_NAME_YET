@@ -33,8 +33,8 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Periksa token di cookie
-  const token = request.cookies.get('access_token')?.value;
+  // Periksa HttpOnly cookie dari backend atau routing flag sesi
+  const token = request.cookies.get('access_token')?.value || request.cookies.get('erp_session')?.value;
   const isLoginPage = pathname === '/login';
   const isPublicErrorPage = pathname === '/error' || pathname.startsWith('/error/');
 

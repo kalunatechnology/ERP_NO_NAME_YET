@@ -114,7 +114,7 @@ export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' =
       const accessMode = String((access as any).access_mode || 'LEGACY').trim().toUpperCase();
       if (accessMode === 'ASSIGNMENT') {
         const assignments = (req.user.module_assignments ?? []).filter((assignment: any) =>
-          isUsableModuleAssignment(assignment, normalizedModule)
+          candidateModules.some((candidate) => isUsableModuleAssignment(assignment, candidate))
         );
         if (!assignments.length) {
           return next(new ForbiddenError(`Belum ada penugasan role aktif untuk modul ${normalizedModule}.`));

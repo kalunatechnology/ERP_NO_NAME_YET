@@ -8,7 +8,7 @@ import {
   ModuleAccessLevel,
 } from '../src/utils/module-permissions';
 import { restrictProjectMutationsByAuthority } from '../src/modules/projects/project-authority.middleware';
-import { canAccessRoute, canRequestDashboardSection } from '../../frontend-next/lib/access/module-contract';
+import { canAccessRoute, canRequestApi, canRequestDashboardSection } from '../../frontend-next/lib/access/module-contract';
 import { getNavigationEntries } from '../../frontend-next/lib/access/navigation-contract';
 
 async function main() {
@@ -148,6 +148,15 @@ async function main() {
   assert.ok(navHrefs.includes('/tasks'), 'Sidebar must include /tasks');
   assert.ok(navHrefs.includes('/requests'), 'Sidebar must include /requests');
   assert.ok(!navHrefs.includes('/crm'), 'Sidebar must exclude /crm when CRM is not assigned');
+
+  // 7. CRM assignment must allow /api/v1/sales/quotations/with-codes/ via SALES->CRM alias
+  const crmOnlyAccess = {
+    activeRoleCode: 'CRM_LEAD',
+    enabledModules: ['CRM'],
+    moduleAccessModes: [{ module_code: 'CRM', access_mode: 'ASSIGNMENT' }],
+    moduleAssignments: [{ module_code: 'CRM', tier_level: 1, status: 'ACTIVE', allow_read: true, allow_write: true }],
+  };
+  assert.equal(canRequestApi('/api/v1/sales/quotations/with-codes/?page_size=100', crmOnlyAccess), true);
 
   console.log('project-module-level.unit.ts: ALL PASSED');
 }

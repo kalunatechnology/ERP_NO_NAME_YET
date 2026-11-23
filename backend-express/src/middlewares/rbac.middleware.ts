@@ -81,12 +81,19 @@ export function requireActiveRole(...allowedRoles: string[]) {
   };
 }
 
+const MODULE_CAPABILITY_ALIASES: Record<string, string[]> = {
+  REQUESTS: ['REQUESTS', 'HRMS'],
+  SALES: ['SALES', 'CRM'],
+  ASSETS: ['ASSETS', 'INVENTORY'],
+};
+
 function hasScopedProfileCapability(req: Request, _allowedRoles: string[]): boolean {
   if (req.moduleAccess?.accessMode !== 'ASSIGNMENT' || !req.moduleAccess.moduleCode) return false;
   const capability = requiredModuleCapability(req);
   const moduleCode = req.moduleAccess.moduleCode;
+  const candidateModules = MODULE_CAPABILITY_ALIASES[moduleCode] ?? [moduleCode];
   const override = req.user?.permission_overrides?.find((item: any) =>
-    String(item.module_code || '').toUpperCase() === moduleCode
+    candidateModules.includes(String(item.module_code || '').toUpperCase())
     && String(item.action_code || '').toUpperCase() === capability,
   );
   if (String(override?.effect || '').toUpperCase() === 'DENY') return false;
@@ -99,7 +106,7 @@ function hasScopedProfileCapability(req: Request, _allowedRoles: string[]): bool
   };
   const field = permissionField[capability];
   return (req.user?.module_assignments ?? []).some((assignment: any) =>
-    isUsableModuleAssignment(assignment, req.moduleAccess!.moduleCode)
+    candidateModules.some((candidate) => isUsableModuleAssignment(assignment, candidate))
       && (field && typeof assignment[field] === 'boolean'
         ? assignment[field]
         : hasModuleAssignmentCapability(assignment, capability)),

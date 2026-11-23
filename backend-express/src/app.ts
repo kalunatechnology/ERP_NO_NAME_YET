@@ -28,6 +28,7 @@ import {
 import { requireModuleAccess } from './middlewares/entitlement.middleware';
 import { errorHandler } from './middlewares/error.middleware';
 import { enforceTransactionIdempotency } from './middlewares/idempotency.middleware';
+import { noStoreMiddleware } from './utils/session-cookie';
 import { notFound } from './middlewares/not-found.middleware';
 import { normalizeRequestPath } from './middlewares/path-normalization.middleware';
 
@@ -189,7 +190,7 @@ export function createApp(): Express {
   const apiV1 = express.Router();
 
   // Public authentication endpoints are explicitly allow-listed.
-  apiV1.use('/auth', publicAuthRouter);
+  apiV1.use('/auth', noStoreMiddleware, publicAuthRouter);
   // Customer portal uses a party-scoped opaque API key, never an employee JWT.
   apiV1.use('/portal', crmPortalRouter);
   // Signed system-to-system endpoint. It authenticates each request with the
@@ -222,8 +223,8 @@ export function createApp(): Express {
   apiV1.use('/', feedShortcutRouter);
 
   // Authenticated auth & account management
-  apiV1.use('/auth', authRouter);
-  apiV1.use('/accounts', accountsRouter);
+  apiV1.use('/auth', noStoreMiddleware, authRouter);
+  apiV1.use('/accounts', noStoreMiddleware, accountsRouter);
 
   // ERP Domain Modules
   apiV1.use('/core', coreRouter);
@@ -257,6 +258,7 @@ export function createApp(): Express {
   );
   apiV1.use(
     '/finance',
+    noStoreMiddleware,
     requireModuleAccess('FINANCE'),
     requireActiveRole(...FINANCE_MODULE_ACCESS_ROLES),
     restrictActiveRoleMutations({

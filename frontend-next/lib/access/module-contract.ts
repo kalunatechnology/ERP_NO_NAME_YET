@@ -303,6 +303,12 @@ function isUsableModuleAssignment(
     && assignment.allow_read !== false;
 }
 
+const MODULE_ASSIGNMENT_ALIASES: Partial<Record<ModuleCode, readonly ModuleCode[]>> = {
+  SALES: ["SALES", "CRM"],
+  REQUESTS: ["REQUESTS", "HRMS"],
+  ASSETS: ["ASSETS", "INVENTORY"],
+};
+
 export function canRequestApi(url: string, access: FrontendAccessContext): boolean {
   const contract = getApiAccessContract(url);
   if (!contract) return true;
@@ -311,23 +317,25 @@ export function canRequestApi(url: string, access: FrontendAccessContext): boole
   if (!hasModuleEntitlement(access.enabledModules, contract.module, superAdmin)) return false;
   const override = getModuleOverride(access.moduleAccess, contract.module);
   if (!superAdmin && override && !override.allow_read) return false;
-  const moduleAccessMode = access.moduleAccessModes?.find((item) =>
-    String(item.module_code || "").toUpperCase() === contract.module
+  const candidateModules = MODULE_ASSIGNMENT_ALIASES[contract.module] ?? [contract.module];
+  const moduleAccessMode = (
+    access.moduleAccessModes?.find((item) => String(item.module_code || "").toUpperCase() === contract.module)
+    ?? access.moduleAccessModes?.find((item) => candidateModules.includes(String(item.module_code || "").toUpperCase() as ModuleCode))
   )?.access_mode?.toUpperCase();
   if (!superAdmin && moduleAccessMode === "ASSIGNMENT" && contract.module) {
     const assignments = (access.moduleAssignments ?? []).filter((assignment) =>
-      isUsableModuleAssignment(assignment, contract.module!)
+      candidateModules.some((mod) => isUsableModuleAssignment(assignment, mod))
     );
     if (!assignments.length) return false;
     const permissionOverride = access.permissionOverrides?.find((item) =>
-      String(item.module_code || "").toUpperCase() === contract.module
+      candidateModules.includes(String(item.module_code || "").toUpperCase() as ModuleCode)
       && String(item.action_code || "").toUpperCase() === "READ"
     );
     if (String(permissionOverride?.effect || "").toUpperCase() === "DENY") return false;
     const hasRead = assignments.some((assignment) => {
       if (typeof assignment.allow_read === "boolean") return assignment.allow_read;
       const codes = new Set((assignment.capability_codes || []).map((code) => String(code).toUpperCase()));
-      return codes.has("READ") || codes.has(`${contract.module}:READ`);
+      return codes.has("READ") || candidateModules.some((mod) => codes.has(`${mod}:READ`));
     });
     if (!hasRead && String(permissionOverride?.effect || "").toUpperCase() !== "ALLOW") return false;
     if (!contract.roles || contract.allowDelegation !== false) return true;

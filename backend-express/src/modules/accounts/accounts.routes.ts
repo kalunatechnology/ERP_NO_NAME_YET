@@ -8,7 +8,13 @@
  */
 import { Router, Request, Response, NextFunction } from 'express';
 import { AccountsService } from './accounts.service';
-import { authenticate } from '../../middlewares/auth.middleware';
+import { authenticate, optionalAuthenticate } from '../../middlewares/auth.middleware';
+import {
+  applyNoStoreHeaders,
+  clearSessionCookies,
+  extractCookie,
+  setSessionCookies,
+} from '../../utils/session-cookie';
 import { createCrudRouter } from '../../utils/crud-factory';
 import prisma from '../../config/database';
 import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
@@ -50,6 +56,8 @@ publicAuthRouter.post('/token', async (req: Request, res: Response, next: NextFu
     const identifier = req.body.email || req.body.username || '';
     const password = req.body.password || '';
     const result = await AccountsService.login(identifier, password);
+    applyNoStoreHeaders(res);
+    setSessionCookies(req, res, { access: result.access, refresh: result.refresh });
     res.setHeader('Server-Timing', `auth;dur=${(performance.now() - startedAt).toFixed(1)}`);
     res.json(result);
   } catch (err) {
@@ -72,10 +80,13 @@ publicAuthRouter.post('/token', async (req: Request, res: Response, next: NextFu
  */
 publicAuthRouter.post('/token/refresh', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const refresh = req.body.refresh || '';
+    const refresh = String(req.body.refresh || extractCookie(req, 'refresh_token') || '').trim();
     const result = await AccountsService.refreshToken(refresh);
+    applyNoStoreHeaders(res);
+    setSessionCookies(req, res, { access: result.access, refresh });
     res.json(result);
   } catch (err) {
+    clearSessionCookies(req, res);
     next(err);
   }
 });
@@ -110,6 +121,7 @@ authRouter.post('/token/verify', async (req: Request, res: Response, next: NextF
  */
 authRouter.get('/me', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
+    applyNoStoreHeaders(res);
     const result = await AccountsService.getCurrentUser(req.user!.id);
     res.json(result);
   } catch (err) {
@@ -123,10 +135,12 @@ authRouter.get('/me', authenticate, async (req: Request, res: Response, next: Ne
  *
  * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
  * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
- * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Data/side effects: Clears HttpOnly session cookies and enforces no-store cache headers.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-authRouter.post('/logout', authenticate, (_req: Request, res: Response) => {
+authRouter.post('/logout', optionalAuthenticate, (req: Request, res: Response) => {
+  applyNoStoreHeaders(res);
+  clearSessionCookies(req, res);
   res.status(204).send();
 });
 

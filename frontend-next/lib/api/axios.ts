@@ -15,6 +15,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001"
 
 const api = axios.create({
   baseURL: API_BASE,
+  withCredentials: true,
   headers: { "Content-Type": "application/json" },
   timeout: 30000,
 });
@@ -26,13 +27,16 @@ let dashboardFreshRevision = 0;
 /* ── Helper Regex UUID ── */
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/* ── Helper Cookie ── */
+/* ── Helper Cookie (Non-sensitive routing flag only; JWT is HttpOnly from backend) ── */
 function syncCookie(token?: string) {
   if (typeof document === "undefined") return;
+  const secureAttr = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
+  // Clear any legacy JS-readable access_token cookie so raw JWT is never exposed to document.cookie.
+  document.cookie = `access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Lax${secureAttr}`;
   if (token) {
-    document.cookie = `access_token=${token}; path=/; max-age=86400; SameSite=Lax`;
+    document.cookie = `erp_session=1; path=/; max-age=86400; SameSite=Lax${secureAttr}`;
   } else {
-    document.cookie = "access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Lax";
+    document.cookie = `erp_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Lax${secureAttr}`;
   }
 }
 

@@ -9,7 +9,17 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../utils/jwt';
 import { UnauthorizedError } from '../utils/errors';
+import { extractCookie } from '../utils/session-cookie';
 import { loadAuthenticationSnapshotCoalesced, loadUserAccessContext } from '../modules/accounts/access-context.service';
+
+function extractAccessToken(req: Request): string | null {
+  const header = req.headers.authorization;
+  if (header?.startsWith('Bearer ')) {
+    const bearer = header.slice(7).trim();
+    if (bearer) return bearer;
+  }
+  return extractCookie(req, 'access_token');
+}
 
 /**
  * Authentication Middleware.
@@ -24,12 +34,11 @@ export async function authenticate(
   _res: Response,
   next: NextFunction,
 ): Promise<void> {
-  const header = req.headers.authorization;
-  if (!header?.startsWith('Bearer ')) {
+  const token = extractAccessToken(req);
+  if (!token) {
     return next(new UnauthorizedError('Token autentikasi tidak valid atau tidak tersedia.'));
   }
 
-  const token = header.slice(7);
   const payload = verifyAccessToken(token);
   if (!payload) {
     return next(new UnauthorizedError('Token autentikasi tidak valid atau sudah kedaluwarsa.'));
@@ -86,10 +95,9 @@ export async function optionalAuthenticate(
   _res: Response,
   next: NextFunction,
 ): Promise<void> {
-  const header = req.headers.authorization;
-  if (!header?.startsWith('Bearer ')) return next();
+  const token = extractAccessToken(req);
+  if (!token) return next();
 
-  const token = header.slice(7);
   const payload = verifyAccessToken(token);
   if (!payload) return next();
 
