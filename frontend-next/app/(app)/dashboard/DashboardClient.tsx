@@ -33,7 +33,7 @@ import { buildMainTaskTimeline } from "@/lib/dashboard/project-timeline";
 import { ProjectMilestoneCard, ProjectSummary, MilestoneItem } from "@/components/ui/ProjectMilestoneCard";
 import { BudgetCheckStatusCard } from "@/components/ui/BudgetCheckStatusCard";
 import { MonthlyStackedBarChart } from "@/components/ui/MonthlyStackedBarChart";
-import { canRequestApi } from "@/lib/access/module-contract";
+import { canRequestApi, canRequestDashboardSection } from "@/lib/access/module-contract";
 import type { FrontendAccessContext } from "@/lib/access/module-contract";
 import { TeamAttendanceWidget } from "@/components/ui/TeamAttendanceWidget";
 import { NewCardRequestModal } from "@/components/requests/NewCardRequestModal";
@@ -1331,6 +1331,9 @@ export default function DashboardClient() {
     isSuperAdmin: userRole === "super_admin",
     dashboardWidgets: allowedWidgets.length > 0 ? allowedWidgets : userProfileWidgets,
   };
+  const canSectionProjects = canRequestDashboardSection("projects", apiAccessContext);
+  const canSectionFinance = canRequestDashboardSection("finance", apiAccessContext);
+  const canSectionCrm = canRequestDashboardSection("crm", apiAccessContext);
   const canReadFinance = canRequestApi("/api/v1/finance/customer-receipts/", apiAccessContext);
 
   const loadData = useCallback(async (silent = false) => {
@@ -1343,21 +1346,22 @@ export default function DashboardClient() {
       );
       const hasExecHint = userRole === "executive" || widgetHintSet.has("DASH_EXECUTIVE");
       const hasFinanceHint = userRole === "finance" || hasExecHint || widgetHintSet.has("DASH_FINANCE");
-      const hasCrmHint = userRole === "crm" || widgetHintSet.has("DASH_CRM");
+      const hasCrmHint = (userRole === "crm" && canSectionCrm) || widgetHintSet.has("DASH_CRM");
       const mayReadProjectDashboard =
         ["pm", "om", "executive", "staff", "crm"].includes(userRole) ||
         widgetHintSet.has("DASH_PERSONAL") ||
         widgetHintSet.has("DASH_PROJECTS") ||
-        hasExecHint;
+        hasExecHint ||
+        canSectionProjects;
 
       const primarySections: Array<"projects" | "finance" | "crm"> = [];
       // Executive Weekly Target must use the same paginated project loader as
       // Staff Weekly; the dashboard bootstrap projection omits Weekly fields.
-      if (canUseProjects && mayReadProjectDashboard && userRole !== "crm" && !hasExecHint) {
+      if (canSectionProjects && mayReadProjectDashboard && (userRole !== "crm" || !canSectionCrm) && !hasExecHint) {
         primarySections.push("projects");
       }
-      if (hasFinanceHint && canUseFinance) primarySections.push("finance");
-      if (hasCrmHint && canUseCrm) primarySections.push("crm");
+      if (hasFinanceHint && canSectionFinance) primarySections.push("finance");
+      if (hasCrmHint && canSectionCrm) primarySections.push("crm");
 
       // One BFF request provides the above-the-fold datasets. Express performs
       // the underlying reads concurrently while preserving tenant and RBAC scope.
@@ -1392,13 +1396,13 @@ export default function DashboardClient() {
         (primary.allowed_widgets || userProfileWidgets).map((w) => String(w).toUpperCase())
       );
       const deferredSections: Array<"projects" | "finance" | "crm"> = [];
-      if ((hasExecHint || effectiveWidgets.has("DASH_CRM")) && canUseCrm && !primarySections.includes("crm")) {
+      if ((hasExecHint || effectiveWidgets.has("DASH_CRM")) && canSectionCrm && !primarySections.includes("crm")) {
         deferredSections.push("crm");
       }
-      if ((effectiveWidgets.has("DASH_FINANCE") || effectiveWidgets.has("DASH_EXECUTIVE")) && canUseFinance && !primarySections.includes("finance")) {
+      if ((effectiveWidgets.has("DASH_FINANCE") || effectiveWidgets.has("DASH_EXECUTIVE")) && canSectionFinance && !primarySections.includes("finance")) {
         deferredSections.push("finance");
       }
-      if ((userRole === "crm" || effectiveWidgets.has("DASH_PROJECTS") || effectiveWidgets.has("DASH_PERSONAL")) && canUseProjects && !primarySections.includes("projects") && !hasExecHint) {
+      if ((userRole === "crm" || effectiveWidgets.has("DASH_PROJECTS") || effectiveWidgets.has("DASH_PERSONAL")) && canSectionProjects && !primarySections.includes("projects") && !hasExecHint) {
         deferredSections.push("projects");
       }
       if (deferredSections.length) {
@@ -1449,7 +1453,32 @@ export default function DashboardClient() {
     staff: { title: "Personal Workspace", subtitle: "Ringkasan tugas & jadwal harian Anda" },
   };
 
-  const { title, subtitle } = titles[userRole] || titles.staff;
+  const projectsAssignment = moduleAssignments.find((assignment) =>
+    String(assignment.module_code || "").toUpperCase() === "PROJECTS"
+    && String(assignment.status || "").toUpperCase() === "ACTIVE"
+  );
+  const effectiveTitleRole = (() => {
+    if (userRole === "super_admin" || userRole === "company_admin") return userRole;
+    if (userRole === "crm" && !canSectionCrm) {
+      if (canSectionFinance) return "finance";
+      if (canSectionProjects) {
+        const tier = Number(projectsAssignment?.tier_level ?? 3);
+        return tier === 0 ? "executive" : tier === 1 ? "pm" : "staff";
+      }
+      return "staff";
+    }
+    if (userRole === "finance" && !canSectionFinance) {
+      if (canSectionCrm) return "crm";
+      if (canSectionProjects) {
+        const tier = Number(projectsAssignment?.tier_level ?? 3);
+        return tier === 0 ? "executive" : tier === 1 ? "pm" : "staff";
+      }
+      return "staff";
+    }
+    return userRole;
+  })();
+
+  const { title, subtitle } = titles[effectiveTitleRole] || titles.staff;
   const displayName = user?.full_name || user?.email?.split("@")[0] || "User";
 
   return (

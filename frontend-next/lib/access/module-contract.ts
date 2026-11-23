@@ -159,7 +159,7 @@ export function canAccessRoute(input: {
       return codes.has("READ") || codes.has(`${contract.module}:READ`);
     });
     if (!hasRead && String(readOverride?.effect || "").toUpperCase() !== "ALLOW") return false;
-    if (!contract.roles || contract.allowDelegation !== false) return true;
+    return true;
   }
 
   const override = contract.module && getModuleOverride(input.moduleAccess, contract.module);

@@ -8,6 +8,8 @@ import {
   ModuleAccessLevel,
 } from '../src/utils/module-permissions';
 import { restrictProjectMutationsByAuthority } from '../src/modules/projects/project-authority.middleware';
+import { canAccessRoute, canRequestDashboardSection } from '../../frontend-next/lib/access/module-contract';
+import { getNavigationEntries } from '../../frontend-next/lib/access/navigation-contract';
 
 async function main() {
   // 1. Default role = PROJECT_MANAGER without module_assignments -> allowed
@@ -121,6 +123,31 @@ async function main() {
     },
   );
   assert.ok(blockedError, 'Tier 2 Supervisor on PROJECTS must be blocked from POST /projects');
+
+  // 6. Frontend contract: legacy role CRM_LEAD with PROJECTS (Tier 1) + REQUESTS (Tier 2), no CRM
+  const arofFrontendAccess = {
+    activeRoleCode: 'CRM_LEAD',
+    enabledModules: ['PROJECTS', 'REQUESTS', 'CRM', 'REPORTING'],
+    moduleAccessModes: [
+      { module_code: 'PROJECTS', access_mode: 'ASSIGNMENT' },
+      { module_code: 'CRM', access_mode: 'ASSIGNMENT' },
+      { module_code: 'REQUESTS', access_mode: 'ASSIGNMENT' },
+    ],
+    moduleAssignments: [
+      { module_code: 'PROJECTS', tier_level: 1, status: 'ACTIVE', allow_read: true, allow_write: true },
+      { module_code: 'REQUESTS', tier_level: 2, status: 'ACTIVE', allow_read: true, allow_write: true },
+    ],
+  };
+  assert.equal(canAccessRoute({ pathname: '/projects', ...arofFrontendAccess }), true);
+  assert.equal(canAccessRoute({ pathname: '/tasks', ...arofFrontendAccess }), true);
+  assert.equal(canAccessRoute({ pathname: '/crm', ...arofFrontendAccess }), false);
+  assert.equal(canRequestDashboardSection('projects', arofFrontendAccess), true);
+  assert.equal(canRequestDashboardSection('crm', arofFrontendAccess), false);
+  const navHrefs = getNavigationEntries(arofFrontendAccess).map((entry) => entry.href);
+  assert.ok(navHrefs.includes('/projects'), 'Sidebar must include /projects');
+  assert.ok(navHrefs.includes('/tasks'), 'Sidebar must include /tasks');
+  assert.ok(navHrefs.includes('/requests'), 'Sidebar must include /requests');
+  assert.ok(!navHrefs.includes('/crm'), 'Sidebar must exclude /crm when CRM is not assigned');
 
   console.log('project-module-level.unit.ts: ALL PASSED');
 }
