@@ -20,6 +20,7 @@ import { Modal } from "@/components/ui/Modal";
 import { IDRInput } from "@/components/ui/IDRInput";
 import { CollapsibleGuideline } from "@/components/ui/CollapsibleGuideline";
 import { FinanceSummarySection } from "@/components/finance/FinanceSummarySection";
+import { ExcelStatusBar, exportSheetsToXlsx } from "@/components/finance/ExcelGridShell";
 import toast from "react-hot-toast";
 import {
   Package,
@@ -764,6 +765,36 @@ export default function FixedAssetsWorkspace() {
                   })}
                 </tbody>
               </table>
+            )}
+            {filteredAssets.length > 0 && (
+              <ExcelStatusBar
+                label="Ringkasan Nilai Buku (NBV)"
+                values={filteredAssets.map((a: any) => Number(a.net_book_value ?? a.acquisition_cost ?? 0))}
+                extra={
+                  <button
+                    type="button"
+                    onClick={() =>
+                      exportSheetsToXlsx("daftar-aset-tetap.xlsx", [
+                        {
+                          name: "Aset Tetap",
+                          rows: filteredAssets.map((a: any) => ({
+                            Kode: a.asset_code,
+                            Nama: a.asset_name,
+                            Kategori: a.category,
+                            Perolehan: Number(a.acquisition_cost ?? 0),
+                            Akumulasi_Penyusutan: Number(a.accumulated_depreciation ?? 0),
+                            Nilai_Buku: Number(a.net_book_value ?? 0),
+                            Status: a.status,
+                          })),
+                        },
+                      ])
+                    }
+                    className="inline-flex items-center gap-1 rounded border border-[#E2E8F0] bg-white px-2.5 py-1 text-[10px] font-bold text-[#163D64] hover:bg-slate-50"
+                  >
+                    Export .xlsx
+                  </button>
+                }
+              />
             )}
           </div>
         </div>

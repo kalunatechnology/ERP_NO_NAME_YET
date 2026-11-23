@@ -16,7 +16,7 @@ import {
   BookOpen, BarChart3, Activity, Banknote, ArrowLeftRight, TrendingDown,
   AlertTriangle, CheckSquare, Clock, Eye, LayoutDashboard, Crown, BriefcaseBusiness,
   ClipboardList, Receipt, RotateCcw, WalletCards, LibraryBig, FileBarChart,
-  Link2, Calculator, CalendarRange, CalendarClock, HardHat, Send, Info, Search, ChevronLeft, ChevronRight, ChevronDown, CircleDollarSign
+  Link2, Calculator, CalendarRange, CalendarClock, HardHat, Send, Info, Search, ChevronLeft, ChevronRight, ChevronDown, CircleDollarSign, Download
 } from "lucide-react";
 import { cn, formatMoney, formatRupiah, formatDate, getStatusColor, localDateKey } from "@/lib/utils";
 import api from "@/lib/api/axios";
@@ -36,6 +36,7 @@ import { ProjectTaxWorkspace } from "@/components/finance/ProjectTaxWorkspace";
 import { CompanyMasterWorkspace } from "@/components/finance/CompanyMasterWorkspace";
 import { FinanceSummarySection } from "@/components/finance/FinanceSummarySection";
 import { BudgetingWorkspace } from "@/components/finance/BudgetingWorkspace";
+import { ExcelStatusBar, exportSheetsToXlsx } from "@/components/finance/ExcelGridShell";
 import { InventoryBridgePanel } from "@/components/finance/InventoryBridgePanel";
 import { AccessDeniedState, isForbiddenError } from "@/components/ui/AccessDeniedState";
 import { useAuth } from "@/contexts/AuthContext";
@@ -1383,11 +1384,33 @@ export default function FinanceClient() {
                     <h3 className="text-sm font-semibold text-text-primary">Costing & Work In Progress (WIP)</h3>
                     <p className="text-2xs text-text-secondary">Post pengeluaran riil proyek ke dalam akun persediaan WIP dan buku besar akuntansi</p>
                   </div>
-                  {canOperateFinance && (
-                    <button onClick={() => setIsCostModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
-                      <Plus size={14} /> Catat Biaya
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        exportSheetsToXlsx("costing-wip.xlsx", [
+                          {
+                            name: "Costing WIP",
+                            rows: costEntries.map((c: any) => ({
+                              Deskripsi: c.description || "",
+                              Kategori: c.category || "",
+                              Divisi: c.division || "",
+                              Jumlah: Number(c.amount ?? 0),
+                              Status: c.status || "",
+                            })),
+                          },
+                        ])
+                      }
+                      className="btn-secondary py-1.5 px-3 text-xs gap-1.5"
+                    >
+                      <Download size={14} /> Export .xlsx
                     </button>
-                  )}
+                    {canOperateFinance && (
+                      <button onClick={() => setIsCostModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
+                        <Plus size={14} /> Catat Biaya
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <CollapsibleGuideline title="Panduan posting biaya WIP">
                   Posting ke WIP membuat jurnal akuntansi. Untuk menjaga kontrol Maker–Checker, cost entry yang Anda buat sendiri harus diposting oleh user Finance lain.
@@ -1460,6 +1483,12 @@ export default function FinanceClient() {
                       {!costEntries.length && <tr><td colSpan={6} className="text-center py-6 text-xs text-text-secondary">Belum ada cost entry.</td></tr>}
                     </tbody>
                   </table>
+                  {costEntries.length > 0 && (
+                    <ExcelStatusBar
+                      label="Ringkasan Biaya WIP"
+                      values={costEntries.map((c: any) => Number(c.amount ?? 0))}
+                    />
+                  )}
                 </div>
               </div>
             )
@@ -1497,11 +1526,33 @@ export default function FinanceClient() {
                     <h3 className="text-sm font-semibold text-text-primary">Accounts Payable & Verifikasi Dokumen</h3>
                     <p className="text-xs text-text-secondary">Lifecycle invoice supplier dan pembayaran AP. Pencocokan PO/GRN hanya ditampilkan jika backend menyediakan referensinya.</p>
                   </div>
-                  {canOperateFinance && (
-                    <button onClick={() => setIsAPModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
-                      <Plus size={14} /> + Tagihan Vendor Baru
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        exportSheetsToXlsx("tagihan-vendor-ap.xlsx", [
+                          {
+                            name: "Tagihan AP",
+                            rows: filteredVendorBills.map((b: any) => ({
+                              Vendor: b.supplier_name || b.party_name || "",
+                              Nomor_Faktur: b.invoice_number || "",
+                              Jatuh_Tempo: b.due_date || "",
+                              Jumlah: Number(b.total_amount ?? b.amount ?? 0),
+                              Status: b.status || "",
+                            })),
+                          },
+                        ])
+                      }
+                      className="btn-secondary py-1.5 px-3 text-xs gap-1.5"
+                    >
+                      <Download size={14} /> Export .xlsx
                     </button>
-                  )}
+                    {canOperateFinance && (
+                      <button onClick={() => setIsAPModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
+                        <Plus size={14} /> + Tagihan Vendor Baru
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="table-scroll-wrapper">
@@ -1610,6 +1661,12 @@ export default function FinanceClient() {
                       {!filteredVendorBills.length && <tr><td colSpan={5} className="py-8 text-center text-xs text-text-secondary">Tidak ada tagihan pada filter ini.</td></tr>}
                     </tbody>
                   </table>
+                  {filteredVendorBills.length > 0 && (
+                    <ExcelStatusBar
+                      label="Ringkasan Tagihan AP"
+                      values={filteredVendorBills.map((b: any) => Number(b.total_amount ?? b.amount ?? 0))}
+                    />
+                  )}
                 </div>
 
                 <div className="border-t border-gray-100 pt-4">
@@ -2211,7 +2268,28 @@ export default function FinanceClient() {
                     </h3>
                     <p className="text-xs text-text-secondary">Saldo dihitung secara real-time dari akumulasi jurnal yang telah diposting (POSTED).</p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        exportSheetsToXlsx("buku-besar-gl.xlsx", [
+                          {
+                            name: "Trial Balance",
+                            rows: (trialBalanceAccounts || []).map((a: any) => ({
+                              Kode: a.account_code,
+                              Akun: a.account_name,
+                              Tipe: a.account_type,
+                              Debit: Number(a.total_debit ?? 0),
+                              Kredit: Number(a.total_credit ?? 0),
+                              Saldo: Number(a.balance ?? 0),
+                            })),
+                          },
+                        ])
+                      }
+                      className="btn-secondary inline-flex items-center gap-1.5 px-3 py-1.5 text-xs"
+                    >
+                      <Download size={13} /> Export .xlsx
+                    </button>
                     <button onClick={() => setGlActiveTab("trial")} className={cn("tab-btn text-xs", glActiveTab === "trial" && "active")}>Trial Balance</button>
                     <button onClick={() => setGlActiveTab("entries")} className={cn("tab-btn text-xs", glActiveTab === "entries" && "active")}>Jurnal Umum</button>
                   </div>
@@ -2447,7 +2525,63 @@ export default function FinanceClient() {
                     </h3>
                     <p className="text-xs text-text-secondary">Digenerate secara otomatis dari General Ledger. Selalu sinkron dengan data transaksi terkini.</p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        exportSheetsToXlsx("laporan-keuangan.xlsx", [
+                          {
+                            name: "Laba Rugi",
+                            rows: [
+                              ...(profitLoss?.revenues || []).map((r: any) => ({
+                                Kelompok: "PENDAPATAN",
+                                Kode: r.account_code,
+                                Akun: r.account_name,
+                                Saldo: Number(r.amount ?? 0),
+                              })),
+                              ...(profitLoss?.expenses || []).map((e: any) => ({
+                                Kelompok: "BEBAN",
+                                Kode: e.account_code,
+                                Akun: e.account_name,
+                                Saldo: Number(e.amount ?? 0),
+                              })),
+                              {
+                                Kelompok: "LABA / RUGI BERSIH",
+                                Kode: "",
+                                Akun: "Net Profit / Loss",
+                                Saldo: Number(profitLoss?.net_profit_loss ?? 0),
+                              },
+                            ],
+                          },
+                          {
+                            name: "Neraca",
+                            rows: [
+                              ...(balanceSheet?.assets || []).map((a: any) => ({
+                                Kelompok: "ASET",
+                                Kode: a.account_code,
+                                Akun: a.account_name,
+                                Saldo: Number(a.amount ?? 0),
+                              })),
+                              ...(balanceSheet?.liabilities || []).map((l: any) => ({
+                                Kelompok: "KEWAJIBAN",
+                                Kode: l.account_code,
+                                Akun: l.account_name,
+                                Saldo: Number(l.amount ?? 0),
+                              })),
+                              ...(balanceSheet?.equity || []).map((e: any) => ({
+                                Kelompok: "EKUITAS",
+                                Kode: e.account_code,
+                                Akun: e.account_name,
+                                Saldo: Number(e.amount ?? 0),
+                              })),
+                            ],
+                          },
+                        ])
+                      }
+                      className="btn-secondary inline-flex items-center gap-1.5 px-3 py-1.5 text-xs"
+                    >
+                      <Download size={13} /> Export Multi-Sheet .xlsx
+                    </button>
                     <button onClick={() => setLapkeuActiveTab("pl")} className={cn("tab-btn text-xs", lapkeuActiveTab === "pl" && "active")}>Laba Rugi (P&L)</button>
                     <button onClick={() => setLapkeuActiveTab("bs")} className={cn("tab-btn text-xs", lapkeuActiveTab === "bs" && "active")}>Neraca (Balance Sheet)</button>
                   </div>
