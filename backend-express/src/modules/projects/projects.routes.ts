@@ -233,6 +233,21 @@ function canManageProjectHandoff(req: Request): boolean {
     }));
 }
 
+async function generateShortCrmProjectCode(tx: any, companyId: string, opportunityId: string): Promise<string> {
+  const existingCount = await tx.project_project.count({
+    where: { company_id: companyId, source_type: 'CRM' },
+  });
+  for (let offset = 1; offset <= 10; offset += 1) {
+    const candidate = `PRJ-CRM-${String(existingCount + offset).padStart(3, '0')}`;
+    const conflict = await tx.project_project.findFirst({
+      where: { company_id: companyId, project_code: candidate },
+      select: { id: true },
+    });
+    if (!conflict) return candidate;
+  }
+  return `PRJ-CRM-${opportunityId.replace(/-/g, '').slice(0, 6).toUpperCase()}`;
+}
+
 projectsRouter.get('/crm-handoffs', async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!canManageProjectHandoff(req)) {
@@ -336,6 +351,7 @@ projectsRouter.post('/crm-handoffs/:id/approve', async (req: Request, res: Respo
         : null;
 
       if (!project) {
+        const projectCode = await generateShortCrmProjectCode(tx, companyId, opportunity.id);
         project = await tx.project_project.create({
           data: {
             id: crypto.randomUUID(),
@@ -349,7 +365,7 @@ projectsRouter.post('/crm-handoffs/:id/approve', async (req: Request, res: Respo
             sales_order_id: salesOrder?.id ?? null,
             project_manager_id: pmUserId,
             manager_name: pmDisplayName,
-            project_code: `PRJ-CRM-${opportunity.id.replace(/-/g, '').toUpperCase()}`,
+            project_code: projectCode,
             project_name: opportunity.opportunity_name ?? 'New Project from CRM',
             budget_amount: dealAmount,
             contract_amount: dealAmount,
