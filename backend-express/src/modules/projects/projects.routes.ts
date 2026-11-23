@@ -10,7 +10,13 @@
 import crypto from 'crypto';
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
-import { hasModuleOverride, hasUserModuleManagerWrite, hasUserModuleWrite } from '../../utils/module-permissions';
+import {
+  hasModuleOverride,
+  hasModuleRoleOrLevel,
+  hasUserModuleManagerWrite,
+  hasUserModuleWrite,
+  ModuleAccessLevel,
+} from '../../utils/module-permissions';
 import { ProjectsService } from './projects.service';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
@@ -220,10 +226,11 @@ function canManageProjectHandoff(req: Request): boolean {
     const parsedActive = parseRoleCode(rawActive);
     return Boolean(parsedActive && allowed.has(parsedActive));
   }
-  return hasUserModuleWrite(req.user, 'PROJECTS') && (req.user.roles || []).some((r: string) => {
-    const parsed = parseRoleCode(String(r));
-    return Boolean(parsed && allowed.has(parsed));
-  });
+  return hasUserModuleManagerWrite(req.user, 'PROJECTS')
+    || (hasUserModuleWrite(req.user, 'PROJECTS') && (req.user.roles || []).some((r: string) => {
+      const parsed = parseRoleCode(String(r));
+      return Boolean(parsed && allowed.has(parsed));
+    }));
 }
 
 projectsRouter.get('/crm-handoffs', async (req: Request, res: Response, next: NextFunction) => {
@@ -3006,9 +3013,13 @@ projectsRouter.use('/projects', createCrudRouter({
   searchFields: ['project_name', 'project_code', 'status', 'customer_name'],
   accessWhere: async (req) => ProjectsService.projectAccessWhere(req.user, portfolioReadCompanyId(req)),
   beforeCreate: async (req, data) => {
-    const role = req.user?.active_role_code;
-    if ((!([RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.COMPANY_ADMIN] as RoleCode[]).includes(role as RoleCode) && !hasUserModuleManagerWrite(req.user, 'PROJECTS'))
-      || req.user?.roles?.includes(RoleCode.SUPER_ADMIN)) {
+    const canCreate = hasModuleRoleOrLevel(
+      req.user,
+      'PROJECTS',
+      [RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.COMPANY_ADMIN],
+      ModuleAccessLevel.MANAGER,
+    ) && !req.user?.roles?.includes(RoleCode.SUPER_ADMIN);
+    if (!canCreate) {
       throw new ForbiddenError('Anda tidak memiliki kewenangan untuk membuat project.');
     }
     // Ownership is immutable and always derived from the authenticated creator.
