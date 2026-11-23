@@ -43,8 +43,7 @@ export function formatMoney(value: number | string | null | undefined): string {
  * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
  */
 export function formatRupiah(value: number | string | null | undefined): string {
-  const num = Number(value || 0);
-  return `Rp ${num.toLocaleString("id-ID")}`;
+  return formatMoney(value);
 }
 
 /* ── Format Number ─────────────────────────── */

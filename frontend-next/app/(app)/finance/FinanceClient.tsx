@@ -1958,7 +1958,7 @@ export default function FinanceClient() {
                         <th className="py-3 px-4 font-bold">No. Bukti / Tanggal</th>
                         <th className="py-3 px-4 font-bold">Klien & Proyek</th>
                         <th className="py-3 px-4 font-bold">Rekening Penerima</th>
-                        <th className="py-3 px-4 font-bold">Jumlah Uang Masuk</th>
+                        <th className="py-3 px-4 font-bold text-right">Jumlah Uang Masuk</th>
                         <th className="py-3 px-4 font-bold">Status</th>
                         <th className="py-3 px-4 font-bold">Action</th>
                       </tr>
@@ -1979,7 +1979,7 @@ export default function FinanceClient() {
                             <span className="font-semibold text-text-primary block">{String(rec.bank_account || "Rekening belum ditentukan").split("—")[0]}</span>
                             <span className="text-xs text-text-secondary block">Ref: {rec.reference_number}</span>
                           </td>
-                          <td className="py-3 px-4 font-bold text-brand-deep-green text-sm">
+                          <td className="py-3 px-4 font-bold text-brand-deep-green text-sm text-right tabular-nums whitespace-nowrap">
                             +{formatMoney(rec.amount)}
                           </td>
                           <td className="py-3 px-4">
@@ -2344,7 +2344,7 @@ export default function FinanceClient() {
                               Tipe: a.account_type,
                               Debit: Number(a.total_debit ?? 0),
                               Kredit: Number(a.total_credit ?? 0),
-                              Saldo: Number(a.balance ?? 0),
+                              Saldo: Number(a.net_balance ?? a.balance ?? 0),
                             })),
                           },
                         ])
@@ -2427,9 +2427,9 @@ export default function FinanceClient() {
                                           "bg-purple-100 text-purple-700"
                                 )}>{acc.account_type}</span>
                               </td>
-                              <td className="py-2.5 px-4 text-right font-mono">{acc.total_debit > 0 ? formatRupiah(acc.total_debit) : "-"}</td>
-                              <td className="py-2.5 px-4 text-right font-mono">{acc.total_credit > 0 ? formatRupiah(acc.total_credit) : "-"}</td>
-                              <td className={cn("py-2.5 px-4 text-right font-bold font-mono",
+                              <td className="py-2.5 px-4 text-right tabular-nums">{acc.total_debit > 0 ? formatRupiah(acc.total_debit) : "-"}</td>
+                              <td className="py-2.5 px-4 text-right tabular-nums">{acc.total_credit > 0 ? formatRupiah(acc.total_credit) : "-"}</td>
+                              <td className={cn("py-2.5 px-4 text-right font-bold tabular-nums",
                                 acc.net_balance >= 0 ? "text-brand-deep-green" : "text-red-600"
                               )}>{formatRupiah(acc.net_balance)}</td>
                             </tr>
@@ -2445,9 +2445,9 @@ export default function FinanceClient() {
                           <tfoot className="bg-gray-100 border-t-2 border-text-tertiary">
                             <tr>
                               <td colSpan={3} className="py-3 px-4 text-xs font-black text-text-primary uppercase">GRAND TOTAL</td>
-                              <td className="py-3 px-4 text-right font-black font-mono text-brand-deep-green">{formatRupiah(trialBalance.total_debit)}</td>
-                              <td className="py-3 px-4 text-right font-black font-mono text-red-700">{formatRupiah(trialBalance.total_credit)}</td>
-                              <td className="py-3 px-4 text-right font-black font-mono">{formatRupiah(trialBalance.total_debit - trialBalance.total_credit)}</td>
+                              <td className="py-3 px-4 text-right font-black tabular-nums text-brand-deep-green">{formatRupiah(trialBalance.total_debit)}</td>
+                              <td className="py-3 px-4 text-right font-black tabular-nums text-red-700">{formatRupiah(trialBalance.total_credit)}</td>
+                              <td className="py-3 px-4 text-right font-black tabular-nums">{formatRupiah(trialBalance.total_debit - trialBalance.total_credit)}</td>
                             </tr>
                           </tfoot>
                         )}
