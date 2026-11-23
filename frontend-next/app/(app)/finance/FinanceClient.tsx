@@ -38,6 +38,7 @@ import { FinanceSummarySection } from "@/components/finance/FinanceSummarySectio
 import { BudgetingWorkspace } from "@/components/finance/BudgetingWorkspace";
 import { ExcelStatusBar, exportSheetsToXlsx } from "@/components/finance/ExcelGridShell";
 import { InventoryBridgePanel } from "@/components/finance/InventoryBridgePanel";
+import { BillingInvoiceModal, BillingInvoicePreviewData } from "@/components/finance/BillingInvoiceModal";
 import { AccessDeniedState, isForbiddenError } from "@/components/ui/AccessDeniedState";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
@@ -125,7 +126,8 @@ export default function FinanceClient() {
   const { run: runFinanceAction, pending: financePending } = useAsyncAction();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, userRole } = useAuth();
+  const { user, userRole, company, companies } = useAuth();
+  const [previewInvoice, setPreviewInvoice] = useState<BillingInvoicePreviewData | null>(null);
   const requestAccess = {
     enabledModules: user?.enabled_modules,
     delegatedModules: user?.delegated_modules,
@@ -1767,10 +1769,37 @@ export default function FinanceClient() {
                             <tr key={p.id} className="hover:bg-gray-50/80 transition-colors">
                               <td className="py-3 px-3">
                                 <strong className="text-text-primary block font-semibold">{p.description || "Termin Invoice"}</strong>
-                                {invoiceNum && (
-                                  <span className="text-3xs font-sans text-text-secondary block mt-0.5">
-                                    Faktur: <span className="text-blue-700 font-bold">{invoiceNum}</span>
-                                  </span>
+                                {invoiceNum && matchingDoc && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const matchedProj = financeProjectOptions.find((pr) => String(pr.id) === String(matchingDoc.project_id ?? p.project_id));
+                                      const activeCompanyName = companies.find((c) => String(c.id) === String(company))?.name || "Perusahaan Aktif";
+                                      setPreviewInvoice({
+                                        invoiceNumber: invoiceNum,
+                                        status: String(matchingDoc.status || p.status || "ISSUED"),
+                                        paymentStatus: String(matchingDoc.payment_status || "UNPAID"),
+                                        invoiceDate: matchingDoc.invoice_date ?? p.created_at ?? null,
+                                        dueDate: matchingDoc.due_date ?? null,
+                                        postingDate: matchingDoc.posting_date ?? null,
+                                        companyName: activeCompanyName,
+                                        customerName: matchedProj?.customer_name || p.customer_name || "Klien Proyek",
+                                        projectName: matchedProj?.project_name || matchedProj?.name || p.project_name || "Proyek Terkait",
+                                        projectCode: matchedProj?.project_code || matchedProj?.code || null,
+                                        description: p.description || "Termin Invoice",
+                                        taxScheme: matchingDoc.tax_scheme ?? null,
+                                        subtotal: Number(matchingDoc.subtotal ?? p.subtotal ?? 0),
+                                        taxAmount: Number(matchingDoc.tax_amount ?? p.tax_amount ?? 0),
+                                        totalAmount: Number(matchingDoc.total_amount ?? p.total_amount ?? p.subtotal ?? 0),
+                                        paidAmount: Number(matchingDoc.paid_amount ?? 0),
+                                        outstandingAmount: Number(matchingDoc.outstanding_amount ?? matchingDoc.total_amount ?? p.total_amount ?? 0),
+                                      });
+                                    }}
+                                    className="text-3xs font-sans text-text-secondary hover:text-blue-800 block mt-0.5 cursor-pointer text-left"
+                                    title="Klik untuk melihat pratinjau invoice"
+                                  >
+                                    Faktur: <span className="text-blue-700 font-bold underline underline-offset-2">{invoiceNum}</span>
+                                  </button>
                                 )}
                               </td>
                               <td className="py-3 px-3 text-right font-sans tabular-nums text-text-secondary">
@@ -1788,36 +1817,70 @@ export default function FinanceClient() {
                                 </span>
                               </td>
                               <td className="py-3 px-3 text-right">
-                                {canOperateFinance ? (
-                                  ["DRAFT", "SUBMITTED", "APPROVED"].includes(p.status) ? (
-                                    <button disabled={Boolean(financePending[`billing-lifecycle:${p.id}`])} onClick={() => void handleBillingProposalLifecycle(p)} className="btn-primary py-1 px-2.5 text-2xs gap-1 disabled:opacity-50">
-                                      {financePending[`billing-lifecycle:${p.id}`] ? "Memproses…" : p.status === "DRAFT" ? "Submit" : p.status === "SUBMITTED" ? "Approve" : "Terbitkan Billing"}
+                                <div className="inline-flex items-center justify-end gap-1.5 flex-wrap">
+                                  {matchingDoc && invoiceNum && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const matchedProj = financeProjectOptions.find((pr) => String(pr.id) === String(matchingDoc.project_id ?? p.project_id));
+                                        const activeCompanyName = companies.find((c) => String(c.id) === String(company))?.name || "Perusahaan Aktif";
+                                        setPreviewInvoice({
+                                          invoiceNumber: invoiceNum,
+                                          status: String(matchingDoc.status || p.status || "ISSUED"),
+                                          paymentStatus: String(matchingDoc.payment_status || "UNPAID"),
+                                          invoiceDate: matchingDoc.invoice_date ?? p.created_at ?? null,
+                                          dueDate: matchingDoc.due_date ?? null,
+                                          postingDate: matchingDoc.posting_date ?? null,
+                                          companyName: activeCompanyName,
+                                          customerName: matchedProj?.customer_name || p.customer_name || "Klien Proyek",
+                                          projectName: matchedProj?.project_name || matchedProj?.name || p.project_name || "Proyek Terkait",
+                                          projectCode: matchedProj?.project_code || matchedProj?.code || null,
+                                          description: p.description || "Termin Invoice",
+                                          taxScheme: matchingDoc.tax_scheme ?? null,
+                                          subtotal: Number(matchingDoc.subtotal ?? p.subtotal ?? 0),
+                                          taxAmount: Number(matchingDoc.tax_amount ?? p.tax_amount ?? 0),
+                                          totalAmount: Number(matchingDoc.total_amount ?? p.total_amount ?? p.subtotal ?? 0),
+                                          paidAmount: Number(matchingDoc.paid_amount ?? 0),
+                                          outstandingAmount: Number(matchingDoc.outstanding_amount ?? matchingDoc.total_amount ?? p.total_amount ?? 0),
+                                        });
+                                      }}
+                                      className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-2xs font-bold text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer"
+                                      title="Lihat & Cetak Invoice"
+                                    >
+                                      <Eye size={12} /> Lihat Invoice
                                     </button>
-                                  ) : p.status === "ISSUED" ? (
-                                    isPosted ? (
-                                      <span className="inline-flex items-center gap-1 text-2xs font-bold text-brand-deep-green bg-brand-light-green px-2.5 py-1 rounded-md border border-brand-green/30">
-                                        <CheckCircle2 size={12} className="text-brand-green" /> Masuk Pajak
-                                      </span>
-                                    ) : (
-                                      <button
-                                        onClick={() => handlePostBillingProposal(p)}
-                                        disabled={postingProposalId === p.id}
-                                        className="btn-primary py-1 px-3 text-2xs gap-1 bg-blue-600 hover:bg-blue-700 font-bold shadow-xs text-white"
-                                      >
-                                        <Send size={11} />
-                                        {postingProposalId === p.id ? "Memposting..." : "Posting Faktur"}
+                                  )}
+                                  {canOperateFinance ? (
+                                    ["DRAFT", "SUBMITTED", "APPROVED"].includes(p.status) ? (
+                                      <button disabled={Boolean(financePending[`billing-lifecycle:${p.id}`])} onClick={() => void handleBillingProposalLifecycle(p)} className="btn-primary py-1 px-2.5 text-2xs gap-1 disabled:opacity-50">
+                                        {financePending[`billing-lifecycle:${p.id}`] ? "Memproses…" : p.status === "DRAFT" ? "Submit" : p.status === "SUBMITTED" ? "Approve" : "Terbitkan Billing"}
                                       </button>
+                                    ) : p.status === "ISSUED" ? (
+                                      isPosted ? (
+                                        <span className="inline-flex items-center gap-1 text-2xs font-bold text-brand-deep-green bg-brand-light-green px-2.5 py-1 rounded-md border border-brand-green/30">
+                                          <CheckCircle2 size={12} className="text-brand-green" /> Masuk Pajak
+                                        </span>
+                                      ) : (
+                                        <button
+                                          onClick={() => handlePostBillingProposal(p)}
+                                          disabled={postingProposalId === p.id}
+                                          className="btn-primary py-1 px-3 text-2xs gap-1 bg-blue-600 hover:bg-blue-700 font-bold shadow-xs text-white"
+                                        >
+                                          <Send size={11} />
+                                          {postingProposalId === p.id ? "Memposting..." : "Posting Faktur"}
+                                        </button>
+                                      )
+                                    ) : (
+                                      <span className="text-2xs text-text-secondary font-medium">
+                                        {p.status}
+                                      </span>
                                     )
                                   ) : (
                                     <span className="text-2xs text-text-secondary font-medium">
-                                      {p.status}
+                                      {isPosted ? "Masuk Pajak" : p.status}
                                     </span>
-                                  )
-                                ) : (
-                                  <span className="text-2xs text-text-secondary font-medium">
-                                    {isPosted ? "Masuk Pajak" : p.status}
-                                  </span>
-                                )}
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           );
@@ -3971,6 +4034,7 @@ export default function FinanceClient() {
           </div>
         </Modal>
       )}
+      <BillingInvoiceModal invoice={previewInvoice} onClose={() => setPreviewInvoice(null)} />
     </div>
   );
 }
