@@ -2,13 +2,14 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, ArrowRight, AtSign, Bold, Calendar, CalendarDays, Check, CheckCircle2, Clock, Clock3, Coffee, Briefcase, FileDown, FileText, Filter, Italic, Link2, MapPin, Plus, Repeat, Save, Search, Send, Strikethrough, Trash2, UserCircle2, Video, X, ClipboardList } from "lucide-react";
+import { ArrowLeft, ArrowRight, AtSign, Bold, Calendar, CalendarDays, Check, CheckCircle2, Clock, Clock3, Coffee, Briefcase, FileDown, FileSpreadsheet, FileText, Filter, Italic, Link2, MapPin, Plus, Repeat, Save, Search, Send, ShieldCheck, Strikethrough, Trash2, UserCircle2, Video, X, ClipboardList } from "lucide-react";
 import toast from "react-hot-toast";
 import { MeetingDetail, MeetingRequestSummary, NonMeetingRequest, requestApi } from "@/lib/api/request.api";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { getUserFacingApiError } from "@/lib/api/error-message";
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
+import { HrPayrollTabs } from "@/components/hr/HrPayrollTabs";
 
 type Member = { id: string; name: string; email: string; role: string };
 type CreateForm = { title:string; description:string; date:string; recurrenceEndDate:string; startTime:string; endTime:string; location:string; meetingType:string; recurrenceType:"RECURRING"|"NON_RECURRING"; recurringDays:number[]; assigneeId:string; notetakerId:string; participantIds:string[]; agenda:string };
@@ -32,8 +33,25 @@ function richTextToPlainText(value:string){
 
 export default function RequestsClient(){
   const {user,userRole}=useAuth();
+  const hrTier = useMemo(() => {
+    if (userRole === "super_admin") return 1;
+    const hrAssignments = (user?.module_assignments ?? []).filter(
+      (a) => ["HR", "HRMS", "REQUESTS"].includes(String(a.module_code || "").toUpperCase()) && String(a.status || "").toUpperCase() === "ACTIVE",
+    );
+    if (!hrAssignments.length) return 3;
+    const tiers = hrAssignments.map((a) => Number(a.tier_level ?? 3)).filter((t) => Number.isFinite(t));
+    return tiers.length ? Math.min(...tiers) : 3;
+  }, [user?.module_assignments, userRole]);
+  const financeTier = useMemo(() => {
+    if (userRole === "super_admin") return 1;
+    const finAssignment = (user?.module_assignments ?? []).find(
+      (a) => String(a.module_code || "").toUpperCase() === "FINANCE" && String(a.status || "").toUpperCase() === "ACTIVE",
+    );
+    if (finAssignment) return Number(finAssignment.tier_level ?? 3);
+    return userRole === "finance" ? 1 : 99;
+  }, [user?.module_assignments, userRole]);
   const canDeleteMeeting=userRole==="pm"||userRole==="executive";
-  const [activeTab,setActiveTab]=useState<'meeting'|'request'>('meeting');
+  const [activeTab,setActiveTab]=useState<'meeting'|'request'|'overtime'|'hr_ops'|'hr_lead'>('meeting');
   const [meetings,setMeetings]=useState<MeetingRequestSummary[]>([]);
   const [nonMeetingRequests,setNonMeetingRequests]=useState<NonMeetingRequest[]>([]);
   const [members,setMembers]=useState<Member[]>([]);
@@ -224,19 +242,19 @@ export default function RequestsClient(){
         <div>
           <div className="flex items-center gap-2">
             <span className="text-3xs font-extrabold uppercase tracking-widest text-[#163D64] px-2 py-0.5 rounded-md bg-[#E7F2FF]">
-              MODUL REQUEST & KOORDINASI
+              MODUL HR &amp; KOORDINASI
             </span>
           </div>
           <h1 className="mt-1 text-lg sm:text-xl font-black text-[#0F172A] tracking-tight">
-            Meeting & Permintaan Tim
+            HR — Meeting, Request, Lembur &amp; Payroll
           </h1>
           <p className="mt-0.5 text-xs text-[#64748B]">
-            Kelola agenda rapat rutin, notulensi hasil kesepakatan, serta pencatatan cuti dan izin kerja.
+            Kelola agenda rapat rutin, notulensi hasil kesepakatan, cuti/izin, lembur karyawan, dan payroll perusahaan.
           </p>
         </div>
 
         <div className="flex items-center gap-2.5 shrink-0">
-          {activeTab === 'meeting' ? (
+          {activeTab === 'meeting' && (
             <button
               onClick={() => setCreateOpen(true)}
               className="inline-flex items-center gap-2 rounded-xl bg-[#163D64] px-3.5 py-2 text-xs font-bold text-white shadow-xs transition-all hover:bg-[#203D91] active:scale-95"
@@ -244,7 +262,8 @@ export default function RequestsClient(){
               <Plus size={15} strokeWidth={2.5} />
               <span>Meeting Baru</span>
             </button>
-          ) : (
+          )}
+          {activeTab === 'request' && (
             <button
               onClick={() => setRequestModalOpen(true)}
               className="inline-flex items-center gap-2 rounded-xl bg-[#2B7A42] px-3.5 py-2 text-xs font-bold text-white shadow-xs transition-all hover:bg-[#226135] active:scale-95"
@@ -299,6 +318,49 @@ export default function RequestsClient(){
                 {nonMeetingRequests.length}
               </span>
             </button>
+
+            <button
+              onClick={() => setActiveTab('overtime')}
+              className={cn(
+                "flex items-center gap-2 px-3.5 py-1.5 rounded-lg transition-all",
+                activeTab === 'overtime'
+                  ? "bg-white text-[#0876CD] shadow-2xs font-extrabold"
+                  : "text-[#64748B] hover:text-[#0F172A]"
+              )}
+            >
+              <Clock size={14} />
+              <span>Lembur &amp; Slip Gaji</span>
+            </button>
+
+            {(hrTier <= 2 || financeTier <= 1) && (
+              <button
+                onClick={() => setActiveTab('hr_ops')}
+                className={cn(
+                  "flex items-center gap-2 px-3.5 py-1.5 rounded-lg transition-all",
+                  activeTab === 'hr_ops'
+                    ? "bg-white text-[#0876CD] shadow-2xs font-extrabold"
+                    : "text-[#64748B] hover:text-[#0F172A]"
+                )}
+              >
+                <FileSpreadsheet size={14} />
+                <span>Operasional HR &amp; Payroll</span>
+              </button>
+            )}
+
+            {(hrTier === 1 || financeTier <= 1) && (
+              <button
+                onClick={() => setActiveTab('hr_lead')}
+                className={cn(
+                  "flex items-center gap-2 px-3.5 py-1.5 rounded-lg transition-all",
+                  activeTab === 'hr_lead'
+                    ? "bg-white text-[#163D64] shadow-2xs font-extrabold"
+                    : "text-[#64748B] hover:text-[#0F172A]"
+                )}
+              >
+                <ShieldCheck size={14} />
+                <span>Kepala HR &amp; ACC Finance</span>
+              </button>
+            )}
           </div>
 
           {/* Search Box - Absolute icon in left-3.5 with generous pl-10 ensures ZERO overlap */}
@@ -627,6 +689,14 @@ export default function RequestsClient(){
             );
           })}
         </div>
+      )}
+
+      {(activeTab === 'overtime' || activeTab === 'hr_ops' || activeTab === 'hr_lead') && (
+        <HrPayrollTabs
+          section={activeTab === 'overtime' ? 'overtime' : activeTab === 'hr_ops' ? 'ops' : 'lead'}
+          hrTier={hrTier}
+          financeTier={financeTier}
+        />
       )}
 
       {createOpen && <CreateRequestModal form={createForm} setForm={setCreateForm} members={members} busy={busy} onClose={() => setCreateOpen(false)} onSubmit={submitMeeting} />}
