@@ -114,14 +114,27 @@ export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' =
       }
 
       const isHrSelfService =
-        normalizedModule === 'HR'
-        && /^\/(meetings\/my|overtimes\/my|payslips\/my)(\/|$)/i.test(req.path);
+        (normalizedModule === 'HR' && /^\/(meetings\/my|overtimes\/my|payslips\/my)(\/|$)/i.test(req.path))
+        || normalizedModule === 'REQUESTS'
+        || normalizedModule === 'HRMS';
 
       const accessMode = String((access as any).access_mode || 'LEGACY').trim().toUpperCase();
-      if (accessMode === 'ASSIGNMENT' && !isHrSelfService) {
+      if (accessMode === 'ASSIGNMENT') {
         const assignments = (req.user.module_assignments ?? []).filter((assignment: any) =>
           candidateModules.some((candidate) => isUsableModuleAssignment(assignment, candidate))
         );
+        if (!assignments.length && isHrSelfService) {
+          req.moduleAccess = {
+            companyId,
+            moduleCode: normalizedModule,
+            accessMode: 'LEGACY',
+            allowRead: access.allow_read,
+            allowWrite: access.allow_write,
+            assignmentCount: 0,
+            roleProfiles: [],
+          };
+          return next();
+        }
         if (!assignments.length) {
           return next(new ForbiddenError(`Belum ada penugasan role aktif untuk modul ${normalizedModule}.`));
         }

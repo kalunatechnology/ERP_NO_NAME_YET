@@ -336,7 +336,9 @@ export function canRequestApi(url: string, access: FrontendAccessContext): boole
   )?.access_mode?.toUpperCase();
   if (!superAdmin && moduleAccessMode === "ASSIGNMENT" && contract.module) {
     const isHrSelfServiceApi =
-      contract.module === "HR" && /\/api\/v1\/hr\/(meetings\/my|overtimes\/my|payslips\/my)/i.test(url);
+      (contract.module === "HR" && /\/api\/v1\/hr\/(meetings\/my|overtimes\/my|payslips\/my)/i.test(url))
+      || contract.module === "REQUESTS"
+      || contract.module === "HRMS";
     const assignments = (access.moduleAssignments ?? []).filter((assignment) =>
       candidateModules.some((mod) => isUsableModuleAssignment(assignment, mod))
     );
