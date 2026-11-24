@@ -83,7 +83,7 @@ export default function HrManagementPage() {
   const hrTier = useMemo(() => {
     if (userRole === "super_admin") return 1;
     const hrAssignments = (user?.module_assignments ?? []).filter(
-      (a) => ["HR", "HRMS"].includes(String(a.module_code || "").toUpperCase()) && String(a.status || "").toUpperCase() === "ACTIVE",
+      (a) => ["HR", "HRMS", "REQUESTS"].includes(String(a.module_code || "").toUpperCase()) && String(a.status || "").toUpperCase() === "ACTIVE",
     );
     if (!hrAssignments.length) return 3;
     const tiers = hrAssignments.map((a) => Number(a.tier_level ?? 3)).filter((t) => Number.isFinite(t));

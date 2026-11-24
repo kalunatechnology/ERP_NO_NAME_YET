@@ -251,7 +251,6 @@ const CONFIGURABLE_MODULES: Array<{
     label: "Projects & Tugas",
     description: "Akses proyek, Weekly Task & Daily Task",
   },
-  { code: "REQUESTS", label: "Requests & Meetings", description: "Permintaan operasional, rapat, dan agenda dalam scope yang dipilih." },
   {
     code: "CRM",
     label: "CRM & Penjualan",
@@ -273,8 +272,7 @@ const CONFIGURABLE_MODULES: Array<{
     description: "Laporan Analitik & Evaluasi Kinerja",
   },
   { code: "PROCUREMENT", label: "Procurement", description: "Pengadaan dan proses pembelian." },
-  { code: "HR", label: "HRMM & Payroll", description: "Meeting HR, lembur, payroll run, slip gaji & persetujuan SDM." },
-  { code: "HRMS", label: "HRMS", description: "Cuti, lembur, rapat, dan data kepegawaian." },
+  { code: "HR", label: "HR & Payroll (Meeting, Lembur, Request)", description: "Meeting HR, lembur, cuti/request, payroll run, slip gaji & persetujuan SDM." },
   { code: "ASSETS", label: "Assets", description: "Pencatatan dan pengelolaan aset." },
   { code: "SALES", label: "Sales", description: "Fitur penjualan bila entitlement modul ini diaktifkan." },
 ];
@@ -332,13 +330,30 @@ export function QuickAccessPanel({
         setSelectedWidgets(Array.from(new Set(["DASH_PERSONAL", ...payload.dashboard_widgets])));
       }
       if (Array.isArray(payload.modules) && payload.modules.length > 0) {
-        setModules(payload.modules);
+        const normalizedModules: ModuleGrantItem[] = [];
+        for (const item of payload.modules as ModuleGrantItem[]) {
+          const upper = String(item.module_code || "").toUpperCase();
+          const mappedCode = ["HR", "HRMS", "REQUESTS"].includes(upper) ? "HR" : upper;
+          const existingIdx = normalizedModules.findIndex((m) => m.module_code === mappedCode);
+          if (existingIdx >= 0) {
+            if (Number(item.tier_level) < Number(normalizedModules[existingIdx].tier_level)) {
+              normalizedModules[existingIdx] = { ...item, module_code: mappedCode };
+            }
+          } else {
+            normalizedModules.push({ ...item, module_code: mappedCode });
+          }
+        }
+        setModules(normalizedModules);
       } else {
         setModules([]);
       }
-      setEnabledModules(Array.isArray(payload.enabled_modules)
+      const rawEnabled = Array.isArray(payload.enabled_modules)
         ? payload.enabled_modules.map((module: unknown) => String(module).toUpperCase())
-        : []);
+        : [];
+      if (rawEnabled.some((m: string) => ["HR", "HRMS", "REQUESTS"].includes(m)) && !rawEnabled.includes("HR")) {
+        rawEnabled.push("HR");
+      }
+      setEnabledModules(rawEnabled);
       if (Array.isArray(payload.roles)) {
         setDerivedRoles(payload.roles);
       }

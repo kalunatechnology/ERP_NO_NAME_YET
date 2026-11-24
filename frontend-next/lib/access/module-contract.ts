@@ -15,7 +15,7 @@ export const OFFICIAL_CORE_MODULES = [
   "PROJECTS",
   "CRM",
   "INVENTORY",
-  "HRMS",
+  "HR",
   "MARBOT",
 ] as const;
 
@@ -115,8 +115,7 @@ export function hasModuleEntitlement(
   if (!module || isSuperAdmin) return true;
   const set = normalizeModuleCodes(enabledModules);
   if (set.has(module)) return true;
-  if (module === "HR" && set.has("HRMS")) return true;
-  if (module === "REQUESTS" && set.has("HRMS")) return true;
+  if (["HR", "HRMS", "REQUESTS"].includes(module) && (set.has("HR") || set.has("HRMS") || set.has("REQUESTS"))) return true;
   if (module === "SALES" && set.has("CRM")) return true;
   if (module === "ASSETS" && set.has("INVENTORY")) return true;
   return false;
@@ -306,9 +305,10 @@ function isUsableModuleAssignment(
 }
 
 const MODULE_ASSIGNMENT_ALIASES: Partial<Record<ModuleCode, readonly ModuleCode[]>> = {
-  HR: ["HR", "HRMS"],
+  HR: ["HR", "HRMS", "REQUESTS"],
+  HRMS: ["HRMS", "HR", "REQUESTS"],
   SALES: ["SALES", "CRM"],
-  REQUESTS: ["REQUESTS", "HRMS"],
+  REQUESTS: ["REQUESTS", "HRMS", "HR"],
   ASSETS: ["ASSETS", "INVENTORY"],
 };
 

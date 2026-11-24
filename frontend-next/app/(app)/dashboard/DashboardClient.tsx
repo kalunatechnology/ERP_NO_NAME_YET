@@ -1545,8 +1545,21 @@ export default function DashboardClient() {
               </h2>
             </div>
             <div className="flex flex-wrap gap-2">
-              {Object.values(((user as any)?.module_assignments || {}) as Record<string, any>).map(
-                (assignment: any) => (
+              {Object.values(((user as any)?.module_assignments || {}) as Record<string, any>)
+                .reduce((acc: any[], assignment: any) => {
+                  const rawCode = String(assignment.module_code || "").toUpperCase();
+                  const unifiedCode = ["HR", "HRMS", "REQUESTS"].includes(rawCode) ? "HR" : rawCode;
+                  const existingIdx = acc.findIndex((item) => item.module_code === unifiedCode);
+                  if (existingIdx >= 0) {
+                    if (Number(assignment.tier_level) < Number(acc[existingIdx].tier_level)) {
+                      acc[existingIdx] = { ...assignment, module_code: unifiedCode };
+                    }
+                  } else {
+                    acc.push({ ...assignment, module_code: unifiedCode });
+                  }
+                  return acc;
+                }, [])
+                .map((assignment: any) => (
                   <span
                     key={assignment.module_code}
                     className="inline-flex items-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 py-1.5 text-xs font-semibold text-[#163D64]"

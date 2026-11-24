@@ -1394,7 +1394,7 @@ async function loadHrSummaryBundle(req: Request) {
   const companyId = req.companyId!;
   const userId = req.user!.id;
   const assignments = (req.user?.module_assignments ?? []).filter(
-    (a: any) => ['HR', 'HRMS'].includes(String(a.module_code || '').toUpperCase()) && String(a.status || '').toUpperCase() === 'ACTIVE',
+    (a: any) => ['HR', 'HRMS', 'REQUESTS'].includes(String(a.module_code || '').toUpperCase()) && String(a.status || '').toUpperCase() === 'ACTIVE',
   );
   const hrTier = req.user?.roles?.includes(RoleCode.SUPER_ADMIN)
     ? 1

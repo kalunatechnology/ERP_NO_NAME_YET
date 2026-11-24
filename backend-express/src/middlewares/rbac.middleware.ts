@@ -82,8 +82,9 @@ export function requireActiveRole(...allowedRoles: string[]) {
 }
 
 const MODULE_CAPABILITY_ALIASES: Record<string, string[]> = {
-  HR: ['HR', 'HRMS'],
-  REQUESTS: ['REQUESTS', 'HRMS'],
+  HR: ['HR', 'HRMS', 'REQUESTS'],
+  HRMS: ['HRMS', 'HR', 'REQUESTS'],
+  REQUESTS: ['REQUESTS', 'HRMS', 'HR'],
   SALES: ['SALES', 'CRM'],
   ASSETS: ['ASSETS', 'INVENTORY'],
 };

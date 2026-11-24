@@ -87,7 +87,6 @@ const OFFICIAL_ADMIN_MODULES = new Set([
   "CRM",
   "INVENTORY",
   "HR",
-  "HRMS",
   "MARBOT",
 ]);
 
@@ -97,8 +96,7 @@ const MODULE_LABELS: Record<string, { name: string; description: string }> = {
   PROJECTS: { name: "Project Management", description: "WBS, task, timeline, dan delivery proyek" },
   CRM: { name: "CRM & Sales", description: "Lead, pipeline opportunity, quotation, sales order, dan kontrak" },
   INVENTORY: { name: "Inventory & Asset Management", description: "Gudang, stok kanonis, transfer transit, opname, dan aset tetap" },
-  HR: { name: "HRMM & Payroll", description: "Meeting HR, lembur 3-tier, payroll run, slip gaji, dan approval SDM" },
-  HRMS: { name: "HRMS (People, Meeting & Lembur)", description: "Meeting, lembur, absensi, dan pengajuan karyawan" },
+  HR: { name: "HR & Payroll (Meeting, Lembur & Request)", description: "Meeting HR, lembur 3-tier, cuti/request, payroll run, slip gaji, dan approval SDM" },
   MARBOT: { name: "Marka Plus (AI Assistant)", description: "Asisten ERP dengan akses baca sesuai modul, role, dan scope data user" },
 };
 

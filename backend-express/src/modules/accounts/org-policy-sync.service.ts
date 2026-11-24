@@ -820,7 +820,9 @@ export async function syncUserQuickAccess(input: SyncUserQuickAccessInput) {
 
     const ALL_KNOWN_MODULES = ['PROJECTS', 'REQUESTS', 'FINANCE', 'CRM', 'SALES', 'INVENTORY', 'PROCUREMENT', 'REPORTING', 'HR', 'HRMS', 'ASSETS'];
     for (const modCode of input.modules !== undefined || presetSpec ? ALL_KNOWN_MODULES : []) {
-      const entitlement = entitlementByModule.get(modCode);
+      const entitlement =
+        entitlementByModule.get(modCode)
+        ?? (modCode === 'HR' ? (entitlementByModule.get('HRMS') ?? entitlementByModule.get('REQUESTS')) : undefined);
       const now = new Date();
       const entitlementActive = Boolean(
         entitlement?.enabled

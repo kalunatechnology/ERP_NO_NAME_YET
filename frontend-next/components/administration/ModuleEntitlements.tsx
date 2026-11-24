@@ -55,7 +55,6 @@ const VISIBLE_OFFICIAL_MODULES = new Set([
   "CRM",
   "INVENTORY",
   "HR",
-  "HRMS",
   "MARBOT",
 ]);
 
