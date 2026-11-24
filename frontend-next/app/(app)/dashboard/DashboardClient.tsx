@@ -1689,8 +1689,8 @@ export default function DashboardClient() {
             {showHr && (
               <section className="rounded-[20px] border border-[#CBD5E1] bg-gradient-to-r from-[#E7F2FF]/80 via-white to-[#F8FAFC] p-5 shadow-2xs">
                 <SectionHeader
-                  title="HRMM, Lembur, Meeting & Payroll (DASH_HR)"
-                  actionLabel="Buka Modul HRMM"
+                  title="HR & Payroll — Lembur, Meeting & Request (DASH_HR)"
+                  actionLabel="Buka Modul HR"
                   actionHref="/hr"
                 />
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -1711,7 +1711,7 @@ export default function DashboardClient() {
                   <KpiCard
                     label={hrSummary?.tier === 1 ? "Karyawan Aktif" : hrSummary?.tier === 2 ? "Meeting Perlu Notulensi" : "Status Slip Gaji Terakhir"}
                     value={hrSummary?.tier === 1 ? (hrSummary.active_employees_count ?? 0) : hrSummary?.tier === 2 ? (hrSummary.meetings_need_minutes ?? 0) : (hrSummary?.my_latest_payslip_status ?? "-")}
-                    subLabel="Sinkronisasi HRMM & Finance"
+                    subLabel="Sinkronisasi HR & Finance"
                     icon={CheckCircle2}
                     onClick={() => window.location.assign("/hr")}
                   />

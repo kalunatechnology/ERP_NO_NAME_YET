@@ -112,7 +112,7 @@ const DEFAULT_CATALOG: DashboardWidgetCatalogItem[] = [
   },
   {
     code: "DASH_HR",
-    title: "HRMM, Lembur, Meeting & Payroll",
+    title: "HR & Payroll (Lembur, Meeting & Request)",
     description: "Ringkasan pengajuan lembur, jadwal meeting HR, status payroll run, dan antrean persetujuan SDM.",
     required_module: "HR",
     is_baseline: false,

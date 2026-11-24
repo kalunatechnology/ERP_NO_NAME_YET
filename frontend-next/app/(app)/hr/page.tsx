@@ -193,7 +193,7 @@ export default function HrManagementPage() {
             <Users size={22} />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-[#163D64]">HRMM — Meeting, Lembur &amp; Payroll</h1>
+            <h1 className="text-xl font-bold text-[#163D64]">HR — Meeting, Lembur, Request &amp; Payroll</h1>
             <p className="text-xs text-slate-500 mt-0.5">
               Otoritas HR Tier {hrTier} {financeTier <= 1 ? "• Akses Review Finance Aktif" : ""}
             </p>
@@ -252,7 +252,7 @@ export default function HrManagementPage() {
 
       {loading ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-xs text-slate-500">
-          Memuat data HRMM...
+          Memuat data HR...
         </div>
       ) : (
         <>

@@ -376,7 +376,7 @@ export function ModuleEntitlements({
                     <div className="min-w-0">
                       <p className="font-bold text-[#0F172A] leading-snug">{meta.name}</p>
                       <span className="font-mono text-[11px] font-semibold uppercase text-[#64748B]">
-                        {item.module_code}
+                        {item.module_code === "HRMS" ? "HR" : item.module_code}
                       </span>
                     </div>
                   </div>
