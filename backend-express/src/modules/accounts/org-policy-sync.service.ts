@@ -518,6 +518,18 @@ export async function getUserQuickAccess(companyId: string, userId: string) {
     && (!assignment.effective_until || assignment.effective_until >= now),
   );
   const visibleModules = effectiveModules.filter((module) => enabledModules.has(module.module_code.toUpperCase()));
+  if (
+    enabledModules.has('HR')
+    && !visibleModules.some((m) => ['HR', 'HRMS', 'REQUESTS'].includes(m.module_code.toUpperCase()))
+  ) {
+    visibleModules.push({
+      module_code: 'HR',
+      tier_level: 3,
+      allow_read: true,
+      allow_write: true,
+      data_scope: 'OWN',
+    });
+  }
   const visibleWidgets = enabledWidgets.filter((widget) => {
     const requiredModule = DASHBOARD_WIDGET_CATALOG.find((item) => item.code === widget)?.required_module;
     if (!requiredModule) return true;
