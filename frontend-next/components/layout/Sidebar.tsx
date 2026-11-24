@@ -185,7 +185,13 @@ export function Sidebar({ isMobile = false, collapsed = false, onToggleCollapse,
           )}
           <nav className="flex flex-col gap-1" role="navigation">
             {navItems.map(({ href, label, icon: Icon }) => {
-              const isActive = pathname === href || pathname.startsWith(href + "/");
+              const hasMoreSpecificMatch = navItems.some(
+                (other) =>
+                  other.href !== href &&
+                  other.href.startsWith(href + "/") &&
+                  (pathname === other.href || pathname.startsWith(other.href + "/")),
+              );
+              const isActive = (pathname === href || pathname.startsWith(href + "/")) && !hasMoreSpecificMatch;
               return (
                 <Link
                   key={href}
