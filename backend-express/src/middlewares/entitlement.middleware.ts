@@ -125,13 +125,11 @@ export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' =
         );
         if (!assignments.length && isHrSelfService) {
           req.moduleAccess = {
-            companyId,
             moduleCode: normalizedModule,
-            accessMode: 'LEGACY',
+            delegated: false,
             allowRead: access.allow_read,
             allowWrite: access.allow_write,
-            assignmentCount: 0,
-            roleProfiles: [],
+            accessMode: 'LEGACY',
           };
           return next();
         }
