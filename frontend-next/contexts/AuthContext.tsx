@@ -17,23 +17,20 @@ import { normalizeRoleCode } from "@/lib/access/module-contract";
 /* ── UUID Regex Helper ───────────────────────── */
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/* ── Cookie Helpers ──────────────────────────── */
-function setAuthCookie(token: string) {
+/* ── Cookie Helpers (Non-sensitive routing flag only; JWT is HttpOnly from backend) ── */
+function setAuthCookie(_token?: string) {
   if (typeof document !== "undefined") {
-    document.cookie = `access_token=${token}; path=/; max-age=86400; SameSite=Lax`;
+    const secureAttr = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Lax${secureAttr}`;
+    document.cookie = `erp_session=1; path=/; max-age=86400; SameSite=Lax${secureAttr}`;
   }
 }
 
-/**
- * removeAuthCookie coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
- */
 function removeAuthCookie() {
   if (typeof document !== "undefined") {
-    document.cookie = "access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Lax";
+    const secureAttr = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Lax${secureAttr}`;
+    document.cookie = `erp_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Lax${secureAttr}`;
   }
 }
 
@@ -377,19 +374,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, [state.companies, state.company]);
 
-  /* Check existing token on mount */
+  /* Check existing session on mount (HttpOnly cookie + cached profile) */
   useEffect(() => {
-    const access = localStorage.getItem("erp.access") || localStorage.getItem("access_token");
-    if (!access) {
+    const hasSessionFlag = typeof document !== "undefined" && document.cookie.includes("erp_session=1");
+    const rawCachedUser = localStorage.getItem("erp.user");
+    if (!hasSessionFlag && !rawCachedUser) {
       removeAuthCookie();
       dispatch({ type: "LOGOUT" });
       return;
     }
 
-    setAuthCookie(access);
+    setAuthCookie();
     let hydratedFromCache = false;
     try {
-      const cachedUser = JSON.parse(localStorage.getItem("erp.user") || "null") as UserProfile | null;
+      const cachedUser = JSON.parse(rawCachedUser || "null") as UserProfile | null;
       if (cachedUser?.id && cachedUser.email) {
         const cachedRole = detectRole(cachedUser);
         const assignedCompany = cachedUser.company_id || cachedUser.roles?.[0]?.company_id || null;
@@ -451,9 +449,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // A temporary network/5xx failure must not blank an already hydrated
         // workspace. Backend authorization remains authoritative for every API.
         if (hydratedFromCache && (status === 0 || status >= 500)) return;
-        localStorage.removeItem("erp.access");
-        localStorage.removeItem("erp.refresh");
-        localStorage.removeItem("access_token");
         localStorage.removeItem("erp.user");
         localStorage.removeItem("erp.company");
         localStorage.removeItem("active_company_id");
@@ -482,6 +477,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const completeAuthenticatedSession = useCallback(async (authenticatedUser?: UserProfile): Promise<UserProfile> => {
     const user = authenticatedUser || await getMyProfile();
+    setAuthCookie();
     const isAdmin = checkIsAdmin(user);
     const userRole = detectRole(user);
     const activeCompany = user.company_id || user?.roles?.[0]?.company_id || null;
@@ -536,9 +532,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await logoutUser();
     } catch {/* ignore */}
     
-    localStorage.removeItem("erp.access");
-    localStorage.removeItem("erp.refresh");
-    localStorage.removeItem("access_token");
     localStorage.removeItem("erp.user");
     localStorage.removeItem("erp.company");
     localStorage.removeItem("active_company_id");
