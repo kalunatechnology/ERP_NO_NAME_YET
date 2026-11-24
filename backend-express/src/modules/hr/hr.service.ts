@@ -332,6 +332,50 @@ export class HrService {
     });
   }
 
+  static async syncCompanyUsersToEmployees(companyId: string, tenantId: string | null, actorId: string) {
+    const memberships = await prisma.iam_user_company_membership.findMany({
+      where: { company_id: companyId, status: 'ACTIVE' },
+      select: { user_id: true },
+    });
+    const memberUserIds = Array.from(new Set(memberships.map((m) => m.user_id).filter(Boolean)));
+    const users = memberUserIds.length
+      ? await prisma.iam_user.findMany({
+          where: { id: { in: memberUserIds }, is_active: true },
+          select: { id: true, email: true, full_name: true },
+        })
+      : [];
+    const existing = await prisma.master_employee.findMany({
+      where: { company_id: companyId },
+      select: { user_id: true },
+    });
+    const existingUserIds = new Set(existing.map((e) => e.user_id).filter(Boolean));
+    let seq = existing.length + 1;
+    let createdCount = 0;
+
+    for (const user of users) {
+      if (existingUserIds.has(user.id)) continue;
+      const empNum = `EMP-${String(seq).padStart(4, '0')}`;
+      seq += 1;
+      await prisma.master_employee.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenant_id: tenantId,
+          company_id: companyId,
+          created_by_id: actorId,
+          user_id: user.id,
+          employee_number: empNum,
+          employee_name: user.full_name || user.email,
+          employment_status: 'ACTIVE',
+          monthly_salary: 5000000,
+        },
+      });
+      createdCount += 1;
+    }
+
+    const totalEmployees = await prisma.master_employee.count({ where: { company_id: companyId } });
+    return { created_count: createdCount, total_employees: totalEmployees };
+  }
+
   static async listMyPayslips(companyId: string, userId: string) {
     await ensureHrTables();
     const emp = await this.getMyEmployeeOrThrow(companyId, userId);

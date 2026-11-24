@@ -504,9 +504,14 @@ export default function HrManagementPage() {
                     Final Approval Lembur (Kepala HR Tier 1)
                   </div>
                   <div className="divide-y divide-slate-100 text-xs">
-                    {companyOvertimes
-                      .filter((o) => ["SUBMITTED", "VERIFIED_HR_STAFF"].includes(o.status))
-                      .map((ot) => (
+                    {companyOvertimes.filter((o) => ["SUBMITTED", "VERIFIED_HR_STAFF"].includes(o.status)).length === 0 ? (
+                      <div className="p-5 text-center text-slate-500">
+                        Belum ada pengajuan lembur yang menunggu persetujuan Kepala HR.
+                      </div>
+                    ) : (
+                      companyOvertimes
+                        .filter((o) => ["SUBMITTED", "VERIFIED_HR_STAFF"].includes(o.status))
+                        .map((ot) => (
                         <div key={ot.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
                           <div>
                             <div className="font-semibold text-slate-900">
@@ -547,7 +552,8 @@ export default function HrManagementPage() {
                             </button>
                           </div>
                         </div>
-                      ))}
+                        ))
+                    )}
                   </div>
                 </div>
               )}
@@ -557,7 +563,12 @@ export default function HrManagementPage() {
                   Payroll Runs — HR-ACC &amp; Gerbang Review Finance (COA 6100 &amp; GL)
                 </div>
                 <div className="divide-y divide-slate-100 text-xs">
-                  {payrollRuns.map((run) => (
+                  {payrollRuns.length === 0 ? (
+                    <div className="p-5 text-center text-slate-500">
+                      Belum ada payroll run. Buat draft payroll terlebih dahulu di tab Operasional HR &amp; Draft Payroll.
+                    </div>
+                  ) : (
+                    payrollRuns.map((run) => (
                     <div key={run.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <div className="font-mono font-bold text-slate-900">
@@ -644,17 +655,45 @@ export default function HrManagementPage() {
                         )}
                       </div>
                     </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
 
               {hrTier === 1 && (
                 <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
-                  <div className="p-4 border-b border-slate-200 font-bold text-sm text-[#163D64]">
-                    Master Gaji Pokok Karyawan ({employees.length})
+                  <div className="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-bold text-sm text-[#163D64]">
+                      Master Gaji Pokok Karyawan ({employees.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const res = await api.post("/api/v1/hr/employees/sync-users");
+                          const created = res.data?.data?.created_count ?? 0;
+                          toast.success(
+                            created > 0
+                              ? `${created} user perusahaan berhasil disinkronkan ke Master Karyawan.`
+                              : "Semua user aktif perusahaan sudah terdaftar sebagai karyawan.",
+                          );
+                          await loadData();
+                        } catch (err: unknown) {
+                          toast.error(err instanceof Error ? err.message : "Gagal menyinkronkan user ke karyawan.");
+                        }
+                      }}
+                      className="rounded-lg bg-[#0876CD] hover:bg-[#163D64] px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer"
+                    >
+                      + Sinkronkan User ke Karyawan
+                    </button>
                   </div>
                   <div className="divide-y divide-slate-100 text-xs">
-                    {employees.map((emp) => (
+                    {employees.length === 0 ? (
+                      <div className="p-5 text-center text-slate-500">
+                        Belum ada data karyawan di perusahaan ini. Klik &ldquo;+ Sinkronkan User ke Karyawan&rdquo; di kanan atas untuk mendaftarkan user aktif ke Master Karyawan.
+                      </div>
+                    ) : (
+                      employees.map((emp) => (
                       <div key={emp.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
                         <div>
                           <div className="font-semibold text-slate-900">{emp.employee_name} ({emp.employee_number})</div>
@@ -686,7 +725,8 @@ export default function HrManagementPage() {
                           </button>
                         </div>
                       </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                 </div>
               )}

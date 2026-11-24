@@ -132,6 +132,15 @@ hrRouter.get('/employees', requireModuleTier('HR', 2), async (req, res, next) =>
   }
 });
 
+hrRouter.post('/employees/sync-users', requireModuleTier('HR', 1), async (req, res, next) => {
+  try {
+    const data = await HrService.syncCompanyUsersToEmployees(req.companyId!, req.tenantId ?? null, req.user!.id);
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+});
+
 hrRouter.put('/employees/:id', requireModuleTier('HR', 1), async (req, res, next) => {
   try {
     const data = await PayrollService.updateEmployee(req.companyId!, req.params.id, req.body);
