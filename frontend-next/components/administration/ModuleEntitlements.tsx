@@ -363,9 +363,9 @@ export function ModuleEntitlements({
             >
               <div>
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-start gap-3 min-w-0">
                     <div
-                      className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
                         item.enabled
                           ? "bg-[#163D64] text-white"
                           : "bg-[#F1F5F9] text-[#64748B]"
@@ -373,8 +373,8 @@ export function ModuleEntitlements({
                     >
                       <Icon size={20} />
                     </div>
-                    <div>
-                      <p className="font-bold text-[#0F172A]">{meta.name}</p>
+                    <div className="min-w-0">
+                      <p className="font-bold text-[#0F172A] leading-snug">{meta.name}</p>
                       <span className="font-mono text-[11px] font-semibold uppercase text-[#64748B]">
                         {item.module_code}
                       </span>
@@ -383,16 +383,19 @@ export function ModuleEntitlements({
 
                   {/* Toggle Button */}
                   <button
+                    type="button"
+                    role="switch"
+                    aria-checked={item.enabled}
                     disabled={isToggling || batchLoading}
                     onClick={() => handleToggleModule(item.module_code, item.enabled)}
-                    className={`relative shrink-0 h-6 w-11 rounded-[10px] transition-colors duration-200 ease-in-out focus:outline-none ${
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0876CD]/40 disabled:cursor-not-allowed disabled:opacity-50 ${
                       item.enabled ? "bg-[#163D64]" : "bg-[#CBD5E1]"
                     }`}
                     aria-label={`Toggle ${meta.name}`}
                   >
                     <span
-                      className={`inline-block h-4 w-4 transform rounded-[7px] bg-white transition duration-200 ease-in-out shadow-xs ${
-                        item.enabled ? "translate-x-6" : "translate-x-1"
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ease-in-out ${
+                        item.enabled ? "translate-x-5" : "translate-x-0"
                       }`}
                     />
                   </button>
