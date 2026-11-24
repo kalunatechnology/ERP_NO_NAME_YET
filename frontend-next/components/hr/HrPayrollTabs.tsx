@@ -338,7 +338,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
 
           <div className="rounded-2xl border border-[#E2E8F0] bg-white overflow-hidden">
             <div className="p-4 border-b border-slate-200 font-bold text-sm text-[#163D64]">
-              Antrean Verifikasi Lembur (Tier 2 HR)
+              Antrean &amp; Persetujuan Lembur (Tier 1 &amp; Tier 2 HR)
             </div>
             <div className="divide-y divide-slate-100 text-xs">
               {companyOvertimes.length === 0 ? (
@@ -353,7 +353,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
                       <div className="text-slate-600">{ot.reason}</div>
                       <div className="text-[11px] font-semibold text-[#0876CD]">Upah Lembur: {formatIdr(ot.overtime_amount)}</div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-700">{ot.status}</span>
                       {ot.status === "SUBMITTED" && (
                         <button
@@ -372,12 +372,146 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
                           Verifikasi
                         </button>
                       )}
+                      {["SUBMITTED", "VERIFIED_HR_STAFF"].includes(ot.status) && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await api.post(`/api/v1/hr/overtimes/${ot.id}/approve`);
+                                toast.success("Lembur disetujui (APPROVED).");
+                                await loadData();
+                              } catch (err: unknown) {
+                                toast.error(err instanceof Error ? err.message : "Gagal approve lembur.");
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer"
+                          >
+                            <CheckCircle2 size={13} /> Approve
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await api.post(`/api/v1/hr/overtimes/${ot.id}/reject`, { reason: "Ditolak oleh HR" });
+                                toast.success("Lembur ditolak.");
+                                await loadData();
+                              } catch (err: unknown) {
+                                toast.error(err instanceof Error ? err.message : "Gagal menolak lembur.");
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer"
+                          >
+                            <XCircle size={13} /> Reject
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))
               )}
             </div>
           </div>
+
+          <div className="rounded-2xl border border-[#E2E8F0] bg-white overflow-hidden">
+            <div className="p-4 border-b border-slate-200 font-bold text-sm text-[#163D64]">
+              Monitoring Payroll Runs ({payrollRuns.length})
+            </div>
+            <div className="divide-y divide-slate-100 text-xs">
+              {payrollRuns.length === 0 ? (
+                <div className="p-5 text-center text-slate-500">Belum ada payroll run.</div>
+              ) : (
+                payrollRuns.map((run) => (
+                  <div key={run.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="font-mono font-bold text-slate-900">
+                        {run.run_number} <span className="ml-2 rounded bg-blue-50 px-2 py-0.5 text-[10px] text-[#0876CD]">{run.status}</span>
+                      </div>
+                      <div className="text-slate-600 mt-0.5">
+                        Periode {String(run.period_start).slice(0, 10)} s/d {String(run.period_end).slice(0, 10)} • Gross: {formatIdr(run.gross_total)} • Net: {formatIdr(run.net_total)}
+                      </div>
+                    </div>
+                    {hrTier === 2 && run.status === "DRAFT" && (
+                      <span className="text-[11px] font-medium text-amber-700">
+                        Menunggu persetujuan &amp; pengiriman ke Finance oleh HR Tier 1
+                      </span>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {hrTier <= 2 && (
+            <div className="rounded-2xl border border-[#E2E8F0] bg-white overflow-hidden">
+              <div className="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                <span className="font-bold text-sm text-[#163D64]">
+                  Master Gaji Pokok Karyawan ({employees.length})
+                </span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const res = await api.post("/api/v1/hr/employees/sync-users");
+                      const created = res.data?.data?.created_count ?? 0;
+                      toast.success(
+                        created > 0
+                          ? `${created} user perusahaan berhasil disinkronkan ke Master Karyawan.`
+                          : "Semua user aktif perusahaan sudah terdaftar sebagai karyawan.",
+                      );
+                      await loadData();
+                    } catch (err: unknown) {
+                      toast.error(err instanceof Error ? err.message : "Gagal menyinkronkan user ke karyawan.");
+                    }
+                  }}
+                  className="rounded-lg bg-[#0876CD] hover:bg-[#163D64] px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer"
+                >
+                  + Sinkronkan User ke Karyawan
+                </button>
+              </div>
+              <div className="divide-y divide-slate-100 text-xs">
+                {employees.length === 0 ? (
+                  <div className="p-5 text-center text-slate-500">
+                    Belum ada data karyawan di perusahaan ini. Klik &ldquo;+ Sinkronkan User ke Karyawan&rdquo; di kanan atas untuk mendaftarkan user aktif ke Master Karyawan.
+                  </div>
+                ) : (
+                  employees.map((emp) => (
+                    <div key={emp.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-slate-900">{emp.employee_name} ({emp.employee_number})</div>
+                        <div className="text-slate-500">Status: {emp.employment_status}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          value={salaryEdits[emp.id] ?? ""}
+                          onChange={(e) => setSalaryEdits((p) => ({ ...p, [emp.id]: e.target.value }))}
+                          className="h-9 w-40 rounded-lg border border-slate-200 bg-slate-50 px-3"
+                        />
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await api.put(`/api/v1/hr/employees/${emp.id}`, {
+                                monthly_salary: Number(salaryEdits[emp.id] ?? 0),
+                              });
+                              toast.success("Gaji pokok karyawan diperbarui.");
+                              await loadData();
+                            } catch (err: unknown) {
+                              toast.error(err instanceof Error ? err.message : "Gagal memperbarui gaji.");
+                            }
+                          }}
+                          className="h-9 rounded-lg bg-[#0876CD] px-3 font-semibold text-white cursor-pointer"
+                        >
+                          Simpan Gaji
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

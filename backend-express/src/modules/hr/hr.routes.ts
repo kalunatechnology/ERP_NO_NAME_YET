@@ -95,8 +95,8 @@ hrRouter.post('/payroll/draft', requireModuleTier('HR', 2), async (req, res, nex
   }
 });
 
-// --- TIER 1: Kepala HR (Final Approval HR & Master Karyawan) ---
-hrRouter.post('/overtimes/:id/approve', requireModuleTier('HR', 1), async (req, res, next) => {
+// --- TIER 2 & TIER 1: Manajemen Operasional HR & Master Karyawan ---
+hrRouter.post('/overtimes/:id/approve', requireModuleTier('HR', 2), async (req, res, next) => {
   try {
     const data = await HrService.approveOvertime(req.companyId!, req.params.id, req.user!.id);
     res.json({ success: true, data });
@@ -105,7 +105,7 @@ hrRouter.post('/overtimes/:id/approve', requireModuleTier('HR', 1), async (req, 
   }
 });
 
-hrRouter.post('/overtimes/:id/reject', requireModuleTier('HR', 1), async (req, res, next) => {
+hrRouter.post('/overtimes/:id/reject', requireModuleTier('HR', 2), async (req, res, next) => {
   try {
     const data = await HrService.rejectOvertime(req.companyId!, req.params.id, req.user!.id, req.body.reason);
     res.json({ success: true, data });
@@ -114,6 +114,7 @@ hrRouter.post('/overtimes/:id/reject', requireModuleTier('HR', 1), async (req, r
   }
 });
 
+// --- TIER 1 EKSKLUSIF: Penyerahan Approval Payroll ke Finance (HR-ACC) ---
 hrRouter.post('/payroll/:id/hr-approve', requireModuleTier('HR', 1), async (req, res, next) => {
   try {
     const data = await HrService.hrApprovePayrollRun(req.companyId!, req.params.id, req.user!.id);
@@ -132,7 +133,7 @@ hrRouter.get('/employees', requireModuleTier('HR', 2), async (req, res, next) =>
   }
 });
 
-hrRouter.post('/employees/sync-users', requireModuleTier('HR', 1), async (req, res, next) => {
+hrRouter.post('/employees/sync-users', requireModuleTier('HR', 2), async (req, res, next) => {
   try {
     const data = await HrService.syncCompanyUsersToEmployees(req.companyId!, req.tenantId ?? null, req.user!.id);
     res.json({ success: true, data });
@@ -141,7 +142,7 @@ hrRouter.post('/employees/sync-users', requireModuleTier('HR', 1), async (req, r
   }
 });
 
-hrRouter.put('/employees/:id', requireModuleTier('HR', 1), async (req, res, next) => {
+hrRouter.put('/employees/:id', requireModuleTier('HR', 2), async (req, res, next) => {
   try {
     const data = await PayrollService.updateEmployee(req.companyId!, req.params.id, req.body);
     res.json({ success: true, data });
