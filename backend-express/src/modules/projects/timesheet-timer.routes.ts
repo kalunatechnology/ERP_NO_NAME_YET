@@ -5,6 +5,7 @@ import { EmployeeProvisioningService } from '../master_data/employee-provisionin
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { RoleCode } from '../../types/roles';
 import { ProjectsService } from './projects.service';
+import { HrService } from '../hr/hr.service';
 
 export const timesheetTimerRouter = Router();
 
@@ -326,6 +327,21 @@ timesheetTimerRouter.post(
           last_activity_at: now,
         },
       });
+
+      if (overtimeHours > 0) {
+        await HrService.syncOvertimeFromDailyTimesheet(
+          req.companyId!,
+          req.tenantId ?? null,
+          req.user!.id,
+          {
+            work_date: updated.work_date,
+            overtime_hours: overtimeHours,
+            overtime_started_at: updated.overtime_started_at,
+            overtime_ended_at: updated.overtime_ended_at,
+            reason: overtimeReason || `Lembur Daily Task (${overtimeHours} jam)`,
+          },
+        ).catch(() => null);
+      }
 
       return respondSnapshot(res, updated);
     } catch (error) {

@@ -103,6 +103,67 @@ export class HrService {
     });
   }
 
+  /**
+   * Sinkronisasi otomatis jam lembur dari Daily Task / Timesheet ke pengajuan lembur HR.
+   * Aman dipanggil secara best-effort: skip jika modul HR belum aktif atau user belum terhubung ke master_employee.
+   */
+  static async syncOvertimeFromDailyTimesheet(
+    companyId: string,
+    tenantId: string | null,
+    userId: string,
+    input: {
+      work_date: Date | string;
+      overtime_hours: number;
+      overtime_started_at?: Date | string | null;
+      overtime_ended_at?: Date | string | null;
+      reason?: string | null;
+    },
+  ) {
+    const hours = Number(input.overtime_hours ?? 0);
+    if (!Number.isFinite(hours) || hours <= 0) return null;
+
+    const hrEnabled = await prisma.iam_company_module_access.findFirst({
+      where: {
+        company_id: companyId,
+        module_code: { in: ['HR', 'HRMS', 'REQUESTS'] },
+        enabled: true,
+      },
+      select: { id: true },
+    });
+    if (!hrEnabled) return null;
+
+    const emp = await prisma.master_employee.findFirst({
+      where: { company_id: companyId, user_id: userId, employment_status: 'ACTIVE' },
+    });
+    if (!emp) return null;
+
+    await ensureHrTables();
+    const toHhMm = (val?: Date | string | null) => {
+      if (!val) return '';
+      const d = new Date(val);
+      return Number.isFinite(d.getTime()) ? d.toISOString().slice(11, 16) : '';
+    };
+    const workDate = new Date(input.work_date);
+    const { rate, amount } = this.computeOvertimeAmount(emp, hours);
+    return prisma.hr_overtime_request.create({
+      data: {
+        id: crypto.randomUUID(),
+        tenant_id: tenantId,
+        company_id: companyId,
+        employee_id: emp.id,
+        user_id: userId,
+        work_date: Number.isFinite(workDate.getTime()) ? workDate : new Date(),
+        start_time: toHhMm(input.overtime_started_at),
+        end_time: toHhMm(input.overtime_ended_at),
+        duration_hours: Math.min(hours, 16),
+        overtime_rate: rate,
+        overtime_amount: amount,
+        reason: String(input.reason || 'Lembur Daily Task / Timesheet').trim(),
+        status: 'SUBMITTED',
+      },
+    });
+  }
+
   static async listMyOvertimes(companyId: string, userId: string) {
     await ensureHrTables();
     return prisma.hr_overtime_request.findMany({
@@ -340,9 +401,9 @@ export class HrService {
     const memberUserIds = Array.from(new Set(memberships.map((m) => m.user_id).filter(Boolean)));
     const users = memberUserIds.length
       ? await prisma.iam_user.findMany({
-          where: { id: { in: memberUserIds }, is_active: true },
-          select: { id: true, email: true, full_name: true },
-        })
+        where: { id: { in: memberUserIds }, is_active: true },
+        select: { id: true, email: true, full_name: true },
+      })
       : [];
     const existing = await prisma.master_employee.findMany({
       where: { company_id: companyId },

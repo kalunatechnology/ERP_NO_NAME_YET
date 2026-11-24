@@ -10,6 +10,7 @@
 import crypto from 'crypto';
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
+import { HrService } from '../hr/hr.service';
 import {
   hasModuleOverride,
   hasModuleRoleOrLevel,
@@ -3957,6 +3958,21 @@ projectsRouter.use(
       }
       data.hours = hours;
       data.overtime_hours = overtimeHours;
+
+      if (overtimeHours > 0) {
+        await HrService.syncOvertimeFromDailyTimesheet(
+          req.companyId!,
+          req.tenantId ?? null,
+          req.user!.id,
+          {
+            work_date: data.work_date || new Date(),
+            overtime_hours: overtimeHours,
+            overtime_started_at: data.overtime_started_at,
+            overtime_ended_at: data.overtime_ended_at,
+            reason: String(data.overtime_reason || 'Lembur Daily Task').trim(),
+          },
+        ).catch(() => null);
+      }
 
       return data;
     },

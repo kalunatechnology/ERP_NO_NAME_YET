@@ -505,6 +505,13 @@ export class CoreService {
         enabled_by_id: data.enabledById ?? null,
       },
     });
+      await this.syncModuleLifecycleForCompany(tx, {
+        companyId,
+        tenantId,
+        moduleCode: cleanCode,
+        enabled,
+        actorId: data.enabledById,
+      });
       if (cleanCode === 'MARBOT' && enabled && !previous?.enabled) {
         const roles = await tx.iam_role.findMany({ where: {
           tenant_id: tenantId, OR: [{ company_id: null }, { company_id: companyId }],
@@ -638,9 +645,102 @@ export class CoreService {
           },
         });
         results.push(upserted);
+        await this.syncModuleLifecycleForCompany(tx, {
+          companyId,
+          tenantId,
+          moduleCode: cleanCode,
+          enabled,
+          actorId: enabledById,
+        });
       }
       return results;
     }, { timeout: 30000 });
+  }
+
+  /**
+   * Menjaga konsistensi akses user saat modul company diaktifkan/dinonaktifkan:
+   * - Saat modul dinonaktifkan: otomatis mencabut seluruh assignment leveling & module access user
+   *   pada modul tersebut di company terkait (tanpa menyentuh default role enum `iam_user_role`).
+   * - Saat modul HR/HRMS diaktifkan: memastikan seluruh user aktif perusahaan memiliki minimal Level 3
+   *   (Self-Service: request, lembur, lembur daily & meeting) jika belum memiliki level yang lebih tinggi.
+   */
+  private static async syncModuleLifecycleForCompany(
+    tx: any,
+    params: {
+      companyId: string;
+      tenantId: string;
+      moduleCode: string;
+      enabled: boolean;
+      actorId?: string;
+    },
+  ) {
+    const { companyId, tenantId, moduleCode, enabled, actorId } = params;
+    const isHrGroup = ['HR', 'HRMS', 'REQUESTS'].includes(moduleCode);
+    const targetCodes = isHrGroup ? ['HR', 'HRMS', 'REQUESTS'] : [moduleCode];
+
+    if (!enabled) {
+      await tx.iam_user_module_assignment.updateMany({
+        where: {
+          company_id: companyId,
+          module_code: { in: targetCodes },
+          status: 'ACTIVE',
+        },
+        data: { status: 'REVOKED' },
+      });
+      await tx.iam_user_module_access.deleteMany({
+        where: {
+          company_id: companyId,
+          module_code: { in: targetCodes },
+        },
+      });
+      await tx.iam_user_permission_override.deleteMany({
+        where: {
+          company_id: companyId,
+          module_code: { in: targetCodes },
+        },
+      });
+      return;
+    }
+
+    if (isHrGroup) {
+      const memberships = await tx.iam_user_company_membership.findMany({
+        where: { company_id: companyId, status: 'ACTIVE' },
+        select: { user_id: true },
+      });
+      const activeUserIds: string[] = Array.from(
+        new Set(memberships.map((m: any) => String(m.user_id)).filter(Boolean)),
+      );
+      if (!activeUserIds.length) return;
+
+      const existingAssignments = await tx.iam_user_module_assignment.findMany({
+        where: {
+          company_id: companyId,
+          module_code: { in: targetCodes },
+          status: 'ACTIVE',
+        },
+        select: { user_id: true },
+      });
+      const assignedUsers = new Set(existingAssignments.map((a: any) => String(a.user_id)));
+
+      for (const uid of activeUserIds) {
+        if (assignedUsers.has(uid)) continue;
+        await tx.iam_user_module_assignment.create({
+          data: {
+            id: crypto.randomUUID(),
+            tenant_id: tenantId,
+            company_id: companyId,
+            user_id: uid,
+            module_code: 'HR',
+            tier_level: 3,
+            position_title: 'Staff Operasional',
+            data_scope: 'OWN',
+            permission_profile: 'STANDARD',
+            status: 'ACTIVE',
+            created_by_id: actorId ?? null,
+          },
+        });
+      }
+    }
   }
 
   /**
