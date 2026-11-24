@@ -505,6 +505,12 @@ export async function getUserQuickAccess(companyId: string, userId: string) {
     && (!row.effective_from || row.effective_from <= now)
     && (!row.effective_until || row.effective_until >= now),
   ).map((row) => row.module_code.toUpperCase()));
+  if (enabledModules.has('HRMS') || enabledModules.has('REQUESTS')) {
+    enabledModules.add('HR');
+  }
+  if (enabledModules.has('HR')) {
+    enabledModules.add('HRMS');
+  }
   const activeAssignments = moduleAssignments.filter((assignment) =>
     assignment.status === 'ACTIVE'
     && enabledModules.has(assignment.module_code.toUpperCase())
@@ -514,7 +520,10 @@ export async function getUserQuickAccess(companyId: string, userId: string) {
   const visibleModules = effectiveModules.filter((module) => enabledModules.has(module.module_code.toUpperCase()));
   const visibleWidgets = enabledWidgets.filter((widget) => {
     const requiredModule = DASHBOARD_WIDGET_CATALOG.find((item) => item.code === widget)?.required_module;
-    return !requiredModule || (enabledModules.has(requiredModule) && activeAssignments.some((a) => a.module_code.toUpperCase() === requiredModule));
+    if (!requiredModule) return true;
+    const hrAliases = requiredModule === 'HR' ? ['HR', 'HRMS', 'REQUESTS'] : [requiredModule];
+    return enabledModules.has(requiredModule)
+      && activeAssignments.some((a) => hrAliases.includes(a.module_code.toUpperCase()));
   });
 
   const isLegacyTransition =
