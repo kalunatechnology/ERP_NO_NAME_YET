@@ -301,6 +301,7 @@ export function requireModulePermission(
   action: 'read' | 'write' | 'approve' | 'delete' | 'manage_users' = 'read',
 ) {
   const normalizedModule = String(moduleCode || '').trim().toUpperCase();
+  const candidateModules = MODULE_CAPABILITY_ALIASES[normalizedModule] ?? [normalizedModule];
   const normalizedAction = action.toUpperCase();
   return (req: Request, _res: Response, next: NextFunction): void => {
     if (!req.user) return next(new UnauthorizedError());
@@ -310,7 +311,7 @@ export function requireModulePermission(
     if (req.moduleAccess?.accessMode === 'ASSIGNMENT') {
       const overrides: any[] = (req.user as any)?.permission_overrides ?? [];
       const explicitOverride = overrides.find(
-        (override) => String(override.module_code || '').toUpperCase() === normalizedModule
+        (override) => candidateModules.includes(String(override.module_code || '').toUpperCase())
           && String(override.action_code || '').toUpperCase() === normalizedAction,
       );
       if (String(explicitOverride?.effect || '').toUpperCase() === 'DENY') {
@@ -318,11 +319,13 @@ export function requireModulePermission(
       }
       const capability = normalizedAction === 'MANAGE_USERS' ? 'MANAGE_USERS' : normalizedAction;
       const assignments: any[] = (req.user as any)?.module_assignments ?? [];
-      const hasAssignment = assignments.some((assignment) => isUsableModuleAssignment(assignment, normalizedModule));
+      const hasAssignment = assignments.some((assignment) =>
+        candidateModules.some((candidate) => isUsableModuleAssignment(assignment, candidate)),
+      );
       if (!hasAssignment) return next(new ForbiddenError(`Tidak ada Role Profile aktif pada modul ${normalizedModule}.`));
       if (String(explicitOverride?.effect || '').toUpperCase() === 'ALLOW') return next();
       const granted = assignments.some((assignment) =>
-        isUsableModuleAssignment(assignment, normalizedModule)
+        candidateModules.some((candidate) => isUsableModuleAssignment(assignment, candidate))
           && hasModuleAssignmentCapability(assignment, capability),
       );
       const bridges: any[] = (req.user as any)?.cross_module_capabilities ?? [];
@@ -401,14 +404,17 @@ export function requireModuleCapability(moduleCode: string, capabilityCode: stri
     }
 
     const assignments: any[] = req.user.module_assignments ?? [];
-    const activeAssignments = assignments.filter((assignment) => isUsableModuleAssignment(assignment, normalizedModule));
+    const candidateModules = MODULE_CAPABILITY_ALIASES[normalizedModule] ?? [normalizedModule];
+    const activeAssignments = assignments.filter((assignment) =>
+      candidateModules.some((candidate) => isUsableModuleAssignment(assignment, candidate)),
+    );
     if (!activeAssignments.length) {
       return next(new ForbiddenError(`Tidak ada assignment aktif pada modul ${normalizedModule}.`));
     }
 
     const overrides: any[] = req.user.permission_overrides ?? [];
     const matchingOverride = overrides.find((override) =>
-      String(override.module_code || '').toUpperCase() === normalizedModule
+      candidateModules.includes(String(override.module_code || '').toUpperCase())
       && String(override.action_code || '').toUpperCase() === normalizedCapability
     );
     if (String(matchingOverride?.effect || '').toUpperCase() === 'DENY') {

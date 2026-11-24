@@ -161,7 +161,7 @@ export function canAccessRoute(input: {
     );
     if (String(readOverride?.effect || "").toUpperCase() === "DENY") return false;
     // Seluruh user perusahaan otomatis memiliki akses Self-Service pada modul HR (Meeting, Lembur/Request, Slip Gaji pribadi)
-    if (contract.module === "HR") return true;
+    if (contract.module === "HR" || contract.module === "REQUESTS") return true;
     if (!assignments.length) return false;
     const hasRead = assignments.some((assignment) => {
       if (typeof assignment.allow_read === "boolean") return assignment.allow_read;
