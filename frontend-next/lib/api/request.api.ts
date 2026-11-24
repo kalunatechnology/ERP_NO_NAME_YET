@@ -96,6 +96,11 @@ export const requestApi = {
   listMeetingMinutesReferences: async () => (await api.get<MeetingMinutesReference[]>("/api/v1/requests/meeting-minutes/references")).data,
   getMeeting: async (id: string, occurrenceDate?: string) => (await api.get<MeetingDetail>(`/api/v1/requests/meetings/${id}`, { params: occurrenceDate ? { date: occurrenceDate } : undefined })).data,
   createMeeting: async (input: CreateMeetingInput) => (await api.post("/api/v1/requests/meetings", input)).data,
+  updateMeeting: async (id: string, input: Partial<CreateMeetingInput>) => {
+    const res = await api.patch<MeetingDetail | { success: true; data: MeetingDetail }>(`/api/v1/requests/meetings/${id}`, input);
+    const data = res.data;
+    return (data && typeof data === 'object' && 'data' in data) ? (data as { data: MeetingDetail }).data : data as MeetingDetail;
+  },
   deleteMeeting: async (id: string) => { await api.delete(`/api/v1/requests/meetings/${id}`); },
   saveMinutes: async (id: string, input: SaveMinutesInput) => (await api.put<MeetingDetail>(`/api/v1/requests/meetings/${id}/minutes`, input)).data,
   publishMinutes: async (id: string, occurrenceDate: string, mentionedUserIds?: string[]) => (await api.post<MeetingDetail>(`/api/v1/requests/meetings/${id}/minutes/publish`, { occurrence_date: occurrenceDate, mentioned_user_ids: mentionedUserIds })).data,

@@ -145,6 +145,72 @@ requestRouter.post('/meetings', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+requestRouter.patch('/meetings/:meetingId', async (req, res, next) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const userId = activeUserId(req);
+    const meeting = await prisma.request_meeting.findFirst({
+      where: { id: req.params.meetingId, company_id: companyId, status: { not: 'CANCELLED' } },
+      include: { request: { select: { id: true, requester_user_id: true } } },
+    });
+    if (!meeting) throw new NotFoundError('Meeting');
+
+    const roles = req.user?.roles ?? [];
+    const activeRole = req.user?.active_role_code;
+    const isPmOrExec =
+      roles.includes(RoleCode.SUPER_ADMIN)
+      || roles.includes(RoleCode.PROJECT_MANAGER)
+      || roles.includes(RoleCode.DIRECTOR)
+      || activeRole === RoleCode.PROJECT_MANAGER
+      || activeRole === RoleCode.DIRECTOR;
+    const isHrManager = ((req.user as any)?.module_assignments ?? []).some(
+      (a: any) =>
+        ['HR', 'HRMS', 'REQUESTS'].includes(String(a.module_code || '').toUpperCase())
+        && String(a.status || '').toUpperCase() === 'ACTIVE'
+        && Number(a.tier_level ?? 3) <= 2,
+    );
+    const isOrganizer = meeting.request?.requester_user_id === userId;
+    if (!isPmOrExec && !isHrManager && !isOrganizer) {
+      throw new ForbiddenError('Anda tidak memiliki izin untuk mengedit meeting ini.');
+    }
+
+    const body = req.body ?? {};
+    await prisma.$transaction(async (tx) => {
+      if (meeting.request_id && (body.title !== undefined || body.description !== undefined)) {
+        await tx.request_ticket.update({
+          where: { id: meeting.request_id },
+          data: {
+            ...(typeof body.title === 'string' && body.title.trim() ? { title: body.title.trim() } : {}),
+            ...(body.description !== undefined ? { description: String(body.description || '') } : {}),
+          },
+        });
+      }
+      const locationVal = typeof body.location === 'string' ? body.location.trim() : undefined;
+      const isUrl = locationVal ? /^https?:\/\/\S+$/i.test(locationVal) : false;
+      await tx.request_meeting.update({
+        where: { id: meeting.id },
+        data: {
+          ...(body.start_at ? { start_at: new Date(body.start_at) } : {}),
+          ...(body.end_at ? { end_at: new Date(body.end_at) } : {}),
+          ...(body.recurrence_end_at ? { recurrence_end_at: new Date(body.recurrence_end_at) } : {}),
+          ...(Array.isArray(body.recurring_days) ? { recurring_days: body.recurring_days.map(Number) } : {}),
+          ...(locationVal !== undefined
+            ? { location: isUrl ? null : locationVal || null, meeting_url: isUrl ? locationVal : (body.meeting_url ?? null) }
+            : {}),
+          ...(body.agenda_summary !== undefined ? { agenda_summary: String(body.agenda_summary || '') } : {}),
+          ...(body.notetaker_user_id !== undefined ? { notetaker_user_id: body.notetaker_user_id || null } : {}),
+        },
+      });
+    });
+
+    invalidateRequestFeedCache();
+    sendSuccess(
+      res,
+      await MeetingRequestService.getById(meeting.id, companyId, userId, activeRoleCode(req)),
+    );
+  } catch (error) { next(error); }
+});
+
 requestRouter.delete('/meetings/:meetingId', requireActiveRole(RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR), async (req, res, next) => {
   try {
     await MeetingRequestService.deleteMeeting(req.params.meetingId, activeCompanyId(req), activeUserId(req), activeRoleCode(req));

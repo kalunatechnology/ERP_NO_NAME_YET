@@ -50,8 +50,9 @@ export default function RequestsClient(){
     if (finAssignment) return Number(finAssignment.tier_level ?? 3);
     return userRole === "finance" ? 1 : 99;
   }, [user?.module_assignments, userRole]);
-  const canDeleteMeeting=userRole==="pm"||userRole==="executive";
+  const canDeleteMeeting = userRole === "pm" || userRole === "executive" || userRole === "super_admin" || hrTier <= 2;
   const [activeTab,setActiveTab]=useState<'meeting'|'request'|'overtime'|'hr_ops'|'hr_lead'>('meeting');
+  const [editingMeeting, setEditingMeeting] = useState<MeetingDetail | null>(null);
   const [meetings,setMeetings]=useState<MeetingRequestSummary[]>([]);
   const [nonMeetingRequests,setNonMeetingRequests]=useState<NonMeetingRequest[]>([]);
   const [members,setMembers]=useState<Member[]>([]);
@@ -701,7 +702,8 @@ export default function RequestsClient(){
 
       {createOpen && <CreateRequestModal form={createForm} setForm={setCreateForm} members={members} busy={busy} onClose={() => setCreateOpen(false)} onSubmit={submitMeeting} />}
       {requestModalOpen && <NewNonMeetingRequestModal members={members} busy={busy} onClose={() => setRequestModalOpen(false)} onSuccess={() => { setRequestModalOpen(false); void load(); }} />}
-      {selected && !notesOpen && <MeetingDetailModal detail={selected} members={members} personInCharge={personInCharge} setPersonInCharge={setPersonInCharge} busy={busy} onClose={() => setSelected(null)} onReassign={reassign} onNotes={date => void openNotes(date)} onPublishMeeting={() => void publishMeeting(selected.id)} canDeleteMeeting={canDeleteMeeting} onDeleteMeeting={() => void deleteMeeting(selected.id)} />}
+      {selected && !notesOpen && !editingMeeting && <MeetingDetailModal detail={selected} members={members} personInCharge={personInCharge} setPersonInCharge={setPersonInCharge} busy={busy} onClose={() => setSelected(null)} onReassign={reassign} onNotes={date => void openNotes(date)} onPublishMeeting={() => void publishMeeting(selected.id)} canDeleteMeeting={canDeleteMeeting} canEditMeeting={canDeleteMeeting || selected.request?.requester_user_id === user?.id} onEditMeeting={() => setEditingMeeting(selected)} onDeleteMeeting={() => void deleteMeeting(selected.id)} />}
+      {editingMeeting && <EditMeetingModal detail={editingMeeting} busy={busy} onClose={() => setEditingMeeting(null)} onSaved={(updated) => { setEditingMeeting(null); setSelected(updated); void load(); }} />}
       {selected && notesOpen && <NotesModal detail={selected} members={members} minutes={minutes} setMinutes={setMinutes} busy={busy} onClose={() => {if(busy){toast.error("Tunggu proses simpan selesai sebelum menutup notulensi.");return;}if(hasUnsavedMinutes){toast.error("Simpan draft notulensi terlebih dahulu sebelum menutup.");return;}setNotesOpen(false);}} onSave={saveNotes} />}
     </div>
   );
@@ -714,7 +716,7 @@ function CreateRequestModal({form,setForm,members,busy,onClose,onSubmit}:{form:C
   <aside className="flex flex-col"><div className="space-y-7">{form.recurrenceType!=="RECURRING"?(<><SelectField icon={<UserCircle2 size={22}/>} label="Assign team (Opsional)" value={form.assigneeId} onChange={value=>setForm({...form,assigneeId:value})}><option value="">Pilih Staff (Opsional)</option>{members.map(member=><option key={member.id} value={member.id}>{member.name}</option>)}</SelectField><SelectField icon={<FileText size={22}/>} label="Notulis (Opsional)" value={form.notetakerId} onChange={value=>setForm({...form,notetakerId:value})}><option value="">Terbuka untuk semua peserta</option>{members.map(member=><option key={member.id} value={member.id}>{member.name}</option>)}</SelectField></>):(<div className="rounded-2xl border border-[#CFE0F5] bg-[#F5FAFF] p-4 text-xs text-[#0876CD]"><p className="font-extrabold uppercase tracking-wider">Recurring Meeting</p><p className="mt-1 leading-5 text-[#556987]">Notulensi terbuka untuk <strong>siapa saja peserta</strong> yang hadir dalam meeting ini. Tidak perlu menunjuk notulis atau assignee khusus.</p></div>)}<InvitePeoplePicker members={members} selectedIds={form.participantIds} onChange={participantIds=>setForm({...form,participantIds})}/></div><div className="mt-auto space-y-3 pt-10"><button type="submit" name="submit_intent" value="send" disabled={busy} className="flex h-12 w-full items-center justify-center gap-3 rounded-xl bg-[#0876CD] font-bold text-white disabled:opacity-50">Buat Meeting <ArrowRight size={18}/></button><button type="submit" name="submit_intent" value="draft" disabled={busy} className="flex h-12 w-full items-center justify-center gap-3 rounded-xl border-2 border-[#3154C7] font-bold text-[#0876CD] disabled:opacity-50">Simpan Request <FileDown size={18}/></button></div></aside>
 </form></ModalBackdrop>;}
 
-function MeetingDetailModal({detail,members,personInCharge,setPersonInCharge,busy,onClose,onReassign,onNotes,onPublishMeeting,canDeleteMeeting,onDeleteMeeting}:{detail:MeetingDetail;members:Member[];personInCharge:string;setPersonInCharge:(id:string)=>void;busy:boolean;onClose:()=>void;onReassign:()=>void;onNotes:(date:string)=>void;onPublishMeeting:()=>void;canDeleteMeeting:boolean;onDeleteMeeting:()=>void}){
+function MeetingDetailModal({detail,members,personInCharge,setPersonInCharge,busy,onClose,onReassign,onNotes,onPublishMeeting,canDeleteMeeting,canEditMeeting,onEditMeeting,onDeleteMeeting}:{detail:MeetingDetail;members:Member[];personInCharge:string;setPersonInCharge:(id:string)=>void;busy:boolean;onClose:()=>void;onReassign:()=>void;onNotes:(date:string)=>void;onPublishMeeting:()=>void;canDeleteMeeting:boolean;canEditMeeting:boolean;onEditMeeting:()=>void;onDeleteMeeting:()=>void}){
   const hasMinutes=Boolean(detail.minutes);
   const published=detail.minutes?.status==="PUBLISHED";
   const isDraft=detail.minutes?.status!=null&&!published;
@@ -739,7 +741,7 @@ function MeetingDetailModal({detail,members,personInCharge,setPersonInCharge,bus
       <section className="mt-4 flex flex-col gap-3 rounded-2xl border border-[#CFE0F5] bg-[#F5FAFF] p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-extrabold tracking-wide text-[#0876CD]">NOTULENSI MEETING</p><p className="mt-1 text-xs text-[#6B7280]">{detail.recurrence_type==="RECURRING"?"Notulensi terbuka: siapa saja peserta yang hadir dapat menyusun notulensi per tanggal.":"Satu-satunya pengguna yang dapat menyusun dan mempublikasikan notulensi."}</p></div>{detail.recurrence_type==="RECURRING"?(<div className="inline-flex items-center gap-2 self-start rounded-xl bg-white px-3 py-2 text-xs font-bold text-[#0876CD] shadow-sm sm:self-auto"><FileText size={17}/><span>Terbuka untuk semua peserta</span></div>):(<div className="inline-flex items-center gap-2 self-start rounded-xl bg-white px-3 py-2 text-sm font-bold text-[#0876CD] shadow-sm sm:self-auto"><FileText size={17}/><span>{notetakerName}</span>{canEditMinutes&&<span className="rounded-md bg-[#0876CD] px-2 py-0.5 text-[10px] text-white">ANDA</span>}</div>)}</section>
       <div className="mt-5 grid gap-4 md:grid-cols-2"><section className="rounded-2xl border border-[#E5E5E5] p-4"><p className="text-xs font-extrabold tracking-wide text-[#2949B2]">INVITED PEOPLE</p><div className="mt-3 flex flex-wrap gap-2">{detail.participants.filter(item=>item.participant_role!=="ORGANIZER").map(item=><span key={item.id} className="inline-flex items-center gap-2 rounded-lg bg-[#E7F2FF] px-3 py-2 text-xs font-bold text-[#2949B2]"><UserCircle2 size={17}/>{item.user?.full_name??item.user?.email??item.external_name??item.external_email??"Team member"}</span>)}</div></section>{venueValues.length>0&&<section className="rounded-2xl border border-[#E5E5E5] p-4"><p className="text-xs font-extrabold tracking-wide text-[#2949B2]">LOKASI / TAUTAN MEETING</p><div className="mt-3 flex flex-col gap-2">{venueValues.map((value,index)=>isHttpUrl(value)?<a key={index} href={value} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-[#F8FAFC] px-3 text-xs font-semibold text-[#163D64] hover:bg-[#E7F2FF] break-all"><Link2 size={15} className="shrink-0"/>{value}</a>:<span key={index} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-[#F8FAFC] px-3 text-xs text-[#64748B]"><MapPin size={15} className="shrink-0"/>{value}</span>)}</div></section>}</div>
       {detail.recurrence_type==="RECURRING"&&<section className="mt-5 overflow-hidden rounded-2xl border border-[#DDE5F1]"><div className="flex items-center justify-between bg-[#F5FAFF] px-5 py-4"><div><p className="text-sm font-extrabold text-[#0876CD]">Notes</p><p className="mt-1 text-xs text-[#6B7280]">Satu notulensi untuk setiap tanggal meeting</p></div><span className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-[#0876CD]">Terbaru</span></div><div className="max-h-72 divide-y divide-[#EDF0F4] overflow-y-auto">{detail.notes.map(note=>{const notePublished=note.status==="COMPLETED";const noteDraft=note.status==="DRAFT";const canOpen=notePublished||canEditMinutes;const label=note.status==="NOT_CREATED"?"Belum dibuat":noteDraft?"Draft":"Dipublikasikan";return <div key={note.occurrence_date} className={`flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between ${note.is_today?"bg-[#F0F7FF]/70":""}`}><div className="flex items-center gap-3"><span className={`grid h-9 w-9 place-items-center rounded-xl ${notePublished?"bg-[#E6F8EE] text-[#147A43]":noteDraft?"bg-[#FFF5D9] text-[#8A6100]":"bg-[#F1F3F7] text-[#6B7280]"}`}>{notePublished?<Check size={17}/>:<FileText size={17}/>}</span><div><div className="flex items-center gap-2"><p className="text-sm font-bold text-[#243B7A]">{displayOccurrenceDate(note.occurrence_date)}</p>{note.is_today&&<span className="rounded-md bg-[#0876CD] px-2 py-0.5 text-[10px] font-bold text-white tracking-wide">Hari Ini</span>}</div><p className="mt-0.5 text-xs text-[#6B7280]">{label}</p></div></div><button disabled={!canOpen} onClick={()=>onNotes(note.occurrence_date)} className={`h-9 rounded-xl border px-4 text-xs font-bold transition disabled:cursor-not-allowed disabled:border-[#E2E8F0] disabled:text-[#9CA3AF] ${notePublished?"border-[#147A43] text-[#147A43] hover:bg-[#E6F8EE]":noteDraft?"border-[#8A6100] bg-[#FFF5D9] text-[#8A6100] hover:bg-[#FFE9A0]":"border-[#0876CD] text-[#0876CD] hover:bg-[#E7F2FF]"}`}>{notePublished?"Lihat":noteDraft?"Edit Draft":"Buat"}</button></div>})}</div></section>}
-      <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between"><button onClick={onClose} className="h-11 rounded-xl px-5 text-sm font-semibold text-[#64748B] transition hover:bg-[#F4F4F4]">Tutup</button><div className="flex flex-wrap items-center gap-3">{canDeleteMeeting&&<button type="button" disabled={busy} onClick={onDeleteMeeting} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-5 text-sm font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"><Trash2 size={17}/>Hapus Meeting</button>}{isMeetingDraft&&<button disabled={busy} onClick={onPublishMeeting} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0876CD] px-6 text-sm font-bold text-white transition hover:bg-[#203D91] disabled:opacity-50 shadow-sm"><Send size={18}/> Kirim / Publikasikan Meeting</button>}{detail.recurrence_type!=="RECURRING"&&<div className="text-right">{!canOpenMinutes&&<p className="mb-2 text-xs text-[#6B7280]">Hanya {notetakerName} yang dapat membuka editor notulensi.</p>}{isDraft&&canEditMinutes&&!published&&<p className="mb-2 text-xs font-semibold text-[#8A6100]">Draft tersimpan — belum dipublikasikan. Peserta belum mendapat notifikasi.</p>}<button disabled={!canOpenMinutes} onClick={()=>onNotes(detail.selected_occurrence_date)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0876CD] px-6 text-sm font-bold text-white transition hover:bg-[#203D91] disabled:cursor-not-allowed disabled:bg-[#AAB8DF]"><FileText size={18}/>{notesLabel}</button></div>}</div></div>
+      <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between"><button onClick={onClose} className="h-11 rounded-xl px-5 text-sm font-semibold text-[#64748B] transition hover:bg-[#F4F4F4]">Tutup</button><div className="flex flex-wrap items-center gap-3">{canEditMeeting&&<button type="button" disabled={busy} onClick={onEditMeeting} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#0876CD]/30 bg-[#E7F2FF] px-5 text-sm font-bold text-[#0876CD] hover:bg-[#D5E8FF] disabled:opacity-50"><Save size={17}/>Edit Meeting</button>}{canDeleteMeeting&&<button type="button" disabled={busy} onClick={onDeleteMeeting} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-5 text-sm font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"><Trash2 size={17}/>Hapus Meeting</button>}{isMeetingDraft&&<button disabled={busy} onClick={onPublishMeeting} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0876CD] px-6 text-sm font-bold text-white transition hover:bg-[#203D91] disabled:opacity-50 shadow-sm"><Send size={18}/> Kirim / Publikasikan Meeting</button>}{detail.recurrence_type!=="RECURRING"&&<div className="text-right">{!canOpenMinutes&&<p className="mb-2 text-xs text-[#6B7280]">Hanya {notetakerName} yang dapat membuka editor notulensi.</p>}{isDraft&&canEditMinutes&&!published&&<p className="mb-2 text-xs font-semibold text-[#8A6100]">Draft tersimpan — belum dipublikasikan. Peserta belum mendapat notifikasi.</p>}<button disabled={!canOpenMinutes} onClick={()=>onNotes(detail.selected_occurrence_date)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0876CD] px-6 text-sm font-bold text-white transition hover:bg-[#203D91] disabled:cursor-not-allowed disabled:bg-[#AAB8DF]"><FileText size={18}/>{notesLabel}</button></div>}</div></div>
     </div>
   </div></ModalBackdrop>;
 }
@@ -1255,6 +1257,78 @@ function NewNonMeetingRequestModal({members,busy,onClose,onSuccess}:{members:Mem
       <div className="flex gap-3 pt-2">
         <button type="button" onClick={onClose} className="flex-1 h-11 rounded-xl border-2 border-[#E2E8F0] font-bold text-[#64748B] hover:bg-[#F4F6FB]">Batal</button>
         <button type="submit" disabled={submitting||busy} className="flex-1 h-11 rounded-xl bg-[#2B7A42] font-bold text-white hover:bg-[#226135] disabled:opacity-50">Buat Request</button>
+      </div>
+    </form>
+  </ModalBackdrop>;
+}
+
+function EditMeetingModal({detail,busy,onClose,onSaved}:{detail:MeetingDetail;busy:boolean;onClose:()=>void;onSaved:(updated:MeetingDetail)=>void}){
+  const toLocalDate = (iso?: string | null) => iso ? new Date(iso).toISOString().slice(0, 10) : "";
+  const toLocalTime = (iso?: string | null) => {
+    if (!iso) return "09:00";
+    const d = new Date(iso);
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  };
+  const [title, setTitle] = useState(detail.request?.title ?? "");
+  const [description, setDescription] = useState(detail.request?.description ?? "");
+  const [date, setDate] = useState(toLocalDate(detail.start_at));
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState(toLocalDate(detail.recurrence_end_at));
+  const [startTime, setStartTime] = useState(toLocalTime(detail.start_at));
+  const [endTime, setEndTime] = useState(toLocalTime(detail.end_at));
+  const [location, setLocation] = useState(detail.meeting_url || detail.location || "");
+  const [agenda, setAgenda] = useState(detail.agenda_summary ?? "");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!title.trim()) { toast.error("Judul meeting wajib diisi."); return; }
+    setSubmitting(true);
+    try {
+      const updated = await requestApi.updateMeeting(detail.id, {
+        title: title.trim(),
+        description: description.trim(),
+        start_at: localIso(date, startTime),
+        end_at: localIso(date, endTime),
+        ...(detail.recurrence_type === "RECURRING" && recurrenceEndDate
+          ? { recurrence_end_at: localIso(recurrenceEndDate, endTime) }
+          : {}),
+        location: location.trim(),
+        agenda_summary: agenda.trim(),
+      });
+      toast.success("Meeting berhasil diperbarui.");
+      onSaved(updated);
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, "Gagal memperbarui meeting."));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return <ModalBackdrop wide>
+    <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-5">
+      <div className="flex items-center justify-between">
+        <button type="button" onClick={onClose} className="inline-flex items-center gap-3 text-lg font-extrabold text-[#0876CD]">
+          <ArrowLeft size={18}/> Edit Meeting
+        </button>
+        <button type="button" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full bg-[#F4F6FB] text-[#64748B] hover:bg-[#E7F2FF]">
+          <X size={18}/>
+        </button>
+      </div>
+      <div className="grid gap-4 md:grid-cols-4">
+        <Field label={detail.recurrence_type === "RECURRING" ? "Schedule Start" : "Meeting Date"} type="date" required value={date} onChange={setDate} />
+        {detail.recurrence_type === "RECURRING" && <Field label="Schedule End" type="date" value={recurrenceEndDate} onChange={setRecurrenceEndDate} />}
+        <Field label="Start Time" type="time" required value={startTime} onChange={setStartTime} />
+        <Field label="End Time" type="time" required value={endTime} onChange={setEndTime} />
+      </div>
+      <Field label="Lokasi / tautan meeting (opsional)" value={location} placeholder="Alamat, Google Maps, Meet, Zoom, atau Teams" onChange={setLocation} />
+      <Field label="Judul Meeting" required value={title} onChange={setTitle} />
+      <TextArea label="Detail / Deskripsi Meeting" rows={4} value={description} onChange={setDescription} />
+      <TextArea label="Agenda" rows={3} value={agenda} onChange={setAgenda} />
+      <div className="flex gap-3 pt-2">
+        <button type="button" onClick={onClose} className="flex-1 h-11 rounded-xl border-2 border-[#E2E8F0] font-bold text-[#64748B] hover:bg-[#F4F6FB]">Batal</button>
+        <button type="submit" disabled={submitting || busy} className="flex-1 h-11 rounded-xl bg-[#0876CD] font-bold text-white hover:bg-[#163D64] disabled:opacity-50">
+          {submitting ? "Menyimpan..." : "Simpan Perubahan"}
+        </button>
       </div>
     </form>
   </ModalBackdrop>;
