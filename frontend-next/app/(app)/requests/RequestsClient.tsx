@@ -50,7 +50,7 @@ export default function RequestsClient(){
     if (finAssignment) return Number(finAssignment.tier_level ?? 3);
     return userRole === "finance" ? 1 : 99;
   }, [user?.module_assignments, userRole]);
-  const canDeleteMeeting = userRole === "pm" || userRole === "executive" || userRole === "super_admin" || hrTier <= 2;
+  const canDeleteMeeting = userRole === "super_admin" || hrTier <= 2;
   const [activeTab,setActiveTab]=useState<'meeting'|'request'|'overtime'|'hr_ops'|'hr_lead'>('meeting');
   const [editingMeeting, setEditingMeeting] = useState<MeetingDetail | null>(null);
   const [meetings,setMeetings]=useState<MeetingRequestSummary[]>([]);
@@ -702,7 +702,7 @@ export default function RequestsClient(){
 
       {createOpen && <CreateRequestModal form={createForm} setForm={setCreateForm} members={members} busy={busy} onClose={() => setCreateOpen(false)} onSubmit={submitMeeting} />}
       {requestModalOpen && <NewNonMeetingRequestModal members={members} busy={busy} onClose={() => setRequestModalOpen(false)} onSuccess={() => { setRequestModalOpen(false); void load(); }} />}
-      {selected && !notesOpen && !editingMeeting && <MeetingDetailModal detail={selected} members={members} personInCharge={personInCharge} setPersonInCharge={setPersonInCharge} busy={busy} onClose={() => setSelected(null)} onReassign={reassign} onNotes={date => void openNotes(date)} onPublishMeeting={() => void publishMeeting(selected.id)} canDeleteMeeting={canDeleteMeeting} canEditMeeting={canDeleteMeeting || selected.participants.some((p) => p.user_id === user?.id && p.participant_role === "ORGANIZER")} onEditMeeting={() => setEditingMeeting(selected)} onDeleteMeeting={() => void deleteMeeting(selected.id)} />}
+      {selected && !notesOpen && !editingMeeting && <MeetingDetailModal detail={selected} members={members} personInCharge={personInCharge} setPersonInCharge={setPersonInCharge} busy={busy} onClose={() => setSelected(null)} onReassign={reassign} onNotes={date => void openNotes(date)} onPublishMeeting={() => void publishMeeting(selected.id)} canDeleteMeeting={canDeleteMeeting} canEditMeeting={canDeleteMeeting} onEditMeeting={() => setEditingMeeting(selected)} onDeleteMeeting={() => void deleteMeeting(selected.id)} />}
       {editingMeeting && <EditMeetingModal detail={editingMeeting} busy={busy} onClose={() => setEditingMeeting(null)} onSaved={(updated) => { setEditingMeeting(null); setSelected(updated); void load(); }} />}
       {selected && notesOpen && <NotesModal detail={selected} members={members} minutes={minutes} setMinutes={setMinutes} busy={busy} onClose={() => {if(busy){toast.error("Tunggu proses simpan selesai sebelum menutup notulensi.");return;}if(hasUnsavedMinutes){toast.error("Simpan draft notulensi terlebih dahulu sebelum menutup.");return;}setNotesOpen(false);}} onSave={saveNotes} />}
     </div>

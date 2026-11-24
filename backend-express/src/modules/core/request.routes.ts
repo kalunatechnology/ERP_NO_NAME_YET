@@ -147,14 +147,7 @@ requestRouter.post('/meetings', async (req, res, next) => {
 
 function canManageMeetingByRole(req: Request): boolean {
   const roles = req.user?.roles ?? [];
-  const activeRole = req.user?.active_role_code;
-  const isPmOrExec =
-    roles.includes(RoleCode.SUPER_ADMIN)
-    || roles.includes(RoleCode.PROJECT_MANAGER)
-    || roles.includes(RoleCode.DIRECTOR)
-    || activeRole === RoleCode.PROJECT_MANAGER
-    || activeRole === RoleCode.DIRECTOR;
-  if (isPmOrExec) return true;
+  if (roles.includes(RoleCode.SUPER_ADMIN)) return true;
   return ((req.user as any)?.module_assignments ?? []).some(
     (a: any) =>
       ['HR', 'HRMS', 'REQUESTS'].includes(String(a.module_code || '').toUpperCase())
@@ -171,16 +164,9 @@ requestRouter.patch('/meetings/:meetingId', async (req, res, next) => {
       where: { id: req.params.meetingId, company_id: companyId, status: { not: 'CANCELLED' } },
     });
     if (!meeting) throw new NotFoundError('Meeting');
-    const ticket = meeting.request_id
-      ? await prisma.request_ticket.findUnique({
-          where: { id: meeting.request_id },
-          select: { id: true, requester_user_id: true },
-        })
-      : null;
 
-    const isOrganizer = ticket?.requester_user_id === userId;
-    if (!canManageMeetingByRole(req) && !isOrganizer) {
-      throw new ForbiddenError('Anda tidak memiliki izin untuk mengedit meeting ini.');
+    if (!canManageMeetingByRole(req)) {
+      throw new ForbiddenError('Hanya HR Tier 1 atau Tier 2 yang dapat mengedit meeting ini.');
     }
 
     const body = req.body ?? {};
