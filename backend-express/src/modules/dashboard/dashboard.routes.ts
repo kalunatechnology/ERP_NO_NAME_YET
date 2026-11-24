@@ -1390,6 +1390,85 @@ async function loadCrmBundle(req: Request, enabledModules: readonly string[]) {
   };
 }
 
+async function loadHrSummaryBundle(req: Request) {
+  const companyId = req.companyId!;
+  const userId = req.user!.id;
+  const assignments = (req.user?.module_assignments ?? []).filter(
+    (a: any) => String(a.module_code || '').toUpperCase() === 'HR' && String(a.status || '').toUpperCase() === 'ACTIVE',
+  );
+  const hrTier = req.user?.roles?.includes(RoleCode.SUPER_ADMIN)
+    ? 1
+    : assignments.length
+      ? Math.min(...assignments.map((a: any) => Number(a.tier_level ?? 3)))
+      : 3;
+
+  try {
+    if (hrTier === 1) {
+      const [pendingFinalOvertimes, draftPayrollRuns, activeEmployeesCount, upcomingHrMeetings] = await Promise.all([
+        prisma.hr_overtime_request.count({
+          where: { company_id: companyId, status: { in: ['SUBMITTED', 'VERIFIED_HR_STAFF'] } },
+        }),
+        prisma.fin_payroll_run.count({ where: { company_id: companyId, status: 'DRAFT' } }),
+        prisma.master_employee.count({ where: { company_id: companyId, employment_status: 'ACTIVE' } }),
+        prisma.request_meeting.count({ where: { company_id: companyId, status: 'SCHEDULED' } }),
+      ]);
+      return {
+        tier: 1,
+        pending_final_overtimes: pendingFinalOvertimes,
+        draft_payroll_runs: draftPayrollRuns,
+        active_employees_count: activeEmployeesCount,
+        upcoming_hr_meetings: upcomingHrMeetings,
+      };
+    }
+
+    if (hrTier === 2) {
+      const [unverifiedOvertimes, approvedUnbilledOvertimes, meetingsNeedMinutes] = await Promise.all([
+        prisma.hr_overtime_request.count({ where: { company_id: companyId, status: 'SUBMITTED' } }),
+        prisma.hr_overtime_request.count({
+          where: { company_id: companyId, status: 'APPROVED', payroll_run_id: null },
+        }),
+        prisma.request_meeting.count({
+          where: { company_id: companyId, requires_minutes: true, status: { in: ['SCHEDULED', 'COMPLETED'] } },
+        }),
+      ]);
+      return {
+        tier: 2,
+        unverified_overtimes: unverifiedOvertimes,
+        approved_unbilled_overtimes: approvedUnbilledOvertimes,
+        meetings_need_minutes: meetingsNeedMinutes,
+      };
+    }
+
+    const [myPendingOvertimes, myUpcomingMeetings, emp] = await Promise.all([
+      prisma.hr_overtime_request.count({
+        where: { company_id: companyId, user_id: userId, status: { in: ['SUBMITTED', 'VERIFIED_HR_STAFF'] } },
+      }),
+      prisma.request_meeting_participant.count({ where: { company_id: companyId, user_id: userId } }),
+      prisma.master_employee.findFirst({
+        where: { company_id: companyId, user_id: userId },
+        select: { id: true },
+      }),
+    ]);
+    let myLatestPayslipStatus: string | null = null;
+    if (emp) {
+      const latestLine = await prisma.fin_payroll_line.findFirst({
+        where: { company_id: companyId, employee_id: emp.id, payroll_run: { status: { in: ['POSTED', 'PAID'] } } },
+        include: { payroll_run: { select: { status: true } } },
+        orderBy: { created_at: 'desc' },
+      });
+      myLatestPayslipStatus = latestLine?.payroll_run?.status ?? null;
+    }
+    return {
+      tier: 3,
+      my_pending_overtimes: myPendingOvertimes,
+      my_upcoming_meetings: myUpcomingMeetings,
+      my_latest_payslip_status: myLatestPayslipStatus,
+    };
+  } catch {
+    return { tier: hrTier };
+  }
+}
+
 /**
  * GET /api/v1/dashboard/bootstrap?sections=projects,finance,crm
  *
@@ -1442,7 +1521,11 @@ dashboardRouter.get('/bootstrap', async (req: Request, res: Response, next: Next
       if (requestedSet.has('finance')) sectionPromises.set('finance', loadFinanceBundle(req, enabled.includes('PROJECTS')));
       if (requestedSet.has('crm')) sectionPromises.set('crm', loadCrmBundle(req, enabled));
       const result = await Promise.all(requested.map(async (section) => [section, await sectionPromises.get(section)!] as const));
-      return Object.fromEntries(result);
+      const payload = Object.fromEntries(result) as Record<string, unknown>;
+      if (allowedWidgets.has('DASH_HR') || allowedWidgets.has('DASH_EXECUTIVE')) {
+        payload.hr_summary = await loadHrSummaryBundle(req);
+      }
+      return payload;
     };
     const forceFresh = String(req.query.fresh ?? '') === '1';
     const cached = forceFresh

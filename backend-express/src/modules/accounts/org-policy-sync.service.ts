@@ -10,6 +10,7 @@ export type DashboardWidgetCode =
   | 'DASH_CRM'
   | 'DASH_FINANCE'
   | 'DASH_INVENTORY'
+  | 'DASH_HR'
   | 'DASH_EXECUTIVE';
 
 export interface DashboardWidgetCatalogItem {
@@ -54,6 +55,13 @@ export const DASHBOARD_WIDGET_CATALOG: DashboardWidgetCatalogItem[] = [
     title: 'Inventori, Gudang & Aset',
     description: 'Status stok gudang, pergerakan barang transit, reservasi, dan aset operasional.',
     required_module: 'INVENTORY',
+    is_baseline: false,
+  },
+  {
+    code: 'DASH_HR',
+    title: 'HRMM, Lembur, Meeting & Payroll',
+    description: 'Ringkasan pengajuan lembur, jadwal meeting HR, status payroll run, dan antrean persetujuan SDM.',
+    required_module: 'HR',
     is_baseline: false,
   },
   {

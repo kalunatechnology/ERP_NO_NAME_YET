@@ -1270,6 +1270,7 @@ export default function DashboardClient() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [staffOvertimeSummary, setStaffOvertimeSummary] = useState<StaffOvertimeSummaryData | null>(null);
   const [allowedWidgets, setAllowedWidgets] = useState<string[]>([]);
+  const [hrSummary, setHrSummary] = useState<Record<string, any> | null>(null);
 
   // Marka+ Request Card & Ticketing States
   const [isNewRequestModalOpen, setIsNewRequestModalOpen] = useState(false);
@@ -1384,6 +1385,7 @@ export default function DashboardClient() {
       } else if (userProfileWidgets.length > 0) {
         setAllowedWidgets(userProfileWidgets);
       }
+      setHrSummary(((primary as any).hr_summary as Record<string, any>) ?? null);
 
       const primaryTasks: Promise<void>[] = [];
       if (hasExecHint && canUseProjects && mayReadProjectDashboard) {
@@ -1594,6 +1596,7 @@ export default function DashboardClient() {
         const showInventory = hasModularConfig
           ? activeWidgetSet.has("DASH_INVENTORY") && canUseInventory
           : userRole === "om" && canUseInventory;
+        const showHr = activeWidgetSet.has("DASH_HR");
         const showPersonal = hasModularConfig
           ? activeWidgetSet.has("DASH_PERSONAL") &&
             (!showExec && !showProjects)
@@ -1660,6 +1663,38 @@ export default function DashboardClient() {
                     subLabel="Konversi inventori ke Register Aset Tetap"
                     icon={CheckCircle2}
                     onClick={() => window.location.assign("/inventory")}
+                  />
+                </div>
+              </section>
+            )}
+            {showHr && (
+              <section className="rounded-[20px] border border-[#CBD5E1] bg-gradient-to-r from-[#E7F2FF]/80 via-white to-[#F8FAFC] p-5 shadow-2xs">
+                <SectionHeader
+                  title="HRMM, Lembur, Meeting & Payroll (DASH_HR)"
+                  actionLabel="Buka Modul HRMM"
+                  actionHref="/hr"
+                />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <KpiCard
+                    label={hrSummary?.tier === 1 ? "Menunggu Final Approval Lembur" : hrSummary?.tier === 2 ? "Lembur Perlu Verifikasi" : "Lembur Saya Pending"}
+                    value={hrSummary?.tier === 1 ? (hrSummary.pending_final_overtimes ?? 0) : hrSummary?.tier === 2 ? (hrSummary.unverified_overtimes ?? 0) : (hrSummary?.my_pending_overtimes ?? 0)}
+                    subLabel="Pengajuan lembur SDM"
+                    icon={Activity}
+                    onClick={() => window.location.assign("/hr")}
+                  />
+                  <KpiCard
+                    label={hrSummary?.tier === 1 ? "Draft Payroll (HR-ACC)" : hrSummary?.tier === 2 ? "Lembur APPROVED Belum Masuk Payroll" : "Meeting HR Terundang"}
+                    value={hrSummary?.tier === 1 ? (hrSummary.draft_payroll_runs ?? 0) : hrSummary?.tier === 2 ? (hrSummary.approved_unbilled_overtimes ?? 0) : (hrSummary?.my_upcoming_meetings ?? 0)}
+                    subLabel={hrSummary?.tier === 3 ? "Undangan meeting HR" : "Antrean proses payroll"}
+                    icon={Layers}
+                    onClick={() => window.location.assign("/hr")}
+                  />
+                  <KpiCard
+                    label={hrSummary?.tier === 1 ? "Karyawan Aktif" : hrSummary?.tier === 2 ? "Meeting Perlu Notulensi" : "Status Slip Gaji Terakhir"}
+                    value={hrSummary?.tier === 1 ? (hrSummary.active_employees_count ?? 0) : hrSummary?.tier === 2 ? (hrSummary.meetings_need_minutes ?? 0) : (hrSummary?.my_latest_payslip_status ?? "-")}
+                    subLabel="Sinkronisasi HRMM & Finance"
+                    icon={CheckCircle2}
+                    onClick={() => window.location.assign("/hr")}
                   />
                 </div>
               </section>

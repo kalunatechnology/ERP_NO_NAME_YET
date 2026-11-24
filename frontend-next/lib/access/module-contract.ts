@@ -346,12 +346,13 @@ export function canRequestApi(url: string, access: FrontendAccessContext): boole
   return Boolean(override?.allow_read || normalizeModuleCodes(access.delegatedModules).has(contract.module));
 }
 
-export type DashboardSection = "projects" | "finance" | "crm";
+export type DashboardSection = "projects" | "finance" | "crm" | "hr";
 
 const DASHBOARD_SECTION_CONTRACTS: Record<DashboardSection, { module: ModuleCode; roles: readonly string[] }> = {
   projects: { module: "PROJECTS", roles: [...PROJECT_ROLES, ROLE_CODES.crmLead, ROLE_CODES.sales] },
   finance: { module: "FINANCE", roles: FINANCE_ROLES },
   crm: { module: "CRM", roles: CRM_ROLES },
+  hr: { module: "HR", roles: [] },
 };
 
 /** Mirrors Dashboard BFF `SECTION_ROLES` and modular dashboard widgets without treating its sections as direct module URLs. */

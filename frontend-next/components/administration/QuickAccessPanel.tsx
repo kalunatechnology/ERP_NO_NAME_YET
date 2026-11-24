@@ -111,6 +111,13 @@ const DEFAULT_CATALOG: DashboardWidgetCatalogItem[] = [
     is_baseline: false,
   },
   {
+    code: "DASH_HR",
+    title: "HRMM, Lembur, Meeting & Payroll",
+    description: "Ringkasan pengajuan lembur, jadwal meeting HR, status payroll run, dan antrean persetujuan SDM.",
+    required_module: "HR",
+    is_baseline: false,
+  },
+  {
     code: "DASH_EXECUTIVE",
     title: "Ringkasan Direksi 360°",
     description: "Ikhtisar performa perusahaan lintas departemen.",
