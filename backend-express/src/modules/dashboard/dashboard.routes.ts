@@ -1400,7 +1400,13 @@ async function loadCrmBundle(req: Request, enabledModules: readonly string[]) {
 dashboardRouter.get('/bootstrap', async (req: Request, res: Response, next: NextFunction) => {
   const startedAt = performance.now();
   try {
-    if (!req.companyId) throw new ForbiddenError('Pilih satu company eksplisit untuk memuat dashboard operasional.');
+    if (!req.companyId) {
+      if (req.user?.roles?.includes(RoleCode.SUPER_ADMIN)) {
+        res.json({ allowed_widgets: [], company_id: null });
+        return;
+      }
+      throw new ForbiddenError('Pilih satu company eksplisit untuk memuat dashboard operasional.');
+    }
     const requested = parseSections(req.query.sections);
     const allowedWidgets = await loadAllowedDashboardWidgets(req);
     const accessResults = await Promise.all(requested.map(async (section) => ({

@@ -1260,7 +1260,7 @@ function StaffDashboard({ projects, loading, overtimeSummary }: { projects: Proj
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 export default function DashboardClient() {
-  const { userRole, user } = useAuth();
+  const { userRole, user, company } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [finData, setFinData] = useState<FinanceDashboardData | null>(null);
   const [crmData, setCrmData] = useState<CRMData | null>(null);
@@ -1340,6 +1340,16 @@ export default function DashboardClient() {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     setLoadError(null);
+    if (userRole === "super_admin" && !company) {
+      setProjects([]);
+      setFinData(null);
+      setCrmData(null);
+      setCrmDash({});
+      setAllowedWidgets([]);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     try {
       const widgetHintSet = new Set(
         (allowedWidgets.length > 0 ? allowedWidgets : userProfileWidgets).map((w) => String(w).toUpperCase())
