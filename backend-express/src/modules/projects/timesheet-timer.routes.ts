@@ -334,7 +334,7 @@ timesheetTimerRouter.post(
           req.tenantId ?? null,
           req.user!.id,
           {
-            work_date: updated.work_date,
+            work_date: updated.work_date ?? new Date(),
             overtime_hours: overtimeHours,
             overtime_started_at: updated.overtime_started_at,
             overtime_ended_at: updated.overtime_ended_at,
