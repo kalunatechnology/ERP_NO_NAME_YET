@@ -119,7 +119,10 @@ publicAuthRouter.post('/token', loginRateLimiter, async (req: Request, res: Resp
     recordAuthSuccess(String(req.ip || ''), identifier);
     applyNoStoreHeaders(res);
 
-    const mfaState = await checkAdminMfaRequirement(result.user.id, result.user.roles ?? []);
+    const [mfaState, reconsent] = await Promise.all([
+      checkAdminMfaRequirement(result.user.id, result.user.roles ?? []),
+      evaluateUserReconsent(result.user.id, result.user.email),
+    ]);
     if (mfaState.required) {
       res.setHeader('Server-Timing', `auth;dur=${(performance.now() - startedAt).toFixed(1)}`);
       res.json({
@@ -137,7 +140,6 @@ publicAuthRouter.post('/token', loginRateLimiter, async (req: Request, res: Resp
       return;
     }
 
-    const reconsent = await evaluateUserReconsent(result.user.id, result.user.email);
     setSessionCookies(req, res, { access: result.access, refresh: result.refresh });
     res.setHeader('Server-Timing', `auth;dur=${(performance.now() - startedAt).toFixed(1)}`);
     res.json({

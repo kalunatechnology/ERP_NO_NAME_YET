@@ -1,4 +1,4 @@
-import api from "./axios";
+import api, { setMemoryAccessToken } from "./axios";
 import type { UserProfile } from "./auth.api";
 
 function base64UrlToBuffer(b64url: string): ArrayBuffer {
@@ -153,6 +153,9 @@ export async function loginWithSuperAdminPasskey(email: string): Promise<{ user?
     { headers: { "X-Company-ID": "" } },
   );
 
+  if (data?.access) {
+    setMemoryAccessToken(data.access);
+  }
   if (data?.user) {
     localStorage.setItem("erp.user", JSON.stringify(data.user));
   }

@@ -5,7 +5,7 @@
  * Ported dari uji_prototype/js/services/auth.service.js
  */
 
-import api from "./axios";
+import api, { setMemoryAccessToken } from "./axios";
 import type { ModulePermission } from "../access/module-contract";
 
 export interface LoginPayload {
@@ -141,6 +141,9 @@ export async function loginUser(email: string, password: string): Promise<LoginP
       : baseUser;
 
     if (access || userObj?.id || userObj?.email) {
+      if (access) {
+        setMemoryAccessToken(access);
+      }
       if (userObj) {
         localStorage.setItem("erp.user", JSON.stringify(userObj));
       }
@@ -179,6 +182,9 @@ export async function confirmMfa(setupToken: string, code: string): Promise<MfaC
     { setup_token: setupToken, code: code.trim() },
     { headers: { "X-Company-ID": "" } },
   );
+  if (data?.access) {
+    setMemoryAccessToken(data.access);
+  }
   if (data?.user) {
     localStorage.setItem("erp.user", JSON.stringify(data.user));
   }
@@ -191,6 +197,9 @@ export async function verifyMfa(mfaToken: string, code: string): Promise<MfaVeri
     { mfa_token: mfaToken, code: code.trim() },
     { headers: { "X-Company-ID": "" } },
   );
+  if (data?.access) {
+    setMemoryAccessToken(data.access);
+  }
   if (data?.user) {
     localStorage.setItem("erp.user", JSON.stringify(data.user));
   }
@@ -203,6 +212,9 @@ export async function recoverMfa(mfaToken: string, recoveryCode: string): Promis
     { mfa_token: mfaToken, recovery_code: recoveryCode.trim() },
     { headers: { "X-Company-ID": "" } },
   );
+  if (data?.access) {
+    setMemoryAccessToken(data.access);
+  }
   if (data?.user) {
     localStorage.setItem("erp.user", JSON.stringify(data.user));
   }
@@ -277,6 +289,7 @@ export async function changeActiveRole(roleCode: string): Promise<UserProfile> {
  */
 export async function logoutUser(): Promise<void> {
   await api.post("/api/v1/auth/logout/", {}).catch(() => {});
+  setMemoryAccessToken(null);
   localStorage.removeItem("erp.company");
   localStorage.removeItem("active_company_id");
   localStorage.removeItem("erp.user");

@@ -459,7 +459,7 @@ function LoginFormContent() {
         return;
       }
 
-      await recordLoginConsent(ident);
+      void recordLoginConsent(ident);
 
       // Authentication has completed; do not add an artificial delay to the
       // critical transition. Return to the protected route that requested

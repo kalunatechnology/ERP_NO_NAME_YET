@@ -229,6 +229,25 @@ const CONSENT_TYPE_ALIASES: Record<string, string[]> = {
   COOKIE_POLICY: ['COOKIE_POLICY'],
 };
 
+let materialDocsCache: { fetchedAt: number; docs: Array<any> } | null = null;
+const MATERIAL_DOCS_CACHE_TTL_MS = 60 * 1000;
+
+async function getActiveMaterialDocs(): Promise<Array<any>> {
+  const now = Date.now();
+  if (materialDocsCache && now - materialDocsCache.fetchedAt < MATERIAL_DOCS_CACHE_TTL_MS) {
+    return materialDocsCache.docs;
+  }
+  await ensureGovernanceTables();
+  const docs = await prisma.$queryRawUnsafe<Array<any>>(
+    `SELECT DISTINCT ON ("doc_type") "id", "doc_type", "version", "title", "summary_of_changes", "content_hash", "effective_at"
+     FROM "gov_legal_document_version"
+     WHERE "is_active" = true AND "is_material" = true
+     ORDER BY "doc_type", "effective_at" DESC, "created_at" DESC`,
+  );
+  materialDocsCache = { fetchedAt: now, docs };
+  return docs;
+}
+
 /**
  * Evaluates whether a user must re-consent to the latest active material legal
  * documents (`is_material = true`) by comparing against `gov_consent_ledger`.
@@ -238,13 +257,7 @@ export async function evaluateUserReconsent(
   email?: string,
 ): Promise<{ reconsent_required: boolean; pending_documents: PendingReconsentDocument[] }> {
   try {
-    await ensureGovernanceTables();
-    const materialDocs = await prisma.$queryRawUnsafe<Array<any>>(
-      `SELECT DISTINCT ON ("doc_type") "id", "doc_type", "version", "title", "summary_of_changes", "content_hash", "effective_at"
-       FROM "gov_legal_document_version"
-       WHERE "is_active" = true AND "is_material" = true
-       ORDER BY "doc_type", "effective_at" DESC, "created_at" DESC`,
-    );
+    const materialDocs = await getActiveMaterialDocs();
     if (!materialDocs.length) {
       return { reconsent_required: false, pending_documents: [] };
     }
@@ -440,29 +453,27 @@ publicGovernanceRouter.post('/public/consent', async (req: Request, res: Respons
     }
     const ip = String(req.ip || req.socket?.remoteAddress || '').slice(0, 128);
     const ua = String(req.headers['user-agent'] || '').slice(0, 255);
+    const validItems = consents.filter((item: any) => String(item?.consent_type || '').trim());
     const recorded: string[] = [];
-
-    for (const item of consents) {
-      const consentType = String(item?.consent_type || '').trim().toUpperCase();
-      const docVersion = String(item?.document_version || '1.0').trim();
-      const granted = Boolean(item?.granted);
-      if (!consentType) continue;
-      const id = crypto.randomUUID();
-      await prisma.$executeRawUnsafe(
-        `INSERT INTO "gov_consent_ledger" ("id", "user_id", "email", "consent_type", "document_version", "document_hash", "granted", "ip_address", "user_agent")
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        id,
-        item?.user_id ? String(item.user_id) : null,
-        email,
-        consentType,
-        docVersion,
-        String(item?.document_hash || ''),
-        granted,
-        ip,
-        ua,
-      );
-      recorded.push(id);
-    }
+    await Promise.all(
+      validItems.map((item: any) => {
+        const id = crypto.randomUUID();
+        recorded.push(id);
+        return prisma.$executeRawUnsafe(
+          `INSERT INTO "gov_consent_ledger" ("id", "user_id", "email", "consent_type", "document_version", "document_hash", "granted", "ip_address", "user_agent")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          id,
+          item?.user_id ? String(item.user_id) : null,
+          email,
+          String(item.consent_type).trim().toUpperCase(),
+          String(item?.document_version || '1.0').trim(),
+          String(item?.document_hash || ''),
+          Boolean(item?.granted),
+          ip,
+          ua,
+        );
+      }),
+    );
     res.status(201).json({ success: true, recorded_ids: recorded });
   } catch (err) {
     next(err);

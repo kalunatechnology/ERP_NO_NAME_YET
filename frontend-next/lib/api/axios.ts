@@ -23,6 +23,14 @@ const api = axios.create({
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 let successfulMutationRevision = 0;
 let dashboardFreshRevision = 0;
+// In-memory-only access token fallback for cross-site deployments where
+// strict browsers (e.g., Brave Shields / Safari ITP) block third-party cookies.
+// Never written to localStorage or document.cookie.
+let inMemoryAccessToken: string | null = null;
+
+export function setMemoryAccessToken(token: string | null) {
+  inMemoryAccessToken = token ? String(token).trim() : null;
+}
 
 /* ── Helper Regex UUID ── */
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -62,6 +70,10 @@ api.interceptors.request.use(
         (config as typeof config & { _erpFreshRevision?: number })._erpFreshRevision = successfulMutationRevision;
       }
 
+      if (inMemoryAccessToken && config.headers && !publicTokenLogin) {
+        config.headers.Authorization = `Bearer ${inMemoryAccessToken}`;
+      }
+
       // Validasi Company ID: Hanya pasang header jika nilainya adalah format UUID valid
       const company =
         localStorage.getItem("erp.company") ||
@@ -95,6 +107,7 @@ let refreshPromise: Promise<boolean> | null = null;
  * in-place re-authentication state without changing the current URL. */
 function expireSession() {
   if (typeof window === "undefined") return;
+  inMemoryAccessToken = null;
   localStorage.removeItem("erp.user");
   localStorage.removeItem("erp.company");
   localStorage.removeItem("active_company_id");
@@ -121,6 +134,10 @@ function refreshTokenOnce(): Promise<boolean> {
     )
     .then((res) => {
       if (res.status >= 200 && res.status < 300) {
+        const payload = res.data?.data || res.data;
+        if (payload?.access) {
+          setMemoryAccessToken(payload.access);
+        }
         syncCookie(true);
         return true;
       }
