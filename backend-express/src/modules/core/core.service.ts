@@ -679,13 +679,11 @@ export class CoreService {
     const targetCodes = isHrGroup ? ['HR', 'HRMS', 'REQUESTS'] : [moduleCode];
 
     if (!enabled) {
-      await tx.iam_user_module_assignment.updateMany({
+      await tx.iam_user_module_assignment.deleteMany({
         where: {
           company_id: companyId,
           module_code: { in: targetCodes },
-          status: 'ACTIVE',
         },
-        data: { status: 'REVOKED' },
       });
       await tx.iam_user_module_access.deleteMany({
         where: {
@@ -716,29 +714,52 @@ export class CoreService {
         where: {
           company_id: companyId,
           module_code: { in: targetCodes },
-          status: 'ACTIVE',
         },
-        select: { user_id: true },
+        select: { id: true, user_id: true, module_code: true, status: true },
       });
-      const assignedUsers = new Set(existingAssignments.map((a: any) => String(a.user_id)));
+      const activeUsers = new Set(
+        existingAssignments
+          .filter((a: any) => String(a.status || '').toUpperCase() === 'ACTIVE')
+          .map((a: any) => String(a.user_id)),
+      );
+      const inactiveHrByUser = new Map<string, string>();
+      for (const a of existingAssignments) {
+        if (String(a.module_code || '').toUpperCase() === 'HR' && String(a.status || '').toUpperCase() !== 'ACTIVE') {
+          inactiveHrByUser.set(String(a.user_id), String(a.id));
+        }
+      }
 
       for (const uid of activeUserIds) {
-        if (assignedUsers.has(uid)) continue;
-        await tx.iam_user_module_assignment.create({
-          data: {
-            id: crypto.randomUUID(),
-            tenant_id: tenantId,
-            company_id: companyId,
-            user_id: uid,
-            module_code: 'HR',
-            tier_level: 3,
-            position_title: 'Staff Operasional',
-            data_scope: 'OWN',
-            permission_profile: 'STANDARD',
-            status: 'ACTIVE',
-            created_by_id: actorId ?? null,
-          },
-        });
+        if (activeUsers.has(uid)) continue;
+        const inactiveId = inactiveHrByUser.get(uid);
+        if (inactiveId) {
+          await tx.iam_user_module_assignment.update({
+            where: { id: inactiveId },
+            data: {
+              tier_level: 3,
+              position_title: 'Staff Operasional',
+              data_scope: 'OWN',
+              permission_profile: 'STANDARD',
+              status: 'ACTIVE',
+            },
+          });
+        } else {
+          await tx.iam_user_module_assignment.create({
+            data: {
+              id: crypto.randomUUID(),
+              tenant_id: tenantId,
+              company_id: companyId,
+              user_id: uid,
+              module_code: 'HR',
+              tier_level: 3,
+              position_title: 'Staff Operasional',
+              data_scope: 'OWN',
+              permission_profile: 'STANDARD',
+              status: 'ACTIVE',
+              created_by_id: actorId ?? null,
+            },
+          });
+        }
       }
     }
   }
