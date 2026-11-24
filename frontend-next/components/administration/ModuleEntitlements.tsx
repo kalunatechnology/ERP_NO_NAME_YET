@@ -55,6 +55,7 @@ const VISIBLE_OFFICIAL_MODULES = new Set([
   "CRM",
   "INVENTORY",
   "HR",
+  "HRMS",
   "MARBOT",
 ]);
 
@@ -93,14 +94,14 @@ const MODULE_DEFINITIONS: Record<
     category: "Operasional",
   },
   HR: {
-    name: "HRMM & Payroll",
-    description: "Meeting HR, lembur berjenjang, kalkulasi payroll, slip gaji, dan approval HR Lead",
+    name: "HR & Payroll (Meeting, Lembur & Request)",
+    description: "Meeting HR, lembur berjenjang, cuti/request, kalkulasi payroll, slip gaji, dan approval HR Lead",
     icon: CheckCircle2,
     category: "SDM & Workflow",
   },
   HRMS: {
-    name: "HRMS (People, Meeting & Lembur)",
-    description: "Manajemen meeting, pengajuan & persetujuan lembur, absensi, serta request karyawan",
+    name: "HR & Payroll (Meeting, Lembur & Request)",
+    description: "Meeting HR, lembur berjenjang, cuti/request, kalkulasi payroll, slip gaji, dan approval HR Lead",
     icon: CheckCircle2,
     category: "SDM & Workflow",
   },
@@ -151,12 +152,15 @@ export function ModuleEntitlements({
     return modules.filter((m) => m.enabled).length;
   }, [modules]);
 
-  // Filtered modules (only official restructured catalog)
+  // Filtered modules (only official restructured catalog, deduplicating HR/HRMS into 1 card)
   const filteredModules = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const hasExplicitHr = modules.some((m) => String(m.module_code || "").toUpperCase() === "HR");
     return modules.filter((m) => {
-      if (!VISIBLE_OFFICIAL_MODULES.has(String(m.module_code || "").toUpperCase())) return false;
-      const meta = MODULE_DEFINITIONS[m.module_code];
+      const code = String(m.module_code || "").toUpperCase();
+      if (!VISIBLE_OFFICIAL_MODULES.has(code)) return false;
+      if (hasExplicitHr && code === "HRMS") return false;
+      const meta = MODULE_DEFINITIONS[code];
       const name = meta?.name || m.module_code;
       const desc = meta?.description || "";
       return !q || name.toLowerCase().includes(q) || m.module_code.toLowerCase().includes(q) || desc.toLowerCase().includes(q);

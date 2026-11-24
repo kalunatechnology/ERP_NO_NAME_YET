@@ -87,6 +87,7 @@ const OFFICIAL_ADMIN_MODULES = new Set([
   "CRM",
   "INVENTORY",
   "HR",
+  "HRMS",
   "MARBOT",
 ]);
 
@@ -97,6 +98,7 @@ const MODULE_LABELS: Record<string, { name: string; description: string }> = {
   CRM: { name: "CRM & Sales", description: "Lead, pipeline opportunity, quotation, sales order, dan kontrak" },
   INVENTORY: { name: "Inventory & Asset Management", description: "Gudang, stok kanonis, transfer transit, opname, dan aset tetap" },
   HR: { name: "HR & Payroll (Meeting, Lembur & Request)", description: "Meeting HR, lembur 3-tier, cuti/request, payroll run, slip gaji, dan approval SDM" },
+  HRMS: { name: "HR & Payroll (Meeting, Lembur & Request)", description: "Meeting HR, lembur 3-tier, cuti/request, payroll run, slip gaji, dan approval SDM" },
   MARBOT: { name: "Marka Plus (AI Assistant)", description: "Asisten ERP dengan akses baca sesuai modul, role, dan scope data user" },
 };
 
@@ -307,13 +309,17 @@ export function AccessAdministration() {
   const displayedUsers = loadedContextCompany === contextCompany ? users : [];
   const displayedOverrides = loadedContextCompany === contextCompany ? overrides : [];
   const loadError = baseError || contextError;
-  const approvedModules = useMemo(
-    () =>
-      displayedModules.filter(
-        (item) => item.enabled && OFFICIAL_ADMIN_MODULES.has(String(item.module_code || "").toUpperCase()),
-      ),
-    [displayedModules],
-  );
+  const approvedModules = useMemo(() => {
+    const hasExplicitHr = displayedModules.some(
+      (item) => item.enabled && String(item.module_code || "").toUpperCase() === "HR",
+    );
+    return displayedModules.filter((item) => {
+      const code = String(item.module_code || "").toUpperCase();
+      if (!item.enabled || !OFFICIAL_ADMIN_MODULES.has(code)) return false;
+      if (hasExplicitHr && code === "HRMS") return false;
+      return true;
+    });
+  }, [displayedModules]);
   const selectedUser = displayedUsers.find((item) => item.id === selectedUserId);
   const visibleUsers = useMemo(() => {
     const query = search.trim().toLowerCase();
