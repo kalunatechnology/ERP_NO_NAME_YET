@@ -49,6 +49,7 @@ import { timesheetTimerRouter } from './modules/projects/timesheet-timer.routes'
 import { restrictProjectMutationsByAuthority } from './modules/projects/project-authority.middleware';
 import { projectExecutionPolicyRouter } from './modules/projects/project-execution-policy.routes';
 import { financeRouter } from './modules/finance/finance.routes';
+import { hrFinanceRouter, hrRouter } from './modules/hr/hr.routes';
 import { procurementRouter } from './modules/procurement/procurement.routes';
 import { inventoryRouter } from './modules/inventory/inventory.routes';
 import { manufacturingRouter } from './modules/manufacturing/manufacturing.routes';
@@ -270,6 +271,8 @@ export function createApp(): Express {
     }),
     financeRouter,
   );
+  apiV1.use('/hr', requireModuleAccess('FINANCE'), hrFinanceRouter);
+  apiV1.use('/hr', requireModuleAccess('HR'), hrRouter);
   apiV1.use('/procurement', requireModuleAccess('PROCUREMENT'), procurementRouter);
   apiV1.use('/inventory', requireModuleAccess('INVENTORY'), inventoryRouter);
   apiV1.use('/manufacturing', requireModuleAccess('MANUFACTURING'), manufacturingRouter);

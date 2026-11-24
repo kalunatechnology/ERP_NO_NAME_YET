@@ -22,6 +22,8 @@ function normalizeLines(lines: any[]) {
     seen.add(employeeId);
     const gross = amount(row.gross_salary, 'Gaji pokok', false);
     const allowances = amount(row.allowances, 'Tunjangan');
+    const overtimeHours = amount(row.overtime_hours, 'Jam lembur');
+    const overtimePay = amount(row.overtime_pay, 'Upah lembur');
     const tax = amount(row.employee_tax, 'PPh 21 karyawan');
     const employeeBpjs = amount(row.employee_bpjs, 'Potongan BPJS karyawan');
     const employerBpjs = amount(row.employer_bpjs, 'Iuran BPJS perusahaan');
@@ -31,6 +33,8 @@ function normalizeLines(lines: any[]) {
       cost_center_id: row.cost_center_id ? String(row.cost_center_id) : null,
       gross_salary: gross,
       allowances,
+      overtime_hours: overtimeHours,
+      overtime_pay: overtimePay,
       employee_tax: tax,
       employee_bpjs: employeeBpjs,
       employer_bpjs: employerBpjs,
@@ -122,7 +126,9 @@ export class PayrollService {
           id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId,
           payroll_run_id: runId ?? '', employee_id: employee.id, employee_number: employee.employee_number,
           employee_name: employee.employee_name || employee.employee_number, cost_center_id: line.cost_center_id,
-          gross_salary: line.gross_salary, allowances: line.allowances, employee_tax: line.employee_tax,
+          gross_salary: line.gross_salary, allowances: line.allowances,
+          overtime_hours: line.overtime_hours, overtime_pay: line.overtime_pay,
+          employee_tax: line.employee_tax,
           employee_bpjs: line.employee_bpjs, employer_bpjs: line.employer_bpjs, net_salary: line.net_salary,
         };
       });
@@ -270,6 +276,10 @@ export class PayrollService {
       ] });
       await tx.fin_payment.create({ data: { id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId, document_id: paymentDoc.id, bank_account_id: bank.id, payment_type: 'PAYROLL', payment_date: date, amount: run.net_total, payment_method: input.payment_method || 'BANK_TRANSFER', reference_number: reference, journal_entry_id: journalId, status: 'POSTED', allocation_plan: { payroll_run_id: run.id }, submitted_by_id: userId, submitted_at: date, approved_by_id: null, approved_at: null, executed_by_id: userId, executed_at: date, execution_reference: reference, execution_note: `Pembayaran gaji bersih payroll ${run.run_number}.`, failure_reason: '' } });
       await FinanceDocumentService.markPosted(tx, paymentDoc.id, userId, date);
+      await (tx as any).hr_overtime_request?.updateMany?.({
+        where: { company_id: companyId, payroll_run_id: run.id, status: 'APPROVED' },
+        data: { status: 'PAID' },
+      }).catch(() => {});
       return tx.fin_payroll_run.update({ where: { id: run.id }, data: { status: 'PAID', payment_date: date, bank_account_id: bank.id, payment_journal_entry_id: journalId } });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 30000 });
   }

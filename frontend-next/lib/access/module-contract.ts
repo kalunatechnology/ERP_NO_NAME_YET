@@ -5,7 +5,7 @@
  */
 
 export const MODULE_CODES = [
-  "CORE", "FINANCE", "PROJECTS", "CRM", "INVENTORY", "HRMS", "MARBOT",
+  "CORE", "FINANCE", "PROJECTS", "CRM", "INVENTORY", "HR", "HRMS", "MARBOT",
   "REQUESTS", "SALES", "PROCUREMENT", "MANUFACTURING", "QUALITY",
   "ASSETS", "SERVICE", "LOGISTICS", "ANALYTICS", "IMPLEMENTATION", "REPORTING",
 ] as const;
@@ -80,6 +80,7 @@ export interface RouteAccessContract {
 
 /** Route contracts are ordered from the most specific route to the broadest. */
 export const ROUTE_ACCESS_CONTRACTS: readonly RouteAccessContract[] = [
+  { prefix: "/hr", module: "HR", roles: null },
   { prefix: "/requests", module: "REQUESTS", roles: null },
   { prefix: "/administration", module: null, roles: [ROLE_CODES.superAdmin, ROLE_CODES.companyAdmin] },
   { prefix: "/resources", module: "ANALYTICS", roles: [ROLE_CODES.superAdmin, ROLE_CODES.companyAdmin, ROLE_CODES.director], moduleBypassRoles: [ROLE_CODES.superAdmin, ROLE_CODES.companyAdmin] },

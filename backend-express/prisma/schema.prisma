@@ -4916,8 +4916,11 @@ model fin_payroll_run {
   payment_journal_entry_id   String?   @unique @map("payment_journal_entry_id")
   bank_account_id            String?   @map("bank_account_id")
   created_by_id              String?   @map("created_by_id")
+  hr_approved_by_id          String?   @map("hr_approved_by_id")
+  hr_approved_at             DateTime? @map("hr_approved_at")
   approved_by_id             String?   @map("approved_by_id")
   approved_at                DateTime? @map("approved_at")
+  finance_decision_note      String?   @map("finance_decision_note")
   created_at                 DateTime  @default(now()) @map("created_at")
   updated_at                 DateTime  @updatedAt @map("updated_at")
   lines                      fin_payroll_line[]
@@ -4938,6 +4941,8 @@ model fin_payroll_line {
   cost_center_id    String?  @map("cost_center_id")
   gross_salary      Decimal  @default(0) @map("gross_salary") @db.Decimal(18, 2)
   allowances        Decimal  @default(0) @db.Decimal(18, 2)
+  overtime_hours    Decimal  @default(0) @map("overtime_hours") @db.Decimal(8, 2)
+  overtime_pay      Decimal  @default(0) @map("overtime_pay") @db.Decimal(14, 2)
   employee_tax      Decimal  @default(0) @map("employee_tax") @db.Decimal(18, 2)
   employee_bpjs     Decimal  @default(0) @map("employee_bpjs") @db.Decimal(18, 2)
   employer_bpjs     Decimal  @default(0) @map("employer_bpjs") @db.Decimal(18, 2)
@@ -4949,6 +4954,34 @@ model fin_payroll_line {
   @@unique([payroll_run_id, employee_id], map: "fin_payroll_line_run_employee_key")
   @@index([company_id, employee_id], map: "fin_payroll_line_company_employee_idx")
   @@map("fin_payroll_line")
+}
+
+model hr_overtime_request {
+  id               String    @id @default(uuid())
+  tenant_id        String?   @map("tenant_id")
+  company_id       String    @map("company_id")
+  employee_id      String    @map("employee_id")
+  user_id          String    @map("user_id")
+  work_date        DateTime  @db.Date @map("work_date")
+  start_time       String    @map("start_time")
+  end_time         String    @map("end_time")
+  duration_hours   Decimal   @db.Decimal(6, 2) @map("duration_hours")
+  overtime_rate    Decimal   @default(0) @db.Decimal(14, 2) @map("overtime_rate")
+  overtime_amount  Decimal   @default(0) @db.Decimal(14, 2) @map("overtime_amount")
+  reason           String    @db.Text
+  status           String    @default("SUBMITTED")
+  verified_by_id   String?   @map("verified_by_id")
+  verified_at      DateTime? @map("verified_at")
+  approved_by_id   String?   @map("approved_by_id")
+  approved_at      DateTime? @map("approved_at")
+  rejection_reason String?   @map("rejection_reason")
+  payroll_run_id   String?   @map("payroll_run_id")
+  created_at       DateTime  @default(now()) @map("created_at")
+  updated_at       DateTime  @updatedAt @map("updated_at")
+
+  @@index([company_id, status, work_date])
+  @@index([company_id, employee_id])
+  @@map("hr_overtime_request")
 }
 
 model fin_payment_allocation {

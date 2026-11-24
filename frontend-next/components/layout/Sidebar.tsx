@@ -43,6 +43,7 @@ const NAV_ICONS: Record<string, React.ElementType> = {
   "/tasks": CheckSquare,
   "/requests": ClipboardList,
   "/crm": Users,
+  "/hr": Users,
   "/inventory": Boxes,
   "/finance": DollarSign,
   "/reporting": BarChart3,

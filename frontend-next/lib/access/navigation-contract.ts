@@ -88,6 +88,7 @@ const DELEGATED_NAVIGATION: Partial<Record<string, readonly NavigationEntry[]>> 
     { href: "/projects", label: "Projects" },
     { href: "/tasks", label: "Daily Tasks" },
   ],
+  HR: [{ href: "/hr", label: "HRMM & Payroll" }],
   HRMS: [{ href: "/requests", label: "HRMS (Meeting, Lembur & Request)" }],
   REQUESTS: [{ href: "/requests", label: "HRMS (Meeting, Lembur & Request)" }],
   REPORTING: [{ href: "/reporting", label: "Reports" }],
