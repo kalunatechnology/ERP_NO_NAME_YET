@@ -702,7 +702,7 @@ export default function RequestsClient(){
 
       {createOpen && <CreateRequestModal form={createForm} setForm={setCreateForm} members={members} busy={busy} onClose={() => setCreateOpen(false)} onSubmit={submitMeeting} />}
       {requestModalOpen && <NewNonMeetingRequestModal members={members} busy={busy} onClose={() => setRequestModalOpen(false)} onSuccess={() => { setRequestModalOpen(false); void load(); }} />}
-      {selected && !notesOpen && !editingMeeting && <MeetingDetailModal detail={selected} members={members} personInCharge={personInCharge} setPersonInCharge={setPersonInCharge} busy={busy} onClose={() => setSelected(null)} onReassign={reassign} onNotes={date => void openNotes(date)} onPublishMeeting={() => void publishMeeting(selected.id)} canDeleteMeeting={canDeleteMeeting} canEditMeeting={canDeleteMeeting || selected.request?.requester_user_id === user?.id} onEditMeeting={() => setEditingMeeting(selected)} onDeleteMeeting={() => void deleteMeeting(selected.id)} />}
+      {selected && !notesOpen && !editingMeeting && <MeetingDetailModal detail={selected} members={members} personInCharge={personInCharge} setPersonInCharge={setPersonInCharge} busy={busy} onClose={() => setSelected(null)} onReassign={reassign} onNotes={date => void openNotes(date)} onPublishMeeting={() => void publishMeeting(selected.id)} canDeleteMeeting={canDeleteMeeting} canEditMeeting={canDeleteMeeting || selected.participants.some((p) => p.user_id === user?.id && p.participant_role === "ORGANIZER")} onEditMeeting={() => setEditingMeeting(selected)} onDeleteMeeting={() => void deleteMeeting(selected.id)} />}
       {editingMeeting && <EditMeetingModal detail={editingMeeting} busy={busy} onClose={() => setEditingMeeting(null)} onSaved={(updated) => { setEditingMeeting(null); setSelected(updated); void load(); }} />}
       {selected && notesOpen && <NotesModal detail={selected} members={members} minutes={minutes} setMinutes={setMinutes} busy={busy} onClose={() => {if(busy){toast.error("Tunggu proses simpan selesai sebelum menutup notulensi.");return;}if(hasUnsavedMinutes){toast.error("Simpan draft notulensi terlebih dahulu sebelum menutup.");return;}setNotesOpen(false);}} onSave={saveNotes} />}
     </div>
@@ -1276,7 +1276,7 @@ function EditMeetingModal({detail,busy,onClose,onSaved}:{detail:MeetingDetail;bu
   const [startTime, setStartTime] = useState(toLocalTime(detail.start_at));
   const [endTime, setEndTime] = useState(toLocalTime(detail.end_at));
   const [location, setLocation] = useState(detail.meeting_url || detail.location || "");
-  const [agenda, setAgenda] = useState(detail.agenda_summary ?? "");
+  const [agenda, setAgenda] = useState((detail as any).agenda_summary ?? "");
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e: FormEvent) {

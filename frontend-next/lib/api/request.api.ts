@@ -96,7 +96,7 @@ export const requestApi = {
   listMeetingMinutesReferences: async () => (await api.get<MeetingMinutesReference[]>("/api/v1/requests/meeting-minutes/references")).data,
   getMeeting: async (id: string, occurrenceDate?: string) => (await api.get<MeetingDetail>(`/api/v1/requests/meetings/${id}`, { params: occurrenceDate ? { date: occurrenceDate } : undefined })).data,
   createMeeting: async (input: CreateMeetingInput) => (await api.post("/api/v1/requests/meetings", input)).data,
-  updateMeeting: async (id: string, input: Partial<CreateMeetingInput>) => {
+  updateMeeting: async (id: string, input: Partial<CreateMeetingInput> & { agenda_summary?: string }) => {
     const res = await api.patch<MeetingDetail | { success: true; data: MeetingDetail }>(`/api/v1/requests/meetings/${id}`, input);
     const data = res.data;
     return (data && typeof data === 'object' && 'data' in data) ? (data as { data: MeetingDetail }).data : data as MeetingDetail;

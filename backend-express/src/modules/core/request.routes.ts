@@ -151,9 +151,14 @@ requestRouter.patch('/meetings/:meetingId', async (req, res, next) => {
     const userId = activeUserId(req);
     const meeting = await prisma.request_meeting.findFirst({
       where: { id: req.params.meetingId, company_id: companyId, status: { not: 'CANCELLED' } },
-      include: { request: { select: { id: true, requester_user_id: true } } },
     });
     if (!meeting) throw new NotFoundError('Meeting');
+    const ticket = meeting.request_id
+      ? await prisma.request_ticket.findUnique({
+          where: { id: meeting.request_id },
+          select: { id: true, requester_user_id: true },
+        })
+      : null;
 
     const roles = req.user?.roles ?? [];
     const activeRole = req.user?.active_role_code;
@@ -169,7 +174,7 @@ requestRouter.patch('/meetings/:meetingId', async (req, res, next) => {
         && String(a.status || '').toUpperCase() === 'ACTIVE'
         && Number(a.tier_level ?? 3) <= 2,
     );
-    const isOrganizer = meeting.request?.requester_user_id === userId;
+    const isOrganizer = ticket?.requester_user_id === userId;
     if (!isPmOrExec && !isHrManager && !isOrganizer) {
       throw new ForbiddenError('Anda tidak memiliki izin untuk mengedit meeting ini.');
     }
