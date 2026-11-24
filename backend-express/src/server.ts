@@ -12,6 +12,7 @@ import prisma from './config/database';
 import { startNotificationMaintenance } from './modules/core/notification-maintenance.service';
 import { startCrmIntegrationWorker } from './modules/crm/crm-integration-worker.service';
 import { KnowledgeEngineScheduler } from './modules/marbot/knowledge-engine/scheduler/scheduler.service';
+import { startRetentionScheduler } from './modules/governance/retention-scheduler';
 
 /**
  * main implements a named function within this file's application infrastructure boundary.
@@ -71,6 +72,7 @@ function main() {
   let stopNotificationMaintenance = () => {};
   let stopCrmIntegrationWorker = () => {};
   let stopKnowledgeEngine = () => {};
+  let stopRetentionScheduler = () => {};
 
   // Hostinger requires a process to call listen() within a few seconds. Do
   // not block HTTP startup on a remote database handshake: Prisma reconnects
@@ -85,6 +87,7 @@ function main() {
       stopNotificationMaintenance = startNotificationMaintenance(prisma, () => !stopping && app.locals.databaseReady);
       stopCrmIntegrationWorker = startCrmIntegrationWorker(() => !stopping && app.locals.databaseReady);
       stopKnowledgeEngine = KnowledgeEngineScheduler.startScheduler(() => !stopping && app.locals.databaseReady);
+      stopRetentionScheduler = startRetentionScheduler(() => !stopping && app.locals.databaseReady);
     }
   });
 
@@ -102,6 +105,7 @@ function main() {
     stopNotificationMaintenance();
     stopCrmIntegrationWorker();
     stopKnowledgeEngine();
+    stopRetentionScheduler();
     console.log(`\n🛑 Received ${signal}. Shutting down gracefully...`);
     server.close(async () => {
       await prisma.$disconnect();

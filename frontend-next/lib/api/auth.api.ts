@@ -9,9 +9,44 @@ import api from "./axios";
 import type { ModulePermission } from "../access/module-contract";
 
 export interface LoginPayload {
+  status?: "MFA_REQUIRED" | "MFA_SETUP_REQUIRED" | string;
+  mfa_token?: string;
+  setup_token?: string;
   access: string;
   refresh: string;
   user?: UserProfile;
+}
+
+export interface MfaEnrollResponse {
+  success: boolean;
+  secret: string;
+  otpauth_uri: string;
+}
+
+export interface MfaConfirmResponse {
+  success: boolean;
+  recovery_codes: string[];
+  access?: string;
+  refresh?: string;
+  user?: UserProfile;
+}
+
+export interface MfaVerifyResponse {
+  success: boolean;
+  remaining_recovery_codes?: number;
+  access?: string;
+  refresh?: string;
+  user?: UserProfile;
+}
+
+export interface ReconsentDocument {
+  id: string;
+  doc_type: string;
+  version: string;
+  title: string;
+  summary_of_changes?: string;
+  content_hash?: string;
+  effective_at?: string;
 }
 
 export interface UserProfile {
@@ -51,6 +86,8 @@ export interface UserProfile {
     allow_manage_users?: boolean;
   }>;
   permission_overrides?: Array<{ module_code: string; action_code: string; effect: string }>;
+  reconsent_required?: boolean;
+  reconsent_documents?: ReconsentDocument[];
   roles?: { role?: string; role_code?: string; role_name?: string; company_id?: string | number | null }[];
 }
 
@@ -74,14 +111,36 @@ export async function loginUser(email: string, password: string): Promise<LoginP
       password,
     }, { timeout: 15_000, headers: { "X-Company-ID": "" } });
     const payload = res.data?.data || res.data;
-    const access = payload?.access;
-    const refresh = payload?.refresh || "";
+    if (payload?.status === "MFA_REQUIRED" && payload?.mfa_token) {
+      return {
+        status: "MFA_REQUIRED",
+        mfa_token: String(payload.mfa_token),
+        access: "",
+        refresh: "",
+      };
+    }
+    if (payload?.status === "MFA_SETUP_REQUIRED" && payload?.setup_token) {
+      return {
+        status: "MFA_SETUP_REQUIRED",
+        setup_token: String(payload.setup_token),
+        access: "",
+        refresh: "",
+      };
+    }
 
-    if (access) {
-      localStorage.setItem("erp.access", access);
-      localStorage.setItem("erp.refresh", refresh);
-      const rawUser = payload.user || payload;
-      const userObj = rawUser?.user ? { ...rawUser.user, roles: rawUser.roles || [] } : rawUser;
+    const access = payload?.access || "";
+    const refresh = payload?.refresh || "";
+    const rawUser = payload?.user || payload;
+    const baseUser = rawUser?.user ? { ...rawUser.user, roles: rawUser.roles || [] } : rawUser;
+    const userObj = baseUser
+      ? {
+          ...baseUser,
+          reconsent_required: Boolean(payload?.reconsent_required ?? baseUser.reconsent_required ?? false),
+          reconsent_documents: payload?.reconsent_documents || baseUser.reconsent_documents || [],
+        }
+      : baseUser;
+
+    if (access || userObj?.id || userObj?.email) {
       if (userObj) {
         localStorage.setItem("erp.user", JSON.stringify(userObj));
       }
@@ -103,6 +162,51 @@ export async function loginUser(email: string, password: string): Promise<LoginP
       "Email atau password tidak valid.";
     throw new Error(errorMsg);
   }
+}
+
+export async function enrollMfa(setupToken?: string): Promise<MfaEnrollResponse> {
+  const { data } = await api.post<MfaEnrollResponse>(
+    "/api/v1/auth/mfa/enroll",
+    setupToken ? { setup_token: setupToken } : {},
+    { headers: { "X-Company-ID": "" } },
+  );
+  return data;
+}
+
+export async function confirmMfa(setupToken: string, code: string): Promise<MfaConfirmResponse> {
+  const { data } = await api.post<MfaConfirmResponse>(
+    "/api/v1/auth/mfa/confirm",
+    { setup_token: setupToken, code: code.trim() },
+    { headers: { "X-Company-ID": "" } },
+  );
+  if (data?.user) {
+    localStorage.setItem("erp.user", JSON.stringify(data.user));
+  }
+  return data;
+}
+
+export async function verifyMfa(mfaToken: string, code: string): Promise<MfaVerifyResponse> {
+  const { data } = await api.post<MfaVerifyResponse>(
+    "/api/v1/auth/mfa/verify",
+    { mfa_token: mfaToken, code: code.trim() },
+    { headers: { "X-Company-ID": "" } },
+  );
+  if (data?.user) {
+    localStorage.setItem("erp.user", JSON.stringify(data.user));
+  }
+  return data;
+}
+
+export async function recoverMfa(mfaToken: string, recoveryCode: string): Promise<MfaVerifyResponse> {
+  const { data } = await api.post<MfaVerifyResponse>(
+    "/api/v1/auth/mfa/recovery",
+    { mfa_token: mfaToken, recovery_code: recoveryCode.trim() },
+    { headers: { "X-Company-ID": "" } },
+  );
+  if (data?.user) {
+    localStorage.setItem("erp.user", JSON.stringify(data.user));
+  }
+  return data;
 }
 
 /* ── Get current user profile ─────────────── */
@@ -136,6 +240,8 @@ export async function getMyProfile(): Promise<UserProfile> {
         module_access_modes: raw.module_access_modes || raw.user.module_access_modes || [],
         module_assignments: raw.module_assignments || raw.user.module_assignments || [],
         permission_overrides: raw.permission_overrides || raw.user.permission_overrides || [],
+        reconsent_required: Boolean(raw.reconsent_required ?? raw.user.reconsent_required ?? false),
+        reconsent_documents: raw.reconsent_documents || raw.user.reconsent_documents || [],
       }
     : raw;
 
@@ -170,13 +276,9 @@ export async function changeActiveRole(roleCode: string): Promise<UserProfile> {
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
 export async function logoutUser(): Promise<void> {
-  const refresh = localStorage.getItem("erp.refresh");
-  if (refresh) {
-    await api.post("/api/v1/auth/logout/", { refresh }).catch(() => {});
-  }
-  localStorage.removeItem("erp.access");
-  localStorage.removeItem("erp.refresh");
+  await api.post("/api/v1/auth/logout/", {}).catch(() => {});
   localStorage.removeItem("erp.company");
+  localStorage.removeItem("active_company_id");
   localStorage.removeItem("erp.user");
 }
 

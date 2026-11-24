@@ -20,6 +20,7 @@ module.exports = {
       env_production: {
         NODE_ENV: 'production',
         PORT: 8001,
+        ERP_ENFORCE_ADMIN_MFA: 'true',
       },
     {
       name: 'erp-marbot-ke-worker',

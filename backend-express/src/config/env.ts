@@ -55,6 +55,10 @@ const envSchema = z.object({
     .string()
     .default('false')
     .transform((v) => v.toLowerCase() === 'true'),
+  ERP_ENFORCE_ADMIN_MFA: z
+    .string()
+    .default('false')
+    .transform((v) => v.toLowerCase() === 'true'),
 
   CHATBOT_SERVICE_URL: z.string().optional(),
   CHATBOT_CONTROL_PLANE_SECRET: z.string().optional(),

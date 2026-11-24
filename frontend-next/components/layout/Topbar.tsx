@@ -442,6 +442,14 @@ export function Topbar({ onMenuToggle, onDesktopSidebarToggle, sidebarHidden = f
                   <KeyRound size={15} className="text-text-secondary" />
                   <span>Ganti Password & Ubah Profil</span>
                 </button>
+                <Link
+                  href="/account/privacy"
+                  onClick={() => setIsUserMenuOpen(false)}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-text-primary hover:bg-bg-light hover:text-brand-deep-green transition-colors text-left cursor-pointer active:scale-[0.99]"
+                >
+                  <ShieldCheck size={15} className="text-text-secondary" />
+                  <span>Privasi &amp; Hak Data (DSR)</span>
+                </Link>
               </div>
 
               {/* Log Out */}

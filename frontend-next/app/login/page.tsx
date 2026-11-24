@@ -19,8 +19,15 @@ import {
   ChevronUp,
   Copy,
   Check,
+  ShieldCheck,
+  KeyRound,
+  X,
+  Fingerprint,
+  Building2,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { confirmMfa, enrollMfa, recoverMfa, verifyMfa, type UserProfile } from "@/lib/api/auth.api";
+import { discoverTenantSso, loginWithSuperAdminPasskey } from "@/lib/api/enterprise-auth.api";
 import api from "@/lib/api/axios";
 import { cn } from "@/lib/utils";
 import { MarkaWordmark } from "@/components/brand/MarkaWordmark";
@@ -188,7 +195,7 @@ interface LoginForm {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 function LoginFormContent() {
-  const { login, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { login, completeAuthenticatedSession, isAuthenticated, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedCallback = searchParams?.get("callbackUrl") || "/dashboard";
@@ -202,9 +209,50 @@ function LoginFormContent() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isLocalDev, setIsLocalDev] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [consentTerms, setConsentTerms] = useState(true);
-  const [consentPrivacy, setConsentPrivacy] = useState(true);
+  const [consentTerms, setConsentTerms] = useState(false);
+  const [consentPrivacy, setConsentPrivacy] = useState(false);
   const [consentMarketing, setConsentMarketing] = useState(false);
+  const [legalDocs, setLegalDocs] = useState<Array<{ doc_type?: string; version?: string; content_hash?: string }>>([]);
+  const [publicGovStatus, setPublicGovStatus] = useState<{
+    legal_entity_name?: string;
+    contact_email?: string;
+    tdpse_number?: string;
+    website_status?: string;
+  }>({});
+  const [mfaMode, setMfaMode] = useState<"verify" | "setup" | null>(null);
+  const [mfaChallengeToken, setMfaChallengeToken] = useState("");
+  const [mfaEnrollData, setMfaEnrollData] = useState<{ secret: string; otpauth_uri: string } | null>(null);
+  const [otpCode, setOtpCode] = useState("");
+  const [recoveryCodeInput, setRecoveryCodeInput] = useState("");
+  const [useRecoveryCode, setUseRecoveryCode] = useState(false);
+  const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
+  const [confirmedMfaUser, setConfirmedMfaUser] = useState<UserProfile | undefined>(undefined);
+  const [mfaSubmitting, setMfaSubmitting] = useState(false);
+  const [pendingLoginIdent, setPendingLoginIdent] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    api
+      .get("/api/v1/governance/public/status")
+      .then((res) => {
+        if (!active) return;
+        if (Array.isArray(res.data?.active_documents)) {
+          setLegalDocs(res.data.active_documents);
+        }
+        setPublicGovStatus({
+          legal_entity_name: res.data?.legal_entity_name,
+          contact_email: res.data?.contact_email,
+          tdpse_number: res.data?.tdpse_number,
+          website_status: res.data?.website_status,
+        });
+      })
+      .catch((err) => {
+        console.warn("[governance] Gagal memuat metadata dokumen legal:", err);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -223,6 +271,7 @@ function LoginFormContent() {
     register,
     handleSubmit,
     setValue,
+    getValues,
     formState: { errors },
   } = useForm<LoginForm>({
     defaultValues: {
@@ -245,6 +294,131 @@ function LoginFormContent() {
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
+  const recordLoginConsent = async (ident: string) => {
+    let loggedInUserId: string | null = null;
+    try {
+      const rawUser = localStorage.getItem("erp.user");
+      const parsedUser = rawUser ? JSON.parse(rawUser) : null;
+      if (parsedUser?.id) {
+        loggedInUserId = String(parsedUser.id);
+      }
+    } catch {
+      loggedInUserId = null;
+    }
+
+    try {
+      let activeDocs = legalDocs;
+      if (!activeDocs.length) {
+        const statusRes = await api.get("/api/v1/governance/public/status");
+        if (Array.isArray(statusRes.data?.active_documents)) {
+          activeDocs = statusRes.data.active_documents;
+        }
+      }
+      const findDoc = (docType: string) =>
+        activeDocs.find((doc) => String(doc?.doc_type || "").toUpperCase() === docType);
+      const termsDoc = findDoc("TERMS");
+      const privacyDoc = findDoc("PRIVACY_POLICY");
+
+      await api.post("/api/v1/governance/public/consent", {
+        email: ident,
+        consents: [
+          {
+            user_id: loggedInUserId,
+            consent_type: "TERMS",
+            document_version: termsDoc?.version || "1.0",
+            document_hash: termsDoc?.content_hash || "",
+            granted: true,
+          },
+          {
+            user_id: loggedInUserId,
+            consent_type: "PRIVACY_NOTICE",
+            document_version: privacyDoc?.version || "1.0",
+            document_hash: privacyDoc?.content_hash || "",
+            granted: true,
+          },
+          {
+            user_id: loggedInUserId,
+            consent_type: "MARKETING",
+            document_version: "1.0",
+            document_hash: "",
+            granted: consentMarketing,
+          },
+        ],
+      });
+    } catch (consentErr: unknown) {
+      console.error("[governance] Gagal mencatat persetujuan pengguna:", consentErr);
+      toast.error("Login berhasil, namun pencatatan persetujuan privasi gagal disimpan.");
+    }
+  };
+
+  const resetMfaModal = () => {
+    setMfaMode(null);
+    setMfaChallengeToken("");
+    setMfaEnrollData(null);
+    setOtpCode("");
+    setRecoveryCodeInput("");
+    setUseRecoveryCode(false);
+    setRecoveryCodes(null);
+    setConfirmedMfaUser(undefined);
+    setPendingLoginIdent("");
+  };
+
+  const finalizeMfaLogin = async (ident: string, authenticatedUser?: UserProfile) => {
+    await completeAuthenticatedSession(authenticatedUser);
+    await recordLoginConsent(ident);
+    resetMfaModal();
+    setIsTransitioning(true);
+    router.push(callbackUrl);
+  };
+
+  const handleMfaSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mfaMode || !mfaChallengeToken) return;
+    setMfaSubmitting(true);
+    try {
+      if (mfaMode === "setup") {
+        if (!/^\d{6}$/.test(otpCode.trim())) {
+          toast.error("Masukkan kode OTP 6 digit dari aplikasi Authenticator.");
+          setMfaSubmitting(false);
+          return;
+        }
+        const confirmed = await confirmMfa(mfaChallengeToken, otpCode);
+        if (Array.isArray(confirmed.recovery_codes) && confirmed.recovery_codes.length > 0) {
+          setRecoveryCodes(confirmed.recovery_codes);
+          setConfirmedMfaUser(confirmed.user);
+          toast.success("MFA berhasil diaktifkan! Simpan kode pemulihan Anda.");
+          setMfaSubmitting(false);
+          return;
+        }
+        await finalizeMfaLogin(pendingLoginIdent, confirmed.user);
+        return;
+      }
+
+      if (useRecoveryCode) {
+        if (!recoveryCodeInput.trim()) {
+          toast.error("Masukkan kode pemulihan (recovery code).");
+          setMfaSubmitting(false);
+          return;
+        }
+        const verified = await recoverMfa(mfaChallengeToken, recoveryCodeInput);
+        await finalizeMfaLogin(pendingLoginIdent, verified.user);
+        return;
+      }
+
+      if (!/^\d{6}$/.test(otpCode.trim())) {
+        toast.error("Masukkan kode OTP 6 digit dari aplikasi Authenticator.");
+        setMfaSubmitting(false);
+        return;
+      }
+      const verified = await verifyMfa(mfaChallengeToken, otpCode);
+      await finalizeMfaLogin(pendingLoginIdent, verified.user);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Verifikasi MFA gagal";
+      toast.error(msg);
+      setMfaSubmitting(false);
+    }
+  };
+
   const onSubmit = async (data: LoginForm) => {
     const ident = data.email?.trim();
     if (!ident || !data.password) {
@@ -259,16 +433,34 @@ function LoginFormContent() {
 
     setSubmitting(true);
     try {
-      await login(ident, data.password);
-      void api.post("/api/v1/governance/public/consent", {
-        email: ident,
-        consents: [
-          { consent_type: "TERMS", document_version: "1.0", granted: true },
-          { consent_type: "PRIVACY_NOTICE", document_version: "1.0", granted: true },
-          { consent_type: "MARKETING", document_version: "1.0", granted: consentMarketing },
-        ],
-      }).catch(() => {});
-      
+      const authResult = await login(ident, data.password);
+
+      if (authResult.status === "MFA_SETUP_REQUIRED" && authResult.setup_token) {
+        const enroll = await enrollMfa(authResult.setup_token);
+        setPendingLoginIdent(ident);
+        setMfaChallengeToken(authResult.setup_token);
+        setMfaEnrollData({ secret: enroll.secret, otpauth_uri: enroll.otpauth_uri });
+        setOtpCode("");
+        setRecoveryCodes(null);
+        setConfirmedMfaUser(undefined);
+        setMfaMode("setup");
+        setSubmitting(false);
+        return;
+      }
+
+      if (authResult.status === "MFA_REQUIRED" && authResult.mfa_token) {
+        setPendingLoginIdent(ident);
+        setMfaChallengeToken(authResult.mfa_token);
+        setOtpCode("");
+        setRecoveryCodeInput("");
+        setUseRecoveryCode(false);
+        setMfaMode("verify");
+        setSubmitting(false);
+        return;
+      }
+
+      await recordLoginConsent(ident);
+
       // Authentication has completed; do not add an artificial delay to the
       // critical transition. Return to the protected route that requested
       // authentication instead of discarding it in favor of the dashboard.
@@ -511,12 +703,14 @@ function LoginFormContent() {
                 <div className="mk-fade-up-5 flex flex-col gap-3">
                   <button
                     type="submit"
-                    disabled={submitting || isTransitioning}
+                    disabled={submitting || isTransitioning || !consentTerms || !consentPrivacy}
                     className={cn(
-                      "w-full h-[46px] lg:h-[50px] mt-0.5 rounded-[12px] text-white font-medium text-xs sm:text-sm transition-all duration-200 flex items-center justify-center cursor-pointer shadow-xs",
+                      "w-full h-[46px] lg:h-[50px] mt-0.5 rounded-[12px] text-white font-medium text-xs sm:text-sm transition-all duration-200 flex items-center justify-center shadow-xs",
                       (submitting || isTransitioning)
-                        ? "bg-[#1E293B] shadow-inner"
-                        : "bg-[#0876CD] hover:bg-[#163D64] active:scale-[0.995]"
+                        ? "bg-[#1E293B] shadow-inner cursor-wait"
+                        : (!consentTerms || !consentPrivacy)
+                          ? "bg-[#0876CD]/50 cursor-not-allowed"
+                          : "bg-[#0876CD] hover:bg-[#163D64] active:scale-[0.995] cursor-pointer"
                     )}
                   >
                     {(submitting || isTransitioning) ? (
@@ -565,11 +759,94 @@ function LoginFormContent() {
                     </svg>
                     <span>Sign in with Google</span>
                   </button>
+
+                  {/* Passkey (Super Admin) & Enterprise B2B SSO (SAML 2.0 / OIDC) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      disabled={submitting || isTransitioning}
+                      onClick={async () => {
+                        const ident = getValues("email")?.trim();
+                        if (!ident) {
+                          toast.error("Masukkan email Super Admin pada kolom email terlebih dahulu.");
+                          return;
+                        }
+                        if (!consentTerms || !consentPrivacy) {
+                          toast.error("Anda wajib menyetujui Syarat & Ketentuan serta Pemberitahuan Privasi.");
+                          return;
+                        }
+                        setSubmitting(true);
+                        try {
+                          const res = await loginWithSuperAdminPasskey(ident);
+                          await finalizeMfaLogin(ident, res.user);
+                        } catch (err: unknown) {
+                          toast.error(err instanceof Error ? err.message : "Login passkey gagal.");
+                          setSubmitting(false);
+                        }
+                      }}
+                      className="h-[42px] rounded-[12px] border border-[#0876CD]/40 bg-[#F0F7FF] hover:bg-[#E0F0FF] text-[11px] font-semibold text-[#163D64] flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <Fingerprint size={15} className="text-[#0876CD]" />
+                      <span>Passkey (Super Admin)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={submitting || isTransitioning}
+                      onClick={async () => {
+                        const ident = getValues("email")?.trim();
+                        if (!ident) {
+                          toast.error("Masukkan email kerja atau kode company untuk deteksi SSO.");
+                          return;
+                        }
+                        if (!consentTerms || !consentPrivacy) {
+                          toast.error("Anda wajib menyetujui Syarat & Ketentuan serta Pemberitahuan Privasi.");
+                          return;
+                        }
+                        setSubmitting(true);
+                        try {
+                          const disc = await discoverTenantSso(
+                            ident.includes("@") ? { email: ident } : { companyCode: ident },
+                          );
+                          if (!disc.sso_available) {
+                            toast.error("SSO (SAML 2.0 / OIDC) belum aktif untuk domain atau company tersebut.");
+                            setSubmitting(false);
+                            return;
+                          }
+                          const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001";
+                          if (disc.provider_type === "OIDC" && disc.oidc_start_path) {
+                            window.location.href = `${apiBase}${disc.oidc_start_path}`;
+                            return;
+                          }
+                          if (disc.provider_type === "SAML2" && disc.saml_sso_url) {
+                            window.location.href = disc.saml_sso_url;
+                            return;
+                          }
+                          toast.error("Endpoint SSO perusahaan belum dikonfigurasi lengkap.");
+                          setSubmitting(false);
+                        } catch (err: unknown) {
+                          toast.error(err instanceof Error ? err.message : "Gagal memeriksa SSO perusahaan.");
+                          setSubmitting(false);
+                        }
+                      }}
+                      className="h-[42px] rounded-[12px] border border-slate-300 bg-white hover:bg-slate-50 text-[11px] font-semibold text-slate-700 flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <Building2 size={15} className="text-[#163D64]" />
+                      <span>SSO Perusahaan (SAML/OIDC)</span>
+                    </button>
+                  </div>
                 </div>
               </form>
               <div className="mt-4 border-t border-slate-100 pt-3 text-center text-[10px] leading-4 text-slate-500">
                 <div className="font-semibold text-slate-600">
-                  PT Arsalynk Teknologi Indonesia &bull; Kontak Privasi/DPO: privacy@arsalynk.com
+                  {publicGovStatus.legal_entity_name || "PT Arsalynk Teknologi Indonesia"} &bull; Kontak Privasi/DPO:{" "}
+                  {publicGovStatus.contact_email || "privacy@arsalynk.com"}
+                </div>
+                <div className="mt-0.5 text-slate-500">
+                  Nomor TDPSE:{" "}
+                  <span className="font-mono font-semibold text-slate-700">
+                    {publicGovStatus.tdpse_number?.trim() || "Dalam Proses Registrasi Komdigi"}
+                  </span>
                 </div>
                 <div className="mt-1 flex flex-wrap items-center justify-center gap-3">
                   <Link href="/privacy-policy" className="text-[#0876CD] hover:underline">Kebijakan Privasi</Link>
@@ -577,6 +854,8 @@ function LoginFormContent() {
                   <Link href="/terms" className="text-[#0876CD] hover:underline">Syarat &amp; Ketentuan</Link>
                   <span>&bull;</span>
                   <Link href="/cookie-policy" className="text-[#0876CD] hover:underline">Kebijakan Cookie</Link>
+                  <span>&bull;</span>
+                  <Link href="/dsr" className="text-[#0876CD] hover:underline">Hak Subjek Data (DSR)</Link>
                 </div>
               </div>
             </div>
@@ -710,6 +989,189 @@ function LoginFormContent() {
                 </p>
               </div>
             )}
+          </div>
+        )}
+
+        {mfaMode && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0876CD]/10 text-[#0876CD]">
+                    {mfaMode === "setup" ? <ShieldCheck size={20} /> : <KeyRound size={20} />}
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-[#163D64]">
+                      {mfaMode === "setup"
+                        ? recoveryCodes
+                          ? "Simpan Kode Pemulihan MFA"
+                          : "Aktivasi Multi-Factor Authentication (MFA)"
+                        : "Verifikasi Keamanan MFA"}
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      {pendingLoginIdent}
+                    </p>
+                  </div>
+                </div>
+                {!recoveryCodes && (
+                  <button
+                    type="button"
+                    onClick={resetMfaModal}
+                    className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+                    aria-label="Tutup modal MFA"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+
+              {mfaMode === "setup" && recoveryCodes ? (
+                <div className="mt-4 space-y-4">
+                  <p className="text-xs leading-relaxed text-slate-600">
+                    Simpan kode pemulihan berikut di tempat aman. Setiap kode hanya dapat digunakan satu kali apabila Anda kehilangan akses ke aplikasi Authenticator.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-800">
+                    {recoveryCodes.map((code) => (
+                      <div key={code} className="rounded bg-white px-2.5 py-1.5 text-center border border-slate-100">
+                        {code}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(recoveryCodes.join("\n"), "mfa-recovery", "Kode pemulihan")}
+                      className="flex-1 h-10 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      {copiedKey === "mfa-recovery" ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                      Salin Semua Kode
+                    </button>
+                    <button
+                      type="button"
+                      disabled={mfaSubmitting}
+                      onClick={async () => {
+                        setMfaSubmitting(true);
+                        try {
+                          await finalizeMfaLogin(pendingLoginIdent, confirmedMfaUser);
+                        } catch (err: unknown) {
+                          toast.error(err instanceof Error ? err.message : "Gagal menyelesaikan login");
+                          setMfaSubmitting(false);
+                        }
+                      }}
+                      className="flex-1 h-10 rounded-xl bg-[#0876CD] hover:bg-[#163D64] text-xs font-semibold text-white cursor-pointer disabled:opacity-60"
+                    >
+                      {mfaSubmitting ? "Memproses..." : "Lanjutkan Masuk"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleMfaSubmit} className="mt-4 space-y-4">
+                  {mfaMode === "setup" && mfaEnrollData && (
+                    <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs text-slate-700">
+                      <p className="leading-relaxed">
+                        Tambahkan akun ini ke aplikasi Authenticator (Google Authenticator, Authy, atau Microsoft Authenticator) menggunakan Secret Key atau URI di bawah:
+                      </p>
+                      <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                        <span className="font-mono text-xs font-semibold tracking-wider text-slate-900 break-all">
+                          {mfaEnrollData.secret}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(mfaEnrollData.secret, "mfa-secret", "Secret MFA")}
+                          className="shrink-0 rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-800 cursor-pointer"
+                          title="Salin Secret Key"
+                        >
+                          {copiedKey === "mfa-secret" ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <a
+                          href={mfaEnrollData.otpauth_uri}
+                          className="text-[11px] font-semibold text-[#0876CD] hover:underline"
+                        >
+                          Buka di Aplikasi Authenticator
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(mfaEnrollData.otpauth_uri, "mfa-uri", "OTPAuth URI")}
+                          className="text-[11px] font-medium text-slate-600 hover:text-slate-900 cursor-pointer"
+                        >
+                          {copiedKey === "mfa-uri" ? "URI Disalin" : "Salin OTPAuth URI"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {mfaMode === "verify" && useRecoveryCode ? (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-[#163D64]">
+                        Kode Pemulihan (Recovery Code)
+                      </label>
+                      <input
+                        type="text"
+                        value={recoveryCodeInput}
+                        onChange={(e) => setRecoveryCodeInput(e.target.value)}
+                        placeholder="Contoh: ABCD-1234"
+                        autoFocus
+                        className="mk-input w-full h-11 rounded-xl bg-[#F5F5F5] border border-[#E2E8F0] px-3.5 font-mono text-sm text-slate-800 focus:outline-none"
+                      />
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-[#163D64]">
+                        Kode OTP 6-Digit Authenticator
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={otpCode}
+                        onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                        placeholder="000000"
+                        autoFocus
+                        className="mk-input w-full h-11 rounded-xl bg-[#F5F5F5] border border-[#E2E8F0] px-3.5 text-center font-mono text-lg tracking-[0.35em] text-slate-800 focus:outline-none"
+                      />
+                    </div>
+                  )}
+
+                  {mfaMode === "verify" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUseRecoveryCode((prev) => !prev);
+                        setOtpCode("");
+                        setRecoveryCodeInput("");
+                      }}
+                      className="text-xs font-medium text-[#0876CD] hover:underline cursor-pointer"
+                    >
+                      {useRecoveryCode ? "Gunakan Kode OTP 6-Digit" : "Gunakan Kode Pemulihan (Recovery Code)"}
+                    </button>
+                  )}
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={resetMfaModal}
+                      disabled={mfaSubmitting}
+                      className="h-10 px-4 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={mfaSubmitting}
+                      className="flex-1 h-10 rounded-xl bg-[#0876CD] hover:bg-[#163D64] text-xs font-semibold text-white cursor-pointer disabled:opacity-60"
+                    >
+                      {mfaSubmitting
+                        ? "Memverifikasi..."
+                        : mfaMode === "setup"
+                          ? "Aktifkan & Verifikasi MFA"
+                          : "Verifikasi & Masuk"}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
           </div>
         )}
       </div>

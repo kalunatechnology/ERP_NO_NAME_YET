@@ -28,21 +28,22 @@ let dashboardFreshRevision = 0;
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /* ── Helper Cookie (Non-sensitive routing flag only; JWT is HttpOnly from backend) ── */
-function syncCookie(token?: string) {
+function syncCookie(hasSession = false) {
   if (typeof document === "undefined") return;
   const secureAttr = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
   // Clear any legacy JS-readable access_token cookie so raw JWT is never exposed to document.cookie.
   document.cookie = `access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Lax${secureAttr}`;
-  if (token) {
+  if (hasSession) {
     document.cookie = `erp_session=1; path=/; max-age=86400; SameSite=Lax${secureAttr}`;
   } else {
     document.cookie = `erp_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Lax${secureAttr}`;
   }
 }
 
-/* ── Request Interceptor: tambah Authorization & Company header ── */
+/* ── Request Interceptor: tambah Company header & Idempotency-Key (auth via HttpOnly cookies) ── */
 api.interceptors.request.use(
   (config) => {
+    config.withCredentials = true;
     const method = String(config.method || 'get').toUpperCase();
     const publicTokenLogin = method === 'POST' && /^\/api\/v1\/auth\/token\/?(?:\?.*)?$/.test(String(config.url || ''));
     if (!publicTokenLogin && ["POST", "PUT", "PATCH", "DELETE"].includes(method) && config.headers && !config.headers["Idempotency-Key"]) {
@@ -59,15 +60,6 @@ api.interceptors.request.use(
       ) {
         config.params = { ...(config.params || {}), fresh: 1 };
         (config as typeof config & { _erpFreshRevision?: number })._erpFreshRevision = successfulMutationRevision;
-      }
-
-      const access =
-        localStorage.getItem("erp.access") ||
-        localStorage.getItem("access_token") ||
-        localStorage.getItem("token");
-
-      if (access && config.headers && !publicTokenLogin) {
-        config.headers.Authorization = `Bearer ${access}`;
       }
 
       // Validasi Company ID: Hanya pasang header jika nilainya adalah format UUID valid
@@ -97,52 +89,42 @@ api.interceptors.request.use(
 );
 
 /* ── Response Interceptor: handle 401 → refresh token with Mutex Singleton ── */
-let refreshPromise: Promise<string | null> | null = null;
+let refreshPromise: Promise<boolean> | null = null;
 
-/** Clears invalid browser credentials and lets the active app shell render an
+/** Clears invalid browser session state and lets the active app shell render an
  * in-place re-authentication state without changing the current URL. */
 function expireSession() {
   if (typeof window === "undefined") return;
-  localStorage.removeItem("erp.access");
-  localStorage.removeItem("erp.refresh");
-  localStorage.removeItem("access_token");
-  localStorage.removeItem("token");
   localStorage.removeItem("erp.user");
   localStorage.removeItem("erp.company");
   localStorage.removeItem("active_company_id");
-  syncCookie();
+  syncCookie(false);
   window.dispatchEvent(new CustomEvent("erp:session-expired"));
 }
 
 /**
- * refreshTokenOnce adapts a frontend operation to its HTTP API contract.
- *
- * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
- * @returns The typed payload or Promise produced after response normalization.
- * External dependency: uses the configured API client/base URL referenced below. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
- * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ * refreshTokenOnce refreshes the HttpOnly session cookies via the refresh endpoint.
  */
-function refreshTokenOnce(): Promise<string | null> {
+function refreshTokenOnce(): Promise<boolean> {
   if (refreshPromise) return refreshPromise;
 
-  if (typeof window === "undefined") return Promise.resolve(null);
-  const refresh = localStorage.getItem("erp.refresh");
-  if (!refresh) {
-    return Promise.resolve(null);
-  }
+  if (typeof window === "undefined") return Promise.resolve(false);
 
   refreshPromise = axios
-    .post(`${API_BASE}/api/v1/auth/token/refresh/`, { refresh })
+    .post(
+      `${API_BASE}/api/v1/auth/token/refresh/`,
+      {},
+      {
+        withCredentials: true,
+        headers: { "Content-Type": "application/json" },
+      },
+    )
     .then((res) => {
-      const payload = res.data?.data || res.data;
-      const newAccess = payload?.access || payload?.token;
-      if (newAccess) {
-        localStorage.setItem("erp.access", newAccess);
-        localStorage.setItem("access_token", newAccess);
-        syncCookie(newAccess);
-        return newAccess;
+      if (res.status >= 200 && res.status < 300) {
+        syncCookie(true);
+        return true;
       }
-      return null;
+      return false;
     })
     .catch((err) => {
       // Jika refresh token benar-benar invalid / expired
@@ -191,14 +173,14 @@ api.interceptors.response.use(
     if (
       status === 401 &&
       !original?._retry &&
+      !/\/api\/v1\/auth\/token(?:\/refresh)?\/?(?:\?.*)?$/.test(String(original?.url || "")) &&
       typeof window !== "undefined"
     ) {
       original._retry = true;
 
       try {
-        const newAccess = await refreshTokenOnce();
-        if (newAccess && original.headers) {
-          original.headers.Authorization = `Bearer ${newAccess}`;
+        const refreshed = await refreshTokenOnce();
+        if (refreshed) {
           return api(original);
         }
         expireSession();

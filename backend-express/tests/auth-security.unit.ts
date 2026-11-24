@@ -5,6 +5,8 @@ import {
   loginRateLimiter,
   recordAuthFailure,
   recordAuthSuccess,
+  sensitiveAuthRateLimiter,
+  signupRateLimiter,
   unlockAuthAccount,
 } from '../src/middlewares/auth-rate-limit.middleware';
 import {
@@ -68,6 +70,43 @@ function main() {
   const mfaToken = signMfaChallengeToken('user-1', 'mfa_pending');
   assert.equal(verifyMfaChallengeToken(mfaToken, 'mfa_pending')?.userId, 'user-1');
   assert.equal(verifyMfaChallengeToken(mfaToken, 'mfa_setup'), null);
+
+  // 3. signupRateLimiter per-IP & per-email + sensitiveAuthRateLimiter per-email
+  clearAllAuthRateLimitsForTests();
+  for (let i = 1; i <= 3; i += 1) {
+    let passed = false;
+    signupRateLimiter(
+      { ip: '10.0.1.1', body: { email: `invite${i}@markasuite.id` }, headers: {} } as any,
+      { setHeader: () => {}, status: () => ({ json: () => {} }) } as any,
+      () => { passed = true; },
+    );
+    assert.equal(passed, true);
+  }
+  let signupLimitStatus = 0;
+  signupRateLimiter(
+    { ip: '10.0.1.1', body: { email: 'invite4@markasuite.id' }, headers: {} } as any,
+    { setHeader: () => {}, status: (c: number) => ({ json: () => { signupLimitStatus = c; } }) } as any,
+    () => { throw new Error('4th signup from same IP must be blocked'); },
+  );
+  assert.equal(signupLimitStatus, 429);
+
+  clearAllAuthRateLimitsForTests();
+  for (let i = 1; i <= 5; i += 1) {
+    let passed = false;
+    sensitiveAuthRateLimiter(
+      { ip: `10.0.2.${i}`, body: { email: 'target@markasuite.id' }, headers: {} } as any,
+      { setHeader: () => {}, status: () => ({ json: () => {} }) } as any,
+      () => { passed = true; },
+    );
+    assert.equal(passed, true);
+  }
+  let sensitiveEmailLimitStatus = 0;
+  sensitiveAuthRateLimiter(
+    { ip: '10.0.2.99', body: { email: 'target@markasuite.id' }, headers: {} } as any,
+    { setHeader: () => {}, status: (c: number) => ({ json: () => { sensitiveEmailLimitStatus = c; } }) } as any,
+    () => { throw new Error('6th sensitive request for same email must be blocked'); },
+  );
+  assert.equal(sensitiveEmailLimitStatus, 429);
 
   console.log('auth-security.unit.ts: ALL PASSED');
 }

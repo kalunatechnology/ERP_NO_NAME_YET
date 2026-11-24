@@ -6,8 +6,25 @@
  * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
  * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
  */
+import crypto from 'crypto';
 import { Router, Request, Response, NextFunction } from 'express';
+import { env } from '../../config/env';
 import { AccountsService } from './accounts.service';
+import { evaluateUserReconsent } from '../governance/governance.routes';
+import {
+  base64UrlDecode,
+  base64UrlEncode,
+  buildOidcAuthorizationUrl,
+  decryptSsoSecret,
+  discoverSsoByEmailOrCompany,
+  ensureEnterpriseAuthTables,
+  getCompanySsoConfig,
+  resolveRpIdFromRequest,
+  signChallengeJwt,
+  upsertCompanySsoConfig,
+  verifyChallengeJwt,
+  verifyWebAuthnAssertionSignature,
+} from './enterprise-auth.service';
 import { authenticate, optionalAuthenticate } from '../../middlewares/auth.middleware';
 import {
   applyNoStoreHeaders,
@@ -19,6 +36,8 @@ import {
   checkMfaVerifyRateLimit,
   clearMfaFailures,
   loginRateLimiter,
+  signupRateLimiter,
+  sensitiveAuthRateLimiter,
   recordAuthFailure,
   recordAuthSuccess,
   recordMfaFailure,
@@ -118,9 +137,14 @@ publicAuthRouter.post('/token', loginRateLimiter, async (req: Request, res: Resp
       return;
     }
 
+    const reconsent = await evaluateUserReconsent(result.user.id, result.user.email);
     setSessionCookies(req, res, { access: result.access, refresh: result.refresh });
     res.setHeader('Server-Timing', `auth;dur=${(performance.now() - startedAt).toFixed(1)}`);
-    res.json(result);
+    res.json({
+      ...result,
+      reconsent_required: reconsent.reconsent_required,
+      reconsent_documents: reconsent.pending_documents,
+    });
   } catch (err) {
     const failure = recordAuthFailure(String(req.ip || ''), identifier);
     if (!res.headersSent) res.setHeader('Server-Timing', `auth;dur=${(performance.now() - startedAt).toFixed(1)}`);
@@ -141,7 +165,7 @@ publicAuthRouter.post('/token', loginRateLimiter, async (req: Request, res: Resp
 });
 
 // MFA Endpoints (/api/v1/auth/mfa/*)
-publicAuthRouter.post('/mfa/enroll', async (req: Request, res: Response, next: NextFunction) => {
+publicAuthRouter.post('/mfa/enroll', sensitiveAuthRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     await ensureMfaColumns();
     applyNoStoreHeaders(res);
@@ -176,7 +200,7 @@ publicAuthRouter.post('/mfa/enroll', async (req: Request, res: Response, next: N
   }
 });
 
-publicAuthRouter.post('/mfa/confirm', async (req: Request, res: Response, next: NextFunction) => {
+publicAuthRouter.post('/mfa/confirm', sensitiveAuthRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     await ensureMfaColumns();
     applyNoStoreHeaders(res);
@@ -229,7 +253,7 @@ publicAuthRouter.post('/mfa/confirm', async (req: Request, res: Response, next: 
   }
 });
 
-publicAuthRouter.post('/mfa/verify', async (req: Request, res: Response, next: NextFunction) => {
+publicAuthRouter.post('/mfa/verify', sensitiveAuthRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     await ensureMfaColumns();
     applyNoStoreHeaders(res);
@@ -276,7 +300,7 @@ publicAuthRouter.post('/mfa/verify', async (req: Request, res: Response, next: N
   }
 });
 
-publicAuthRouter.post('/mfa/recovery', async (req: Request, res: Response, next: NextFunction) => {
+publicAuthRouter.post('/mfa/recovery', sensitiveAuthRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     await ensureMfaColumns();
     applyNoStoreHeaders(res);
@@ -284,6 +308,16 @@ publicAuthRouter.post('/mfa/recovery', async (req: Request, res: Response, next:
     const recoveryCode = String(req.body.recovery_code || '').trim();
     const challenge = verifyMfaChallengeToken(mfaToken, 'mfa_pending');
     if (!challenge) throw new ForbiddenError('Sesi verifikasi MFA tidak valid atau kedaluwarsa.');
+    const rate = checkMfaVerifyRateLimit(`mfa:${challenge.userId}`);
+    if (!rate.allowed) {
+      res.setHeader('Retry-After', String(rate.retryAfter));
+      res.status(429).json({
+        success: false,
+        error_code: 'MFA_RATE_LIMITED',
+        message: 'Terlalu banyak percobaan kode pemulihan gagal. Silakan login ulang dari awal.',
+      });
+      return;
+    }
     const rows = await prisma.$queryRawUnsafe<Array<{ mfa_recovery_codes: string[] | null; mfa_enabled: boolean }>>(
       `SELECT "mfa_recovery_codes", "mfa_enabled" FROM "iam_user" WHERE "id" = $1 LIMIT 1`,
       challenge.userId,
@@ -326,7 +360,7 @@ publicAuthRouter.post('/mfa/recovery', async (req: Request, res: Response, next:
  * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-publicAuthRouter.post('/token/refresh', async (req: Request, res: Response, next: NextFunction) => {
+publicAuthRouter.post('/token/refresh', sensitiveAuthRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const refresh = String(req.body.refresh || extractCookie(req, 'refresh_token') || '').trim();
     const result = await AccountsService.refreshToken(refresh);
@@ -335,6 +369,295 @@ publicAuthRouter.post('/token/refresh', async (req: Request, res: Response, next
     res.json(result);
   } catch (err) {
     clearSessionCookies(req, res);
+    next(err);
+  }
+});
+
+// --- WEBAUTHN / FIDO2 PASSKEY PUBLIC LOGIN (SUPER ADMIN) ---
+publicAuthRouter.post('/passkey/login-options', sensitiveAuthRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await ensureEnterpriseAuthTables();
+    applyNoStoreHeaders(res);
+    const email = String(req.body.email || '').trim().toLowerCase();
+    if (!email) throw new ValidationError('Email Super Admin wajib diisi untuk login passkey.');
+
+    const user = await prisma.iam_user.findUnique({
+      where: { email },
+      select: { id: true, email: true, is_superuser: true, is_active: true },
+    });
+    if (!user || !user.is_active || !user.is_superuser) {
+      throw new ForbiddenError('Login passkey hanya tersedia untuk akun Super Admin aktif.');
+    }
+
+    const creds = await prisma.$queryRawUnsafe<Array<any>>(
+      `SELECT "credential_id", "transports" FROM "iam_webauthn_credential" WHERE "user_id" = $1`,
+      user.id,
+    );
+    if (!creds.length) {
+      throw new ValidationError('Belum ada passkey yang terdaftar untuk akun Super Admin ini.');
+    }
+
+    const { rpId } = resolveRpIdFromRequest(req.headers.origin, req.headers.host);
+    const challenge = base64UrlEncode(crypto.randomBytes(32));
+    const challengeToken = signChallengeJwt({ purpose: 'webauthn_login', userId: user.id, challenge, rpId }, 300);
+
+    res.json({
+      success: true,
+      challenge_token: challengeToken,
+      options: {
+        challenge,
+        rpId,
+        timeout: 60000,
+        userVerification: 'required',
+        allowCredentials: creds.map((c) => ({
+          id: c.credential_id,
+          type: 'public-key',
+          transports: Array.isArray(c.transports) ? c.transports : ['internal', 'hybrid'],
+        })),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+publicAuthRouter.post('/passkey/login-verify', sensitiveAuthRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await ensureEnterpriseAuthTables();
+    applyNoStoreHeaders(res);
+    const challengeToken = String(req.body.challenge_token || '').trim();
+    const credentialId = String(req.body.credential_id || '').trim();
+    const clientDataJSONB64 = String(req.body.clientDataJSON || '').trim();
+    const authenticatorDataB64 = String(req.body.authenticatorData || '').trim();
+    const signatureB64 = String(req.body.signature || '').trim();
+
+    const parsedChallenge = verifyChallengeJwt<{ userId: string; challenge: string; rpId: string }>(
+      challengeToken,
+      'webauthn_login',
+    );
+    if (!parsedChallenge) {
+      throw new ForbiddenError('Sesi tantangan passkey tidak valid atau kedaluwarsa.');
+    }
+
+    const clientDataBuf = base64UrlDecode(clientDataJSONB64);
+    const clientData = JSON.parse(clientDataBuf.toString('utf8'));
+    if (clientData.type !== 'webauthn.get' || clientData.challenge !== parsedChallenge.challenge) {
+      throw new ForbiddenError('Verifikasi clientDataJSON passkey gagal.');
+    }
+
+    const creds = await prisma.$queryRawUnsafe<Array<any>>(
+      `SELECT * FROM "iam_webauthn_credential" WHERE "user_id" = $1 AND "credential_id" = $2 LIMIT 1`,
+      parsedChallenge.userId,
+      credentialId,
+    );
+    const cred = creds[0];
+    if (!cred) throw new ForbiddenError('Kredensial passkey tidak dikenali.');
+
+    const check = verifyWebAuthnAssertionSignature({
+      publicKeySpkiBase64: cred.public_key_spki,
+      alg: Number(cred.alg || -7),
+      authenticatorData: base64UrlDecode(authenticatorDataB64),
+      clientDataJSON: clientDataBuf,
+      signature: base64UrlDecode(signatureB64),
+      expectedRpId: parsedChallenge.rpId,
+      storedCounter: Number(cred.counter || 0),
+    });
+    if (!check.valid) {
+      throw new ForbiddenError(check.reason || 'Verifikasi tanda tangan passkey gagal.');
+    }
+
+    await prisma.$executeRawUnsafe(
+      `UPDATE "iam_webauthn_credential" SET "counter" = $1, "last_used_at" = NOW() WHERE "id" = $2`,
+      check.nextCounter,
+      cred.id,
+    );
+
+    const userContext = await AccountsService.getCurrentUser(parsedChallenge.userId);
+    const tokens = signTokenPair({
+      userId: userContext.id,
+      email: userContext.email,
+      full_name: userContext.full_name ?? '',
+      tenant_id: userContext.tenant_id ?? null,
+      roles: (userContext.roles ?? []).map((r: any) => String(typeof r === 'string' ? r : (r?.role_code ?? ''))).filter(Boolean),
+    });
+    const reconsent = await evaluateUserReconsent(userContext.id, userContext.email);
+    setSessionCookies(req, res, tokens);
+    res.json({
+      success: true,
+      ...tokens,
+      user: userContext,
+      reconsent_required: reconsent.reconsent_required,
+      reconsent_documents: reconsent.pending_documents,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// --- B2B TENANT SINGLE SIGN-ON (SAML 2.0 / OIDC) ---
+publicAuthRouter.get('/sso/discovery', sensitiveAuthRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    applyNoStoreHeaders(res);
+    const result = await discoverSsoByEmailOrCompany({
+      email: String(req.query.email || ''),
+      companyCode: String(req.query.company_code || ''),
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+publicAuthRouter.get('/sso/oidc/start', sensitiveAuthRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = String(req.query.company_id || '').trim();
+    if (!companyId) throw new ValidationError('company_id wajib diisi.');
+    const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim();
+    const host = String(req.headers['x-forwarded-host'] || req.headers.host || 'localhost:8001').split(',')[0].trim();
+    const callbackUrl = `${proto}://${host}/api/v1/auth/sso/oidc/callback`;
+    const authUrl = await buildOidcAuthorizationUrl(companyId, callbackUrl);
+    res.redirect(authUrl);
+  } catch (err) {
+    next(err);
+  }
+});
+
+publicAuthRouter.get('/sso/oidc/callback', sensitiveAuthRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await ensureEnterpriseAuthTables();
+    const code = String(req.query.code || '').trim();
+    const state = String(req.query.state || '').trim();
+    const statePayload = verifyChallengeJwt<{ companyId: string }>(state, 'sso_oidc_state');
+    if (!code || !statePayload?.companyId) {
+      throw new ForbiddenError('State atau authorization code OIDC tidak valid atau kedaluwarsa.');
+    }
+
+    const cfgRows = await prisma.$queryRawUnsafe<Array<any>>(
+      `SELECT * FROM "iam_tenant_sso_config" WHERE "company_id" = $1 AND "enabled" = true LIMIT 1`,
+      statePayload.companyId,
+    );
+    const cfg = cfgRows[0];
+    if (!cfg || !cfg.oidc_token_endpoint || !cfg.oidc_client_id) {
+      throw new ForbiddenError('Konfigurasi OIDC company tidak ditemukan.');
+    }
+
+    const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim();
+    const host = String(req.headers['x-forwarded-host'] || req.headers.host || 'localhost:8001').split(',')[0].trim();
+    const redirectUri = `${proto}://${host}/api/v1/auth/sso/oidc/callback`;
+    const clientSecret = decryptSsoSecret(cfg.oidc_client_secret_encrypted || '');
+
+    const tokenRes = await fetch(cfg.oidc_token_endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: redirectUri,
+        client_id: cfg.oidc_client_id,
+        ...(clientSecret ? { client_secret: clientSecret } : {}),
+      }),
+    });
+    if (!tokenRes.ok) {
+      throw new ForbiddenError('Gagal menukar authorization code OIDC dengan IdP.');
+    }
+    const tokenJson: any = await tokenRes.json();
+    let email = '';
+    if (cfg.oidc_userinfo_endpoint && tokenJson.access_token) {
+      const userInfoRes = await fetch(cfg.oidc_userinfo_endpoint, {
+        headers: { Authorization: `Bearer ${tokenJson.access_token}` },
+      });
+      if (userInfoRes.ok) {
+        const ui: any = await userInfoRes.json();
+        email = String(ui?.email || '').trim().toLowerCase();
+      }
+    }
+    if (!email && tokenJson.id_token) {
+      const parts = String(tokenJson.id_token).split('.');
+      if (parts.length >= 2) {
+        const claims = JSON.parse(base64UrlDecode(parts[1]).toString('utf8'));
+        email = String(claims?.email || '').trim().toLowerCase();
+      }
+    }
+    if (!email) throw new ForbiddenError('IdP OIDC tidak mengembalikan klaim email.');
+
+    const allowedDomains: string[] = Array.isArray(cfg.allowed_domains) ? cfg.allowed_domains : [];
+    const domain = email.split('@')[1] || '';
+    if (allowedDomains.length > 0 && !allowedDomains.map((d) => String(d).toLowerCase()).includes(domain)) {
+      throw new ForbiddenError('Domain email Anda tidak diizinkan untuk SSO company ini.');
+    }
+
+    const user = await prisma.iam_user.findUnique({ where: { email }, select: { id: true, is_active: true } });
+    if (!user || !user.is_active) {
+      throw new ForbiddenError('Akun pengguna belum terdaftar atau tidak aktif di MarkaSuite.');
+    }
+
+    const userContext = await AccountsService.getCurrentUser(user.id);
+    const tokens = signTokenPair({
+      userId: userContext.id,
+      email: userContext.email,
+      full_name: userContext.full_name ?? '',
+      tenant_id: userContext.tenant_id ?? null,
+      roles: (userContext.roles ?? []).map((r: any) => String(typeof r === 'string' ? r : (r?.role_code ?? ''))).filter(Boolean),
+    });
+    setSessionCookies(req, res, tokens);
+    const frontendOrigin = env.CORS_ALLOWED_ORIGINS.find((o) => o.startsWith('https://')) || env.CORS_ALLOWED_ORIGINS[0] || '/';
+    res.redirect(`${frontendOrigin}/dashboard`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+publicAuthRouter.post('/sso/saml/acs', sensitiveAuthRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await ensureEnterpriseAuthTables();
+    const samlResponseB64 = String(req.body.SAMLResponse || '').trim();
+    const relayState = String(req.body.RelayState || '').trim();
+    if (!samlResponseB64) throw new ValidationError('SAMLResponse wajib diisi.');
+
+    const xml = Buffer.from(samlResponseB64, 'base64').toString('utf8');
+    const issuerMatch = xml.match(/<(?:saml2?:)?Issuer[^>]*>([^<]+)<\/(?:saml2?:)?Issuer>/i);
+    const nameIdMatch = xml.match(/<(?:saml2?:)?NameID[^>]*>([^<]+)<\/(?:saml2?:)?NameID>/i);
+    const issuer = issuerMatch?.[1]?.trim() || '';
+    const email = nameIdMatch?.[1]?.trim().toLowerCase() || '';
+    if (!issuer || !email) {
+      throw new ForbiddenError('Assertion SAML 2.0 tidak memiliki Issuer atau NameID email yang valid.');
+    }
+
+    const cfgRows = await prisma.$queryRawUnsafe<Array<any>>(
+      `SELECT * FROM "iam_tenant_sso_config"
+       WHERE "enabled" = true AND "provider_type" = 'SAML2' AND "saml_entity_id" = $1
+       ${relayState ? 'AND "company_id" = $2' : ''}
+       LIMIT 1`,
+      ...(relayState ? [issuer, relayState] : [issuer]),
+    );
+    const cfg = cfgRows[0];
+    if (!cfg) {
+      throw new ForbiddenError('Issuer SAML 2.0 tidak terdaftar atau SSO belum diaktifkan.');
+    }
+
+    const allowedDomains: string[] = Array.isArray(cfg.allowed_domains) ? cfg.allowed_domains : [];
+    const domain = email.split('@')[1] || '';
+    if (allowedDomains.length > 0 && !allowedDomains.map((d) => String(d).toLowerCase()).includes(domain)) {
+      throw new ForbiddenError('Domain email SAML tidak diizinkan untuk company ini.');
+    }
+
+    const user = await prisma.iam_user.findUnique({ where: { email }, select: { id: true, is_active: true } });
+    if (!user || !user.is_active) {
+      throw new ForbiddenError('Akun pengguna belum terdaftar atau tidak aktif di MarkaSuite.');
+    }
+
+    const userContext = await AccountsService.getCurrentUser(user.id);
+    const tokens = signTokenPair({
+      userId: userContext.id,
+      email: userContext.email,
+      full_name: userContext.full_name ?? '',
+      tenant_id: userContext.tenant_id ?? null,
+      roles: (userContext.roles ?? []).map((r: any) => String(typeof r === 'string' ? r : (r?.role_code ?? ''))).filter(Boolean),
+    });
+    setSessionCookies(req, res, tokens);
+    const frontendOrigin = env.CORS_ALLOWED_ORIGINS.find((o) => o.startsWith('https://')) || env.CORS_ALLOWED_ORIGINS[0] || '/';
+    res.redirect(`${frontendOrigin}/dashboard`);
+  } catch (err) {
     next(err);
   }
 });
@@ -348,7 +671,7 @@ publicAuthRouter.post('/token/refresh', async (req: Request, res: Response, next
  * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-authRouter.post('/token/verify', async (req: Request, res: Response, next: NextFunction) => {
+authRouter.post('/token/verify', sensitiveAuthRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const token = req.body.token || req.body.access || '';
     await AccountsService.refreshToken(token);
@@ -371,7 +694,12 @@ authRouter.get('/me', authenticate, async (req: Request, res: Response, next: Ne
   try {
     applyNoStoreHeaders(res);
     const result = await AccountsService.getCurrentUser(req.user!.id);
-    res.json(result);
+    const reconsent = await evaluateUserReconsent(result.id, result.email);
+    res.json({
+      ...result,
+      reconsent_required: reconsent.reconsent_required,
+      reconsent_documents: reconsent.pending_documents,
+    });
   } catch (err) {
     next(err);
   }
@@ -401,7 +729,7 @@ authRouter.post('/logout', optionalAuthenticate, (req: Request, res: Response) =
  * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-authRouter.post('/change-password', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+authRouter.post('/change-password', authenticate, sensitiveAuthRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { current_password, new_password } = req.body;
     const result = await AccountsService.changePassword(req.user!.id, current_password, new_password);
@@ -442,6 +770,142 @@ authRouter.patch('/profile', authenticate, async (req: Request, res: Response, n
     const { full_name, email, phone } = req.body;
     const result = await AccountsService.updateProfile(req.user!.id, { full_name, email, phone });
     res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// --- SUPER ADMIN PASSKEY MANAGEMENT ---
+authRouter.get('/passkey/list', authenticate, requireSuperAdminForWrite, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await ensureEnterpriseAuthTables();
+    const rows = await prisma.$queryRawUnsafe<Array<any>>(
+      `SELECT "id", "credential_id", "alg", "device_label", "created_at", "last_used_at"
+       FROM "iam_webauthn_credential"
+       WHERE "user_id" = $1
+       ORDER BY "created_at" DESC`,
+      req.user!.id,
+    );
+    res.json({ success: true, results: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+authRouter.post('/passkey/register-options', authenticate, requireSuperAdminForWrite, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await ensureEnterpriseAuthTables();
+    applyNoStoreHeaders(res);
+    const { rpId } = resolveRpIdFromRequest(req.headers.origin, req.headers.host);
+    const challenge = base64UrlEncode(crypto.randomBytes(32));
+    const existing = await prisma.$queryRawUnsafe<Array<any>>(
+      `SELECT "credential_id" FROM "iam_webauthn_credential" WHERE "user_id" = $1`,
+      req.user!.id,
+    );
+    const challengeToken = signChallengeJwt({ purpose: 'webauthn_register', userId: req.user!.id, challenge, rpId }, 300);
+
+    res.json({
+      success: true,
+      challenge_token: challengeToken,
+      options: {
+        rp: { name: 'MarkaSuite', id: rpId },
+        user: {
+          id: base64UrlEncode(Buffer.from(String(req.user!.id), 'utf8')),
+          name: req.user!.email,
+          displayName: req.user!.full_name || req.user!.email,
+        },
+        challenge,
+        pubKeyCredParams: [
+          { type: 'public-key', alg: -7 },
+          { type: 'public-key', alg: -257 },
+        ],
+        timeout: 60000,
+        attestation: 'none',
+        authenticatorSelection: {
+          residentKey: 'preferred',
+          userVerification: 'required',
+        },
+        excludeCredentials: existing.map((e) => ({ id: e.credential_id, type: 'public-key' })),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+authRouter.post('/passkey/register-verify', authenticate, requireSuperAdminForWrite, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await ensureEnterpriseAuthTables();
+    applyNoStoreHeaders(res);
+    const challengeToken = String(req.body.challenge_token || '').trim();
+    const credentialId = String(req.body.credential_id || '').trim();
+    const publicKeySpki = String(req.body.public_key_spki || '').trim();
+    const alg = Number(req.body.alg || -7);
+    const deviceLabel = String(req.body.device_label || 'Super Admin Passkey').trim().slice(0, 80);
+    const clientDataJSONB64 = String(req.body.clientDataJSON || '').trim();
+    const transports = Array.isArray(req.body.transports) ? req.body.transports : [];
+
+    const parsedChallenge = verifyChallengeJwt<{ userId: string; challenge: string }>(challengeToken, 'webauthn_register');
+    if (!parsedChallenge || parsedChallenge.userId !== req.user!.id) {
+      throw new ForbiddenError('Challenge registrasi passkey tidak valid atau kedaluwarsa.');
+    }
+
+    const clientData = JSON.parse(base64UrlDecode(clientDataJSONB64).toString('utf8'));
+    if (clientData.type !== 'webauthn.create' || clientData.challenge !== parsedChallenge.challenge) {
+      throw new ForbiddenError('Verifikasi clientDataJSON registrasi passkey gagal.');
+    }
+    if (!credentialId || !publicKeySpki) {
+      throw new ValidationError('credential_id dan public_key_spki wajib diisi.');
+    }
+
+    const id = crypto.randomUUID();
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO "iam_webauthn_credential" ("id", "user_id", "credential_id", "public_key_spki", "alg", "device_label", "transports")
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+      id,
+      req.user!.id,
+      credentialId,
+      publicKeySpki,
+      alg,
+      deviceLabel,
+      JSON.stringify(transports),
+    );
+    res.status(201).json({ success: true, id, credential_id: credentialId, device_label: deviceLabel });
+  } catch (err) {
+    next(err);
+  }
+});
+
+authRouter.delete('/passkey/:credentialId', authenticate, requireSuperAdminForWrite, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await ensureEnterpriseAuthTables();
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM "iam_webauthn_credential" WHERE "user_id" = $1 AND ("id" = $2 OR "credential_id" = $2)`,
+      req.user!.id,
+      req.params.credentialId,
+    );
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// --- B2B TENANT SSO CONFIGURATION (COMPANY ADMIN / SUPER ADMIN) ---
+authRouter.get('/sso/config', authenticate, requireCompanyAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = String(req.query.company_id || req.companyId || '').trim();
+    if (!companyId) throw new ValidationError('company_id wajib diisi.');
+    res.json({ success: true, ...(await getCompanySsoConfig(companyId)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+authRouter.put('/sso/config', authenticate, requireCompanyAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = String(req.body.company_id || req.companyId || '').trim();
+    if (!companyId) throw new ValidationError('company_id wajib diisi.');
+    res.json({ success: true, ...(await upsertCompanySsoConfig(companyId, req.user!.id, req.body)) });
   } catch (err) {
     next(err);
   }
@@ -556,7 +1020,7 @@ accountsRouter.post('/auth/login', loginRateLimiter, async (req: Request, res: R
  * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-accountsRouter.post('/auth/refresh', async (req: Request, res: Response, next: NextFunction) => {
+accountsRouter.post('/auth/refresh', sensitiveAuthRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const refresh = req.body.refresh || '';
     const result = await AccountsService.refreshToken(refresh);
@@ -608,7 +1072,7 @@ accountsRouter.get('/me', authenticate, async (req: Request, res: Response, next
  * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-accountsRouter.post('/change-password', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+accountsRouter.post('/change-password', authenticate, sensitiveAuthRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { current_password, new_password } = req.body;
     const result = await AccountsService.changePassword(req.user!.id, current_password, new_password);
@@ -2145,7 +2609,7 @@ function mountAccountResources(router: Router) {
       next(err);
     }
   });
-  router.post('/users/:userId/reset-mfa', requireSuperAdminForWrite, async (req: Request, res: Response, next: NextFunction) => {
+  router.post('/users/:userId/reset-mfa', requireSuperAdminForWrite, sensitiveAuthRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
     try {
       await ensureMfaColumns();
       const targetUser = await prisma.iam_user.findUnique({ where: { id: req.params.userId }, select: { id: true } });
@@ -2176,7 +2640,7 @@ function mountAccountResources(router: Router) {
   router.delete('/users/:userId/roles', requireCompanyAdmin, requireCompanyContextForWrite, removeUserRole);
   router.put('/users/:userId/department-role', requireCompanyAdmin, requireCompanyContextForWrite, updateUserDepartmentAndRoleLevel);
   router.patch('/users/:userId/department-role', requireCompanyAdmin, requireCompanyContextForWrite, updateUserDepartmentAndRoleLevel);
-  router.post('/users/invite', requireCompanyAdmin, inviteUser);
+  router.post('/users/invite', requireCompanyAdmin, signupRateLimiter, inviteUser);
   router.get('/user-module-access', requireCompanyAdmin, listUserModuleAccess);
   router.put('/users/:userId/module-access/:moduleCode', requireCompanyAdmin, requireCompanyContextForWrite, setUserModuleAccess);
   router.delete('/users/:userId/module-access/:moduleCode', requireCompanyAdmin, requireCompanyContextForWrite, resetUserModuleAccess);

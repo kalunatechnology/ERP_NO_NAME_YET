@@ -18,6 +18,13 @@ const LOGIN_ACCOUNT_WINDOW_MS = 15 * 60 * 1000; // 15 menit
 
 const SIGNUP_IP_MAX = 3;
 const SIGNUP_IP_WINDOW_MS = 60 * 60 * 1000; // 1 jam
+const SIGNUP_EMAIL_MAX = 3;
+const SIGNUP_EMAIL_WINDOW_MS = 60 * 60 * 1000; // 1 jam
+
+const SENSITIVE_IP_MAX = 15;
+const SENSITIVE_IP_WINDOW_MS = 15 * 60 * 1000; // 15 menit
+const SENSITIVE_IDENTIFIER_MAX = 5;
+const SENSITIVE_IDENTIFIER_WINDOW_MS = 15 * 60 * 1000; // 15 menit
 
 const MFA_VERIFY_MAX_FAILURES = 5;
 const MFA_VERIFY_WINDOW_MS = 10 * 60 * 1000; // 10 menit
@@ -149,17 +156,69 @@ export function loginRateLimiter(req: Request, res: Response, next: NextFunction
 
 export function signupRateLimiter(req: Request, res: Response, next: NextFunction): void {
   const ip = clientIp(req);
+  const identifier = normalizeIdentifier(req.body?.email || req.body?.username);
   const ipCounter = incrementWindow(ipWindowStore, `signup:ip:${ip}`, SIGNUP_IP_WINDOW_MS);
   if (ipCounter.count > SIGNUP_IP_MAX) {
     const retryAfter = Math.max(1, Math.ceil((ipCounter.resetAt - Date.now()) / 1000));
     res.setHeader('Retry-After', String(retryAfter));
-    void logAuthSecurityEvent('AUTH_SIGNUP_RATE_LIMITED', req, undefined, 'Signup rate limit exceeded');
+    void logAuthSecurityEvent('AUTH_SIGNUP_RATE_LIMITED', req, identifier ? hashIdentifier(identifier) : undefined, 'Signup IP rate limit exceeded');
     res.status(429).json({
       success: false,
       error_code: 'RATE_LIMITED',
-      message: 'Terlalu banyak permintaan pendaftaran dari jaringan Anda. Silakan coba lagi nanti.',
+      message: 'Terlalu banyak permintaan pendaftaran atau undangan dari jaringan Anda. Silakan coba lagi nanti.',
     });
     return;
+  }
+
+  if (identifier) {
+    const emailHash = hashIdentifier(identifier);
+    const emailCounter = incrementWindow(ipWindowStore, `signup:email:${emailHash}`, SIGNUP_EMAIL_WINDOW_MS);
+    if (emailCounter.count > SIGNUP_EMAIL_MAX) {
+      const retryAfter = Math.max(1, Math.ceil((emailCounter.resetAt - Date.now()) / 1000));
+      res.setHeader('Retry-After', String(retryAfter));
+      void logAuthSecurityEvent('AUTH_SIGNUP_RATE_LIMITED', req, emailHash, 'Signup email rate limit exceeded');
+      res.status(429).json({
+        success: false,
+        error_code: 'RATE_LIMITED',
+        message: `Terlalu banyak permintaan untuk email tersebut. Coba lagi dalam ${retryAfter} detik.`,
+      });
+      return;
+    }
+  }
+  next();
+}
+
+export function sensitiveAuthRateLimiter(req: Request, res: Response, next: NextFunction): void {
+  const ip = clientIp(req);
+  const identifier = normalizeIdentifier(req.body?.email || req.body?.username || (req.user as any)?.email);
+  const idHash = identifier ? hashIdentifier(identifier) : undefined;
+
+  const ipCounter = incrementWindow(ipWindowStore, `sensitive:ip:${ip}`, SENSITIVE_IP_WINDOW_MS);
+  if (ipCounter.count > SENSITIVE_IP_MAX) {
+    const retryAfter = Math.max(1, Math.ceil((ipCounter.resetAt - Date.now()) / 1000));
+    res.setHeader('Retry-After', String(retryAfter));
+    void logAuthSecurityEvent('AUTH_SENSITIVE_RATE_LIMITED', req, idHash, 'Sensitive auth IP rate limit exceeded');
+    res.status(429).json({
+      success: false,
+      error_code: 'RATE_LIMITED',
+      message: `Terlalu banyak permintaan verifikasi atau keamanan dari jaringan Anda. Coba lagi dalam ${retryAfter} detik.`,
+    });
+    return;
+  }
+
+  if (idHash) {
+    const emailCounter = incrementWindow(ipWindowStore, `sensitive:email:${idHash}`, SENSITIVE_IDENTIFIER_WINDOW_MS);
+    if (emailCounter.count > SENSITIVE_IDENTIFIER_MAX) {
+      const retryAfter = Math.max(1, Math.ceil((emailCounter.resetAt - Date.now()) / 1000));
+      res.setHeader('Retry-After', String(retryAfter));
+      void logAuthSecurityEvent('AUTH_SENSITIVE_RATE_LIMITED', req, idHash, 'Sensitive auth email rate limit exceeded');
+      res.status(429).json({
+        success: false,
+        error_code: 'RATE_LIMITED',
+        message: `Terlalu banyak permintaan keamanan untuk akun ini. Coba lagi dalam ${retryAfter} detik.`,
+      });
+      return;
+    }
   }
   next();
 }

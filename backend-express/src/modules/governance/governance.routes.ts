@@ -143,6 +143,19 @@ export async function evaluateLaunchReadiness() {
   };
   const docTypes = new Set(activeDocs.map((d: any) => String(d.doc_type).toUpperCase()));
 
+  const adminMfaEnforced = process.env.ERP_ENFORCE_ADMIN_MFA === 'true';
+  const secureCookiesActive =
+    process.env.NODE_ENV === 'production' ||
+    String(process.env.COOKIE_SECURE || '').trim().toLowerCase() === 'true';
+  const missingSecurityControls: string[] = [];
+  if (!adminMfaEnforced) {
+    missingSecurityControls.push('ERP_ENFORCE_ADMIN_MFA=true (MFA wajib untuk Admin)');
+  }
+  if (!secureCookiesActive) {
+    missingSecurityControls.push('NODE_ENV=production atau COOKIE_SECURE=true (Cookie Secure aktif)');
+  }
+  const securityControlsPassed = missingSecurityControls.length === 0;
+
   const checks: LaunchGateCheck[] = [
     {
       key: 'entity_identity',
@@ -181,10 +194,12 @@ export async function evaluateLaunchReadiness() {
     },
     {
       key: 'security_controls',
-      label: 'Keamanan Sesi HttpOnly, Cache no-store & Rate Limiting Auth',
-      passed: true,
+      label: 'Keamanan Sesi HttpOnly, Cookie Secure & MFA Admin',
+      passed: securityControlsPassed,
       blocker: true,
-      detail: 'HttpOnly/SameSite/Secure cookies, auth rate limiter + lockout, dan Cache-Control no-store aktif.',
+      detail: securityControlsPassed
+        ? 'ERP_ENFORCE_ADMIN_MFA aktif, cookie HttpOnly/SameSite/Secure aktif, auth rate limiter + lockout, dan Cache-Control no-store aktif.'
+        : `Syarat keamanan belum terpenuhi: ${missingSecurityControls.join('; ')}.`,
     },
   ];
 
@@ -196,6 +211,90 @@ export async function evaluateLaunchReadiness() {
     website_state: state,
     active_documents: activeDocs,
   };
+}
+
+export interface PendingReconsentDocument {
+  id: string;
+  doc_type: string;
+  version: string;
+  title: string;
+  summary_of_changes: string;
+  content_hash: string;
+  effective_at: string;
+}
+
+const CONSENT_TYPE_ALIASES: Record<string, string[]> = {
+  PRIVACY_POLICY: ['PRIVACY_POLICY', 'PRIVACY_NOTICE'],
+  TERMS: ['TERMS'],
+  COOKIE_POLICY: ['COOKIE_POLICY'],
+};
+
+/**
+ * Evaluates whether a user must re-consent to the latest active material legal
+ * documents (`is_material = true`) by comparing against `gov_consent_ledger`.
+ */
+export async function evaluateUserReconsent(
+  userId: string,
+  email?: string,
+): Promise<{ reconsent_required: boolean; pending_documents: PendingReconsentDocument[] }> {
+  try {
+    await ensureGovernanceTables();
+    const materialDocs = await prisma.$queryRawUnsafe<Array<any>>(
+      `SELECT DISTINCT ON ("doc_type") "id", "doc_type", "version", "title", "summary_of_changes", "content_hash", "effective_at"
+       FROM "gov_legal_document_version"
+       WHERE "is_active" = true AND "is_material" = true
+       ORDER BY "doc_type", "effective_at" DESC, "created_at" DESC`,
+    );
+    if (!materialDocs.length) {
+      return { reconsent_required: false, pending_documents: [] };
+    }
+
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const userConsents = await prisma.$queryRawUnsafe<Array<any>>(
+      `SELECT "consent_type", "document_version", "document_hash"
+       FROM "gov_consent_ledger"
+       WHERE "granted" = true AND ("user_id" = $1 OR ($2 <> '' AND LOWER("email") = $2))`,
+      String(userId),
+      normalizedEmail,
+    );
+
+    const pendingDocuments: PendingReconsentDocument[] = [];
+    for (const doc of materialDocs) {
+      const docType = String(doc.doc_type || '').trim().toUpperCase();
+      const docVersion = String(doc.version || '').trim();
+      const docHash = String(doc.content_hash || '').trim();
+      const acceptedAliases = CONSENT_TYPE_ALIASES[docType] ?? [docType];
+
+      const hasValidConsent = userConsents.some((consent) => {
+        const cType = String(consent.consent_type || '').trim().toUpperCase();
+        const cVer = String(consent.document_version || '').trim();
+        const cHash = String(consent.document_hash || '').trim();
+        if (!acceptedAliases.includes(cType)) return false;
+        if (cVer !== docVersion) return false;
+        if (docHash && cHash && cHash !== docHash) return false;
+        return true;
+      });
+
+      if (!hasValidConsent) {
+        pendingDocuments.push({
+          id: String(doc.id),
+          doc_type: docType,
+          version: docVersion,
+          title: String(doc.title || docType),
+          summary_of_changes: String(doc.summary_of_changes || ''),
+          content_hash: docHash,
+          effective_at: doc.effective_at ? new Date(doc.effective_at).toISOString() : new Date().toISOString(),
+        });
+      }
+    }
+
+    return {
+      reconsent_required: pendingDocuments.length > 0,
+      pending_documents: pendingDocuments,
+    };
+  } catch {
+    return { reconsent_required: false, pending_documents: [] };
+  }
 }
 
 export const ROPA_RECORDS = [
@@ -230,6 +329,86 @@ export const ROPA_RECORDS = [
     deletion_method: 'Arsip terkunci sesuai masa retensi wajib, lalu pemusnahan aman',
     security_measures: 'Multi-tenant isolation, SoD Maker-Checker, Cache-Control no-store, backup terenkripsi',
     owner_role: 'Company Admin & Finance',
+  },
+  {
+    id: 'ROPA-03',
+    activity_name: 'Asisten AI (Marbot) & Knowledge Engine',
+    controller: 'Perusahaan Tenant (Pengendali) & PT Arsalynk Teknologi Indonesia (Pengelola Platform)',
+    dpo_contact: 'privacy@arsalynk.com',
+    purpose: 'Membantu pencarian informasi operasional, ringkasan tugas/proyek, dan otomasi alur kerja internal berbasis peran (RBAC).',
+    legal_basis: 'Pelaksanaan Perjanjian Layanan & Kepentingan yang Sah dengan Pembatasan Akses (UU PDP Pasal 20)',
+    data_subject_categories: 'Karyawan, Staff, Supervisor, Project Manager, Admin Perusahaan',
+    personal_data_categories: 'Identitas pengguna (user_id, peran, company_id), riwayat prompt/percakapan operasional, konteks tugas terkait',
+    recipients: 'Pengguna terautentikasi sesuai RBAC & penyedia model AI (bila runtime eksternal/LLM diaktifkan)',
+    cross_border_transfer: 'Bila menggunakan penyedia LLM eksternal di luar Indonesia, tunduk pada klausul DPA dan evaluasi Pasal 56 UU PDP',
+    retention_period: 'Riwayat percakapan & log interaksi AI disimpan maksimal 1 tahun (log audit keamanan 5 tahun)',
+    deletion_method: 'Purge otomatis terjadwal & anonimisasi identifier pengguna pada log analitik',
+    security_measures: 'Validasi scope RBAC per tenant/company, HMAC signature internal, enkripsi TLS, pembatasan read-only view DB',
+    owner_role: 'Engineering Lead & DPO',
+  },
+  {
+    id: 'ROPA-04',
+    activity_name: 'Integrasi WhatsApp CRM & Komunikasi Pelanggan',
+    controller: 'Perusahaan Tenant (Pengendali) & PT Arsalynk Teknologi Indonesia (Prosesor)',
+    dpo_contact: 'privacy@arsalynk.com',
+    purpose: 'Pencatatan lead otomatis, korespondensi layanan pelanggan, dan sinkronisasi percakapan ke pipeline CRM perusahaan.',
+    legal_basis: 'Pelaksanaan Perjanjian/Pra-Kontrak Komersial & Persetujuan Komunikasi (UU PDP Pasal 20)',
+    data_subject_categories: 'Prospek/Leads, PIC Pelanggan, Kontak Bisnis Eksternal',
+    personal_data_categories: 'Nama kontak, nomor WhatsApp/telepon, isi pesan inbound/outbound, metadata webhook, status tiket',
+    recipients: 'Tim Sales, CRM Lead, & Admin Perusahaan Tenant terkait',
+    cross_border_transfer: 'Melalui infrastruktur gateway WhatsApp/Meta sesuai perjanjian pemrosesan data (DPA) tenant',
+    retention_period: 'Selama relasi bisnis/lead aktif + 3 tahun setelah interaksi terakhir (kecuali diminta hapus melalui DSR)',
+    deletion_method: 'Penghapusan/anonimisasi kontak dan arsip pesan pada database tenant',
+    security_measures: 'Verifikasi HMAC webhook, enkripsi AES-256-GCM signing secret, isolasi company_id, audit trail',
+    owner_role: 'CRM Lead & Company Admin',
+  },
+  {
+    id: 'ROPA-05',
+    activity_name: 'Procurement & Pengelolaan Vendor / Pemasok',
+    controller: 'Perusahaan Tenant (Pengendali)',
+    dpo_contact: 'privacy@arsalynk.com',
+    purpose: 'Registrasi pemasok, pembuatan Purchase Order (PO), verifikasi penerimaan barang/jasa, dan pembayaran vendor.',
+    legal_basis: 'Pelaksanaan Kontrak Pengadaan & Kewajiban Hukum Perpajakan/Audit (UU PDP Pasal 20 & UU KUP)',
+    data_subject_categories: 'PIC Vendor/Supplier, Pemilik Usaha Perorangan, Karyawan Bagian Pengadaan',
+    personal_data_categories: 'Nama PIC vendor, email, nomor telepon, alamat usaha, NPWP, nomor rekening bank pembayaran',
+    recipients: 'Tim Procurement, Finance, Operational Manager, Auditor Internal',
+    cross_border_transfer: 'Tidak dilakukan (pemrosesan terisolasi pada server aplikasi & database perusahaan)',
+    retention_period: '10 tahun untuk dokumen PO, faktur vendor, dan bukti pembayaran sesuai kewajiban retensi fiskal',
+    deletion_method: 'Pengarsipan terkunci selama masa wajib pajak lalu penghapusan/penimpaan aman',
+    security_measures: 'Kontrol akses modul PROCUREMENT, SoD persetujuan PO-pembayaran, enkripsi database at-rest',
+    owner_role: 'Procurement & Finance Lead',
+  },
+  {
+    id: 'ROPA-06',
+    activity_name: 'Inventory, Gudang & Pengelolaan Aset Tetap (Custodian)',
+    controller: 'Perusahaan Tenant (Pengendali)',
+    dpo_contact: 'privacy@arsalynk.com',
+    purpose: 'Pelacakan mutasi stok, transfer antar gudang, reservasi material proyek, serta pencatatan pemegang aset (custodian).',
+    legal_basis: 'Pelaksanaan Perjanjian Kerja & Pengawasan Aset Perusahaan (UU PDP Pasal 20)',
+    data_subject_categories: 'Karyawan Pemegang Aset (Custodian), Petugas Gudang, PIC Proyek',
+    personal_data_categories: 'Nama karyawan custodian, ID pengguna, departemen, lokasi penugasan, riwayat serah terima aset',
+    recipients: 'Tim Inventory/Gudang, Project Manager, Asset & Finance Controller',
+    cross_border_transfer: 'Tidak dilakukan',
+    retention_period: 'Selama aset aktif digunakan + 5 tahun setelah penghapusan buku (disposal) aset untuk audit',
+    deletion_method: 'Anonimisasi identitas custodian pada catatan historis aset setelah masa retensi berakhir',
+    security_measures: 'Kontrol akses modul INVENTORY/ASSETS, ledger mutasi idempoten, audit log serah terima',
+    owner_role: 'Warehouse / Asset Lead & Company Admin',
+  },
+  {
+    id: 'ROPA-07',
+    activity_name: 'Pengelolaan Persetujuan (Consent Ledger) & Hak Subjek Data (DSR)',
+    controller: 'PT Arsalynk Teknologi Indonesia',
+    dpo_contact: 'privacy@arsalynk.com',
+    purpose: 'Pencatatan bukti persetujuan UU PDP Pasal 20 serta pemenuhan permintaan akses, koreksi, salinan, dan penghapusan data (SLA 3×24 jam).',
+    legal_basis: 'Pemenuhan Kewajiban Hukum Pengendali Data Pribadi (UU PDP Pasal 20, 21, 30-35 & PP 33/2026)',
+    data_subject_categories: 'Seluruh Pengguna Platform, Admin Tenant, dan Pemohon Publik DSR',
+    personal_data_categories: 'User ID, email pemohon, jenis/status persetujuan, versi & hash dokumen legal, IP address, user-agent, rincian tiket DSR',
+    recipients: 'Data Protection Officer (DPO), Super Admin, Company Admin berwenang',
+    cross_border_transfer: 'Tidak dilakukan',
+    retention_period: '5 tahun sejak penutupan tiket DSR atau pencabutan persetujuan sebagai bukti kepatuhan hukum',
+    deletion_method: 'Penghapusan aman atau anonimisasi permanen setelah masa pembuktian kepatuhan berakhir',
+    security_measures: 'Append-only ledger dengan SHA-256 document hash, SLA tracking 72 jam, RBAC Admin/DPO, no-store headers',
+    owner_role: 'Data Protection Officer (DPO)',
   },
 ];
 
@@ -428,6 +607,139 @@ governanceRouter.patch('/dsr/:id', requireCompanyAdmin, async (req: Request, res
       req.params.id,
     );
     res.json({ success: true, id: req.params.id, status: nextStatus });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// --- AUTHENTICATED USER SELF-SERVICE DSR & CONSENT PORTAL ---
+governanceRouter.get('/my/data-export', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await ensureGovernanceTables();
+    const userId = String(req.user!.id);
+    const userEmail = String(req.user!.email || '').trim().toLowerCase();
+
+    const [profile, consents, dsrRequests] = await Promise.all([
+      prisma.iam_user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          username: true,
+          email: true,
+          full_name: true,
+          job_title: true,
+          status: true,
+          is_active: true,
+          date_joined: true,
+          last_login_at: true,
+        },
+      }),
+      prisma.$queryRawUnsafe<Array<any>>(
+        `SELECT "id", "consent_type", "document_version", "document_hash", "granted", "created_at"
+         FROM "gov_consent_ledger"
+         WHERE "user_id" = $1 OR ($2 <> '' AND LOWER("email") = $2)
+         ORDER BY "created_at" DESC LIMIT 200`,
+        userId,
+        userEmail,
+      ),
+      prisma.$queryRawUnsafe<Array<any>>(
+        `SELECT "id", "ticket_number", "request_type", "description", "status", "due_at", "resolution_note", "resolved_at", "created_at"
+         FROM "gov_dsr_request"
+         WHERE "user_id" = $1 OR ($2 <> '' AND LOWER("requester_email") = $2)
+         ORDER BY "created_at" DESC LIMIT 100`,
+        userId,
+        userEmail,
+      ),
+    ]);
+
+    res.json({
+      success: true,
+      exported_at: new Date().toISOString(),
+      legal_basis: 'UU No. 27 Tahun 2022 (UU PDP) Pasal 5 & Pasal 13',
+      profile,
+      consents,
+      dsr_requests: dsrRequests,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+governanceRouter.get('/my/consents', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await ensureGovernanceTables();
+    const userId = String(req.user!.id);
+    const userEmail = String(req.user!.email || '').trim().toLowerCase();
+    const rows = await prisma.$queryRawUnsafe<Array<any>>(
+      `SELECT "id", "consent_type", "document_version", "document_hash", "granted", "created_at"
+       FROM "gov_consent_ledger"
+       WHERE "user_id" = $1 OR ($2 <> '' AND LOWER("email") = $2)
+       ORDER BY "created_at" DESC LIMIT 100`,
+      userId,
+      userEmail,
+    );
+    const latestMarketing = rows.find((r) => String(r.consent_type || '').toUpperCase() === 'MARKETING');
+    res.json({
+      success: true,
+      marketing_granted: Boolean(latestMarketing?.granted),
+      results: rows,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+governanceRouter.post('/my/consents/withdraw', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await ensureGovernanceTables();
+    const userId = String(req.user!.id);
+    const userEmail = String(req.user!.email || '').trim().toLowerCase();
+    const consentType = String(req.body?.consent_type || 'MARKETING').trim().toUpperCase();
+    if (consentType !== 'MARKETING') {
+      throw new ValidationError('Hanya persetujuan opsional (MARKETING) yang dapat dicabut langsung tanpa menonaktifkan kontrak layanan.');
+    }
+    const id = crypto.randomUUID();
+    const ip = String(req.ip || req.socket?.remoteAddress || '').slice(0, 128);
+    const ua = String(req.headers['user-agent'] || '').slice(0, 255);
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO "gov_consent_ledger" ("id", "user_id", "email", "consent_type", "document_version", "document_hash", "granted", "ip_address", "user_agent")
+       VALUES ($1, $2, $3, $4, '1.0', '', false, $5, $6)`,
+      id,
+      userId,
+      userEmail,
+      consentType,
+      ip,
+      ua,
+    );
+    res.status(201).json({ success: true, id, consent_type: consentType, granted: false });
+  } catch (err) {
+    next(err);
+  }
+});
+
+governanceRouter.get('/my/dsr', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await ensureGovernanceTables();
+    const userId = String(req.user!.id);
+    const userEmail = String(req.user!.email || '').trim().toLowerCase();
+    const rows = await prisma.$queryRawUnsafe<Array<any>>(
+      `SELECT * FROM "gov_dsr_request"
+       WHERE "user_id" = $1 OR ($2 <> '' AND LOWER("requester_email") = $2)
+       ORDER BY "created_at" DESC LIMIT 50`,
+      userId,
+      userEmail,
+    );
+    const now = Date.now();
+    const enriched = rows.map((row) => {
+      const dueMs = new Date(row.due_at).getTime();
+      const hoursRemaining = Math.round(((dueMs - now) / (60 * 60 * 1000)) * 10) / 10;
+      return {
+        ...row,
+        hours_remaining: hoursRemaining,
+        sla_breached: row.status !== 'COMPLETED' && hoursRemaining < 0,
+      };
+    });
+    res.json({ success: true, results: enriched });
   } catch (err) {
     next(err);
   }

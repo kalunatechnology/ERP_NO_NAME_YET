@@ -10,7 +10,7 @@ import React, {
   createContext, useContext, useEffect, useReducer, useCallback, useRef, ReactNode,
 } from "react";
 import {
-  changeActiveRole, loginUser, logoutUser, getMyProfile, getCompanies, UserProfile,
+  changeActiveRole, loginUser, logoutUser, getMyProfile, getCompanies, UserProfile, LoginPayload,
 } from "@/lib/api/auth.api";
 import { normalizeRoleCode } from "@/lib/access/module-contract";
 
@@ -258,7 +258,8 @@ export interface AuthContextValue extends AuthState {
   departmentName: string | null;
   canApproveDivisionScope: boolean;
   canOverrideBudget: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<LoginPayload>;
+  completeAuthenticatedSession: (authenticatedUser?: UserProfile) => Promise<UserProfile>;
   logout: () => Promise<void>;
   setCompany: (id: string | null) => void;
   refreshProfile: () => Promise<void>;
@@ -479,8 +480,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("focus", handleFocus);
   }, [refreshProfile, state.isAuthenticated]);
 
+  const completeAuthenticatedSession = useCallback(async (authenticatedUser?: UserProfile): Promise<UserProfile> => {
+    const user = authenticatedUser || await getMyProfile();
+    const isAdmin = checkIsAdmin(user);
+    const userRole = detectRole(user);
+    const activeCompany = user.company_id || user?.roles?.[0]?.company_id || null;
+
+    if (activeCompany) {
+      localStorage.setItem("erp.company", String(activeCompany));
+      localStorage.setItem("active_company_id", String(activeCompany));
+    }
+
+    dispatch({ type: "LOGIN_SUCCESS", user, company: activeCompany ? String(activeCompany) : null, companies: assignedCompanyItems(user), isAdmin, userRole });
+    lastProfileRefreshAtRef.current = Date.now();
+
+    if (userRole === "super_admin") {
+      void getCompanies().then((compRes) => {
+        dispatch({ type: "SET_COMPANIES", companies: (compRes.rows || []).map((c: any) => ({
+          id: c.id,
+          name: c.legal_name || c.display_name || c.name || "Company",
+          code: c.company_code || c.code || "COMP",
+        })) });
+      }).catch(() => {});
+    }
+
+    return user;
+  }, []);
+
   /* Login */
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string): Promise<LoginPayload> => {
     dispatch({ type: "LOADING" });
     try {
       // Clear previous user's company cache
@@ -488,45 +516,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem("active_company_id");
 
       const authenticated = await loginUser(email, password);
-      
-      const savedToken = localStorage.getItem("erp.access") || localStorage.getItem("access_token");
-      if (savedToken) {
-        setAuthCookie(savedToken);
+      if (authenticated.status === "MFA_REQUIRED" || authenticated.status === "MFA_SETUP_REQUIRED") {
+        dispatch({ type: "LOGOUT" });
+        return authenticated;
       }
 
-      // The token endpoint already returns the canonical access context. A
-      // profile fallback remains only for compatibility with an older backend.
-      const user = authenticated.user || await getMyProfile();
-
-      const isAdmin = checkIsAdmin(user);
-      const userRole = detectRole(user);
-
-      // Langsung ambil dari relasi foreign key user_role yang dikirim backend
-      const activeCompany = user.company_id || user?.roles?.[0]?.company_id || null;
-
-      if (activeCompany) {
-        localStorage.setItem("erp.company", String(activeCompany));
-        localStorage.setItem("active_company_id", String(activeCompany));
-      }
-
-      dispatch({ type: "LOGIN_SUCCESS", user, company: activeCompany ? String(activeCompany) : null, companies: assignedCompanyItems(user), isAdmin, userRole });
-      lastProfileRefreshAtRef.current = Date.now();
-
-      if (userRole === "super_admin") {
-        void getCompanies().then((compRes) => {
-          dispatch({ type: "SET_COMPANIES", companies: (compRes.rows || []).map((c: any) => ({
-            id: c.id,
-            name: c.legal_name || c.display_name || c.name || "Company",
-            code: c.company_code || c.code || "COMP",
-          })) });
-        }).catch(() => {});
-      }
+      await completeAuthenticatedSession(authenticated.user);
+      return authenticated;
     } catch (err: any) {
       const msg = err.response?.data?.detail || err.message || "Gagal masuk sistem";
       dispatch({ type: "ERROR", message: msg });
       throw err;
     }
-  }, []);
+  }, [completeAuthenticatedSession]);
 
   /* Logout */
   const logout = useCallback(async () => {
@@ -564,6 +566,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         canApproveDivisionScope,
         canOverrideBudget,
         login,
+        completeAuthenticatedSession,
         logout,
         setCompany,
         refreshProfile,

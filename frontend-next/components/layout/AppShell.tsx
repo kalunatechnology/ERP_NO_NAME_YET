@@ -8,14 +8,17 @@
 "use client";
 
 import { useEffect, ReactNode, useState, useCallback } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import api from "@/lib/api/axios";
+import toast from "react-hot-toast";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { RightPanel } from "@/components/ui/RightPanel";
 import { AccessDeniedState } from "@/components/ui/AccessDeniedState";
 import { ChatbotDrawer } from "@/components/chatbot/ChatbotDrawer";
-import { LogIn, PanelRightOpen } from "lucide-react";
+import { LogIn, PanelRightOpen, ShieldAlert } from "lucide-react";
 import { canAccessRoute, getRouteAccessContract } from "@/lib/access/module-contract";
 
 interface AppShellProps {
@@ -30,8 +33,10 @@ interface AppShellProps {
  * Side effects: updates the local React/browser state or invokes callbacks visible below.
  */
 export function AppShell({ children }: AppShellProps) {
-  const { user, company, userRole, isLoading, isAuthenticated } = useAuth();
+  const { user, company, userRole, isLoading, isAuthenticated, refreshProfile, logout } = useAuth();
   const pathname = usePathname();
+  const [reconsentChecked, setReconsentChecked] = useState(false);
+  const [reconsentSubmitting, setReconsentSubmitting] = useState(false);
 
   // Dock only when there is room for both navigation and the workspace.
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
@@ -275,6 +280,111 @@ export function AppShell({ children }: AppShellProps) {
           authorityKey: JSON.stringify([company, user?.active_role_code, user?.enabled_modules]),
         }}
       />
+
+      {/* ── Blocking Material Legal Document Re-Consent Modal (UU PDP) ── */}
+      {isAuthenticated && user?.reconsent_required && (user?.reconsent_documents?.length ?? 0) > 0 && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/65 backdrop-blur-xs p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reconsent-modal-title"
+        >
+          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+                <ShieldAlert size={20} />
+              </div>
+              <div>
+                <h2 id="reconsent-modal-title" className="text-base font-bold text-[#163D64]">
+                  Pembaruan Dokumen Legal Memerlukan Persetujuan Ulang
+                </h2>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  Terdapat perubahan material pada dokumen legal berikut. Anda wajib menyetujui versi terbaru sebelum melanjutkan transaksi di aplikasi.
+                </p>
+              </div>
+            </div>
+
+            <div className="max-h-60 overflow-y-auto space-y-2.5">
+              {(user.reconsent_documents ?? []).map((doc) => {
+                const href =
+                  doc.doc_type === "PRIVACY_POLICY"
+                    ? "/privacy-policy"
+                    : doc.doc_type === "TERMS"
+                      ? "/terms"
+                      : "/cookie-policy";
+                return (
+                  <div key={doc.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-bold text-slate-900">
+                        {doc.title} <span className="font-mono text-[#0876CD]">(v{doc.version})</span>
+                      </span>
+                      <Link href={href} target="_blank" className="font-semibold text-[#0876CD] hover:underline shrink-0">
+                        Baca Dokumen
+                      </Link>
+                    </div>
+                    {doc.summary_of_changes && (
+                      <p className="text-slate-600 leading-relaxed">{doc.summary_of_changes}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <label className="flex items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs text-slate-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={reconsentChecked}
+                onChange={(e) => setReconsentChecked(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#0876CD]"
+              />
+              <span>
+                Saya telah membaca dan menyetujui seluruh pembaruan dokumen legal di atas sesuai ketentuan UU PDP.
+              </span>
+            </label>
+
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => void logout()}
+                disabled={reconsentSubmitting}
+                className="h-10 px-4 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Keluar
+              </button>
+              <button
+                type="button"
+                disabled={!reconsentChecked || reconsentSubmitting}
+                onClick={async () => {
+                  if (!user?.email || !user.reconsent_documents?.length) return;
+                  setReconsentSubmitting(true);
+                  try {
+                    await api.post("/api/v1/governance/public/consent", {
+                      email: user.email,
+                      consents: user.reconsent_documents.map((doc) => ({
+                        user_id: String(user.id),
+                        consent_type: doc.doc_type === "PRIVACY_POLICY" ? "PRIVACY_NOTICE" : doc.doc_type,
+                        document_version: doc.version,
+                        document_hash: doc.content_hash || "",
+                        granted: true,
+                      })),
+                    });
+                    await refreshProfile();
+                    setReconsentChecked(false);
+                    toast.success("Persetujuan dokumen legal terbaru berhasil disimpan.");
+                  } catch (err: unknown) {
+                    toast.error(err instanceof Error ? err.message : "Gagal menyimpan persetujuan ulang.");
+                  } finally {
+                    setReconsentSubmitting(false);
+                  }
+                }}
+                className="h-10 px-5 rounded-xl bg-[#0876CD] hover:bg-[#163D64] text-xs font-semibold text-white disabled:opacity-50 cursor-pointer"
+              >
+                {reconsentSubmitting ? "Menyimpan..." : "Setujui & Lanjutkan"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
