@@ -10,6 +10,7 @@ const ROLE_NAVIGATION: Record<string, readonly NavigationEntry[]> = {
   [ROLE_CODES.superAdmin]: [
     { href: "/dashboard", label: "Governance Dashboard" },
     { href: "/administration", label: "Company & Access" },
+    { href: "/administration/governance", label: "Governance & Kepatuhan" },
     { href: "/reporting", label: "Global Reports" },
     { href: "/resources", label: "Data Explorer" },
   ],
@@ -17,6 +18,7 @@ const ROLE_NAVIGATION: Record<string, readonly NavigationEntry[]> = {
     { href: "/dashboard", label: "Company Dashboard" },
     { href: "/requests", label: "HRMS (Meeting, Lembur & Request)" },
     { href: "/administration", label: "User & Access" },
+    { href: "/administration/governance", label: "Governance & Kepatuhan" },
     { href: "/reporting", label: "Reports" },
     { href: "/resources", label: "Data Explorer" },
   ],
