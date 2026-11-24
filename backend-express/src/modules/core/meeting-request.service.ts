@@ -475,9 +475,9 @@ export class MeetingRequestService {
   }
 
   /** Remove a meeting from active lists while preserving its minutes and task links. */
-  static async deleteMeeting(meetingId: string, companyId: string, userId: string, activeRole: string) {
-    if (!canDeleteMeetingAsRole(activeRole)) {
-      throw new ForbiddenError('Hanya PM atau Executive yang dapat menghapus meeting.');
+  static async deleteMeeting(meetingId: string, companyId: string, userId: string, activeRole: string, allowHrManager = false) {
+    if (!allowHrManager && !canDeleteMeetingAsRole(activeRole)) {
+      throw new ForbiddenError('Hanya PM, Executive, atau HR Tier 1/2 yang dapat menghapus meeting.');
     }
     await prisma.$transaction(async tx => {
       const meeting = await tx.request_meeting.findFirst({ where: { id: meetingId, company_id: companyId, status: { not: 'CANCELLED' } } });

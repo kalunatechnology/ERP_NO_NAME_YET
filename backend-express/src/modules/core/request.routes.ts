@@ -145,6 +145,24 @@ requestRouter.post('/meetings', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+function canManageMeetingByRole(req: Request): boolean {
+  const roles = req.user?.roles ?? [];
+  const activeRole = req.user?.active_role_code;
+  const isPmOrExec =
+    roles.includes(RoleCode.SUPER_ADMIN)
+    || roles.includes(RoleCode.PROJECT_MANAGER)
+    || roles.includes(RoleCode.DIRECTOR)
+    || activeRole === RoleCode.PROJECT_MANAGER
+    || activeRole === RoleCode.DIRECTOR;
+  if (isPmOrExec) return true;
+  return ((req.user as any)?.module_assignments ?? []).some(
+    (a: any) =>
+      ['HR', 'HRMS', 'REQUESTS'].includes(String(a.module_code || '').toUpperCase())
+      && String(a.status || '').toUpperCase() === 'ACTIVE'
+      && Number(a.tier_level ?? 3) <= 2,
+  );
+}
+
 requestRouter.patch('/meetings/:meetingId', async (req, res, next) => {
   try {
     const companyId = activeCompanyId(req);
@@ -160,22 +178,8 @@ requestRouter.patch('/meetings/:meetingId', async (req, res, next) => {
         })
       : null;
 
-    const roles = req.user?.roles ?? [];
-    const activeRole = req.user?.active_role_code;
-    const isPmOrExec =
-      roles.includes(RoleCode.SUPER_ADMIN)
-      || roles.includes(RoleCode.PROJECT_MANAGER)
-      || roles.includes(RoleCode.DIRECTOR)
-      || activeRole === RoleCode.PROJECT_MANAGER
-      || activeRole === RoleCode.DIRECTOR;
-    const isHrManager = ((req.user as any)?.module_assignments ?? []).some(
-      (a: any) =>
-        ['HR', 'HRMS', 'REQUESTS'].includes(String(a.module_code || '').toUpperCase())
-        && String(a.status || '').toUpperCase() === 'ACTIVE'
-        && Number(a.tier_level ?? 3) <= 2,
-    );
     const isOrganizer = ticket?.requester_user_id === userId;
-    if (!isPmOrExec && !isHrManager && !isOrganizer) {
+    if (!canManageMeetingByRole(req) && !isOrganizer) {
       throw new ForbiddenError('Anda tidak memiliki izin untuk mengedit meeting ini.');
     }
 
@@ -216,20 +220,22 @@ requestRouter.patch('/meetings/:meetingId', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-requestRouter.delete('/meetings/:meetingId', requireActiveRole(RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR), async (req, res, next) => {
+requestRouter.delete('/meetings/:meetingId', async (req, res, next) => {
   try {
-    await MeetingRequestService.deleteMeeting(req.params.meetingId, activeCompanyId(req), activeUserId(req), activeRoleCode(req));
+    const allowed = canManageMeetingByRole(req);
+    await MeetingRequestService.deleteMeeting(req.params.meetingId, activeCompanyId(req), activeUserId(req), activeRoleCode(req), allowed);
     res.status(204).send();
   } catch (error) { next(error); }
 });
 
 // The dashboard request card uses the ticket ID rather than the meeting ID.
-requestRouter.delete('/:id', requireActiveRole(RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR), async (req, res, next) => {
+requestRouter.delete('/:id', async (req, res, next) => {
   try {
     const companyId = activeCompanyId(req);
     const meeting = await prisma.request_meeting.findFirst({ where: { request_id: req.params.id, company_id: companyId, status: { not: 'CANCELLED' } } });
     if (!meeting) throw new NotFoundError('Meeting Request');
-    await MeetingRequestService.deleteMeeting(meeting.id, companyId, activeUserId(req), activeRoleCode(req));
+    const allowed = canManageMeetingByRole(req);
+    await MeetingRequestService.deleteMeeting(meeting.id, companyId, activeUserId(req), activeRoleCode(req), allowed);
     res.status(204).send();
   } catch (error) { next(error); }
 });
