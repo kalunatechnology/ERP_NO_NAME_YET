@@ -43,6 +43,26 @@ type LoginAccessSnapshot = {
   project_delegated: boolean;
 };
 
+const IAM_USER_CORE_SELECT = {
+  id: true,
+  tenant_id: true,
+  username: true,
+  email: true,
+  password_hash: true,
+  full_name: true,
+  status: true,
+  last_login_at: true,
+  is_staff: true,
+  is_superuser: true,
+  is_active: true,
+  date_joined: true,
+  active_role_id: true,
+  department_id: true,
+  role_level: true,
+  reports_to_user_id: true,
+  job_title: true,
+} as const;
+
 export class AccountsService {
 /**
  * login implements a named method within this file's domain service boundary.
@@ -71,6 +91,7 @@ export class AccountsService {
           { username: cleanId },
         ],
       },
+      select: IAM_USER_CORE_SELECT,
     });
     // Compatibility fallback for legacy rows created before identifier
     // normalization was enforced.
@@ -82,6 +103,7 @@ export class AccountsService {
             { username: { equals: cleanId, mode: 'insensitive' } },
           ],
         },
+        select: IAM_USER_CORE_SELECT,
       });
     }
     const lookupMs = performance.now() - lookupStartedAt;
@@ -289,6 +311,7 @@ export class AccountsService {
 
     const user = await prisma.iam_user.findUnique({
       where: { id: payload.userId },
+      select: IAM_USER_CORE_SELECT,
     });
     if (!user || !user.is_active) {
       throw new UnauthorizedError('Akun pengguna tidak aktif.');
@@ -327,7 +350,7 @@ export class AccountsService {
  */
   static async getCurrentUser(userId: string) {
     const [user, userRoles, membership, companyRows] = await Promise.all([
-      prisma.iam_user.findUnique({ where: { id: userId } }),
+      prisma.iam_user.findUnique({ where: { id: userId }, select: IAM_USER_CORE_SELECT }),
       prisma.iam_user_role.findMany({ where: { user_id: userId } }),
       prisma.iam_user_company_membership.findUnique({ where: { user_id: userId } }),
       prisma.$queryRaw<Array<{ id: string; legal_name: string; company_code: string }>>(Prisma.sql`

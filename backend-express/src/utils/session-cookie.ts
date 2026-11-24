@@ -38,9 +38,26 @@ function cookieDomainOption(): { domain?: string } {
   return domain ? { domain } : {};
 }
 
+function resolveSameSitePolicy(req: Request, secure: boolean): 'lax' | 'none' {
+  const origin = String(req.headers.origin || '').trim().toLowerCase();
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0]?.trim().toLowerCase();
+  if (secure && origin) {
+    try {
+      const originHost = new URL(origin).hostname.toLowerCase();
+      const reqHost = host.split(':')[0];
+      if (originHost && reqHost && originHost !== reqHost) {
+        return 'none';
+      }
+    } catch {
+      return 'none';
+    }
+  }
+  return 'lax';
+}
+
 /**
- * Issues HttpOnly, SameSite=Lax (and Secure in HTTPS/production) session cookies
- * so JWT credentials are protected from XSS document.cookie access.
+ * Issues HttpOnly, SameSite=Lax (or SameSite=None; Secure for cross-site HTTPS)
+ * session cookies so JWT credentials are protected from XSS document.cookie access.
  */
 export function setSessionCookies(
   req: Request,
@@ -48,13 +65,14 @@ export function setSessionCookies(
   tokens: { access?: string; refresh?: string },
 ): void {
   const secure = isHttpsRequest(req);
+  const sameSite = resolveSameSitePolicy(req, secure);
   const domainOpt = cookieDomainOption();
 
   if (tokens.access) {
     res.cookie(ACCESS_COOKIE_NAME, tokens.access, {
       httpOnly: true,
       secure,
-      sameSite: 'lax',
+      sameSite,
       path: '/',
       maxAge: 24 * 60 * 60 * 1000,
       ...domainOpt,
@@ -65,7 +83,7 @@ export function setSessionCookies(
     res.cookie(REFRESH_COOKIE_NAME, tokens.refresh, {
       httpOnly: true,
       secure,
-      sameSite: 'lax',
+      sameSite,
       path: '/api/v1/auth',
       maxAge: 7 * 24 * 60 * 60 * 1000,
       ...domainOpt,
@@ -76,18 +94,19 @@ export function setSessionCookies(
 /** Clears HttpOnly session cookies on logout or invalidation. */
 export function clearSessionCookies(req: Request, res: Response): void {
   const secure = isHttpsRequest(req);
+  const sameSite = resolveSameSitePolicy(req, secure);
   const domainOpt = cookieDomainOption();
   res.clearCookie(ACCESS_COOKIE_NAME, {
     httpOnly: true,
     secure,
-    sameSite: 'lax',
+    sameSite,
     path: '/',
     ...domainOpt,
   });
   res.clearCookie(REFRESH_COOKIE_NAME, {
     httpOnly: true,
     secure,
-    sameSite: 'lax',
+    sameSite,
     path: '/api/v1/auth',
     ...domainOpt,
   });
