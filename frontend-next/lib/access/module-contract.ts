@@ -141,11 +141,17 @@ export function canAccessRoute(input: {
   const bypassesModule = Boolean(contract.moduleBypassRoles?.includes(activeRole));
   if (!bypassesModule && !hasModuleEntitlement(input.enabledModules, contract.module)) return false;
 
-  const moduleAccessMode = input.moduleAccessModes?.find((item) =>
-    String(item.module_code || "").toUpperCase() === contract.module
+  const candidateModules = contract.module
+    ? (MODULE_ASSIGNMENT_ALIASES[contract.module] ?? [contract.module])
+    : [];
+  const moduleAccessMode = (
+    input.moduleAccessModes?.find((item) =>
+      String(item.module_code || "").toUpperCase() === contract.module
+    ) ?? input.moduleAccessModes?.find((item) =>
+      candidateModules.includes(String(item.module_code || "").toUpperCase() as ModuleCode)
+    )
   )?.access_mode?.toUpperCase();
   if (moduleAccessMode === "ASSIGNMENT" && contract.module) {
-    const candidateModules = MODULE_ASSIGNMENT_ALIASES[contract.module] ?? [contract.module];
     const assignments = (input.moduleAssignments ?? []).filter((assignment) =>
       candidateModules.some((mod) => isUsableModuleAssignment(assignment, mod))
     );
@@ -155,7 +161,7 @@ export function canAccessRoute(input: {
     );
     if (String(readOverride?.effect || "").toUpperCase() === "DENY") return false;
     // Seluruh user perusahaan otomatis memiliki akses Self-Service pada modul HR (Meeting, Lembur/Request, Slip Gaji pribadi)
-    if (!assignments.length && contract.module === "HR") return true;
+    if (contract.module === "HR") return true;
     if (!assignments.length) return false;
     const hasRead = assignments.some((assignment) => {
       if (typeof assignment.allow_read === "boolean") return assignment.allow_read;

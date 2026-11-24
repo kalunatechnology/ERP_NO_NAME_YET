@@ -495,16 +495,26 @@ export async function loadUserAccessContext(
 
   const combinedUserAndDeptOverrides = Array.from(mergedOverridesMap.values());
 
-  const enabledModules = moduleAccess
-    .map((item) => item.module_code.toUpperCase())
-    .filter((moduleCode) => moduleAccessModeByCode.get(moduleCode) === 'ASSIGNMENT'
-      || (overrideByModule.get(moduleCode)?.allow_read ?? true));
+  const enabledModulesSet = new Set(
+    moduleAccess
+      .map((item) => item.module_code.toUpperCase())
+      .filter((moduleCode) => moduleAccessModeByCode.get(moduleCode) === 'ASSIGNMENT'
+        || (overrideByModule.get(moduleCode)?.allow_read ?? true)),
+  );
+  if (enabledModulesSet.has('HRMS') || enabledModulesSet.has('REQUESTS')) {
+    enabledModulesSet.add('HR');
+  }
+  if (enabledModulesSet.has('HR')) {
+    enabledModulesSet.add('HRMS');
+  }
+  const enabledModules = Array.from(enabledModulesSet);
   const filteredDashboardWidgets = dashboardWidgets.filter((widgetCode) => {
     const requiredModule = DASHBOARD_WIDGET_CATALOG.find((widget) => widget.code === widgetCode)?.required_module;
     if (!requiredModule) return true;
     const normalizedModule = requiredModule.toUpperCase();
-    return enabledModules.includes(normalizedModule)
-      && moduleAssignments.some((assignment) => assignment.module_code === normalizedModule && assignment.status === 'ACTIVE');
+    const aliases = normalizedModule === 'HR' ? ['HR', 'HRMS', 'REQUESTS'] : [normalizedModule];
+    return aliases.some((code) => enabledModules.includes(code))
+      && moduleAssignments.some((assignment) => aliases.includes(assignment.module_code) && assignment.status === 'ACTIVE');
   });
   const projectDelegated = snapshot?.project_delegated
     ?? knownRows.projectDelegated
