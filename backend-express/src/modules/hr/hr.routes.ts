@@ -6,8 +6,8 @@ import { PayrollService } from '../finance/payroll.service';
 export const hrRouter = Router();
 export const hrFinanceRouter = Router();
 
-// --- TIER 3: Staff Biasa (Self-Service) ---
-hrRouter.post('/overtimes/my', requireModuleTier('HR', 3), async (req, res, next) => {
+// --- TIER 3 / SELF-SERVICE: Seluruh User Perusahaan (Meeting, Lembur/Request & Slip Gaji Pribadi) ---
+hrRouter.post('/overtimes/my', async (req, res, next) => {
   try {
     const data = await HrService.submitOvertime(req.companyId!, req.tenantId ?? null, req.user!.id, req.body);
     res.status(201).json({ success: true, data });
@@ -16,7 +16,7 @@ hrRouter.post('/overtimes/my', requireModuleTier('HR', 3), async (req, res, next
   }
 });
 
-hrRouter.get('/overtimes/my', requireModuleTier('HR', 3), async (req, res, next) => {
+hrRouter.get('/overtimes/my', async (req, res, next) => {
   try {
     const results = await HrService.listMyOvertimes(req.companyId!, req.user!.id);
     res.json({ success: true, results });
@@ -25,7 +25,7 @@ hrRouter.get('/overtimes/my', requireModuleTier('HR', 3), async (req, res, next)
   }
 });
 
-hrRouter.get('/payslips/my', requireModuleTier('HR', 3), async (req, res, next) => {
+hrRouter.get('/payslips/my', async (req, res, next) => {
   try {
     const results = await HrService.listMyPayslips(req.companyId!, req.user!.id);
     res.json({ success: true, results });
@@ -34,7 +34,7 @@ hrRouter.get('/payslips/my', requireModuleTier('HR', 3), async (req, res, next) 
   }
 });
 
-hrRouter.get('/meetings/my', requireModuleTier('HR', 3), async (req, res, next) => {
+hrRouter.get('/meetings/my', async (req, res, next) => {
   try {
     const results = await HrService.listMyMeetings(req.companyId!, req.user!.id);
     res.json({ success: true, results });

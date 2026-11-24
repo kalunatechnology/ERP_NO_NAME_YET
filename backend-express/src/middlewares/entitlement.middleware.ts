@@ -113,8 +113,12 @@ export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' =
         );
       }
 
+      const isHrSelfService =
+        normalizedModule === 'HR'
+        && /^\/(meetings\/my|overtimes\/my|payslips\/my)(\/|$)/i.test(req.path);
+
       const accessMode = String((access as any).access_mode || 'LEGACY').trim().toUpperCase();
-      if (accessMode === 'ASSIGNMENT') {
+      if (accessMode === 'ASSIGNMENT' && !isHrSelfService) {
         const assignments = (req.user.module_assignments ?? []).filter((assignment: any) =>
           candidateModules.some((candidate) => isUsableModuleAssignment(assignment, candidate))
         );

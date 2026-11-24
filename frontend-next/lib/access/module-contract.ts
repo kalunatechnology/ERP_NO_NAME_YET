@@ -145,19 +145,22 @@ export function canAccessRoute(input: {
     String(item.module_code || "").toUpperCase() === contract.module
   )?.access_mode?.toUpperCase();
   if (moduleAccessMode === "ASSIGNMENT" && contract.module) {
+    const candidateModules = MODULE_ASSIGNMENT_ALIASES[contract.module] ?? [contract.module];
     const assignments = (input.moduleAssignments ?? []).filter((assignment) =>
-      isUsableModuleAssignment(assignment, contract.module!)
+      candidateModules.some((mod) => isUsableModuleAssignment(assignment, mod))
     );
-    if (!assignments.length) return false;
     const readOverride = input.permissionOverrides?.find((item) =>
-      String(item.module_code || "").toUpperCase() === contract.module
+      candidateModules.includes(String(item.module_code || "").toUpperCase() as ModuleCode)
       && String(item.action_code || "").toUpperCase() === "READ"
     );
     if (String(readOverride?.effect || "").toUpperCase() === "DENY") return false;
+    // Seluruh user perusahaan otomatis memiliki akses Self-Service pada modul HR (Meeting, Lembur/Request, Slip Gaji pribadi)
+    if (!assignments.length && contract.module === "HR") return true;
+    if (!assignments.length) return false;
     const hasRead = assignments.some((assignment) => {
       if (typeof assignment.allow_read === "boolean") return assignment.allow_read;
       const codes = new Set((assignment.capability_codes || []).map((code: string) => String(code).toUpperCase()));
-      return codes.has("READ") || codes.has(`${contract.module}:READ`);
+      return codes.has("READ") || candidateModules.some((mod) => codes.has(`${mod}:READ`));
     });
     if (!hasRead && String(readOverride?.effect || "").toUpperCase() !== "ALLOW") return false;
     return true;
@@ -326,9 +329,12 @@ export function canRequestApi(url: string, access: FrontendAccessContext): boole
     ?? access.moduleAccessModes?.find((item) => candidateModules.includes(String(item.module_code || "").toUpperCase() as ModuleCode))
   )?.access_mode?.toUpperCase();
   if (!superAdmin && moduleAccessMode === "ASSIGNMENT" && contract.module) {
+    const isHrSelfServiceApi =
+      contract.module === "HR" && /\/api\/v1\/hr\/(meetings\/my|overtimes\/my|payslips\/my)/i.test(url);
     const assignments = (access.moduleAssignments ?? []).filter((assignment) =>
       candidateModules.some((mod) => isUsableModuleAssignment(assignment, mod))
     );
+    if (!assignments.length && isHrSelfServiceApi) return true;
     if (!assignments.length) return false;
     const permissionOverride = access.permissionOverrides?.find((item) =>
       candidateModules.includes(String(item.module_code || "").toUpperCase() as ModuleCode)
