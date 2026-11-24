@@ -273,6 +273,7 @@ const CONFIGURABLE_MODULES: Array<{
     description: "Laporan Analitik & Evaluasi Kinerja",
   },
   { code: "PROCUREMENT", label: "Procurement", description: "Pengadaan dan proses pembelian." },
+  { code: "HR", label: "HRMM & Payroll", description: "Meeting HR, lembur, payroll run, slip gaji & persetujuan SDM." },
   { code: "HRMS", label: "HRMS", description: "Cuti, lembur, rapat, dan data kepegawaian." },
   { code: "ASSETS", label: "Assets", description: "Pencatatan dan pengelolaan aset." },
   { code: "SALES", label: "Sales", description: "Fitur penjualan bila entitlement modul ini diaktifkan." },

@@ -1556,7 +1556,13 @@ export default function DashboardClient() {
                     <span>
                       {assignment.tier_level === 0
                         ? "GM Oversight"
-                        : `Level ${assignment.tier_level}${assignment.position_title ? ` (${assignment.position_title})` : ""}`}
+                        : `Level ${assignment.tier_level} (${
+                            Number(assignment.tier_level) === 1
+                              ? "Manager / Lead"
+                              : Number(assignment.tier_level) === 2
+                                ? "Supervisor / Staff"
+                                : "Staff Operasional"
+                          })`}
                     </span>
                   </span>
                 ),

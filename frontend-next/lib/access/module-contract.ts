@@ -115,6 +115,7 @@ export function hasModuleEntitlement(
   if (!module || isSuperAdmin) return true;
   const set = normalizeModuleCodes(enabledModules);
   if (set.has(module)) return true;
+  if (module === "HR" && set.has("HRMS")) return true;
   if (module === "REQUESTS" && set.has("HRMS")) return true;
   if (module === "SALES" && set.has("CRM")) return true;
   if (module === "ASSETS" && set.has("INVENTORY")) return true;
@@ -305,6 +306,7 @@ function isUsableModuleAssignment(
 }
 
 const MODULE_ASSIGNMENT_ALIASES: Partial<Record<ModuleCode, readonly ModuleCode[]>> = {
+  HR: ["HR", "HRMS"],
   SALES: ["SALES", "CRM"],
   REQUESTS: ["REQUESTS", "HRMS"],
   ASSETS: ["ASSETS", "INVENTORY"],

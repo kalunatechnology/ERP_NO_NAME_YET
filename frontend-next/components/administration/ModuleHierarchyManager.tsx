@@ -129,6 +129,7 @@ const HIERARCHY_MODULES = [
   "PROCUREMENT",
   "REPORTING",
   "REQUESTS",
+  "HR",
   "HRMS",
   "ASSETS",
   "MARBOT",

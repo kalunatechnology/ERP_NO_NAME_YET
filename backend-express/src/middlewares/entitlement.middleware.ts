@@ -21,6 +21,7 @@ import { hasModuleAssignmentCapability, isUsableModuleAssignment } from '../util
  * - Defaults to fail-closed if module access record does not exist or is disabled.
  */
 const MODULE_ENTITLEMENT_ALIASES: Record<string, string[]> = {
+  HR: ['HR', 'HRMS'],
   REQUESTS: ['REQUESTS', 'HRMS'],
   SALES: ['SALES', 'CRM'],
   ASSETS: ['ASSETS', 'INVENTORY'],

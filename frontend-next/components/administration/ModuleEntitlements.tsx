@@ -54,6 +54,7 @@ const VISIBLE_OFFICIAL_MODULES = new Set([
   "PROJECTS",
   "CRM",
   "INVENTORY",
+  "HR",
   "HRMS",
   "MARBOT",
 ]);
@@ -91,6 +92,12 @@ const MODULE_DEFINITIONS: Record<
     description: "Manajemen gudang, stok kanonis, transfer transit, opname, dan aset tetap",
     icon: Warehouse,
     category: "Operasional",
+  },
+  HR: {
+    name: "HRMM & Payroll",
+    description: "Meeting HR, lembur berjenjang, kalkulasi payroll, slip gaji, dan approval HR Lead",
+    icon: CheckCircle2,
+    category: "SDM & Workflow",
   },
   HRMS: {
     name: "HRMS (People, Meeting & Lembur)",

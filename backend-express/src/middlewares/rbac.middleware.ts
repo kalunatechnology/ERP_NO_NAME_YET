@@ -82,6 +82,7 @@ export function requireActiveRole(...allowedRoles: string[]) {
 }
 
 const MODULE_CAPABILITY_ALIASES: Record<string, string[]> = {
+  HR: ['HR', 'HRMS'],
   REQUESTS: ['REQUESTS', 'HRMS'],
   SALES: ['SALES', 'CRM'],
   ASSETS: ['ASSETS', 'INVENTORY'],
@@ -435,6 +436,7 @@ export function requireModuleCapability(moduleCode: string, capabilityCode: stri
 
 export function requireModuleTier(moduleCode: string, maxTierLevel: 1 | 2 | 3) {
   const normalizedModule = String(moduleCode || '').trim().toUpperCase();
+  const candidateModules = MODULE_CAPABILITY_ALIASES[normalizedModule] ?? [normalizedModule];
   return (req: Request, _res: Response, next: NextFunction): void => {
     if (!req.user) return next(new UnauthorizedError());
     if (isSuperAdmin(req.user.roles)) return next();
@@ -443,18 +445,21 @@ export function requireModuleTier(moduleCode: string, maxTierLevel: 1 | 2 | 3) {
     if (req.moduleAccess?.accessMode === 'ASSIGNMENT') {
       const capability = maxTierLevel === 1 ? 'MANAGE_USERS' : maxTierLevel === 2 ? 'APPROVE' : 'WRITE';
       const allowed = assignments.some((assignment) =>
-        isUsableModuleAssignment(assignment, normalizedModule)
-          && hasModuleAssignmentCapability(assignment, capability),
+        candidateModules.some((candidate) => isUsableModuleAssignment(assignment, candidate))
+          && (
+            (Number(assignment.tier_level) >= 0 && Number(assignment.tier_level) <= maxTierLevel)
+            || hasModuleAssignmentCapability(assignment, capability)
+          ),
       );
       return allowed
         ? next()
-        : next(new ForbiddenError(`Role profile ${normalizedModule} tidak memiliki capability ${capability}.`));
+        : next(new ForbiddenError(`Role profile ${normalizedModule} tidak memiliki akses Level ${maxTierLevel}.`));
     }
 
-    const match = assignments.find(
-      (a) => String(a.module_code || '').toUpperCase() === normalizedModule && a.status === 'ACTIVE'
+    const matches = assignments.filter(
+      (a) => candidateModules.includes(String(a.module_code || '').toUpperCase()) && a.status === 'ACTIVE',
     );
-    if (match && Number(match.tier_level) >= 0 && Number(match.tier_level) <= maxTierLevel) {
+    if (matches.some((m) => Number(m.tier_level) >= 0 && Number(m.tier_level) <= maxTierLevel)) {
       return next();
     }
 
