@@ -66,11 +66,21 @@ export class PayrollService {
     const userIds = [...new Set(rows.map((row) => row.user_id).filter((id): id is string => Boolean(id)))];
     const users = userIds.length ? await prisma.iam_user.findMany({ where: { id: { in: userIds } }, select: { id: true, full_name: true, email: true } }) : [];
     const userById = new Map(users.map((user) => [user.id, user]));
-    return rows.map((row) => ({
-      ...row,
-      employee_name: row.employee_name || partyById.get(row.party_id ?? '')?.display_name || partyById.get(row.party_id ?? '')?.legal_name || userById.get(row.user_id ?? '')?.full_name || '',
-      linked_user: row.user_id ? userById.get(row.user_id) ?? null : null,
-    }));
+    return rows.map((row) => {
+      const storedName = String(row.employee_name ?? '').trim();
+      const employeeName = storedName && storedName !== row.employee_number
+        ? storedName
+        : partyById.get(row.party_id ?? '')?.display_name
+          || partyById.get(row.party_id ?? '')?.legal_name
+          || userById.get(row.user_id ?? '')?.full_name
+          || userById.get(row.user_id ?? '')?.email
+          || storedName;
+      return {
+        ...row,
+        employee_name: employeeName,
+        linked_user: row.user_id ? userById.get(row.user_id) ?? null : null,
+      };
+    });
   }
 
   static async listUnlinkedEmployeeUsers(companyId: string) {

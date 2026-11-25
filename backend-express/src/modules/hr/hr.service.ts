@@ -219,10 +219,12 @@ export class HrService {
     return rows.map((row) => {
       const employee = empMap.get(row.employee_id);
       const project = row.project_id ? projectMap.get(row.project_id) : null;
+      const storedName = String(employee?.employee_name ?? '').trim();
+      const employeeName = storedName && storedName !== employee?.employee_number ? storedName : '';
       return {
         ...row,
         employee_number: employee?.employee_number ?? '',
-        employee_name: String(employee?.employee_name ?? '').trim()
+        employee_name: employeeName
           || partyById.get(employee?.party_id ?? '')?.display_name
           || partyById.get(employee?.party_id ?? '')?.legal_name
           || userById.get(row.user_id)?.full_name
