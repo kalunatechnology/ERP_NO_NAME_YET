@@ -47,7 +47,6 @@ export class EmployeeProvisioningService {
       userId,
       tenantId,
       companyId,
-      actorId,
     } = input;
 
     // =========================================================
@@ -263,60 +262,9 @@ export class EmployeeProvisioningService {
       }
     }
 
-    // =========================================================
-    // 6. CREATE EMPLOYEE
-    // =========================================================
-
-    const employeeNumber =
-      `EMP-${user.id
-        .replace(/-/g, '')
-        .slice(0, 12)
-        .toUpperCase()}`;
-
-    const employee =
-      await db.master_employee.upsert({
-        where: {
-          company_id_user_id: {
-            company_id:
-              companyId,
-
-            user_id:
-              userId,
-          },
-        },
-
-        update: {},
-
-        create: {
-          tenant_id:
-            tenantId,
-
-          company_id:
-            companyId,
-
-          user_id:
-            userId,
-
-          employee_number:
-            employeeNumber,
-
-          employment_status:
-            'ACTIVE',
-
-          created_by_id:
-            actorId ?? userId,
-        },
-      });
-
-    await this.syncProjectMemberships(
-      db,
-      tenantId,
-      companyId,
-      userId,
-      employee.id,
+    throw new NotFoundError(
+      'Profil karyawan belum dibuat HR atau belum ditautkan ke akun ini. Minta HR membuat profil karyawan, lalu Admin memilihkannya saat membuat akun user.',
     );
-
-    return employee;
   }
 
   private static async syncProjectMemberships(

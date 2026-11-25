@@ -61,6 +61,7 @@ type UserRow = {
   is_active?: boolean;
   roles?: RoleRef[];
 };
+type EmployeeLinkOption = { id: string; employee_number: string; employee_name: string | null };
 type Role = { id: string; role_code: string; role_name: string; tenant_id?: string };
 type UserModuleAccess = { user_id: string; module_code: string; allow_read: boolean; allow_write: boolean };
 type DepartmentItem = {
@@ -142,7 +143,8 @@ export function AccessAdministration() {
   const [contextError, setContextError] = useState("");
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [invite, setInvite] = useState({ name: "", email: "", password: "", department_id: "", role_level: "STAFF" });
+  const [invite, setInvite] = useState({ name: "", email: "", password: "", department_id: "", role_level: "STAFF", employee_id: "" });
+  const [employeeLinkOptions, setEmployeeLinkOptions] = useState<EmployeeLinkOption[]>([]);
   const contextCompany = isSuper ? selectedCompany : (company || "");
 
   // Departments & Divisions (Cost Center) state
@@ -177,7 +179,7 @@ export function AccessAdministration() {
 
   // Super Admin invite user state
   const [superInviteOpen, setSuperInviteOpen] = useState(false);
-  const [superInvite, setSuperInvite] = useState({ name: "", email: "", password: "", tenant_id: "", company_id: "", department_id: "", role_level: "STAFF" });
+  const [superInvite, setSuperInvite] = useState({ name: "", email: "", password: "", tenant_id: "", company_id: "", department_id: "", role_level: "STAFF", employee_id: "" });
   const [superInviteSubmitting, setSuperInviteSubmitting] = useState(false);
   const [userSearch, setUserSearch] = useState("");
 
@@ -186,6 +188,19 @@ export function AccessAdministration() {
     if (!superInvite.tenant_id) return companies;
     return companies.filter((c) => c.tenant_id === superInvite.tenant_id);
   }, [companies, superInvite.tenant_id]);
+
+  useEffect(() => {
+    const targetCompany = isSuper ? superInvite.company_id : contextCompany;
+    if ((!inviteOpen && !superInviteOpen) || !targetCompany) {
+      setEmployeeLinkOptions([]);
+      return;
+    }
+    let active = true;
+    api.get("/api/v1/accounts/employee-link-options", { headers: { "X-Company-ID": targetCompany } })
+      .then((response) => { if (active) setEmployeeLinkOptions(response.data?.results ?? []); })
+      .catch(() => { if (active) setEmployeeLinkOptions([]); });
+    return () => { active = false; };
+  }, [contextCompany, inviteOpen, isSuper, superInvite.company_id, superInviteOpen]);
 
   // All users filtered by search
   const filteredAllUsers = useMemo(() => {
@@ -418,9 +433,10 @@ export function AccessAdministration() {
         ...invite,
         department_id: invite.department_id || null,
         role_level: invite.role_level || "STAFF",
+        employee_id: invite.employee_id || null,
         role_codes: [],
       });
-      setInvite({ name: "", email: "", password: "", department_id: "", role_level: "STAFF" });
+      setInvite({ name: "", email: "", password: "", department_id: "", role_level: "STAFF", employee_id: "" });
       setInviteOpen(false);
       await loadBase();
       await loadCompanyContext();
@@ -564,9 +580,10 @@ export function AccessAdministration() {
         company_id: superInvite.company_id,
         department_id: superInvite.department_id || null,
         role_level: superInvite.role_level || "STAFF",
+        employee_id: superInvite.employee_id || null,
         role_codes: [],
       }, { headers: { "X-Company-ID": superInvite.company_id } });
-      setSuperInvite({ name: "", email: "", password: "", tenant_id: "", company_id: "", department_id: "", role_level: "STAFF" });
+      setSuperInvite({ name: "", email: "", password: "", tenant_id: "", company_id: "", department_id: "", role_level: "STAFF", employee_id: "" });
       setSuperInviteOpen(false);
       await loadBase();
       toast.success("User berhasil dibuat dan di-assign ke company.");
@@ -1489,6 +1506,14 @@ export function AccessAdministration() {
               ))}
             </select>
             <select
+              className="h-11 rounded-[11px] border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#0876CD]"
+              value={invite.employee_id}
+              onChange={(e) => setInvite({ ...invite, employee_id: e.target.value })}
+            >
+              <option value="">-- Tautkan ke profil karyawan (Opsional)</option>
+              {employeeLinkOptions.map((employee) => <option key={employee.id} value={employee.id}>{employee.employee_name || "Tanpa nama"} — {employee.employee_number}</option>)}
+            </select>
+            <select
               required
               className="h-11 rounded-[11px] border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#0876CD]"
               value={invite.role_level}
@@ -1574,6 +1599,7 @@ export function AccessAdministration() {
                     ...superInvite,
                     tenant_id: e.target.value,
                     company_id: "",
+                    employee_id: "",
                   })}
                 >
                   <option value="">-- Pilih Tenant *</option>
@@ -1589,13 +1615,26 @@ export function AccessAdministration() {
                   className="h-10 w-full rounded-xl border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#0876CD] disabled:opacity-50"
                   value={superInvite.company_id}
                   disabled={!superInvite.tenant_id}
-                  onChange={(e) => setSuperInvite({ ...superInvite, company_id: e.target.value })}
+                  onChange={(e) => setSuperInvite({ ...superInvite, company_id: e.target.value, employee_id: "" })}
                 >
                   <option value="">{superInvite.tenant_id ? "-- Pilih Company *" : "-- Pilih tenant terlebih dahulu"}</option>
                   {superInviteCompanies.map((c) => (
                     <option key={c.id} value={c.id}>{c.legal_name || c.name || c.id}</option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-[#64748B]">Profil Karyawan yang Ditautkan (Opsional)</label>
+                <select
+                  className="h-10 w-full rounded-xl border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#0876CD] disabled:opacity-50"
+                  value={superInvite.employee_id}
+                  disabled={!superInvite.company_id}
+                  onChange={(e) => setSuperInvite({ ...superInvite, employee_id: e.target.value })}
+                >
+                  <option value="">-- Tidak ditautkan ke profil karyawan --</option>
+                  {employeeLinkOptions.map((employee) => <option key={employee.id} value={employee.id}>{employee.employee_name || "Tanpa nama"} — {employee.employee_number}</option>)}
+                </select>
+                <p className="mt-1 text-[11px] text-slate-500">Jika user adalah karyawan, pilih profil HR agar timesheet, lembur, dan payroll memakai identitas karyawan yang sama.</p>
               </div>
               <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5 text-xs leading-5 text-blue-900 md:col-span-2">
                 Undangan tidak membuat role operasional global. Tetapkan role profile terpisah per modul setelah user masuk ke company.

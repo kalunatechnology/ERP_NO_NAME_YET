@@ -1199,6 +1199,7 @@ async function inviteUser(req: Request, res: Response, next: NextFunction) {
       tenantId,
       departmentId: req.body.department_id ?? req.body.departmentId ?? null,
       roleLevel: req.body.role_level ?? req.body.roleLevel ?? 'STAFF',
+      employeeId: req.body.employee_id ?? null,
       actorId: req.user?.id,
     });
     res.status(201).json(result);
@@ -2669,6 +2670,25 @@ async function putUserQuickAccessHandler(req: Request, res: Response, next: Next
 
 function mountAccountResources(router: Router) {
   router.get('/dashboard-widget-catalog', getDashboardWidgetCatalogHandler);
+  router.get('/employee-link-options', requireCompanyAdmin, async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const companyId = req.companyId || String(req.header('X-Company-ID') || '').trim();
+      if (!companyId) throw new ForbiddenError('Pilih company untuk memuat daftar karyawan.');
+      const results = await prisma.master_employee.findMany({
+        where: {
+          company_id: companyId,
+          user_id: null,
+          employment_status: 'ACTIVE',
+          ...(req.tenantId || req.user?.tenant_id ? { tenant_id: req.tenantId || req.user?.tenant_id } : {}),
+        },
+        select: { id: true, employee_number: true, employee_name: true },
+        orderBy: [{ employee_name: 'asc' }, { employee_number: 'asc' }],
+      });
+      res.json({ results });
+    } catch (err) {
+      next(err);
+    }
+  });
   router.get('/users/:userId/quick-access', requireCompanyAdmin, getUserQuickAccessHandler);
   router.put('/users/:userId/quick-access', requireCompanyAdmin, requireCompanyContextForWrite, putUserQuickAccessHandler);
   router.post('/users/:userId/unlock-auth', requireCompanyAdmin, async (req: Request, res: Response, next: NextFunction) => {

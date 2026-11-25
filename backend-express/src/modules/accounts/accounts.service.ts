@@ -13,9 +13,6 @@ import { hashPassword, isLegacyDjangoPassword, verifyPassword } from '../../util
 import { loadUserAccessContext } from './access-context.service';
 import { isSuperAdmin, parseRoleCode, RoleCode, toExternalRoleCode } from '../../types/roles';
 import { Prisma } from '@prisma/client';
-import {
-  EmployeeProvisioningService,
-} from '../master_data/employee-provisioning.service';
 import { ROLE_BUNDLES } from './role-bundle.config';
 import { effectiveModuleOverrides } from '../../utils/module-permissions';
 
@@ -567,9 +564,10 @@ export class AccountsService {
     tenantId: string;
     departmentId?: string | null;
     roleLevel?: 'GM' | 'SPV' | 'STAFF' | null;
+    employeeId?: string | null;
     actorId?: string;
   }) {
-    const { name, email, password, roleCodes, companyId, tenantId, departmentId, roleLevel, actorId } = input;
+    const { name, email, password, roleCodes, companyId, tenantId, departmentId, roleLevel, employeeId, actorId } = input;
     if (roleCodes.some((role) => role !== RoleCode.COMPANY_ADMIN && role !== RoleCode.SUPER_ADMIN)) {
       throw new ValidationError('Role operasional harus diberikan melalui Role Profile per modul.');
     }
@@ -606,6 +604,19 @@ export class AccountsService {
     });
     if (!company) {
       throw new ValidationError('Company invitation tidak valid.');
+    }
+
+    const cleanEmployeeId = employeeId ? String(employeeId).trim() : null;
+    if (cleanEmployeeId) {
+      const employee = await prisma.master_employee.findFirst({
+        where: { id: cleanEmployeeId, company_id: companyId, tenant_id: tenantId, user_id: null, employment_status: 'ACTIVE' },
+        select: { id: true },
+      });
+      if (!employee) throw new ValidationError('Pilih karyawan ACTIVE yang belum terhubung ke akun user pada company ini.');
+      if (existing) {
+        const currentLink = await prisma.master_employee.findFirst({ where: { company_id: companyId, user_id: existing.id }, select: { id: true } });
+        if (currentLink && currentLink.id !== cleanEmployeeId) throw new ValidationError('Akun ini sudah tertaut ke profil karyawan lain.');
+      }
     }
 
     if (roleCodes.includes(RoleCode.COMPANY_ADMIN)) {
@@ -704,6 +715,14 @@ export class AccountsService {
         });
       }
 
+      if (cleanEmployeeId) {
+        const linked = await tx.master_employee.updateMany({
+          where: { id: cleanEmployeeId, tenant_id: tenantId, company_id: companyId, user_id: null, employment_status: 'ACTIVE' },
+          data: { user_id: created.id },
+        });
+        if (linked.count !== 1) throw new ValidationError('Profil karyawan sudah ditautkan oleh proses lain. Muat ulang daftar karyawan.');
+      }
+
     if (!created.active_role_id && roles.length > 0) {
       await tx.iam_user.update({
         where: {
@@ -715,26 +734,6 @@ export class AccountsService {
         },
       });
     }
-
-    /**
-     * NEW:
-     * Setiap user company non-Super Admin
-     * otomatis mempunyai Employee.
-     */
-    await EmployeeProvisioningService.ensureForUser(
-      {
-        userId:
-          created.id,
-
-        tenantId,
-
-        companyId,
-
-        actorId:
-          actorId ?? null,
-      },
-      tx,
-    );
 
     return created;
     });
@@ -915,17 +914,6 @@ export class AccountsService {
           data: { active_role_id: role.id },
         });
       }
-
-      // Pastikan employee record sudah ada
-      await EmployeeProvisioningService.ensureForUser(
-        {
-          userId: targetUserId,
-          tenantId,
-          companyId,
-          actorId: actorId ?? null,
-        },
-        tx,
-      );
 
       return {
         assigned: true,

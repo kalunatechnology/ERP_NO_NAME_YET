@@ -68,76 +68,39 @@ export class PayrollService {
     const userById = new Map(users.map((user) => [user.id, user]));
     return rows.map((row) => ({
       ...row,
-      employee_name: row.employee_name || partyById.get(row.party_id ?? '')?.display_name || partyById.get(row.party_id ?? '')?.legal_name || row.employee_number,
+      employee_name: row.employee_name || partyById.get(row.party_id ?? '')?.display_name || partyById.get(row.party_id ?? '')?.legal_name || userById.get(row.user_id ?? '')?.full_name || '',
       linked_user: row.user_id ? userById.get(row.user_id) ?? null : null,
     }));
-  }
-
-  static async listEmployeeAccountOptions(companyId: string) {
-    const memberships = await prisma.iam_user_company_membership.findMany({
-      where: { company_id: companyId, status: 'ACTIVE' },
-      select: { user_id: true },
-    });
-    const userIds = [...new Set(memberships.map((row) => row.user_id))];
-    if (!userIds.length) return [];
-    const [users, employees] = await Promise.all([
-      prisma.iam_user.findMany({
-        where: { id: { in: userIds }, is_active: true, status: 'ACTIVE' },
-        select: { id: true, full_name: true, email: true },
-        orderBy: { full_name: 'asc' },
-      }),
-      prisma.master_employee.findMany({ where: { company_id: companyId, user_id: { not: null } }, select: { id: true, user_id: true, employee_name: true, employee_number: true } }),
-    ]);
-    const employeeByUserId = new Map(employees.filter((row) => row.user_id).map((row) => [row.user_id!, row]));
-    return users.map((user) => {
-      const employee = employeeByUserId.get(user.id);
-      return { ...user, linked_employee_id: employee?.id ?? null, linked_employee_label: employee ? `${employee.employee_name || employee.employee_number} (${employee.employee_number})` : null };
-    });
-  }
-
-  static async createEmployeeFromUser(companyId: string, tenantId: string | null, actorId: string, userIdInput: unknown) {
-    const userId = String(userIdInput ?? '').trim();
-    if (!userId) throw new ValidationError('Pilih akun user yang akan dijadikan profil karyawan.');
-    const membership = await prisma.iam_user_company_membership.findFirst({ where: { company_id: companyId, user_id: userId, status: 'ACTIVE' } });
-    const user = membership ? await prisma.iam_user.findFirst({ where: { id: userId, is_active: true, status: 'ACTIVE' }, select: { id: true, full_name: true, email: true } }) : null;
-    if (!user) throw new ValidationError('Akun user harus aktif dan terdaftar pada perusahaan ini.');
-    const linked = await prisma.master_employee.findFirst({ where: { company_id: companyId, user_id: userId }, select: { id: true, employee_number: true } });
-    if (linked) throw new ConflictError(`Akun ini sudah terhubung ke karyawan ${linked.employee_number}.`);
-    const existing = await prisma.master_employee.findMany({ where: { company_id: companyId }, select: { employee_number: true } });
-    const usedNumbers = new Set(existing.map((row) => row.employee_number));
-    let sequence = existing.length + 1;
-    let employeeNumber = `EMP-${String(sequence).padStart(4, '0')}`;
-    while (usedNumbers.has(employeeNumber)) {
-      sequence += 1;
-      employeeNumber = `EMP-${String(sequence).padStart(4, '0')}`;
-    }
-    try {
-      return await prisma.master_employee.create({ data: {
-        id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: actorId,
-        user_id: user.id, employee_number: employeeNumber, employee_name: user.full_name || user.email,
-        employment_status: 'ACTIVE', monthly_salary: null,
-      } });
-    } catch (error: any) {
-      if (error?.code === 'P2002') throw new ConflictError('Akun user atau nomor karyawan sudah terhubung. Muat ulang daftar lalu coba lagi.');
-      throw error;
-    }
   }
 
   static async createEmployee(companyId: string, tenantId: string | null, userId: string, input: any) {
     const employeeNumber = String(input.employee_number ?? '').trim();
     const employeeName = String(input.employee_name ?? '').trim();
     if (!employeeNumber || !employeeName) throw new ValidationError('Nomor dan nama karyawan wajib diisi.');
-    const salary = amount(input.monthly_salary, 'Gaji bulanan', false);
+    const salary = input.monthly_salary === undefined || input.monthly_salary === null || String(input.monthly_salary).trim() === ''
+      ? null
+      : amount(input.monthly_salary, 'Gaji bulanan', false);
+    const hourlyRate = input.standard_hourly_rate === undefined || input.standard_hourly_rate === null || String(input.standard_hourly_rate).trim() === ''
+      ? null
+      : amount(input.standard_hourly_rate, 'Tarif per jam', false);
     const costCenterId = String(input.cost_center_id ?? '').trim();
-    if (!costCenterId || !await prisma.master_cost_center.findFirst({ where: { id: costCenterId, company_id: companyId, status: 'ACTIVE' }, select: { id: true } })) throw new ValidationError('Pilih cost center aktif milik perusahaan ini.');
+    if (costCenterId && !await prisma.master_cost_center.findFirst({ where: { id: costCenterId, company_id: companyId, status: 'ACTIVE' }, select: { id: true } })) throw new ValidationError('Cost center tidak aktif atau bukan milik perusahaan ini.');
     const duplicate = await prisma.master_employee.findFirst({ where: { company_id: companyId, employee_number: employeeNumber } });
     if (duplicate) throw new ConflictError('Nomor karyawan sudah digunakan pada perusahaan ini.');
+    const employmentStatus = String(input.employment_status ?? 'ACTIVE').toUpperCase();
+    if (!['ACTIVE', 'INACTIVE', 'TERMINATED'].includes(employmentStatus)) throw new ValidationError('Status karyawan tidak valid.');
     return prisma.master_employee.create({ data: {
       id: crypto.randomUUID(), company_id: companyId, tenant_id: tenantId, created_by_id: userId,
       employee_number: employeeNumber, employee_name: employeeName, monthly_salary: salary,
-      employment_status: 'ACTIVE', department_id: input.department_id || null, cost_center_id: input.cost_center_id || null,
-      party_id: input.party_id || null, standard_hourly_rate: null, user_id: null,
+      employment_status: employmentStatus, department_id: input.department_id || null, cost_center_id: costCenterId || null,
+      party_id: input.party_id || null, standard_hourly_rate: hourlyRate, user_id: null,
     } });
+  }
+
+  static async deactivateEmployee(companyId: string, employeeId: string) {
+    const employee = await prisma.master_employee.findFirst({ where: { company_id: companyId, id: employeeId }, select: { id: true } });
+    if (!employee) throw new NotFoundError('Karyawan');
+    return prisma.master_employee.update({ where: { id: employeeId }, data: { employment_status: 'INACTIVE' } });
   }
 
   static async updateEmployee(companyId: string, employeeId: string, input: any) {

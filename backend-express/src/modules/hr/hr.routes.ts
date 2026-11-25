@@ -139,18 +139,9 @@ hrRouter.get('/employees', requireModuleTier('HR', 2), async (req, res, next) =>
   }
 });
 
-hrRouter.get('/employee-user-options', requireModuleTier('HR', 2), async (req, res, next) => {
+hrRouter.post('/employees', requireModuleTier('HR', 2), async (req, res, next) => {
   try {
-    const results = await PayrollService.listEmployeeAccountOptions(req.companyId!);
-    res.json({ success: true, results });
-  } catch (err) {
-    next(err);
-  }
-});
-
-hrRouter.post('/employees/from-user', requireModuleTier('HR', 2), async (req, res, next) => {
-  try {
-    const data = await PayrollService.createEmployeeFromUser(req.companyId!, req.tenantId ?? null, req.user!.id, req.body?.user_id);
+    const data = await PayrollService.createEmployee(req.companyId!, req.tenantId ?? null, req.user!.id, req.body);
     res.status(201).json({ success: true, data });
   } catch (err) {
     next(err);
@@ -169,6 +160,15 @@ hrRouter.get('/cost-centers', requireModuleTier('HR', 2), async (req, res, next)
 hrRouter.put('/employees/:id', requireModuleTier('HR', 2), async (req, res, next) => {
   try {
     const data = await PayrollService.updateEmployee(req.companyId!, req.params.id, req.body);
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+hrRouter.delete('/employees/:id', requireModuleTier('HR', 2), async (req, res, next) => {
+  try {
+    const data = await PayrollService.deactivateEmployee(req.companyId!, req.params.id);
     res.json({ success: true, data });
   } catch (err) {
     next(err);

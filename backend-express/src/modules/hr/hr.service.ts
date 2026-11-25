@@ -193,9 +193,17 @@ export class HrService {
       }),
       prisma.master_employee.findMany({
         where: { company_id: companyId },
-        select: { id: true, employee_number: true, employee_name: true },
+        select: { id: true, employee_number: true, employee_name: true, party_id: true, user_id: true },
       }),
     ]);
+    const partyIds = [...new Set(employees.map((employee) => employee.party_id).filter((id): id is string => Boolean(id)))];
+    const userIds = [...new Set(employees.map((employee) => employee.user_id).filter((id): id is string => Boolean(id)))];
+    const [parties, users] = await Promise.all([
+      partyIds.length ? prisma.master_party.findMany({ where: { company_id: companyId, id: { in: partyIds } }, select: { id: true, display_name: true, legal_name: true } }) : [],
+      userIds.length ? prisma.iam_user.findMany({ where: { id: { in: userIds } }, select: { id: true, full_name: true, email: true } }) : [],
+    ]);
+    const partyById = new Map(parties.map((party) => [party.id, party]));
+    const userById = new Map(users.map((user) => [user.id, user]));
     const projectIds = [...new Set(rows.map((row) => row.project_id).filter((id): id is string => Boolean(id)))];
     const projects = projectIds.length ? await prisma.project_project.findMany({
       where: { company_id: companyId, id: { in: projectIds } },
@@ -209,7 +217,12 @@ export class HrService {
       return {
         ...row,
         employee_number: employee?.employee_number ?? '',
-        employee_name: String(employee?.employee_name ?? '').trim() || employee?.employee_number || 'Karyawan',
+        employee_name: String(employee?.employee_name ?? '').trim()
+          || partyById.get(employee?.party_id ?? '')?.display_name
+          || partyById.get(employee?.party_id ?? '')?.legal_name
+          || userById.get(employee?.user_id ?? '')?.full_name
+          || userById.get(employee?.user_id ?? '')?.email
+          || 'Nama karyawan belum diisi',
         project_code: project?.project_code ?? '',
         project_name: project?.project_name ?? '',
       };
@@ -403,9 +416,6 @@ export class HrService {
     const run = await prisma.fin_payroll_run.findFirst({ where: { id: runId, company_id: companyId } });
     if (!run) throw new NotFoundError('Payroll run');
     if (run.status !== 'DRAFT') throw new ConflictError('Hanya payroll run DRAFT yang dapat di-ACC oleh Kepala HR.');
-    if (run.created_by_id === hrLeadId) {
-      throw new ForbiddenError('Pembuat draft payroll tidak boleh melakukan HR-ACC pada run yang sama.');
-    }
     return prisma.fin_payroll_run.update({
       where: { id: runId },
       data: { status: 'HR_APPROVED', hr_approved_by_id: hrLeadId, hr_approved_at: new Date() },

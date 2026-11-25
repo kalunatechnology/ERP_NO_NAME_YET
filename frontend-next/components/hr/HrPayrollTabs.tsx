@@ -57,14 +57,6 @@ interface EmployeeItem {
   linked_user?: { id: string; full_name: string; email: string } | null;
 }
 
-interface EmployeeUserOption {
-  id: string;
-  full_name: string;
-  email: string;
-  linked_employee_id: string | null;
-  linked_employee_label: string | null;
-}
-
 interface CostCenterItem {
   id: string;
   cost_center_code: string;
@@ -102,9 +94,8 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
   const [companyOvertimes, setCompanyOvertimes] = useState<OvertimeItem[]>([]);
   const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([]);
   const [employees, setEmployees] = useState<EmployeeItem[]>([]);
-  const [employeeUserOptions, setEmployeeUserOptions] = useState<EmployeeUserOption[]>([]);
-  const [newEmployeeUserId, setNewEmployeeUserId] = useState("");
-  const [userLinkEdits, setUserLinkEdits] = useState<Record<string, string>>({});
+  const [employeeCreateOpen, setEmployeeCreateOpen] = useState(false);
+  const [newEmployee, setNewEmployee] = useState({ employee_name: "", employee_number: "", monthly_salary: "", standard_hourly_rate: "", cost_center_id: "" });
   const [costCenters, setCostCenters] = useState<CostCenterItem[]>([]);
 
   const [otForm, setOtForm] = useState({
@@ -141,36 +132,31 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
       setMyPayslips(mySlipRes.data?.results ?? []);
 
       if (hrTier <= 2 || financeTier <= 1) {
-        const [compOtRes, runsRes, empRes, costCenterRes, userOptionsRes] = await Promise.all([
+        const [compOtRes, runsRes, empRes, costCenterRes] = await Promise.all([
           api.get("/api/v1/hr/overtimes").catch(() => ({ data: { results: [] } })),
           api.get("/api/v1/hr/payroll/runs").catch(() => ({ data: { results: [] } })),
           api.get("/api/v1/hr/employees").catch(() => ({ data: { results: [] } })),
           api.get("/api/v1/hr/cost-centers").catch(() => ({ data: { results: [] } })),
-          api.get("/api/v1/hr/employee-user-options").catch(() => ({ data: { results: [] } })),
         ]);
         setCompanyOvertimes(compOtRes.data?.results ?? []);
         setPayrollRuns(runsRes.data?.results ?? []);
         const empList: EmployeeItem[] = empRes.data?.results ?? [];
         setEmployees(empList);
-        setEmployeeUserOptions(userOptionsRes.data?.results ?? []);
         setCostCenters(costCenterRes.data?.results ?? []);
         const edits: Record<string, string> = {};
         const rateEdits: Record<string, string> = {};
         const profileEdits: Record<string, { name: string; number: string; status: string }> = {};
         const costCenterEditsByEmployee: Record<string, string> = {};
-        const userLinkEditsByEmployee: Record<string, string> = {};
         for (const e of empList) {
           edits[e.id] = e.monthly_salary == null ? "" : String(e.monthly_salary);
           rateEdits[e.id] = e.standard_hourly_rate == null ? "" : String(e.standard_hourly_rate);
           profileEdits[e.id] = { name: e.employee_name, number: e.employee_number, status: e.employment_status };
           costCenterEditsByEmployee[e.id] = String(e.cost_center_id ?? "");
-          userLinkEditsByEmployee[e.id] = String(e.user_id ?? "");
         }
         setSalaryEdits(edits);
         setHourlyRateEdits(rateEdits);
         setEmployeeProfileEdits(profileEdits);
         setCostCenterEdits(costCenterEditsByEmployee);
-        setUserLinkEdits(userLinkEditsByEmployee);
       }
     } finally {
       setLoading(false);
@@ -519,48 +505,54 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                 <span className="font-bold text-sm text-[#163D64]">
                   Profil &amp; Data Upah Karyawan ({employees.length})
                 </span>
-                <div className="flex flex-wrap items-center gap-2">
-                  <select aria-label="Pilih user untuk profil karyawan baru" value={newEmployeeUserId} onChange={(e) => setNewEmployeeUserId(e.target.value)} className="h-9 min-w-64 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs">
-                    <option value="">Pilih user aktif untuk dijadikan karyawan</option>
-                    {employeeUserOptions.filter((user) => !user.linked_employee_id).map((user) => <option key={user.id} value={user.id}>{user.full_name} — {user.email}</option>)}
-                  </select>
-                  <button
-                    type="button"
-                    disabled={!newEmployeeUserId}
-                    onClick={async () => {
-                      try {
-                        await api.post("/api/v1/hr/employees/from-user", { user_id: newEmployeeUserId });
-                        setNewEmployeeUserId("");
-                        toast.success("Profil karyawan dibuat dan ditautkan ke akun user yang dipilih. Lengkapi data upah dan cost center.");
-                        await loadData();
-                      } catch (err: unknown) {
-                        toast.error(err instanceof Error ? err.message : "Gagal membuat profil karyawan dari user.");
-                      }
-                    }}
-                    className="rounded-lg bg-[#0876CD] hover:bg-[#163D64] disabled:opacity-50 px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer"
-                  >
-                    + Buat Karyawan dari User
-                  </button>
-                </div>
+                <button type="button" onClick={() => setEmployeeCreateOpen((value) => !value)} className="rounded-lg bg-[#0876CD] hover:bg-[#163D64] px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer">
+                  {employeeCreateOpen ? "Tutup Form" : "+ Tambah Karyawan"}
+                </button>
               </div>
+              {employeeCreateOpen && (
+                <form className="grid gap-2 border-b border-slate-100 bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-5" onSubmit={async (event) => {
+                  event.preventDefault();
+                  try {
+                    await api.post("/api/v1/hr/employees", {
+                      employee_name: newEmployee.employee_name,
+                      employee_number: newEmployee.employee_number,
+                      monthly_salary: newEmployee.monthly_salary.trim() ? Number(newEmployee.monthly_salary) : null,
+                      standard_hourly_rate: newEmployee.standard_hourly_rate.trim() ? Number(newEmployee.standard_hourly_rate) : null,
+                      cost_center_id: newEmployee.cost_center_id || null,
+                      employment_status: "ACTIVE",
+                    });
+                    setNewEmployee({ employee_name: "", employee_number: "", monthly_salary: "", standard_hourly_rate: "", cost_center_id: "" });
+                    setEmployeeCreateOpen(false);
+                    toast.success("Profil karyawan dibuat. Admin dapat menautkan akun user saat membuat akun.");
+                    await loadData();
+                  } catch (err: unknown) {
+                    toast.error(err instanceof Error ? err.message : "Gagal membuat profil karyawan.");
+                  }
+                }}>
+                  <input required placeholder="Nama lengkap karyawan" value={newEmployee.employee_name} onChange={(e) => setNewEmployee((value) => ({ ...value, employee_name: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
+                  <input required placeholder="Nomor karyawan" value={newEmployee.employee_number} onChange={(e) => setNewEmployee((value) => ({ ...value, employee_number: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
+                  <input type="number" min="0.01" step="1000" placeholder="Gaji bulanan (opsional)" value={newEmployee.monthly_salary} onChange={(e) => setNewEmployee((value) => ({ ...value, monthly_salary: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
+                  <input type="number" min="0.01" step="100" placeholder="Tarif per jam (opsional)" value={newEmployee.standard_hourly_rate} onChange={(e) => setNewEmployee((value) => ({ ...value, standard_hourly_rate: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
+                  <select value={newEmployee.cost_center_id} onChange={(e) => setNewEmployee((value) => ({ ...value, cost_center_id: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3">
+                    <option value="">Cost center (opsional)</option>
+                    {costCenters.map((center) => <option key={center.id} value={center.id}>{center.cost_center_code} — {center.cost_center_name}</option>)}
+                  </select>
+                  <button type="submit" className="h-9 rounded-lg bg-emerald-600 px-3 font-semibold text-white">Simpan Karyawan</button>
+                  <p className="text-[11px] leading-4 text-slate-500 sm:col-span-2 xl:col-span-5">Profil dibuat tanpa akun user. Admin menautkannya pada saat membuat akun; lengkapi gaji dan cost center sebelum payroll.</p>
+                </form>
+              )}
               <div className="divide-y divide-slate-100 text-xs">
                 {employees.length === 0 ? (
                   <div className="p-5 text-center text-slate-500">
-                    Belum ada profil karyawan. Pilih satu akun user aktif di atas untuk membuat profil yang terhubung secara eksplisit.
+                    Belum ada profil karyawan. HR dapat membuat profil terlebih dahulu; akun user ditautkan oleh Admin saat akun dibuat.
                   </div>
                 ) : (
                   employees.map((emp) => (
                     <div key={emp.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
                       <div className="flex flex-wrap gap-2">
-                        <select
-                          aria-label={`Akun user untuk ${emp.employee_name}`}
-                          value={userLinkEdits[emp.id] ?? ""}
-                          onChange={(e) => setUserLinkEdits((p) => ({ ...p, [emp.id]: e.target.value }))}
-                          className="h-9 w-64 rounded-lg border border-slate-200 bg-slate-50 px-3"
-                        >
-                          <option value="">Tidak terhubung ke akun</option>
-                          {employeeUserOptions.filter((user) => !user.linked_employee_id || user.linked_employee_id === emp.id || user.id === emp.user_id).map((user) => <option key={user.id} value={user.id}>{user.full_name} — {user.email}{user.linked_employee_id === emp.id ? " (terhubung)" : ""}</option>)}
-                        </select>
+                        <div className="flex h-9 min-w-56 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-slate-600">
+                          Akun user: {emp.linked_user?.full_name || emp.linked_user?.email || "Belum ditautkan"}
+                        </div>
                         <input
                           aria-label={`Nama karyawan ${emp.employee_name}`}
                           placeholder="Nama karyawan"
@@ -619,7 +611,6 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                           onClick={async () => {
                             try {
                               await api.put(`/api/v1/hr/employees/${emp.id}`, {
-                                user_id: userLinkEdits[emp.id] || null,
                                 employee_name: employeeProfileEdits[emp.id]?.name ?? emp.employee_name,
                                 employee_number: employeeProfileEdits[emp.id]?.number ?? emp.employee_number,
                                 employment_status: employeeProfileEdits[emp.id]?.status ?? emp.employment_status,
@@ -637,6 +628,30 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                         >
                           Simpan Profil
                         </button>
+                        {emp.employment_status === "ACTIVE" && (
+                          <button type="button" onClick={async () => {
+                            if (!window.confirm(`Nonaktifkan profil ${emp.employee_name}? Riwayat payroll tetap disimpan.`)) return;
+                            try {
+                              await api.delete(`/api/v1/hr/employees/${emp.id}`);
+                              toast.success("Profil karyawan dinonaktifkan. Riwayat payroll tetap tersimpan.");
+                              await loadData();
+                            } catch (err: unknown) {
+                              toast.error(err instanceof Error ? err.message : "Gagal menonaktifkan karyawan.");
+                            }
+                          }} className="h-9 rounded-lg border border-red-200 px-3 font-semibold text-red-700">Nonaktifkan</button>
+                        )}
+                        {emp.employment_status === "ACTIVE" && (
+                          <button type="button" onClick={async () => {
+                            if (!window.confirm(`Nonaktifkan profil ${emp.employee_name}? Riwayat payroll tetap disimpan.`)) return;
+                            try {
+                              await api.delete(`/api/v1/hr/employees/${emp.id}`);
+                              toast.success("Profil karyawan dinonaktifkan. Riwayat payroll tetap tersimpan.");
+                              await loadData();
+                            } catch (err: unknown) {
+                              toast.error(err instanceof Error ? err.message : "Gagal menonaktifkan karyawan.");
+                            }
+                          }} className="h-9 rounded-lg border border-red-200 px-3 font-semibold text-red-700">Nonaktifkan</button>
+                        )}
                       </div>
                     </div>
                   ))
@@ -649,7 +664,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
 
       {section === "lead" && (
         <div className="space-y-6">
-          {hrTier === 1 && (
+          {hrTier <= 2 && (
             <div className="rounded-2xl border border-[#E2E8F0] bg-white overflow-hidden">
               <div className="p-4 border-b border-slate-200 font-bold text-sm text-[#163D64]">
                 Final Approval Lembur (Kepala HR Tier 1)
@@ -818,48 +833,54 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                 <span className="font-bold text-sm text-[#163D64]">
                   Profil &amp; Data Upah Karyawan ({employees.length})
                 </span>
-                <div className="flex flex-wrap items-center gap-2">
-                  <select aria-label="Pilih user untuk profil karyawan baru" value={newEmployeeUserId} onChange={(e) => setNewEmployeeUserId(e.target.value)} className="h-9 min-w-64 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs">
-                    <option value="">Pilih user aktif untuk dijadikan karyawan</option>
-                    {employeeUserOptions.filter((user) => !user.linked_employee_id).map((user) => <option key={user.id} value={user.id}>{user.full_name} — {user.email}</option>)}
-                  </select>
-                  <button
-                    type="button"
-                    disabled={!newEmployeeUserId}
-                    onClick={async () => {
-                      try {
-                        await api.post("/api/v1/hr/employees/from-user", { user_id: newEmployeeUserId });
-                        setNewEmployeeUserId("");
-                        toast.success("Profil karyawan dibuat dan ditautkan ke akun user yang dipilih. Lengkapi data upah dan cost center.");
-                        await loadData();
-                      } catch (err: unknown) {
-                        toast.error(err instanceof Error ? err.message : "Gagal membuat profil karyawan dari user.");
-                      }
-                    }}
-                    className="rounded-lg bg-[#0876CD] hover:bg-[#163D64] disabled:opacity-50 px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer"
-                  >
-                    + Buat Karyawan dari User
-                  </button>
-                </div>
+                <button type="button" onClick={() => setEmployeeCreateOpen((value) => !value)} className="rounded-lg bg-[#0876CD] hover:bg-[#163D64] px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer">
+                  {employeeCreateOpen ? "Tutup Form" : "+ Tambah Karyawan"}
+                </button>
               </div>
+              {employeeCreateOpen && (
+                <form className="grid gap-2 border-b border-slate-100 bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-5" onSubmit={async (event) => {
+                  event.preventDefault();
+                  try {
+                    await api.post("/api/v1/hr/employees", {
+                      employee_name: newEmployee.employee_name,
+                      employee_number: newEmployee.employee_number,
+                      monthly_salary: newEmployee.monthly_salary.trim() ? Number(newEmployee.monthly_salary) : null,
+                      standard_hourly_rate: newEmployee.standard_hourly_rate.trim() ? Number(newEmployee.standard_hourly_rate) : null,
+                      cost_center_id: newEmployee.cost_center_id || null,
+                      employment_status: "ACTIVE",
+                    });
+                    setNewEmployee({ employee_name: "", employee_number: "", monthly_salary: "", standard_hourly_rate: "", cost_center_id: "" });
+                    setEmployeeCreateOpen(false);
+                    toast.success("Profil karyawan dibuat. Admin dapat menautkan akun user saat membuat akun.");
+                    await loadData();
+                  } catch (err: unknown) {
+                    toast.error(err instanceof Error ? err.message : "Gagal membuat profil karyawan.");
+                  }
+                }}>
+                  <input required placeholder="Nama lengkap karyawan" value={newEmployee.employee_name} onChange={(e) => setNewEmployee((value) => ({ ...value, employee_name: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
+                  <input required placeholder="Nomor karyawan" value={newEmployee.employee_number} onChange={(e) => setNewEmployee((value) => ({ ...value, employee_number: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
+                  <input type="number" min="0.01" step="1000" placeholder="Gaji bulanan (opsional)" value={newEmployee.monthly_salary} onChange={(e) => setNewEmployee((value) => ({ ...value, monthly_salary: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
+                  <input type="number" min="0.01" step="100" placeholder="Tarif per jam (opsional)" value={newEmployee.standard_hourly_rate} onChange={(e) => setNewEmployee((value) => ({ ...value, standard_hourly_rate: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
+                  <select value={newEmployee.cost_center_id} onChange={(e) => setNewEmployee((value) => ({ ...value, cost_center_id: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3">
+                    <option value="">Cost center (opsional)</option>
+                    {costCenters.map((center) => <option key={center.id} value={center.id}>{center.cost_center_code} — {center.cost_center_name}</option>)}
+                  </select>
+                  <button type="submit" className="h-9 rounded-lg bg-emerald-600 px-3 font-semibold text-white">Simpan Karyawan</button>
+                  <p className="text-[11px] leading-4 text-slate-500 sm:col-span-2 xl:col-span-5">Profil dibuat tanpa akun user. Admin menautkannya pada saat membuat akun; lengkapi gaji dan cost center sebelum payroll.</p>
+                </form>
+              )}
               <div className="divide-y divide-slate-100 text-xs">
                 {employees.length === 0 ? (
                   <div className="p-5 text-center text-slate-500">
-                    Belum ada profil karyawan. Pilih satu akun user aktif di atas untuk membuat profil yang terhubung secara eksplisit.
+                    Belum ada profil karyawan. HR dapat membuat profil terlebih dahulu; akun user ditautkan oleh Admin saat akun dibuat.
                   </div>
                 ) : (
                   employees.map((emp) => (
                     <div key={emp.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
                       <div className="flex flex-wrap gap-2">
-                        <select
-                          aria-label={`Akun user untuk ${emp.employee_name}`}
-                          value={userLinkEdits[emp.id] ?? ""}
-                          onChange={(e) => setUserLinkEdits((p) => ({ ...p, [emp.id]: e.target.value }))}
-                          className="h-9 w-64 rounded-lg border border-slate-200 bg-slate-50 px-3"
-                        >
-                          <option value="">Tidak terhubung ke akun</option>
-                          {employeeUserOptions.filter((user) => !user.linked_employee_id || user.linked_employee_id === emp.id || user.id === emp.user_id).map((user) => <option key={user.id} value={user.id}>{user.full_name} — {user.email}{user.linked_employee_id === emp.id ? " (terhubung)" : ""}</option>)}
-                        </select>
+                        <div className="flex h-9 min-w-56 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-slate-600">
+                          Akun user: {emp.linked_user?.full_name || emp.linked_user?.email || "Belum ditautkan"}
+                        </div>
                         <input
                           aria-label={`Nama karyawan ${emp.employee_name}`}
                           placeholder="Nama karyawan"
@@ -918,7 +939,6 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                           onClick={async () => {
                             try {
                               await api.put(`/api/v1/hr/employees/${emp.id}`, {
-                                user_id: userLinkEdits[emp.id] || null,
                                 employee_name: employeeProfileEdits[emp.id]?.name ?? emp.employee_name,
                                 employee_number: employeeProfileEdits[emp.id]?.number ?? emp.employee_number,
                                 employment_status: employeeProfileEdits[emp.id]?.status ?? emp.employment_status,
