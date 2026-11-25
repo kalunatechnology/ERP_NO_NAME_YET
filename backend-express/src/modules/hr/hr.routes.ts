@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireModuleAccess } from '../../middlewares/entitlement.middleware';
 import { requireModuleTier } from '../../middlewares/rbac.middleware';
 import { HrService } from './hr.service';
 import { PayrollService } from '../finance/payroll.service';
@@ -152,7 +153,7 @@ hrRouter.put('/employees/:id', requireModuleTier('HR', 2), async (req, res, next
 });
 
 // --- FINANCE: Gerbang ACC & Posting ke GL Akuntansi ---
-hrFinanceRouter.post('/payroll/:id/finance-review', requireModuleTier('FINANCE', 1), async (req, res, next) => {
+hrFinanceRouter.post('/payroll/:id/finance-review', requireModuleAccess('FINANCE'), requireModuleTier('FINANCE', 1), async (req, res, next) => {
   try {
     const decision = String(req.body.decision || '').toUpperCase() === 'REJECT' ? 'REJECT' : 'APPROVE';
     const data = await HrService.financeReviewPayrollRun(
@@ -168,7 +169,7 @@ hrFinanceRouter.post('/payroll/:id/finance-review', requireModuleTier('FINANCE',
   }
 });
 
-hrFinanceRouter.post('/payroll/:id/post-gl', requireModuleTier('FINANCE', 1), async (req, res, next) => {
+hrFinanceRouter.post('/payroll/:id/post-gl', requireModuleAccess('FINANCE'), requireModuleTier('FINANCE', 1), async (req, res, next) => {
   try {
     const posted = await PayrollService.post(req.companyId!, req.tenantId ?? null, req.params.id, req.user!.id);
     res.json({ success: true, data: posted });

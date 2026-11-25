@@ -271,7 +271,7 @@ export function createApp(): Express {
     }),
     financeRouter,
   );
-  apiV1.use('/hr', requireModuleAccess('FINANCE'), hrFinanceRouter);
+  apiV1.use('/hr', hrFinanceRouter);
   apiV1.use('/hr', requireModuleAccess('HR'), hrRouter);
   apiV1.use('/procurement', requireModuleAccess('PROCUREMENT'), procurementRouter);
   apiV1.use('/inventory', requireModuleAccess('INVENTORY'), inventoryRouter);

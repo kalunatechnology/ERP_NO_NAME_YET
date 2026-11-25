@@ -447,7 +447,7 @@ export class ProjectsService {
     }
     if (!this.hasBaseStaffAccess(user) && !hasUserModuleWrite(user, 'PROJECTS')) return { id: { in: [] } };
 
-    const [memberships, assignments, ownWeekly] = await Promise.all([
+    const [memberships, assignments, ownWeekly, ownDaily] = await Promise.all([
       db.project_member.findMany({
         where: { company_id: companyId, user_id: user.id, status: 'ACTIVE' },
         select: { project_id: true },
@@ -460,8 +460,15 @@ export class ProjectsService {
         where: { company_id: companyId, assignee_id: user.id },
         select: { main_task_id: true },
       }),
+      db.project_daily_task?.findMany({
+        where: { company_id: companyId, assignee_id: user.id },
+        select: { weekly_task: { select: { main_task_id: true } } },
+      }) ?? Promise.resolve([]),
     ]);
-    const mainIds = [...new Set([...assignments, ...ownWeekly].map((row: { main_task_id: string }) => row.main_task_id))];
+    const dailyMainIds = ownDaily
+      .map((row: any) => row?.weekly_task?.main_task_id)
+      .filter((id: unknown): id is string => Boolean(id));
+    const mainIds = [...new Set([...assignments, ...ownWeekly].map((row: { main_task_id: string }) => row.main_task_id).concat(dailyMainIds))];
     const assignedMainTasks = mainIds.length
       ? await db.project_main_task.findMany({
         where: { company_id: companyId, id: { in: mainIds } },
@@ -479,7 +486,7 @@ export class ProjectsService {
     // switches to Staff/other roles must not lose their own projects from
     // task selectors; mutation authority remains separately enforced.
     return {
-      OR: [assignedScope, { created_by_id: user.id }],
+      OR: [assignedScope, { created_by_id: user.id }, { project_manager_id: user.id }],
       ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}),
     };
   }
