@@ -44,6 +44,14 @@ function normalizeLines(lines: any[]) {
 }
 
 export class PayrollService {
+  static async listEmployeeCostCenters(companyId: string) {
+    return prisma.master_cost_center.findMany({
+      where: { company_id: companyId, status: 'ACTIVE' },
+      select: { id: true, cost_center_code: true, cost_center_name: true, status: true },
+      orderBy: { cost_center_code: 'asc' },
+    });
+  }
+
   static async listEmployees(companyId: string) {
     const rows = await prisma.master_employee.findMany({
       // Keep inactive and former employees visible in the master table so their
@@ -78,14 +86,35 @@ export class PayrollService {
   static async updateEmployee(companyId: string, employeeId: string, input: any) {
     const employee = await prisma.master_employee.findFirst({ where: { company_id: companyId, id: employeeId } });
     if (!employee) throw new NotFoundError('Karyawan');
-    if (input.employee_number && input.employee_number !== employee.employee_number) {
-      const duplicate = await prisma.master_employee.findFirst({ where: { company_id: companyId, employee_number: String(input.employee_number), id: { not: employeeId } } });
-      if (duplicate) throw new ConflictError('Nomor karyawan sudah digunakan pada perusahaan ini.');
+    if (input.employee_number !== undefined) {
+      const employeeNumber = String(input.employee_number).trim();
+      if (!employeeNumber) throw new ValidationError('Nomor karyawan wajib diisi.');
+      if (employeeNumber !== employee.employee_number) {
+        const duplicate = await prisma.master_employee.findFirst({ where: { company_id: companyId, employee_number: employeeNumber, id: { not: employeeId } } });
+        if (duplicate) throw new ConflictError('Nomor karyawan sudah digunakan pada perusahaan ini.');
+      }
+    }
+    if (input.employee_name !== undefined && !String(input.employee_name).trim()) {
+      throw new ValidationError('Nama karyawan wajib diisi.');
     }
     const data: any = {};
     if (input.employee_number !== undefined) data.employee_number = String(input.employee_number).trim();
     if (input.employee_name !== undefined) data.employee_name = String(input.employee_name).trim();
-    if (input.monthly_salary !== undefined) data.monthly_salary = amount(input.monthly_salary, 'Gaji bulanan', false);
+    if (input.monthly_salary !== undefined) {
+      const rawSalary = input.monthly_salary;
+      data.monthly_salary = rawSalary === null || String(rawSalary).trim() === ''
+        ? null
+        : amount(rawSalary, 'Gaji bulanan', false);
+    }
+    if (input.standard_hourly_rate !== undefined) {
+      const rawRate = input.standard_hourly_rate;
+      if (rawRate === null || String(rawRate).trim() === '') {
+        data.standard_hourly_rate = null;
+      } else {
+        data.standard_hourly_rate = amount(rawRate, 'Tarif per jam');
+        if (data.standard_hourly_rate <= 0) throw new ValidationError('Tarif per jam harus lebih dari nol atau dikosongkan.');
+      }
+    }
     if (input.department_id !== undefined) data.department_id = input.department_id || null;
     if (input.cost_center_id !== undefined) {
       const costCenterId = String(input.cost_center_id ?? '').trim();

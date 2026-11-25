@@ -33,6 +33,8 @@ export interface CrudOptions {
   beforeDelete?: (req: Request, existing: any) => Promise<void> | void;
   /** Adds domain row visibility on top of the standard tenant/company scope. */
   accessWhere?: (req: Request) => Promise<Record<string, unknown>> | Record<string, unknown>;
+  /** Query filters consumed by accessWhere instead of mapped to model columns. */
+  ignoredFilterFields?: string[];
   /** Adds a row-level predicate to mutating lookups without hiding rows from reads. */
   writeAccessWhere?: (req: Request) => Promise<Record<string, unknown>> | Record<string, unknown>;
   afterCreate?: (req: Request, record: any) => Promise<void> | void;
@@ -600,6 +602,7 @@ export function createCrudRouter(options: CrudOptions): Router {
  */
   const delegate = (prisma as any)[options.modelName];
   const modelNameStr = String(options.modelName);
+  const ignoredFilterFields = new Set(options.ignoredFilterFields ?? []);
 
 /**
  * assertFinancialRecordMutable implements this file's named function contract.
@@ -872,7 +875,7 @@ export function createCrudRouter(options: CrudOptions): Router {
 
       // Query param filters with FK alias mapping
       for (const [key, val] of Object.entries(req.query)) {
-        if (['page', 'page_size', 'search', 'ordering', 'cursor'].includes(key)) continue;
+        if (['page', 'page_size', 'search', 'ordering', 'cursor'].includes(key) || ignoredFilterFields.has(key)) continue;
         if (val !== '') {
           if (typeof val !== 'string') throw new ValidationError(`Filter ${key} harus berupa satu nilai scalar.`);
           const rangeMatch = key.match(/__(gte|gt|lte|lt)$/);

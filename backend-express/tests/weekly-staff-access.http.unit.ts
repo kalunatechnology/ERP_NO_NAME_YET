@@ -44,6 +44,8 @@ async function main() {
     return [{ bundle }];
   };
   db.iam_company_module_access.findUnique = async () => ({ enabled: true, allow_read: true, allow_write: true });
+  db.iam_company_module_access.findFirst = async () => ({ access_mode: 'LEGACY' });
+  db.iam_company_module_access.findMany = async () => [{ company_id: companyId, module_code: 'PROJECTS', enabled: true, allow_read: true, allow_write: true }];
   db.iam_user_module_access.findUnique = async () => null;
   db.core_idempotency_key.create = async ({ data }: any) => ({ id: randomUUID(), ...data });
   db.core_idempotency_key.update = async () => ({});
@@ -52,6 +54,8 @@ async function main() {
   db.project_member.findFirst = async () => null;
   db.project_task_assignment.findMany = async () => [{ main_task_id: 'main-a' }];
   db.project_weekly_task.findMany = async () => [];
+  db.project_daily_task.findMany = async () => [];
+  db.project_milestone.findMany = async () => [];
   db.project_task_assignment.findFirst = async ({ where }: any) => where.main_task_id === 'main-a' && where.assignee_id === staffId ? { id: 'assignment-a' } : null;
   db.project_main_task.findMany = async () => [{ id: 'main-a', project_id: project.id }];
   db.project_project.findMany = async ({ where }: any) => {
@@ -89,6 +93,25 @@ async function main() {
     assert.equal(bootstrap.status, 200);
     assert.deepEqual((await bootstrap.json() as any).data.projects.mainTasks, bundle.mainTasks);
     assert.equal(personalQueries, 1);
+    db.project_weekly_task.findMany = async ({ where }: any = {}) => {
+      if (where?.id?.in) return where.id.in.includes('weekly-b') ? [{ id: 'weekly-b', main_task_id: 'main-b' }] : [];
+      if (where?.assignee_id === staffId) return [{ id: 'weekly-b', main_task_id: 'main-b', assignee_id: staffId, week_number: 1, target_description: 'Assigned weekly' }];
+      return [];
+    };
+    db.project_daily_task.findMany = async () => [{ id: 'daily-b', weekly_task_id: 'weekly-b', owner_id: staffId, title: 'Assigned daily' }];
+    db.project_main_task.findMany = async ({ where }: any = {}) => {
+      const ids = where?.id?.in ?? [];
+      if (ids.includes('main-b')) return [{ id: 'main-b', project_id: project.id, name: 'Weekly parent' }];
+      return [{ id: 'main-a', project_id: project.id }];
+    };
+    const staffProjectOverview = await get('/projects/staff/project-overview');
+    assert.equal(staffProjectOverview.status, 200, await staffProjectOverview.clone().text());
+    const assignedOverview = await staffProjectOverview.json() as any;
+    assert.deepEqual(assignedOverview.assignedProjectIds, [project.id]);
+    assert.deepEqual(assignedOverview.assignedMainTaskIds, ['main-a']);
+    assert(assignedOverview.mainTasks.some((task: any) => task.id === 'main-b'), 'Assigned Weekly Task must retain its parent Main Task context');
+    assert(assignedOverview.weeklyTasks.some((task: any) => task.id === 'weekly-b'), 'Weekly Task must appear even when parent Main Task belongs to another assignee');
+    assert.equal(assignedOverview.dailyTasks.find((task: any) => task.id === 'daily-b')?.project_id, project.id, 'Assigned Daily Task must resolve to its assigned project');
     const response = await get('/projects/projects/project-a/authority');
     assert.equal(response.status, 200, await response.clone().text());
     const authority = await response.json() as any;

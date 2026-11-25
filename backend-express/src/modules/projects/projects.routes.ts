@@ -2140,6 +2140,7 @@ projectsRouter.post('/weekly-tasks/:id/review', async (req: Request, res: Respon
 projectsRouter.use('/weekly-tasks', createCrudRouter({
   modelName: 'project_weekly_task',
   searchFields: ['target_description'],
+  ignoredFilterFields: ['period_month', 'period_week'],
   accessWhere: async (req) => {
     const access = await ProjectsService.weeklyTaskAccessWhere(req.user, activeCompanyId(req));
     const period = req.method === 'GET' && req.path === '/'
@@ -2498,8 +2499,10 @@ projectsRouter.get(
        */
       const projects =
         await prisma.project_project.findMany({
-          where:
-            projectWhere,
+          where: {
+            company_id: companyId,
+            ...projectWhere,
+          },
 
           select: {
             id:
@@ -2686,7 +2689,8 @@ projectsRouter.get(
               ),
 
           /**
-           * Only weekly tasks assigned to Staff.
+           * Include every Weekly Task assigned to Staff, including when its
+           * parent Main Task is assigned to a different team member.
            */
           prisma.project_weekly_task.findMany({
             where: {
@@ -2698,15 +2702,6 @@ projectsRouter.get(
 
               assignee_id:
                 userId,
-
-              ...(mainTaskIds.length
-                ? {
-                    main_task_id: {
-                      in:
-                        mainTaskIds,
-                    },
-                  }
-                : {}),
             },
 
             select: {
@@ -2853,14 +2848,75 @@ projectsRouter.get(
           }),
         ]);
 
+      // Keep parent project context for directly assigned Weekly Tasks and
+      // Daily Tasks, even when the Staff member is not assigned to the parent
+      // Main Task itself.
+      const dailyWeeklyIds = Array.from(new Set(dailyTasks.map((task) => task.weekly_task_id)));
+      const dailyParentWeeklies = dailyWeeklyIds.length
+        ? await prisma.project_weekly_task.findMany({
+            where: { tenant_id: tenantId, company_id: companyId, id: { in: dailyWeeklyIds } },
+            select: { id: true, main_task_id: true },
+          })
+        : [];
+      const contextMainTaskIds = Array.from(new Set([
+        ...weeklyTasks.map((task) => task.main_task_id),
+        ...dailyParentWeeklies.map((task) => task.main_task_id),
+      ].filter((id): id is string => Boolean(id))));
+      let contextMainTasks: any[] = [...mainTasks];
+      const knownMainTaskIds = new Set(contextMainTasks.map((task) => task.id));
+      const missingMainTaskIds = contextMainTaskIds.filter((id) => !knownMainTaskIds.has(id));
+      if (missingMainTaskIds.length) {
+        const parentMainTasks = await prisma.project_main_task.findMany({
+          where: {
+            tenant_id: tenantId,
+            company_id: companyId,
+            project_id: { in: projectIds },
+            id: { in: missingMainTaskIds },
+          },
+          select: {
+            id: true,
+            project_id: true,
+            name: true,
+            description: true,
+            priority: true,
+            start_date: true,
+            due_date: true,
+            progress: true,
+            status: true,
+          },
+        });
+        contextMainTasks = [...contextMainTasks, ...parentMainTasks];
+      }
+      const mainProjectById = new Map(contextMainTasks.map((task) => [task.id, task.project_id]));
+      const mainTaskByWeeklyId = new Map([
+        ...weeklyTasks.map((task) => [task.id, task.main_task_id] as const),
+        ...dailyParentWeeklies.map((task) => [task.id, task.main_task_id] as const),
+      ]);
+      const scopedDailyTasks = dailyTasks.map((task) => ({
+        ...task,
+        project_id: mainProjectById.get(mainTaskByWeeklyId.get(task.weekly_task_id) ?? '') ?? null,
+      }));
+      const projectMemberships = await prisma.project_member.findMany({
+        where: { tenant_id: tenantId, company_id: companyId, user_id: userId, status: 'ACTIVE' },
+        select: { project_id: true },
+      });
+      const assignedProjectIds = Array.from(new Set([
+        ...projectMemberships.map((membership) => membership.project_id),
+        ...contextMainTasks.map((task) => task.project_id),
+      ].filter((id): id is string => Boolean(id))));
+
       return res.json({
         projects,
 
-        mainTasks,
+        assignedProjectIds,
+
+        mainTasks: contextMainTasks,
+
+        assignedMainTaskIds: mainTaskIds,
 
         weeklyTasks,
 
-        dailyTasks,
+        dailyTasks: scopedDailyTasks,
 
         milestones,
       });
@@ -3967,6 +4023,7 @@ projectsRouter.use(
           {
             work_date: data.work_date || new Date(),
             overtime_hours: overtimeHours,
+            project_id: data.project_id ?? data.project,
             overtime_started_at: data.overtime_started_at,
             overtime_ended_at: data.overtime_ended_at,
             reason: String(data.overtime_reason || 'Lembur Daily Task').trim(),

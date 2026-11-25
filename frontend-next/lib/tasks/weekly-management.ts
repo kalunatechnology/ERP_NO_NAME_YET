@@ -1,5 +1,5 @@
 import type { Project, ProjectAuthority, WeeklyWorkPeriod } from "../api/project.api";
-import { weeklyTargetRecords, type WeeklyTargetRecord } from "../weekly-dashboard";
+import { resolveTargetCalendarWeek, weeklyTargetRecords, type WeeklyTargetRecord } from "../weekly-dashboard";
 
 export const WEEKLY_GROUPS = [
   { id: "PENDING_APPROVAL", label: "Menunggu persetujuan", color: "#A36B16", soft: "#FFF7E7" },
@@ -81,8 +81,9 @@ export function filterWeeklyTargets(records: WeeklyTargetRecord[], filters: {
     if (filters.group && weeklyGroup(record, filters.today) !== filters.group) return false;
     if (filters.period) {
       // 1. Direct match on resolved calendar week & month (consistent with quick nav counts)
+      const calendarMeta = resolveTargetCalendarWeek(record.weeklyTask);
       const matchesCalendarWeek = filters.period.week != null && filters.period.month != null
-        && record.calendarWeek === filters.period.week && record.calendarMonth === filters.period.month;
+        && calendarMeta.calendarWeek === filters.period.week && calendarMeta.calendarMonth === filters.period.month;
 
       // 2. Direct match on execution start_date / end_date
       const matchesDateRange = (record.startDate && record.startDate === filters.period.start)

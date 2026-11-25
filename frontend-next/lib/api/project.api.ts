@@ -1429,7 +1429,9 @@ export interface StaffOvertimeSummary {
 
 export interface StaffProjectOverview {
   projects: any[];
+  assignedProjectIds?: string[];
   mainTasks: any[];
+  assignedMainTaskIds?: string[];
   weeklyTasks: any[];
   dailyTasks: any[];
   milestones: any[];

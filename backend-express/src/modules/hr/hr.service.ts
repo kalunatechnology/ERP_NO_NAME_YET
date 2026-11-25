@@ -15,6 +15,7 @@ export async function ensureHrTables(): Promise<void> {
         "company_id" TEXT NOT NULL,
         "employee_id" TEXT NOT NULL,
         "user_id" TEXT NOT NULL,
+        "project_id" TEXT,
         "work_date" DATE NOT NULL,
         "start_time" TEXT NOT NULL,
         "end_time" TEXT NOT NULL,
@@ -33,6 +34,7 @@ export async function ensureHrTables(): Promise<void> {
         "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "hr_overtime_request" ADD COLUMN IF NOT EXISTS "project_id" TEXT;`);
     await prisma.$executeRawUnsafe(
       `ALTER TABLE "fin_payroll_run"
        ADD COLUMN IF NOT EXISTS "hr_approved_by_id" TEXT,
@@ -60,12 +62,15 @@ export class HrService {
   }
 
   static computeOvertimeAmount(emp: { monthly_salary: any; standard_hourly_rate: any }, hours: number) {
-    const hourly =
-      Number(emp.standard_hourly_rate ?? 0) > 0
-        ? Number(emp.standard_hourly_rate)
-        : Number(emp.monthly_salary ?? 0) / 173;
+    const standardRate = Number(emp.standard_hourly_rate ?? 0);
+    const monthlySalary = Number(emp.monthly_salary ?? 0);
+    const configured = (Number.isFinite(standardRate) && standardRate > 0)
+      || (Number.isFinite(monthlySalary) && monthlySalary > 0);
+    const hourly = Number.isFinite(standardRate) && standardRate > 0
+      ? standardRate
+      : configured ? monthlySalary / 173 : 0;
     const rate = Math.round(hourly * 1.5 * 100) / 100;
-    return { rate, amount: Math.round(rate * hours * 100) / 100 };
+    return { rate, amount: configured ? Math.round(rate * hours * 100) / 100 : 0, configured };
   }
 
   /** Tier 3: Pengajuan lembur oleh staff. */
@@ -83,7 +88,10 @@ export class HrService {
     if (!Number.isFinite(workDate.getTime())) {
       throw new ValidationError('Tanggal kerja lembur tidak valid.');
     }
-    const { rate, amount } = this.computeOvertimeAmount(emp, hours);
+    const { rate, amount, configured } = this.computeOvertimeAmount(emp, hours);
+    if (!configured) {
+      throw new ValidationError('Profil upah Anda belum diatur. Hubungi HR untuk mengisi gaji bulanan atau tarif per jam sebelum mengajukan lembur.');
+    }
     return prisma.hr_overtime_request.create({
       data: {
         id: crypto.randomUUID(),
@@ -91,6 +99,7 @@ export class HrService {
         company_id: companyId,
         employee_id: emp.id,
         user_id: userId,
+        project_id: null,
         work_date: workDate,
         start_time: String(input.start_time || ''),
         end_time: String(input.end_time || ''),
@@ -116,6 +125,7 @@ export class HrService {
       overtime_hours: number;
       overtime_started_at?: Date | string | null;
       overtime_ended_at?: Date | string | null;
+      project_id?: string | null;
       reason?: string | null;
     },
   ) {
@@ -152,6 +162,7 @@ export class HrService {
         company_id: companyId,
         employee_id: emp.id,
         user_id: userId,
+        project_id: input.project_id ?? null,
         work_date: Number.isFinite(workDate.getTime()) ? workDate : new Date(),
         start_time: toHhMm(input.overtime_started_at),
         end_time: toHhMm(input.overtime_ended_at),
@@ -185,12 +196,39 @@ export class HrService {
         select: { id: true, employee_number: true, employee_name: true },
       }),
     ]);
+    const projectIds = [...new Set(rows.map((row) => row.project_id).filter((id): id is string => Boolean(id)))];
+    const projects = projectIds.length ? await prisma.project_project.findMany({
+      where: { company_id: companyId, id: { in: projectIds } },
+      select: { id: true, project_code: true, project_name: true },
+    }) : [];
     const empMap = new Map(employees.map((e) => [e.id, e]));
-    return rows.map((row) => ({
-      ...row,
-      employee_number: empMap.get(row.employee_id)?.employee_number ?? '',
-      employee_name: empMap.get(row.employee_id)?.employee_name ?? row.employee_id,
-    }));
+    const projectMap = new Map(projects.map((project) => [project.id, project]));
+    return rows.map((row) => {
+      const employee = empMap.get(row.employee_id);
+      const project = row.project_id ? projectMap.get(row.project_id) : null;
+      return {
+        ...row,
+        employee_number: employee?.employee_number ?? '',
+        employee_name: String(employee?.employee_name ?? '').trim() || employee?.employee_number || 'Karyawan',
+        project_code: project?.project_code ?? '',
+        project_name: project?.project_name ?? '',
+      };
+    });
+  }
+
+  private static async resolveOvertimePrice(companyId: string, row: any) {
+    const storedRate = Number(row.overtime_rate ?? 0);
+    const storedAmount = Number(row.overtime_amount ?? 0);
+    if (storedRate > 0 && storedAmount > 0) return { rate: storedRate, amount: storedAmount };
+    const employee = await prisma.master_employee.findFirst({
+      where: { id: row.employee_id, company_id: companyId, employment_status: 'ACTIVE' },
+    });
+    if (!employee) throw new ValidationError('Profil karyawan aktif tidak ditemukan untuk menghitung upah lembur.');
+    const estimate = this.computeOvertimeAmount(employee, Number(row.duration_hours ?? 0));
+    if (!estimate.configured || estimate.rate <= 0 || estimate.amount <= 0) {
+      throw new ValidationError('Profil upah belum tersedia. Lengkapi gaji bulanan atau tarif per jam sebelum memproses lembur ini.');
+    }
+    return { rate: estimate.rate, amount: estimate.amount };
   }
 
   /** Tier 2: Verifikasi operasional oleh Anak Buah HR. */
@@ -200,9 +238,10 @@ export class HrService {
     if (!row) throw new NotFoundError('Pengajuan lembur');
     if (row.user_id === verifierId) throw new ForbiddenError('Tidak dapat memverifikasi lembur milik sendiri.');
     if (row.status !== 'SUBMITTED') throw new ConflictError('Hanya lembur SUBMITTED yang dapat diverifikasi.');
+    const price = await this.resolveOvertimePrice(companyId, row);
     return prisma.hr_overtime_request.update({
       where: { id: overtimeId },
-      data: { status: 'VERIFIED_HR_STAFF', verified_by_id: verifierId, verified_at: new Date() },
+      data: { ...price, status: 'VERIFIED_HR_STAFF', verified_by_id: verifierId, verified_at: new Date() },
     });
   }
 
@@ -215,9 +254,10 @@ export class HrService {
     if (!['SUBMITTED', 'VERIFIED_HR_STAFF'].includes(row.status)) {
       throw new ConflictError('Status lembur tidak valid untuk persetujuan final.');
     }
+    const price = await this.resolveOvertimePrice(companyId, row);
     return prisma.hr_overtime_request.update({
       where: { id: overtimeId },
-      data: { status: 'APPROVED', approved_by_id: approverId, approved_at: new Date() },
+      data: { ...price, status: 'APPROVED', approved_by_id: approverId, approved_at: new Date() },
     });
   }
 
@@ -299,6 +339,19 @@ export class HrService {
     ]);
     if (!employees.length) {
       throw new ValidationError('Belum ada karyawan berstatus ACTIVE untuk dibuatkan draft payroll.');
+    }
+    const employeesWithoutSalary = employees.filter((emp) => Number(emp.monthly_salary ?? 0) <= 0);
+    if (employeesWithoutSalary.length) {
+      throw new ValidationError(`Gaji bulanan belum diatur untuk ${employeesWithoutSalary.length} karyawan ACTIVE. Lengkapi Profil & Data Upah sebelum membuat draft payroll.`);
+    }
+    const employeesWithoutCostCenter = employees.filter((emp) => !emp.cost_center_id);
+    if (employeesWithoutCostCenter.length) {
+      throw new ValidationError(`Cost center belum diatur untuk ${employeesWithoutCostCenter.length} karyawan ACTIVE. Lengkapi Profil Karyawan sebelum membuat draft payroll.`);
+    }
+
+    const unpricedOvertime = approvedOvertimes.find((ot) => Number(ot.overtime_rate ?? 0) <= 0 || Number(ot.overtime_amount ?? 0) <= 0);
+    if (unpricedOvertime) {
+      throw new ValidationError('Ada lembur APPROVED tanpa estimasi upah yang valid. Perbaiki profil upah dan pengajuan lembur sebelum membuat draft payroll.');
     }
 
     const otByEmp = new Map<string, { hours: number; amount: number }>();
@@ -427,7 +480,8 @@ export class HrService {
           employee_number: empNum,
           employee_name: user.full_name || user.email,
           employment_status: 'ACTIVE',
-          monthly_salary: 5000000,
+          // Never invent compensation data during account synchronization.
+          monthly_salary: null,
         },
       });
       createdCount += 1;

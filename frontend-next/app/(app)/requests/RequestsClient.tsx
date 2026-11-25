@@ -697,6 +697,7 @@ export default function RequestsClient(){
           section={activeTab === 'overtime' ? 'overtime' : activeTab === 'hr_ops' ? 'ops' : 'lead'}
           hrTier={hrTier}
           financeTier={financeTier}
+          isStaff={userRole === "staff"}
         />
       )}
 

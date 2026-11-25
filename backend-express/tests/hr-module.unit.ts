@@ -20,7 +20,14 @@ async function runTests() {
   assert.equal(fallbackOt.rate, 45000);
   assert.equal(fallbackOt.amount, 90000);
 
-  // 3. Router path verification
+  // 3. Missing pay profile must remain explicitly unconfigured, not a valid Rp0 estimate.
+  const missingPayProfile = HrService.computeOvertimeAmount(
+    { monthly_salary: null, standard_hourly_rate: null },
+    3,
+  );
+  assert.deepEqual(missingPayProfile, { rate: 0, amount: 0, configured: false });
+
+  // 4. Router path verification
   const hrPaths = hrRouter.stack.filter((l: any) => l.route).map((l: any) => l.route.path);
   for (const expected of [
     '/overtimes/my',
@@ -33,6 +40,7 @@ async function runTests() {
     '/overtimes/:id/reject',
     '/payroll/:id/hr-approve',
     '/employees',
+    '/cost-centers',
     '/employees/:id',
   ]) {
     assert.ok(hrPaths.includes(expected), `hrRouter missing ${expected}`);

@@ -4962,6 +4962,7 @@ model hr_overtime_request {
   company_id       String    @map("company_id")
   employee_id      String    @map("employee_id")
   user_id          String    @map("user_id")
+  project_id       String?   @map("project_id")
   work_date        DateTime  @db.Date @map("work_date")
   start_time       String    @map("start_time")
   end_time         String    @map("end_time")

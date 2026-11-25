@@ -5,7 +5,9 @@ import { Clock3, Link2, MonitorSmartphone, Play, Send, Square } from "lucide-rea
 import toast from "react-hot-toast";
 import {
   getApiErrorDetail,
+  getStaffProjectOverview,
   Project,
+  StaffProjectOverview,
 } from "@/lib/api/project.api";
 import {
   getActiveStaffTimer,
@@ -55,14 +57,56 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
   const [syncingTimer, setSyncingTimer] = useState(true);
   const [timerAction, setTimerAction] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [assignmentOverview, setAssignmentOverview] = useState<StaffProjectOverview | null>(null);
+  const [loadingAssignments, setLoadingAssignments] = useState(true);
+  const [assignmentLoadError, setAssignmentLoadError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    getStaffProjectOverview()
+      .then((overview) => { if (active) { setAssignmentOverview(overview); setAssignmentLoadError(""); } })
+      .catch((error) => { if (active) setAssignmentLoadError(getApiErrorDetail(error, "Penugasan proyek gagal dimuat.")); })
+      .finally(() => { if (active) setLoadingAssignments(false); });
+    return () => { active = false; };
+  }, []);
+
+  const assignedProjectIds = useMemo(
+    () => new Set((assignmentOverview?.assignedProjectIds ?? []).map(String)),
+    [assignmentOverview],
+  );
+  const assignedProjects = useMemo(
+    () => (assignmentOverview?.projects ?? [])
+      .filter((project) => assignedProjectIds.has(String(project.id)))
+      .map((project) => project as Project),
+    [assignmentOverview, assignedProjectIds],
+  );
 
   const selectedProject = useMemo(
-    () => projects.find((project) => String(project.id) === projectId),
-    [projectId, projects],
+    () => assignedProjects.find((project) => String(project.id) === projectId),
+    [assignedProjects, projectId],
   );
-  const tasks = (selectedProject?.tasks || []).filter((task) =>
-    userId ? String(task.assigned_to_id ?? task.assigned_to ?? "") === userId : false
-  );
+  const tasks = useMemo(() => {
+    if (!selectedProject || !assignmentOverview) return [] as Array<{ id: string; title: string }>;
+    const projectKey = String(selectedProject.id);
+    const legacyProject = projects.find((project) => String(project.id) === projectKey);
+    const mainTasks = assignmentOverview.mainTasks.filter((task) =>
+      String(task.project_id) === projectKey
+      && (assignmentOverview.assignedMainTaskIds ?? []).includes(String(task.id))
+    );
+    const parentMainTaskIds = new Set(assignmentOverview.mainTasks.filter((task) => String(task.project_id) === projectKey).map((task) => String(task.id)));
+    const weeklyTasks = assignmentOverview.weeklyTasks.filter((task) => parentMainTaskIds.has(String(task.main_task_id)));
+    const options = [
+      ...(legacyProject?.tasks || [])
+        .filter((task) => userId && String(task.assigned_to_id ?? task.assigned_to ?? "") === userId)
+        .map((task) => ({ id: String(task.id), title: task.title || "Task proyek" })),
+      ...mainTasks.map((task) => ({ id: String(task.id), title: `Main Task: ${task.name}` })),
+      ...weeklyTasks.map((task) => ({ id: String(task.id), title: `Weekly Task: ${task.target_description}` })),
+      ...assignmentOverview.dailyTasks
+        .filter((task) => String(task.project_id ?? "") === projectKey)
+        .map((task) => ({ id: String(task.id), title: `Daily Task: ${task.title}` })),
+    ];
+    return Array.from(new Map(options.map((option) => [option.id, option])).values());
+  }, [assignmentOverview, projects, selectedProject, userId]);
 
   const hydrateSnapshot = useCallback((snapshot: StaffTimerSnapshot) => {
     const serverNow = new Date(snapshot.server_now).getTime();
@@ -255,11 +299,13 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
             onChange={(event) => { setProjectId(event.target.value); setTaskId(""); }}
             className="input mt-1 text-xs"
             required
-            disabled={sessionLocked || syncingTimer}
+            disabled={sessionLocked || syncingTimer || loadingAssignments}
           >
             <option value="">Pilih proyek yang ditugaskan</option>
-            {projects.map((project) => <option key={project.id} value={String(project.id)}>{project.project_code || project.code} — {project.project_name || project.name}</option>)}
+            {assignedProjects.map((project) => <option key={project.id} value={String(project.id)}>{project.project_code || project.code} — {project.project_name || project.name}</option>)}
           </select>
+          {assignmentLoadError && <span role="alert" className="form-helper text-red-600">{assignmentLoadError}</span>}
+          {!loadingAssignments && !assignmentLoadError && assignedProjects.length === 0 && <span className="form-helper">Belum ada proyek yang ditugaskan ke akun ini.</span>}
         </label>
         <label className="text-xs font-semibold text-text-secondary">
           Task proyek <span className="form-optional">(opsional)</span>
@@ -267,10 +313,10 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
             value={taskId}
             onChange={(event) => setTaskId(event.target.value)}
             className="input mt-1 text-xs"
-            disabled={sessionLocked || syncingTimer || !projectId || tasks.length === 0}
+            disabled={sessionLocked || syncingTimer || loadingAssignments || !projectId || tasks.length === 0}
           >
             <option value="">Tanpa task spesifik</option>
-            {tasks.map((task) => <option key={task.id} value={String(task.id)}>{task.title}</option>)}
+            {tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}
           </select>
         </label>
         <label className="text-xs font-semibold text-text-secondary">
@@ -369,7 +415,7 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
       <div className="mt-4 flex justify-end">
         <button
           type="submit"
-          disabled={submitting || actionBusy || projects.length === 0 || !sessionId || workTimerRunning || timerRunning || !workEndedAt}
+        disabled={submitting || actionBusy || (!sessionId && assignedProjects.length === 0) || (loadingAssignments && !sessionId) || !sessionId || workTimerRunning || timerRunning || !workEndedAt}
           className="btn-primary gap-2 px-4 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Send size={14} /> {submitting ? "Mengirim..." : "Kirim Timesheet"}

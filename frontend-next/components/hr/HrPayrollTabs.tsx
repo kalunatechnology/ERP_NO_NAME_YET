@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Wallet,
   CheckCircle2,
@@ -10,12 +11,16 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
+import { localDateKey } from "@/lib/utils";
 
 interface OvertimeItem {
   id: string;
   employee_id: string;
   employee_number?: string;
   employee_name?: string;
+  project_id?: string | null;
+  project_code?: string;
+  project_name?: string;
   work_date: string;
   start_time: string;
   end_time: string;
@@ -45,8 +50,15 @@ interface EmployeeItem {
   employee_number: string;
   employee_name: string;
   employment_status: string;
-  monthly_salary: number | string;
+  monthly_salary: number | string | null;
+  standard_hourly_rate?: number | string | null;
   cost_center_id?: string | null;
+}
+
+interface CostCenterItem {
+  id: string;
+  cost_center_code: string;
+  cost_center_name: string;
 }
 
 const formatIdr = (val: unknown) =>
@@ -54,22 +66,36 @@ const formatIdr = (val: unknown) =>
     Number(val ?? 0),
   );
 
+const overtimePayLabel = (overtime: Pick<OvertimeItem, "overtime_rate" | "overtime_amount">) =>
+  Number(overtime.overtime_rate) > 0 && Number(overtime.overtime_amount) > 0
+    ? formatIdr(overtime.overtime_amount)
+    : "Belum dapat dihitung";
+
+const overtimeEmployeeLabel = (overtime: Pick<OvertimeItem, "employee_name" | "employee_number">) => {
+  const name = String(overtime.employee_name ?? "").trim();
+  const number = String(overtime.employee_number ?? "").trim();
+  if (name && name !== number) return number ? `${name} (${number})` : name;
+  return number ? `Karyawan (${number})` : "Karyawan";
+};
+
 interface HrPayrollTabsProps {
   section: "overtime" | "ops" | "lead";
   hrTier: number;
   financeTier: number;
+  isStaff?: boolean;
 }
 
-export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsProps) {
+export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }: HrPayrollTabsProps) {
   const [loading, setLoading] = useState(true);
   const [myOvertimes, setMyOvertimes] = useState<OvertimeItem[]>([]);
   const [myPayslips, setMyPayslips] = useState<any[]>([]);
   const [companyOvertimes, setCompanyOvertimes] = useState<OvertimeItem[]>([]);
   const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([]);
   const [employees, setEmployees] = useState<EmployeeItem[]>([]);
+  const [costCenters, setCostCenters] = useState<CostCenterItem[]>([]);
 
   const [otForm, setOtForm] = useState({
-    work_date: new Date().toISOString().slice(0, 10),
+    work_date: localDateKey(),
     start_time: "17:00",
     end_time: "20:00",
     duration_hours: "3",
@@ -79,14 +105,17 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
 
   const [periodStart, setPeriodStart] = useState(() => {
     const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+    return localDateKey(new Date(d.getFullYear(), d.getMonth(), 1));
   });
   const [periodEnd, setPeriodEnd] = useState(() => {
     const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10);
+    return localDateKey(new Date(d.getFullYear(), d.getMonth() + 1, 0));
   });
   const [generatingPayroll, setGeneratingPayroll] = useState(false);
   const [salaryEdits, setSalaryEdits] = useState<Record<string, string>>({});
+  const [hourlyRateEdits, setHourlyRateEdits] = useState<Record<string, string>>({});
+  const [employeeProfileEdits, setEmployeeProfileEdits] = useState<Record<string, { name: string; number: string; status: string }>>({});
+  const [costCenterEdits, setCostCenterEdits] = useState<Record<string, string>>({});
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -99,20 +128,31 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
       setMyPayslips(mySlipRes.data?.results ?? []);
 
       if (hrTier <= 2 || financeTier <= 1) {
-        const [compOtRes, runsRes, empRes] = await Promise.all([
+        const [compOtRes, runsRes, empRes, costCenterRes] = await Promise.all([
           api.get("/api/v1/hr/overtimes").catch(() => ({ data: { results: [] } })),
           api.get("/api/v1/hr/payroll/runs").catch(() => ({ data: { results: [] } })),
           api.get("/api/v1/hr/employees").catch(() => ({ data: { results: [] } })),
+          api.get("/api/v1/hr/cost-centers").catch(() => ({ data: { results: [] } })),
         ]);
         setCompanyOvertimes(compOtRes.data?.results ?? []);
         setPayrollRuns(runsRes.data?.results ?? []);
         const empList: EmployeeItem[] = empRes.data?.results ?? [];
         setEmployees(empList);
+        setCostCenters(costCenterRes.data?.results ?? []);
         const edits: Record<string, string> = {};
+        const rateEdits: Record<string, string> = {};
+        const profileEdits: Record<string, { name: string; number: string; status: string }> = {};
+        const costCenterEditsByEmployee: Record<string, string> = {};
         for (const e of empList) {
-          edits[e.id] = String(e.monthly_salary ?? 0);
+          edits[e.id] = e.monthly_salary == null ? "" : String(e.monthly_salary);
+          rateEdits[e.id] = e.standard_hourly_rate == null ? "" : String(e.standard_hourly_rate);
+          profileEdits[e.id] = { name: e.employee_name, number: e.employee_number, status: e.employment_status };
+          costCenterEditsByEmployee[e.id] = String(e.cost_center_id ?? "");
         }
         setSalaryEdits(edits);
+        setHourlyRateEdits(rateEdits);
+        setEmployeeProfileEdits(profileEdits);
+        setCostCenterEdits(costCenterEditsByEmployee);
       }
     } finally {
       setLoading(false);
@@ -165,10 +205,22 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
         </button>
       </div>
 
+      {hrTier >= 3 && (
+        <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs leading-5 text-sky-950">
+          Halaman ini adalah layanan HR pribadi. Profil karyawan dan gaji bulanan dikelola oleh HR Tier 2 atau Tier 1 di tab <strong>Operasional HR &amp; Payroll</strong>; minta admin perusahaan memberi akses HR yang sesuai bila Anda bertugas mengelola data tersebut.
+        </div>
+      )}
+
       {section === "overtime" && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-            <form onSubmit={handleSubmitOvertime} className="lg:col-span-5 rounded-2xl border border-[#E2E8F0] bg-white p-5 space-y-3 text-xs">
+            {isStaff ? (
+              <div className="lg:col-span-5 rounded-2xl border border-[#BAE6FD] bg-white p-5 text-xs">
+                <h2 className="text-sm font-bold text-[#163D64]">Catat Lembur pada Proyek Ditugaskan</h2>
+                <p className="mt-2 leading-5 text-slate-600">Untuk memastikan jam lembur terkait dengan proyek dan tugas yang benar, staf mencatatnya melalui Timesheet di Tugas Harian. Daftar proyek di sana mengikuti akses dan penugasan akun Anda.</p>
+                <Link href="/tasks" className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#0876CD] px-4 py-2.5 font-semibold text-white hover:bg-[#163D64]">Buka Tugas Harian</Link>
+              </div>
+            ) : <form onSubmit={handleSubmitOvertime} className="lg:col-span-5 rounded-2xl border border-[#E2E8F0] bg-white p-5 space-y-3 text-xs">
               <h2 className="text-sm font-bold text-[#163D64]">Ajukan Lembur Pribadi</h2>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -232,7 +284,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
                 <Send size={14} />
                 {submittingOt ? "Mengirim..." : "Kirim Pengajuan Lembur"}
               </button>
-            </form>
+            </form>}
 
             <div className="lg:col-span-7 rounded-2xl border border-[#E2E8F0] bg-white overflow-hidden">
               <div className="p-4 border-b border-slate-200 font-bold text-sm text-[#163D64]">
@@ -250,7 +302,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
                         </div>
                         <div className="text-slate-600 mt-0.5">{ot.reason}</div>
                         <div className="text-[11px] text-[#0876CD] font-semibold mt-0.5">
-                          Estimasi Upah: {formatIdr(ot.overtime_amount)}
+                          Estimasi Upah: {overtimePayLabel(ot)}
                         </div>
                       </div>
                       <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-700">
@@ -348,10 +400,11 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
                   <div key={ot.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <div className="font-semibold text-slate-900">
-                        {ot.employee_name} ({ot.employee_number}) • {String(ot.work_date).slice(0, 10)} ({ot.duration_hours} jam)
+                        {overtimeEmployeeLabel(ot)} • {String(ot.work_date).slice(0, 10)} ({ot.duration_hours} jam)
                       </div>
                       <div className="text-slate-600">{ot.reason}</div>
-                      <div className="text-[11px] font-semibold text-[#0876CD]">Upah Lembur: {formatIdr(ot.overtime_amount)}</div>
+                      <div className="text-[11px] text-slate-500">{ot.project_id ? `Proyek: ${ot.project_code || ""} ${ot.project_name || ""}` : "Proyek tidak tertaut"}</div>
+                      <div className="text-[11px] font-semibold text-[#0876CD]">Upah Lembur: {overtimePayLabel(ot)}</div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-700">{ot.status}</span>
@@ -446,7 +499,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
             <div className="rounded-2xl border border-[#E2E8F0] bg-white overflow-hidden">
               <div className="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
                 <span className="font-bold text-sm text-[#163D64]">
-                  Master Gaji Pokok Karyawan ({employees.length})
+                  Profil &amp; Data Upah Karyawan ({employees.length})
                 </span>
                 <button
                   type="button"
@@ -472,30 +525,78 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
               <div className="divide-y divide-slate-100 text-xs">
                 {employees.length === 0 ? (
                   <div className="p-5 text-center text-slate-500">
-                    Belum ada data karyawan di perusahaan ini. Klik &ldquo;+ Sinkronkan User ke Karyawan&rdquo; di kanan atas untuk mendaftarkan user aktif ke Master Karyawan.
+                    Belum ada data karyawan. Sinkronisasi hanya membuat profil tanpa mengisi angka gaji; HR perlu melengkapi gaji bulanan atau tarif per jam secara akurat.
                   </div>
                 ) : (
                   employees.map((emp) => (
                     <div key={emp.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <div className="font-semibold text-slate-900">{emp.employee_name} ({emp.employee_number})</div>
-                        <div className="text-slate-500">Status: {emp.employment_status}</div>
+                      <div className="flex flex-wrap gap-2">
+                        <input
+                          aria-label={`Nama karyawan ${emp.employee_name}`}
+                          placeholder="Nama karyawan"
+                          value={employeeProfileEdits[emp.id]?.name ?? emp.employee_name}
+                          onChange={(e) => setEmployeeProfileEdits((p) => ({ ...p, [emp.id]: { name: e.target.value, number: p[emp.id]?.number ?? emp.employee_number, status: p[emp.id]?.status ?? emp.employment_status } }))}
+                          className="h-9 w-48 rounded-lg border border-slate-200 bg-slate-50 px-3"
+                        />
+                        <input
+                          aria-label={`Nomor karyawan ${emp.employee_name}`}
+                          placeholder="Nomor karyawan"
+                          value={employeeProfileEdits[emp.id]?.number ?? emp.employee_number}
+                          onChange={(e) => setEmployeeProfileEdits((p) => ({ ...p, [emp.id]: { name: p[emp.id]?.name ?? emp.employee_name, number: e.target.value, status: p[emp.id]?.status ?? emp.employment_status } }))}
+                          className="h-9 w-36 rounded-lg border border-slate-200 bg-slate-50 px-3"
+                        />
+                        <select
+                          aria-label={`Status karyawan ${emp.employee_name}`}
+                          value={employeeProfileEdits[emp.id]?.status ?? emp.employment_status}
+                          onChange={(e) => setEmployeeProfileEdits((p) => ({ ...p, [emp.id]: { name: p[emp.id]?.name ?? emp.employee_name, number: p[emp.id]?.number ?? emp.employee_number, status: e.target.value } }))}
+                          className="h-9 rounded-lg border border-slate-200 bg-slate-50 px-3"
+                        >
+                          <option value="ACTIVE">Aktif</option><option value="INACTIVE">Nonaktif</option><option value="TERMINATED">Berakhir</option>
+                        </select>
+                        <select
+                          aria-label={`Cost center ${emp.employee_name}`}
+                          value={costCenterEdits[emp.id] ?? ""}
+                          onChange={(e) => setCostCenterEdits((p) => ({ ...p, [emp.id]: e.target.value }))}
+                          className="h-9 w-52 rounded-lg border border-slate-200 bg-slate-50 px-3"
+                        >
+                          <option value="">Pilih cost center aktif</option>
+                          {costCenters.map((center) => <option key={center.id} value={center.id}>{center.cost_center_code} — {center.cost_center_name}</option>)}
+                        </select>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <input
                           type="number"
+                          min="0.01"
+                          step="1000"
+                          aria-label={`Gaji bulanan ${emp.employee_name}`}
+                          placeholder="Gaji bulanan"
                           value={salaryEdits[emp.id] ?? ""}
                           onChange={(e) => setSalaryEdits((p) => ({ ...p, [emp.id]: e.target.value }))}
                           className="h-9 w-40 rounded-lg border border-slate-200 bg-slate-50 px-3"
+                        />
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="100"
+                          aria-label={`Tarif per jam ${emp.employee_name}`}
+                          placeholder="Tarif per jam (opsional)"
+                          value={hourlyRateEdits[emp.id] ?? ""}
+                          onChange={(e) => setHourlyRateEdits((p) => ({ ...p, [emp.id]: e.target.value }))}
+                          className="h-9 w-44 rounded-lg border border-slate-200 bg-slate-50 px-3"
                         />
                         <button
                           type="button"
                           onClick={async () => {
                             try {
                               await api.put(`/api/v1/hr/employees/${emp.id}`, {
-                                monthly_salary: Number(salaryEdits[emp.id] ?? 0),
+                                employee_name: employeeProfileEdits[emp.id]?.name ?? emp.employee_name,
+                                employee_number: employeeProfileEdits[emp.id]?.number ?? emp.employee_number,
+                                employment_status: employeeProfileEdits[emp.id]?.status ?? emp.employment_status,
+                                cost_center_id: costCenterEdits[emp.id] || null,
+                                monthly_salary: salaryEdits[emp.id]?.trim() ? Number(salaryEdits[emp.id]) : null,
+                                standard_hourly_rate: hourlyRateEdits[emp.id]?.trim() ? Number(hourlyRateEdits[emp.id]) : null,
                               });
-                              toast.success("Gaji pokok karyawan diperbarui.");
+                              toast.success("Profil upah karyawan diperbarui.");
                               await loadData();
                             } catch (err: unknown) {
                               toast.error(err instanceof Error ? err.message : "Gagal memperbarui gaji.");
@@ -503,7 +604,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
                           }}
                           className="h-9 rounded-lg bg-[#0876CD] px-3 font-semibold text-white cursor-pointer"
                         >
-                          Simpan Gaji
+                          Simpan Profil
                         </button>
                       </div>
                     </div>
@@ -534,8 +635,9 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
                       <div key={ot.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
                         <div>
                           <div className="font-semibold text-slate-900">
-                            {ot.employee_name} • {String(ot.work_date).slice(0, 10)} ({ot.duration_hours} jam — {formatIdr(ot.overtime_amount)})
+                            {overtimeEmployeeLabel(ot)} • {String(ot.work_date).slice(0, 10)} ({ot.duration_hours} jam — {overtimePayLabel(ot)})
                           </div>
+                          <div className="text-[11px] text-slate-500">{ot.project_id ? `Proyek: ${ot.project_code || ""} ${ot.project_name || ""}` : "Proyek tidak tertaut"}</div>
                           <div className="text-slate-600">{ot.reason}</div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -683,7 +785,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
             <div className="rounded-2xl border border-[#E2E8F0] bg-white overflow-hidden">
               <div className="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
                 <span className="font-bold text-sm text-[#163D64]">
-                  Master Gaji Pokok Karyawan ({employees.length})
+                  Profil &amp; Data Upah Karyawan ({employees.length})
                 </span>
                 <button
                   type="button"
@@ -709,30 +811,78 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
               <div className="divide-y divide-slate-100 text-xs">
                 {employees.length === 0 ? (
                   <div className="p-5 text-center text-slate-500">
-                    Belum ada data karyawan di perusahaan ini. Klik &ldquo;+ Sinkronkan User ke Karyawan&rdquo; di kanan atas untuk mendaftarkan user aktif ke Master Karyawan.
+                    Belum ada data karyawan. Sinkronisasi hanya membuat profil tanpa mengisi angka gaji; HR perlu melengkapi gaji bulanan atau tarif per jam secara akurat.
                   </div>
                 ) : (
                   employees.map((emp) => (
                     <div key={emp.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <div className="font-semibold text-slate-900">{emp.employee_name} ({emp.employee_number})</div>
-                        <div className="text-slate-500">Status: {emp.employment_status}</div>
+                      <div className="flex flex-wrap gap-2">
+                        <input
+                          aria-label={`Nama karyawan ${emp.employee_name}`}
+                          placeholder="Nama karyawan"
+                          value={employeeProfileEdits[emp.id]?.name ?? emp.employee_name}
+                          onChange={(e) => setEmployeeProfileEdits((p) => ({ ...p, [emp.id]: { name: e.target.value, number: p[emp.id]?.number ?? emp.employee_number, status: p[emp.id]?.status ?? emp.employment_status } }))}
+                          className="h-9 w-48 rounded-lg border border-slate-200 bg-slate-50 px-3"
+                        />
+                        <input
+                          aria-label={`Nomor karyawan ${emp.employee_name}`}
+                          placeholder="Nomor karyawan"
+                          value={employeeProfileEdits[emp.id]?.number ?? emp.employee_number}
+                          onChange={(e) => setEmployeeProfileEdits((p) => ({ ...p, [emp.id]: { name: p[emp.id]?.name ?? emp.employee_name, number: e.target.value, status: p[emp.id]?.status ?? emp.employment_status } }))}
+                          className="h-9 w-36 rounded-lg border border-slate-200 bg-slate-50 px-3"
+                        />
+                        <select
+                          aria-label={`Status karyawan ${emp.employee_name}`}
+                          value={employeeProfileEdits[emp.id]?.status ?? emp.employment_status}
+                          onChange={(e) => setEmployeeProfileEdits((p) => ({ ...p, [emp.id]: { name: p[emp.id]?.name ?? emp.employee_name, number: p[emp.id]?.number ?? emp.employee_number, status: e.target.value } }))}
+                          className="h-9 rounded-lg border border-slate-200 bg-slate-50 px-3"
+                        >
+                          <option value="ACTIVE">Aktif</option><option value="INACTIVE">Nonaktif</option><option value="TERMINATED">Berakhir</option>
+                        </select>
+                        <select
+                          aria-label={`Cost center ${emp.employee_name}`}
+                          value={costCenterEdits[emp.id] ?? ""}
+                          onChange={(e) => setCostCenterEdits((p) => ({ ...p, [emp.id]: e.target.value }))}
+                          className="h-9 w-52 rounded-lg border border-slate-200 bg-slate-50 px-3"
+                        >
+                          <option value="">Pilih cost center aktif</option>
+                          {costCenters.map((center) => <option key={center.id} value={center.id}>{center.cost_center_code} — {center.cost_center_name}</option>)}
+                        </select>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <input
                           type="number"
+                          min="0.01"
+                          step="1000"
+                          aria-label={`Gaji bulanan ${emp.employee_name}`}
+                          placeholder="Gaji bulanan"
                           value={salaryEdits[emp.id] ?? ""}
                           onChange={(e) => setSalaryEdits((p) => ({ ...p, [emp.id]: e.target.value }))}
                           className="h-9 w-40 rounded-lg border border-slate-200 bg-slate-50 px-3"
+                        />
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="100"
+                          aria-label={`Tarif per jam ${emp.employee_name}`}
+                          placeholder="Tarif per jam (opsional)"
+                          value={hourlyRateEdits[emp.id] ?? ""}
+                          onChange={(e) => setHourlyRateEdits((p) => ({ ...p, [emp.id]: e.target.value }))}
+                          className="h-9 w-44 rounded-lg border border-slate-200 bg-slate-50 px-3"
                         />
                         <button
                           type="button"
                           onClick={async () => {
                             try {
                               await api.put(`/api/v1/hr/employees/${emp.id}`, {
-                                monthly_salary: Number(salaryEdits[emp.id] ?? 0),
+                                employee_name: employeeProfileEdits[emp.id]?.name ?? emp.employee_name,
+                                employee_number: employeeProfileEdits[emp.id]?.number ?? emp.employee_number,
+                                employment_status: employeeProfileEdits[emp.id]?.status ?? emp.employment_status,
+                                cost_center_id: costCenterEdits[emp.id] || null,
+                                monthly_salary: salaryEdits[emp.id]?.trim() ? Number(salaryEdits[emp.id]) : null,
+                                standard_hourly_rate: hourlyRateEdits[emp.id]?.trim() ? Number(hourlyRateEdits[emp.id]) : null,
                               });
-                              toast.success("Gaji pokok karyawan diperbarui.");
+                              toast.success("Profil upah karyawan diperbarui.");
                               await loadData();
                             } catch (err: unknown) {
                               toast.error(err instanceof Error ? err.message : "Gagal memperbarui gaji.");
@@ -740,7 +890,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
                           }}
                           className="h-9 rounded-lg bg-[#0876CD] px-3 font-semibold text-white cursor-pointer"
                         >
-                          Simpan Gaji
+                          Simpan Profil
                         </button>
                       </div>
                     </div>

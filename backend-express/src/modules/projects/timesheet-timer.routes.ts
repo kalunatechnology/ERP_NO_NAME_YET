@@ -96,24 +96,63 @@ async function validateTaskForCurrentUser(
 ) {
   if (!taskId) return;
 
+  const scope = {
+    id: taskId,
+    tenant_id: activeTenantId(req),
+    company_id: activeCompanyId(req),
+  };
   const task = await prisma.project_task.findFirst({
     where: {
-      id: taskId,
-      tenant_id: activeTenantId(req),
-      company_id: activeCompanyId(req),
+      ...scope,
       project_id: projectId,
     },
     select: { id: true, assigned_to_id: true },
   });
 
-  if (!task) throw new ValidationError('Task timesheet tidak valid.');
-
-  if (
-    req.user?.active_role_code === RoleCode.STAFF &&
-    task.assigned_to_id !== activeUserId(req)
-  ) {
-    throw new ForbiddenError('Anda hanya dapat menjalankan timer pada task yang ditugaskan kepada Anda.');
+  if (task) {
+    if (req.user?.active_role_code === RoleCode.STAFF && task.assigned_to_id !== activeUserId(req)) {
+      throw new ForbiddenError('Anda hanya dapat menjalankan timer pada task yang ditugaskan kepada Anda.');
+    }
+    return;
   }
+
+  if (req.user?.active_role_code !== RoleCode.STAFF) throw new ValidationError('Task timesheet tidak valid.');
+  const userId = activeUserId(req);
+  const mainTask = await prisma.project_main_task.findFirst({ where: { ...scope, project_id: projectId }, select: { id: true } });
+  if (mainTask) {
+    const assignment = await prisma.project_task_assignment.findFirst({
+      where: { company_id: activeCompanyId(req), tenant_id: activeTenantId(req), main_task_id: taskId, assignee_id: userId },
+      select: { id: true },
+    });
+    if (!assignment) throw new ForbiddenError('Anda hanya dapat menjalankan timer pada Main Task yang ditugaskan kepada Anda.');
+    return;
+  }
+
+  const weeklyTask = await prisma.project_weekly_task.findFirst({ where: scope, select: { id: true, main_task_id: true, assignee_id: true } });
+  if (weeklyTask) {
+    const parent = await prisma.project_main_task.findFirst({
+      where: { id: weeklyTask.main_task_id, company_id: activeCompanyId(req), tenant_id: activeTenantId(req), project_id: projectId },
+      select: { id: true },
+    });
+    if (parent && weeklyTask.assignee_id === userId) return;
+    throw new ForbiddenError('Anda hanya dapat menjalankan timer pada Weekly Task yang ditugaskan kepada Anda di proyek ini.');
+  }
+
+  const dailyTask = await prisma.project_daily_task.findFirst({ where: scope, select: { id: true, weekly_task_id: true, owner_id: true } });
+  if (dailyTask) {
+    const weekly = await prisma.project_weekly_task.findFirst({
+      where: { id: dailyTask.weekly_task_id, company_id: activeCompanyId(req), tenant_id: activeTenantId(req) },
+      select: { main_task_id: true },
+    });
+    const parent = weekly ? await prisma.project_main_task.findFirst({
+      where: { id: weekly.main_task_id, company_id: activeCompanyId(req), tenant_id: activeTenantId(req), project_id: projectId },
+      select: { id: true },
+    }) : null;
+    if (parent && dailyTask.owner_id === userId) return;
+    throw new ForbiddenError('Anda hanya dapat menjalankan timer pada Daily Task milik Anda di proyek ini.');
+  }
+
+  throw new ValidationError('Task timesheet tidak valid.');
 }
 
 /**
@@ -336,6 +375,7 @@ timesheetTimerRouter.post(
           {
             work_date: updated.work_date ?? new Date(),
             overtime_hours: overtimeHours,
+            project_id: updated.project_id,
             overtime_started_at: updated.overtime_started_at,
             overtime_ended_at: updated.overtime_ended_at,
             reason: overtimeReason || `Lembur Daily Task (${overtimeHours} jam)`,

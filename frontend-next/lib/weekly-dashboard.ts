@@ -59,8 +59,8 @@ export interface TargetCalendarWeekInput {
 }
 
 export function resolveTargetCalendarWeek(target: TargetCalendarWeekInput) {
-  const startDate = target.startDate ?? target.start_date ?? target.weeklyTask?.start_date;
-  if (!startDate) {
+  const createdAt = target.weeklyTask?.created_at ?? target.created_at;
+  if (!createdAt) {
     const weekNumber = target.weeklyTask?.week_number ?? target.week_number ?? 1;
     return {
       calendarWeek: 0,
@@ -70,11 +70,26 @@ export function resolveTargetCalendarWeek(target: TargetCalendarWeekInput) {
       sequenceCode: `W#${weekNumber}`,
     };
   }
-  const date = new Date(`${startDate.slice(0, 10)}T00:00:00Z`);
-  const wibMs = (Number.isFinite(date.getTime()) ? date.getTime() : Date.now()) + 7 * 3600 * 1000;
+  const date = new Date(createdAt);
+  if (!Number.isFinite(date.getTime())) {
+    const weekNumber = target.weeklyTask?.week_number ?? target.week_number ?? 1;
+    return {
+      calendarWeek: 0,
+      calendarWeekLabel: "Belum dijadwalkan",
+      calendarMonth: "",
+      sequenceLabel: `Target #${weekNumber}`,
+      sequenceCode: `W#${weekNumber}`,
+    };
+  }
+  const wibMs = date.getTime() + 7 * 3600 * 1000;
   const wibDate = new Date(wibMs);
   const day = wibDate.getUTCDay();
-  const daysToMonday = -(day - 1);
+  const hours = wibDate.getUTCHours();
+  let daysToMonday = 0;
+  if (day === 5 && hours >= 15) daysToMonday = 3;
+  else if (day === 6) daysToMonday = 2;
+  else if (day === 0) daysToMonday = 1;
+  else daysToMonday = -(day - 1);
 
   const mondayMs = wibMs + daysToMonday * 86400 * 1000;
   const mondayDate = new Date(mondayMs);
