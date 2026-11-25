@@ -82,8 +82,9 @@ const overtimePayLabel = (overtime: Pick<OvertimeItem, "overtime_rate" | "overti
 const overtimeEmployeeLabel = (overtime: Pick<OvertimeItem, "employee_name" | "employee_number">) => {
   const name = String(overtime.employee_name ?? "").trim();
   const number = String(overtime.employee_number ?? "").trim();
-  if (name && name !== number) return number ? `${name} (${number})` : name;
-  return number ? `Karyawan (${number})` : "Karyawan";
+  const usableName = name && name !== number && name !== "Nama karyawan belum diisi" ? name : "";
+  if (usableName) return number ? `${usableName} (${number})` : usableName;
+  return number ? `Nama belum diisi (${number})` : "Nama karyawan belum diisi";
 };
 
 interface HrPayrollTabsProps {
@@ -101,6 +102,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
   const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([]);
   const [employees, setEmployees] = useState<EmployeeItem[]>([]);
   const [employeeUserOptions, setEmployeeUserOptions] = useState<EmployeeUserOption[]>([]);
+  const [employeeUserOptionsError, setEmployeeUserOptionsError] = useState(false);
   const [employeeCreateOpen, setEmployeeCreateOpen] = useState(false);
   const [newEmployee, setNewEmployee] = useState({ employee_name: "", employee_number: "", monthly_salary: "", standard_hourly_rate: "", cost_center_id: "" });
   const [costCenters, setCostCenters] = useState<CostCenterItem[]>([]);
@@ -145,13 +147,26 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
           api.get("/api/v1/hr/payroll/runs").catch(() => ({ data: { results: [] } })),
           api.get("/api/v1/hr/employees").catch(() => ({ data: { results: [] } })),
           api.get("/api/v1/hr/cost-centers").catch(() => ({ data: { results: [] } })),
-          api.get("/api/v1/hr/employee-user-options").catch(() => ({ data: { results: [] } })),
+          api.get("/api/v1/hr/employee-user-options").catch(() => ({ data: { results: [], error: true } })),
         ]);
-        setCompanyOvertimes(compOtRes.data?.results ?? []);
         setPayrollRuns(runsRes.data?.results ?? []);
         const empList: EmployeeItem[] = empRes.data?.results ?? [];
+        const employeeById = new Map(empList.map((employee) => [employee.id, employee]));
+        const overtimeRows: OvertimeItem[] = (compOtRes.data?.results ?? []).map((overtime: OvertimeItem) => {
+          const employee = employeeById.get(overtime.employee_id);
+          const profileName = String(employee?.employee_name ?? "").trim();
+          const accountName = String(employee?.linked_user?.full_name ?? "").trim();
+          const requestName = String(overtime.employee_name ?? "").trim();
+          return {
+            ...overtime,
+            employee_name: profileName || accountName || (requestName === "Nama karyawan belum diisi" ? "" : requestName),
+            employee_number: overtime.employee_number || employee?.employee_number || "",
+          };
+        });
+        setCompanyOvertimes(overtimeRows);
         setEmployees(empList);
         setEmployeeUserOptions(userOptionsRes.data?.results ?? []);
+        setEmployeeUserOptionsError(Boolean(userOptionsRes.data?.error));
         setCostCenters(costCenterRes.data?.results ?? []);
         const edits: Record<string, string> = {};
         const rateEdits: Record<string, string> = {};
@@ -566,10 +581,13 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                             Akun user: {emp.linked_user?.full_name || emp.linked_user?.email || "Tertaut"}
                           </div>
                         ) : (
-                          <select aria-label={`Tautkan akun user ke ${emp.employee_name || emp.employee_number}`} value={employeeUserEdits[emp.id] ?? ""} onChange={(e) => setEmployeeUserEdits((current) => ({ ...current, [emp.id]: e.target.value }))} className="h-9 w-64 rounded-lg border border-amber-200 bg-amber-50 px-3">
-                            <option value="">Belum ditautkan — pilih akun user</option>
-                            {employeeUserOptions.map((account) => <option key={account.id} value={account.id}>{account.full_name} — {account.email}</option>)}
-                          </select>
+                          <div className="flex flex-col gap-1">
+                            <select aria-label={`Tautkan akun user ke ${emp.employee_name || emp.employee_number}`} value={employeeUserEdits[emp.id] ?? ""} onChange={(e) => setEmployeeUserEdits((current) => ({ ...current, [emp.id]: e.target.value }))} className="h-9 w-64 rounded-lg border border-amber-200 bg-amber-50 px-3">
+                              <option value="">{employeeUserOptionsError ? "Daftar akun gagal dimuat" : employeeUserOptions.length ? "Belum ditautkan — pilih akun user" : "Tidak ada akun aktif yang belum ditautkan"}</option>
+                              {employeeUserOptions.map((account) => <option key={account.id} value={account.id}>{account.full_name} — {account.email}</option>)}
+                            </select>
+                            {employeeUserOptionsError ? <span className="max-w-64 text-[10px] leading-4 text-red-600">Gagal memuat akun. Muat ulang halaman atau periksa akses HR Anda.</span> : !employeeUserOptions.length && <span className="max-w-64 text-[10px] leading-4 text-slate-500">Minta Admin membuat akun aktif pada perusahaan ini; akun yang sudah tertaut ke karyawan lain tidak ditampilkan.</span>}
+                          </div>
                         )}
                         <input
                           aria-label={`Nama karyawan ${emp.employee_name}`}
@@ -890,10 +908,13 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                             Akun user: {emp.linked_user?.full_name || emp.linked_user?.email || "Tertaut"}
                           </div>
                         ) : (
-                          <select aria-label={`Tautkan akun user ke ${emp.employee_name || emp.employee_number}`} value={employeeUserEdits[emp.id] ?? ""} onChange={(e) => setEmployeeUserEdits((current) => ({ ...current, [emp.id]: e.target.value }))} className="h-9 w-64 rounded-lg border border-amber-200 bg-amber-50 px-3">
-                            <option value="">Belum ditautkan — pilih akun user</option>
-                            {employeeUserOptions.map((account) => <option key={account.id} value={account.id}>{account.full_name} — {account.email}</option>)}
-                          </select>
+                          <div className="flex flex-col gap-1">
+                            <select aria-label={`Tautkan akun user ke ${emp.employee_name || emp.employee_number}`} value={employeeUserEdits[emp.id] ?? ""} onChange={(e) => setEmployeeUserEdits((current) => ({ ...current, [emp.id]: e.target.value }))} className="h-9 w-64 rounded-lg border border-amber-200 bg-amber-50 px-3">
+                              <option value="">{employeeUserOptionsError ? "Daftar akun gagal dimuat" : employeeUserOptions.length ? "Belum ditautkan — pilih akun user" : "Tidak ada akun aktif yang belum ditautkan"}</option>
+                              {employeeUserOptions.map((account) => <option key={account.id} value={account.id}>{account.full_name} — {account.email}</option>)}
+                            </select>
+                            {employeeUserOptionsError ? <span className="max-w-64 text-[10px] leading-4 text-red-600">Gagal memuat akun. Muat ulang halaman atau periksa akses HR Anda.</span> : !employeeUserOptions.length && <span className="max-w-64 text-[10px] leading-4 text-slate-500">Minta Admin membuat akun aktif pada perusahaan ini; akun yang sudah tertaut ke karyawan lain tidak ditampilkan.</span>}
+                          </div>
                         )}
                         <input
                           aria-label={`Nama karyawan ${emp.employee_name}`}
