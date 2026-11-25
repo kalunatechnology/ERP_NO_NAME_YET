@@ -139,19 +139,28 @@ hrRouter.get('/employees', requireModuleTier('HR', 2), async (req, res, next) =>
   }
 });
 
-hrRouter.get('/cost-centers', requireModuleTier('HR', 2), async (req, res, next) => {
+hrRouter.get('/employee-user-options', requireModuleTier('HR', 2), async (req, res, next) => {
   try {
-    const results = await PayrollService.listEmployeeCostCenters(req.companyId!);
+    const results = await PayrollService.listEmployeeAccountOptions(req.companyId!);
     res.json({ success: true, results });
   } catch (err) {
     next(err);
   }
 });
 
-hrRouter.post('/employees/sync-users', requireModuleTier('HR', 2), async (req, res, next) => {
+hrRouter.post('/employees/from-user', requireModuleTier('HR', 2), async (req, res, next) => {
   try {
-    const data = await HrService.syncCompanyUsersToEmployees(req.companyId!, req.tenantId ?? null, req.user!.id);
-    res.json({ success: true, data });
+    const data = await PayrollService.createEmployeeFromUser(req.companyId!, req.tenantId ?? null, req.user!.id, req.body?.user_id);
+    res.status(201).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+hrRouter.get('/cost-centers', requireModuleTier('HR', 2), async (req, res, next) => {
+  try {
+    const results = await PayrollService.listEmployeeCostCenters(req.companyId!);
+    res.json({ success: true, results });
   } catch (err) {
     next(err);
   }

@@ -63,7 +63,64 @@ export class PayrollService {
     const partyIds = [...new Set(rows.map((row) => row.party_id).filter((id): id is string => Boolean(id)))];
     const parties = partyIds.length ? await prisma.master_party.findMany({ where: { company_id: companyId, id: { in: partyIds } }, select: { id: true, display_name: true, legal_name: true } }) : [];
     const partyById = new Map(parties.map((party) => [party.id, party]));
-    return rows.map((row) => ({ ...row, employee_name: row.employee_name || partyById.get(row.party_id ?? '')?.display_name || partyById.get(row.party_id ?? '')?.legal_name || row.employee_number }));
+    const userIds = [...new Set(rows.map((row) => row.user_id).filter((id): id is string => Boolean(id)))];
+    const users = userIds.length ? await prisma.iam_user.findMany({ where: { id: { in: userIds } }, select: { id: true, full_name: true, email: true } }) : [];
+    const userById = new Map(users.map((user) => [user.id, user]));
+    return rows.map((row) => ({
+      ...row,
+      employee_name: row.employee_name || partyById.get(row.party_id ?? '')?.display_name || partyById.get(row.party_id ?? '')?.legal_name || row.employee_number,
+      linked_user: row.user_id ? userById.get(row.user_id) ?? null : null,
+    }));
+  }
+
+  static async listEmployeeAccountOptions(companyId: string) {
+    const memberships = await prisma.iam_user_company_membership.findMany({
+      where: { company_id: companyId, status: 'ACTIVE' },
+      select: { user_id: true },
+    });
+    const userIds = [...new Set(memberships.map((row) => row.user_id))];
+    if (!userIds.length) return [];
+    const [users, employees] = await Promise.all([
+      prisma.iam_user.findMany({
+        where: { id: { in: userIds }, is_active: true, status: 'ACTIVE' },
+        select: { id: true, full_name: true, email: true },
+        orderBy: { full_name: 'asc' },
+      }),
+      prisma.master_employee.findMany({ where: { company_id: companyId, user_id: { not: null } }, select: { id: true, user_id: true, employee_name: true, employee_number: true } }),
+    ]);
+    const employeeByUserId = new Map(employees.filter((row) => row.user_id).map((row) => [row.user_id!, row]));
+    return users.map((user) => {
+      const employee = employeeByUserId.get(user.id);
+      return { ...user, linked_employee_id: employee?.id ?? null, linked_employee_label: employee ? `${employee.employee_name || employee.employee_number} (${employee.employee_number})` : null };
+    });
+  }
+
+  static async createEmployeeFromUser(companyId: string, tenantId: string | null, actorId: string, userIdInput: unknown) {
+    const userId = String(userIdInput ?? '').trim();
+    if (!userId) throw new ValidationError('Pilih akun user yang akan dijadikan profil karyawan.');
+    const membership = await prisma.iam_user_company_membership.findFirst({ where: { company_id: companyId, user_id: userId, status: 'ACTIVE' } });
+    const user = membership ? await prisma.iam_user.findFirst({ where: { id: userId, is_active: true, status: 'ACTIVE' }, select: { id: true, full_name: true, email: true } }) : null;
+    if (!user) throw new ValidationError('Akun user harus aktif dan terdaftar pada perusahaan ini.');
+    const linked = await prisma.master_employee.findFirst({ where: { company_id: companyId, user_id: userId }, select: { id: true, employee_number: true } });
+    if (linked) throw new ConflictError(`Akun ini sudah terhubung ke karyawan ${linked.employee_number}.`);
+    const existing = await prisma.master_employee.findMany({ where: { company_id: companyId }, select: { employee_number: true } });
+    const usedNumbers = new Set(existing.map((row) => row.employee_number));
+    let sequence = existing.length + 1;
+    let employeeNumber = `EMP-${String(sequence).padStart(4, '0')}`;
+    while (usedNumbers.has(employeeNumber)) {
+      sequence += 1;
+      employeeNumber = `EMP-${String(sequence).padStart(4, '0')}`;
+    }
+    try {
+      return await prisma.master_employee.create({ data: {
+        id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: actorId,
+        user_id: user.id, employee_number: employeeNumber, employee_name: user.full_name || user.email,
+        employment_status: 'ACTIVE', monthly_salary: null,
+      } });
+    } catch (error: any) {
+      if (error?.code === 'P2002') throw new ConflictError('Akun user atau nomor karyawan sudah terhubung. Muat ulang daftar lalu coba lagi.');
+      throw error;
+    }
   }
 
   static async createEmployee(companyId: string, tenantId: string | null, userId: string, input: any) {
@@ -98,6 +155,17 @@ export class PayrollService {
       throw new ValidationError('Nama karyawan wajib diisi.');
     }
     const data: any = {};
+    if (input.user_id !== undefined) {
+      const userId = input.user_id === null || String(input.user_id).trim() === '' ? null : String(input.user_id).trim();
+      if (userId && userId !== employee.user_id) {
+        const membership = await prisma.iam_user_company_membership.findFirst({ where: { company_id: companyId, user_id: userId, status: 'ACTIVE' } });
+        const user = membership ? await prisma.iam_user.findFirst({ where: { id: userId, is_active: true, status: 'ACTIVE' }, select: { id: true } }) : null;
+        if (!user) throw new ValidationError('Pilih user aktif yang terdaftar pada perusahaan ini.');
+        const linked = await prisma.master_employee.findFirst({ where: { company_id: companyId, user_id: userId, id: { not: employeeId } }, select: { employee_number: true } });
+        if (linked) throw new ConflictError(`Akun user sudah terhubung ke karyawan ${linked.employee_number}.`);
+      }
+      data.user_id = userId;
+    }
     if (input.employee_number !== undefined) data.employee_number = String(input.employee_number).trim();
     if (input.employee_name !== undefined) data.employee_name = String(input.employee_name).trim();
     if (input.monthly_salary !== undefined) {
@@ -126,7 +194,12 @@ export class PayrollService {
       if (!['ACTIVE', 'INACTIVE', 'TERMINATED'].includes(status)) throw new ValidationError('Status karyawan tidak valid.');
       data.employment_status = status;
     }
-    return prisma.master_employee.update({ where: { id: employeeId }, data });
+    try {
+      return await prisma.master_employee.update({ where: { id: employeeId }, data });
+    } catch (error: any) {
+      if (error?.code === 'P2002') throw new ConflictError('Akun user sudah terhubung ke karyawan lain.');
+      throw error;
+    }
   }
 
   static async listRuns(companyId: string) {

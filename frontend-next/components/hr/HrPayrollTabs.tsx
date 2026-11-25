@@ -53,6 +53,16 @@ interface EmployeeItem {
   monthly_salary: number | string | null;
   standard_hourly_rate?: number | string | null;
   cost_center_id?: string | null;
+  user_id?: string | null;
+  linked_user?: { id: string; full_name: string; email: string } | null;
+}
+
+interface EmployeeUserOption {
+  id: string;
+  full_name: string;
+  email: string;
+  linked_employee_id: string | null;
+  linked_employee_label: string | null;
 }
 
 interface CostCenterItem {
@@ -92,6 +102,9 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
   const [companyOvertimes, setCompanyOvertimes] = useState<OvertimeItem[]>([]);
   const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([]);
   const [employees, setEmployees] = useState<EmployeeItem[]>([]);
+  const [employeeUserOptions, setEmployeeUserOptions] = useState<EmployeeUserOption[]>([]);
+  const [newEmployeeUserId, setNewEmployeeUserId] = useState("");
+  const [userLinkEdits, setUserLinkEdits] = useState<Record<string, string>>({});
   const [costCenters, setCostCenters] = useState<CostCenterItem[]>([]);
 
   const [otForm, setOtForm] = useState({
@@ -128,31 +141,36 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
       setMyPayslips(mySlipRes.data?.results ?? []);
 
       if (hrTier <= 2 || financeTier <= 1) {
-        const [compOtRes, runsRes, empRes, costCenterRes] = await Promise.all([
+        const [compOtRes, runsRes, empRes, costCenterRes, userOptionsRes] = await Promise.all([
           api.get("/api/v1/hr/overtimes").catch(() => ({ data: { results: [] } })),
           api.get("/api/v1/hr/payroll/runs").catch(() => ({ data: { results: [] } })),
           api.get("/api/v1/hr/employees").catch(() => ({ data: { results: [] } })),
           api.get("/api/v1/hr/cost-centers").catch(() => ({ data: { results: [] } })),
+          api.get("/api/v1/hr/employee-user-options").catch(() => ({ data: { results: [] } })),
         ]);
         setCompanyOvertimes(compOtRes.data?.results ?? []);
         setPayrollRuns(runsRes.data?.results ?? []);
         const empList: EmployeeItem[] = empRes.data?.results ?? [];
         setEmployees(empList);
+        setEmployeeUserOptions(userOptionsRes.data?.results ?? []);
         setCostCenters(costCenterRes.data?.results ?? []);
         const edits: Record<string, string> = {};
         const rateEdits: Record<string, string> = {};
         const profileEdits: Record<string, { name: string; number: string; status: string }> = {};
         const costCenterEditsByEmployee: Record<string, string> = {};
+        const userLinkEditsByEmployee: Record<string, string> = {};
         for (const e of empList) {
           edits[e.id] = e.monthly_salary == null ? "" : String(e.monthly_salary);
           rateEdits[e.id] = e.standard_hourly_rate == null ? "" : String(e.standard_hourly_rate);
           profileEdits[e.id] = { name: e.employee_name, number: e.employee_number, status: e.employment_status };
           costCenterEditsByEmployee[e.id] = String(e.cost_center_id ?? "");
+          userLinkEditsByEmployee[e.id] = String(e.user_id ?? "");
         }
         setSalaryEdits(edits);
         setHourlyRateEdits(rateEdits);
         setEmployeeProfileEdits(profileEdits);
         setCostCenterEdits(costCenterEditsByEmployee);
+        setUserLinkEdits(userLinkEditsByEmployee);
       }
     } finally {
       setLoading(false);
@@ -501,36 +519,48 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                 <span className="font-bold text-sm text-[#163D64]">
                   Profil &amp; Data Upah Karyawan ({employees.length})
                 </span>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      const res = await api.post("/api/v1/hr/employees/sync-users");
-                      const created = res.data?.data?.created_count ?? 0;
-                      toast.success(
-                        created > 0
-                          ? `${created} user perusahaan berhasil disinkronkan ke Master Karyawan.`
-                          : "Semua user aktif perusahaan sudah terdaftar sebagai karyawan.",
-                      );
-                      await loadData();
-                    } catch (err: unknown) {
-                      toast.error(err instanceof Error ? err.message : "Gagal menyinkronkan user ke karyawan.");
-                    }
-                  }}
-                  className="rounded-lg bg-[#0876CD] hover:bg-[#163D64] px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer"
-                >
-                  + Sinkronkan User ke Karyawan
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select aria-label="Pilih user untuk profil karyawan baru" value={newEmployeeUserId} onChange={(e) => setNewEmployeeUserId(e.target.value)} className="h-9 min-w-64 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs">
+                    <option value="">Pilih user aktif untuk dijadikan karyawan</option>
+                    {employeeUserOptions.filter((user) => !user.linked_employee_id).map((user) => <option key={user.id} value={user.id}>{user.full_name} — {user.email}</option>)}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={!newEmployeeUserId}
+                    onClick={async () => {
+                      try {
+                        await api.post("/api/v1/hr/employees/from-user", { user_id: newEmployeeUserId });
+                        setNewEmployeeUserId("");
+                        toast.success("Profil karyawan dibuat dan ditautkan ke akun user yang dipilih. Lengkapi data upah dan cost center.");
+                        await loadData();
+                      } catch (err: unknown) {
+                        toast.error(err instanceof Error ? err.message : "Gagal membuat profil karyawan dari user.");
+                      }
+                    }}
+                    className="rounded-lg bg-[#0876CD] hover:bg-[#163D64] disabled:opacity-50 px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer"
+                  >
+                    + Buat Karyawan dari User
+                  </button>
+                </div>
               </div>
               <div className="divide-y divide-slate-100 text-xs">
                 {employees.length === 0 ? (
                   <div className="p-5 text-center text-slate-500">
-                    Belum ada data karyawan. Sinkronisasi hanya membuat profil tanpa mengisi angka gaji; HR perlu melengkapi gaji bulanan atau tarif per jam secara akurat.
+                    Belum ada profil karyawan. Pilih satu akun user aktif di atas untuk membuat profil yang terhubung secara eksplisit.
                   </div>
                 ) : (
                   employees.map((emp) => (
                     <div key={emp.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
                       <div className="flex flex-wrap gap-2">
+                        <select
+                          aria-label={`Akun user untuk ${emp.employee_name}`}
+                          value={userLinkEdits[emp.id] ?? ""}
+                          onChange={(e) => setUserLinkEdits((p) => ({ ...p, [emp.id]: e.target.value }))}
+                          className="h-9 w-64 rounded-lg border border-slate-200 bg-slate-50 px-3"
+                        >
+                          <option value="">Tidak terhubung ke akun</option>
+                          {employeeUserOptions.filter((user) => !user.linked_employee_id || user.linked_employee_id === emp.id || user.id === emp.user_id).map((user) => <option key={user.id} value={user.id}>{user.full_name} — {user.email}{user.linked_employee_id === emp.id ? " (terhubung)" : ""}</option>)}
+                        </select>
                         <input
                           aria-label={`Nama karyawan ${emp.employee_name}`}
                           placeholder="Nama karyawan"
@@ -589,6 +619,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                           onClick={async () => {
                             try {
                               await api.put(`/api/v1/hr/employees/${emp.id}`, {
+                                user_id: userLinkEdits[emp.id] || null,
                                 employee_name: employeeProfileEdits[emp.id]?.name ?? emp.employee_name,
                                 employee_number: employeeProfileEdits[emp.id]?.number ?? emp.employee_number,
                                 employment_status: employeeProfileEdits[emp.id]?.status ?? emp.employment_status,
@@ -787,36 +818,48 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                 <span className="font-bold text-sm text-[#163D64]">
                   Profil &amp; Data Upah Karyawan ({employees.length})
                 </span>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      const res = await api.post("/api/v1/hr/employees/sync-users");
-                      const created = res.data?.data?.created_count ?? 0;
-                      toast.success(
-                        created > 0
-                          ? `${created} user perusahaan berhasil disinkronkan ke Master Karyawan.`
-                          : "Semua user aktif perusahaan sudah terdaftar sebagai karyawan.",
-                      );
-                      await loadData();
-                    } catch (err: unknown) {
-                      toast.error(err instanceof Error ? err.message : "Gagal menyinkronkan user ke karyawan.");
-                    }
-                  }}
-                  className="rounded-lg bg-[#0876CD] hover:bg-[#163D64] px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer"
-                >
-                  + Sinkronkan User ke Karyawan
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select aria-label="Pilih user untuk profil karyawan baru" value={newEmployeeUserId} onChange={(e) => setNewEmployeeUserId(e.target.value)} className="h-9 min-w-64 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs">
+                    <option value="">Pilih user aktif untuk dijadikan karyawan</option>
+                    {employeeUserOptions.filter((user) => !user.linked_employee_id).map((user) => <option key={user.id} value={user.id}>{user.full_name} — {user.email}</option>)}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={!newEmployeeUserId}
+                    onClick={async () => {
+                      try {
+                        await api.post("/api/v1/hr/employees/from-user", { user_id: newEmployeeUserId });
+                        setNewEmployeeUserId("");
+                        toast.success("Profil karyawan dibuat dan ditautkan ke akun user yang dipilih. Lengkapi data upah dan cost center.");
+                        await loadData();
+                      } catch (err: unknown) {
+                        toast.error(err instanceof Error ? err.message : "Gagal membuat profil karyawan dari user.");
+                      }
+                    }}
+                    className="rounded-lg bg-[#0876CD] hover:bg-[#163D64] disabled:opacity-50 px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer"
+                  >
+                    + Buat Karyawan dari User
+                  </button>
+                </div>
               </div>
               <div className="divide-y divide-slate-100 text-xs">
                 {employees.length === 0 ? (
                   <div className="p-5 text-center text-slate-500">
-                    Belum ada data karyawan. Sinkronisasi hanya membuat profil tanpa mengisi angka gaji; HR perlu melengkapi gaji bulanan atau tarif per jam secara akurat.
+                    Belum ada profil karyawan. Pilih satu akun user aktif di atas untuk membuat profil yang terhubung secara eksplisit.
                   </div>
                 ) : (
                   employees.map((emp) => (
                     <div key={emp.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
                       <div className="flex flex-wrap gap-2">
+                        <select
+                          aria-label={`Akun user untuk ${emp.employee_name}`}
+                          value={userLinkEdits[emp.id] ?? ""}
+                          onChange={(e) => setUserLinkEdits((p) => ({ ...p, [emp.id]: e.target.value }))}
+                          className="h-9 w-64 rounded-lg border border-slate-200 bg-slate-50 px-3"
+                        >
+                          <option value="">Tidak terhubung ke akun</option>
+                          {employeeUserOptions.filter((user) => !user.linked_employee_id || user.linked_employee_id === emp.id || user.id === emp.user_id).map((user) => <option key={user.id} value={user.id}>{user.full_name} — {user.email}{user.linked_employee_id === emp.id ? " (terhubung)" : ""}</option>)}
+                        </select>
                         <input
                           aria-label={`Nama karyawan ${emp.employee_name}`}
                           placeholder="Nama karyawan"
@@ -875,6 +918,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                           onClick={async () => {
                             try {
                               await api.put(`/api/v1/hr/employees/${emp.id}`, {
+                                user_id: userLinkEdits[emp.id] || null,
                                 employee_name: employeeProfileEdits[emp.id]?.name ?? emp.employee_name,
                                 employee_number: employeeProfileEdits[emp.id]?.number ?? emp.employee_number,
                                 employment_status: employeeProfileEdits[emp.id]?.status ?? emp.employment_status,

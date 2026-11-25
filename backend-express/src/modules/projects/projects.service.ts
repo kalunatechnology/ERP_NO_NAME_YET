@@ -447,21 +447,22 @@ export class ProjectsService {
     }
     if (!this.hasBaseStaffAccess(user) && !hasUserModuleWrite(user, 'PROJECTS')) return { id: { in: [] } };
 
+    const tenantScope = user.tenant_id ? { tenant_id: user.tenant_id } : {};
     const [memberships, assignments, ownWeekly, ownDaily] = await Promise.all([
       db.project_member.findMany({
-        where: { company_id: companyId, user_id: user.id, status: 'ACTIVE' },
+        where: { ...tenantScope, company_id: companyId, user_id: user.id, status: 'ACTIVE' },
         select: { project_id: true },
       }),
       db.project_task_assignment.findMany({
-        where: { company_id: companyId, assignee_id: user.id },
+        where: { ...tenantScope, company_id: companyId, assignee_id: user.id },
         select: { main_task_id: true },
       }),
       db.project_weekly_task.findMany({
-        where: { company_id: companyId, assignee_id: user.id },
+        where: { ...tenantScope, company_id: companyId, assignee_id: user.id },
         select: { main_task_id: true },
       }),
       db.project_daily_task?.findMany({
-        where: { company_id: companyId, assignee_id: user.id },
+        where: { ...tenantScope, company_id: companyId, assignee_id: user.id },
         select: { weekly_task: { select: { main_task_id: true } } },
       }) ?? Promise.resolve([]),
     ]);
@@ -471,7 +472,7 @@ export class ProjectsService {
     const mainIds = [...new Set([...assignments, ...ownWeekly].map((row: { main_task_id: string }) => row.main_task_id).concat(dailyMainIds))];
     const assignedMainTasks = mainIds.length
       ? await db.project_main_task.findMany({
-        where: { company_id: companyId, id: { in: mainIds } },
+        where: { ...tenantScope, company_id: companyId, id: { in: mainIds } },
         select: { project_id: true },
       })
       : [];
@@ -481,13 +482,9 @@ export class ProjectsService {
     });
     assignedMainTasks.forEach((task: { project_id: string }) => projectIds.add(task.project_id));
     const assignedScope = { id: { in: [...projectIds] } };
-    // Project ownership is a read entitlement independent of the user's
-    // current functional role or module write permission. A creator who
-    // switches to Staff/other roles must not lose their own projects from
-    // task selectors; mutation authority remains separately enforced.
     return {
-      OR: [assignedScope, { created_by_id: user.id }, { project_manager_id: user.id }],
-      ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}),
+      ...assignedScope,
+      ...tenantScope,
     };
   }
 

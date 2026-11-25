@@ -816,7 +816,10 @@ export function QuickAccessPanel({
                         {mod.label}
                         {!isEntitled && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-normal text-amber-800">Belum aktif di company</span>}
                       </td>
-                      <td className="px-3.5 py-2.5 text-slate-500">{mod.description}</td>
+                      <td className="px-3.5 py-2.5 text-slate-500">
+                        {mod.description}
+                        {mod.code === "PROJECTS" && <span className="mt-1 block text-[11px] font-medium text-[#163D64]">Untuk Staff, hanya proyek dengan penugasan aktif (anggota proyek atau tugas yang ditugaskan) yang terlihat.</span>}
+                      </td>
                       <td className="px-3.5 py-2">
                         {isEnabled ? (
                           <select
@@ -825,7 +828,7 @@ export function QuickAccessPanel({
                             onChange={(e) => updateModuleTier(mod.code, Number(e.target.value))}
                             className="h-8 w-full rounded border border-slate-300 bg-white px-2 text-xs text-slate-800 outline-none focus:border-[#163D64]"
                           >
-                            <option value={3}>Staff — Data Sendiri (OWN)</option>
+                            <option value={3}>{mod.code === "PROJECTS" ? "Staff — Proyek/Tugas Ditugaskan (OWN)" : "Staff — Data Sendiri (OWN)"}</option>
                             <option value={2}>Supervisor — Data Tim (TEAM)</option>
                             <option value={1}>Manager — Semua Data (Baca &amp; Edit)</option>
                             <option value={0}>Direksi — Semua Data (Hanya Lihat)</option>
