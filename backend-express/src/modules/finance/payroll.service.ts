@@ -73,6 +73,27 @@ export class PayrollService {
     }));
   }
 
+  static async listUnlinkedEmployeeUsers(companyId: string) {
+    const [memberships, linkedEmployees] = await Promise.all([
+      prisma.iam_user_company_membership.findMany({
+        where: { company_id: companyId, status: 'ACTIVE' },
+        select: { user_id: true },
+      }),
+      prisma.master_employee.findMany({
+        where: { company_id: companyId, user_id: { not: null } },
+        select: { user_id: true },
+      }),
+    ]);
+    const linkedIds = new Set(linkedEmployees.map((row) => row.user_id).filter((id): id is string => Boolean(id)));
+    const candidateIds = [...new Set(memberships.map((row) => row.user_id))].filter((id) => !linkedIds.has(id));
+    if (!candidateIds.length) return [];
+    return prisma.iam_user.findMany({
+      where: { id: { in: candidateIds }, is_active: true, status: 'ACTIVE' },
+      select: { id: true, full_name: true, email: true },
+      orderBy: { full_name: 'asc' },
+    });
+  }
+
   static async createEmployee(companyId: string, tenantId: string | null, userId: string, input: any) {
     const employeeNumber = String(input.employee_number ?? '').trim();
     const employeeName = String(input.employee_name ?? '').trim();

@@ -148,6 +148,15 @@ hrRouter.post('/employees', requireModuleTier('HR', 2), async (req, res, next) =
   }
 });
 
+hrRouter.get('/employee-user-options', requireModuleTier('HR', 2), async (req, res, next) => {
+  try {
+    const results = await PayrollService.listUnlinkedEmployeeUsers(req.companyId!);
+    res.json({ success: true, results });
+  } catch (err) {
+    next(err);
+  }
+});
+
 hrRouter.get('/cost-centers', requireModuleTier('HR', 2), async (req, res, next) => {
   try {
     const results = await PayrollService.listEmployeeCostCenters(req.companyId!);

@@ -63,6 +63,12 @@ interface CostCenterItem {
   cost_center_name: string;
 }
 
+interface EmployeeUserOption {
+  id: string;
+  full_name: string;
+  email: string;
+}
+
 const formatIdr = (val: unknown) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(
     Number(val ?? 0),
@@ -94,6 +100,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
   const [companyOvertimes, setCompanyOvertimes] = useState<OvertimeItem[]>([]);
   const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([]);
   const [employees, setEmployees] = useState<EmployeeItem[]>([]);
+  const [employeeUserOptions, setEmployeeUserOptions] = useState<EmployeeUserOption[]>([]);
   const [employeeCreateOpen, setEmployeeCreateOpen] = useState(false);
   const [newEmployee, setNewEmployee] = useState({ employee_name: "", employee_number: "", monthly_salary: "", standard_hourly_rate: "", cost_center_id: "" });
   const [costCenters, setCostCenters] = useState<CostCenterItem[]>([]);
@@ -120,6 +127,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
   const [hourlyRateEdits, setHourlyRateEdits] = useState<Record<string, string>>({});
   const [employeeProfileEdits, setEmployeeProfileEdits] = useState<Record<string, { name: string; number: string; status: string }>>({});
   const [costCenterEdits, setCostCenterEdits] = useState<Record<string, string>>({});
+  const [employeeUserEdits, setEmployeeUserEdits] = useState<Record<string, string>>({});
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -132,16 +140,18 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
       setMyPayslips(mySlipRes.data?.results ?? []);
 
       if (hrTier <= 2 || financeTier <= 1) {
-        const [compOtRes, runsRes, empRes, costCenterRes] = await Promise.all([
+        const [compOtRes, runsRes, empRes, costCenterRes, userOptionsRes] = await Promise.all([
           api.get("/api/v1/hr/overtimes").catch(() => ({ data: { results: [] } })),
           api.get("/api/v1/hr/payroll/runs").catch(() => ({ data: { results: [] } })),
           api.get("/api/v1/hr/employees").catch(() => ({ data: { results: [] } })),
           api.get("/api/v1/hr/cost-centers").catch(() => ({ data: { results: [] } })),
+          api.get("/api/v1/hr/employee-user-options").catch(() => ({ data: { results: [] } })),
         ]);
         setCompanyOvertimes(compOtRes.data?.results ?? []);
         setPayrollRuns(runsRes.data?.results ?? []);
         const empList: EmployeeItem[] = empRes.data?.results ?? [];
         setEmployees(empList);
+        setEmployeeUserOptions(userOptionsRes.data?.results ?? []);
         setCostCenters(costCenterRes.data?.results ?? []);
         const edits: Record<string, string> = {};
         const rateEdits: Record<string, string> = {};
@@ -157,6 +167,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
         setHourlyRateEdits(rateEdits);
         setEmployeeProfileEdits(profileEdits);
         setCostCenterEdits(costCenterEditsByEmployee);
+        setEmployeeUserEdits({});
       }
     } finally {
       setLoading(false);
@@ -550,9 +561,16 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                   employees.map((emp) => (
                     <div key={emp.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
                       <div className="flex flex-wrap gap-2">
-                        <div className="flex h-9 min-w-56 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-slate-600">
-                          Akun user: {emp.linked_user?.full_name || emp.linked_user?.email || "Belum ditautkan"}
-                        </div>
+                        {emp.user_id ? (
+                          <div className="flex h-9 min-w-56 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-slate-600">
+                            Akun user: {emp.linked_user?.full_name || emp.linked_user?.email || "Tertaut"}
+                          </div>
+                        ) : (
+                          <select aria-label={`Tautkan akun user ke ${emp.employee_name || emp.employee_number}`} value={employeeUserEdits[emp.id] ?? ""} onChange={(e) => setEmployeeUserEdits((current) => ({ ...current, [emp.id]: e.target.value }))} className="h-9 w-64 rounded-lg border border-amber-200 bg-amber-50 px-3">
+                            <option value="">Belum ditautkan — pilih akun user</option>
+                            {employeeUserOptions.map((account) => <option key={account.id} value={account.id}>{account.full_name} — {account.email}</option>)}
+                          </select>
+                        )}
                         <input
                           aria-label={`Nama karyawan ${emp.employee_name}`}
                           placeholder="Nama karyawan"
@@ -614,11 +632,12 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                                 employee_name: employeeProfileEdits[emp.id]?.name ?? emp.employee_name,
                                 employee_number: employeeProfileEdits[emp.id]?.number ?? emp.employee_number,
                                 employment_status: employeeProfileEdits[emp.id]?.status ?? emp.employment_status,
+                                ...(employeeUserEdits[emp.id] ? { user_id: employeeUserEdits[emp.id] } : {}),
                                 cost_center_id: costCenterEdits[emp.id] || null,
                                 monthly_salary: salaryEdits[emp.id]?.trim() ? Number(salaryEdits[emp.id]) : null,
                                 standard_hourly_rate: hourlyRateEdits[emp.id]?.trim() ? Number(hourlyRateEdits[emp.id]) : null,
                               });
-                              toast.success("Profil upah karyawan diperbarui.");
+                              toast.success(employeeUserEdits[emp.id] ? "Akun user berhasil ditautkan ke profil karyawan." : "Profil upah karyawan diperbarui.");
                               await loadData();
                             } catch (err: unknown) {
                               toast.error(err instanceof Error ? err.message : "Gagal memperbarui gaji.");
@@ -628,18 +647,6 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                         >
                           Simpan Profil
                         </button>
-                        {emp.employment_status === "ACTIVE" && (
-                          <button type="button" onClick={async () => {
-                            if (!window.confirm(`Nonaktifkan profil ${emp.employee_name}? Riwayat payroll tetap disimpan.`)) return;
-                            try {
-                              await api.delete(`/api/v1/hr/employees/${emp.id}`);
-                              toast.success("Profil karyawan dinonaktifkan. Riwayat payroll tetap tersimpan.");
-                              await loadData();
-                            } catch (err: unknown) {
-                              toast.error(err instanceof Error ? err.message : "Gagal menonaktifkan karyawan.");
-                            }
-                          }} className="h-9 rounded-lg border border-red-200 px-3 font-semibold text-red-700">Nonaktifkan</button>
-                        )}
                         {emp.employment_status === "ACTIVE" && (
                           <button type="button" onClick={async () => {
                             if (!window.confirm(`Nonaktifkan profil ${emp.employee_name}? Riwayat payroll tetap disimpan.`)) return;
@@ -878,9 +885,16 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                   employees.map((emp) => (
                     <div key={emp.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
                       <div className="flex flex-wrap gap-2">
-                        <div className="flex h-9 min-w-56 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-slate-600">
-                          Akun user: {emp.linked_user?.full_name || emp.linked_user?.email || "Belum ditautkan"}
-                        </div>
+                        {emp.user_id ? (
+                          <div className="flex h-9 min-w-56 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-slate-600">
+                            Akun user: {emp.linked_user?.full_name || emp.linked_user?.email || "Tertaut"}
+                          </div>
+                        ) : (
+                          <select aria-label={`Tautkan akun user ke ${emp.employee_name || emp.employee_number}`} value={employeeUserEdits[emp.id] ?? ""} onChange={(e) => setEmployeeUserEdits((current) => ({ ...current, [emp.id]: e.target.value }))} className="h-9 w-64 rounded-lg border border-amber-200 bg-amber-50 px-3">
+                            <option value="">Belum ditautkan — pilih akun user</option>
+                            {employeeUserOptions.map((account) => <option key={account.id} value={account.id}>{account.full_name} — {account.email}</option>)}
+                          </select>
+                        )}
                         <input
                           aria-label={`Nama karyawan ${emp.employee_name}`}
                           placeholder="Nama karyawan"
@@ -942,11 +956,12 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                                 employee_name: employeeProfileEdits[emp.id]?.name ?? emp.employee_name,
                                 employee_number: employeeProfileEdits[emp.id]?.number ?? emp.employee_number,
                                 employment_status: employeeProfileEdits[emp.id]?.status ?? emp.employment_status,
+                                ...(employeeUserEdits[emp.id] ? { user_id: employeeUserEdits[emp.id] } : {}),
                                 cost_center_id: costCenterEdits[emp.id] || null,
                                 monthly_salary: salaryEdits[emp.id]?.trim() ? Number(salaryEdits[emp.id]) : null,
                                 standard_hourly_rate: hourlyRateEdits[emp.id]?.trim() ? Number(hourlyRateEdits[emp.id]) : null,
                               });
-                              toast.success("Profil upah karyawan diperbarui.");
+                              toast.success(employeeUserEdits[emp.id] ? "Akun user berhasil ditautkan ke profil karyawan." : "Profil upah karyawan diperbarui.");
                               await loadData();
                             } catch (err: unknown) {
                               toast.error(err instanceof Error ? err.message : "Gagal memperbarui gaji.");
