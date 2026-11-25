@@ -197,7 +197,12 @@ export class HrService {
       }),
     ]);
     const partyIds = [...new Set(employees.map((employee) => employee.party_id).filter((id): id is string => Boolean(id)))];
-    const userIds = [...new Set(employees.map((employee) => employee.user_id).filter((id): id is string => Boolean(id)))];
+    // The request stores its submitter user_id as a snapshot. Resolve that as well
+    // as the employee's current link so older requests still show the submitter's name.
+    const userIds = [...new Set([
+      ...employees.map((employee) => employee.user_id),
+      ...rows.map((row) => row.user_id),
+    ].filter((id): id is string => Boolean(id)))];
     const [parties, users] = await Promise.all([
       partyIds.length ? prisma.master_party.findMany({ where: { company_id: companyId, id: { in: partyIds } }, select: { id: true, display_name: true, legal_name: true } }) : [],
       userIds.length ? prisma.iam_user.findMany({ where: { id: { in: userIds } }, select: { id: true, full_name: true, email: true } }) : [],
@@ -220,7 +225,9 @@ export class HrService {
         employee_name: String(employee?.employee_name ?? '').trim()
           || partyById.get(employee?.party_id ?? '')?.display_name
           || partyById.get(employee?.party_id ?? '')?.legal_name
+          || userById.get(row.user_id)?.full_name
           || userById.get(employee?.user_id ?? '')?.full_name
+          || userById.get(row.user_id)?.email
           || userById.get(employee?.user_id ?? '')?.email
           || 'Nama karyawan belum diisi',
         project_code: project?.project_code ?? '',
