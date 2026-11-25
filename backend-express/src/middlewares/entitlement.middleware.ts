@@ -120,6 +120,19 @@ export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' =
 
       const accessMode = String((access as any).access_mode || 'LEGACY').trim().toUpperCase();
       if (accessMode === 'ASSIGNMENT') {
+        const overrides = req.user.permission_overrides ?? [];
+        const readOverride = overrides.find((override: any) =>
+          candidateModules.includes(String(override.module_code || '').toUpperCase())
+          && String(override.action_code || '').toUpperCase() === 'READ',
+        );
+        const writeOverride = overrides.find((override: any) =>
+          candidateModules.includes(String(override.module_code || '').toUpperCase())
+          && String(override.action_code || '').toUpperCase() === 'WRITE',
+        );
+        if (String((effectiveMode === 'read' ? readOverride : writeOverride)?.effect || '').toUpperCase() === 'DENY') {
+          return next(new ForbiddenError(`Akses ${effectiveMode} modul ${normalizedModule} ditolak secara eksplisit.`));
+        }
+
         const assignments = (req.user.module_assignments ?? []).filter((assignment: any) =>
           candidateModules.some((candidate) => isUsableModuleAssignment(assignment, candidate))
         );
@@ -140,18 +153,6 @@ export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' =
         const capabilities = new Set<string>(assignments.flatMap((assignment: any) =>
           Array.isArray(assignment.capability_codes) ? assignment.capability_codes : []
         ));
-        const overrides = req.user.permission_overrides ?? [];
-        const readOverride = overrides.find((override: any) =>
-          String(override.module_code || '').toUpperCase() === normalizedModule
-          && String(override.action_code || '').toUpperCase() === 'READ',
-        );
-        const writeOverride = overrides.find((override: any) =>
-          String(override.module_code || '').toUpperCase() === normalizedModule
-          && String(override.action_code || '').toUpperCase() === 'WRITE',
-        );
-        if (String((effectiveMode === 'read' ? readOverride : writeOverride)?.effect || '').toUpperCase() === 'DENY') {
-          return next(new ForbiddenError(`Akses ${effectiveMode} modul ${normalizedModule} ditolak secara eksplisit.`));
-        }
         const hasRead = assignments.some((assignment: any) => hasModuleAssignmentCapability(assignment, 'READ'))
           || String(readOverride?.effect || '').toUpperCase() === 'ALLOW';
         const hasWrite = assignments.some((assignment: any) => hasModuleAssignmentCapability(assignment, 'WRITE'))

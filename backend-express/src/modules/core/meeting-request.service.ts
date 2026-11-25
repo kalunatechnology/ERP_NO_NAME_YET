@@ -375,9 +375,11 @@ export class MeetingRequestService {
       where: {
         company_id: companyId,
         status: query.status ?? { not: 'CANCELLED' },
-        ...(query.crm_opportunity_id ? { crm_opportunity_id: query.crm_opportunity_id } : isGlobalAuditor ? {} : { OR: [
-          { organizer_user_id: userId }, { notetaker_user_id: userId }, { id: { in: accessibleMeetingIds } },
-        ] }),
+        ...(query.crm_opportunity_id ? { crm_opportunity_id: query.crm_opportunity_id } : isGlobalAuditor ? {} : {
+          OR: [
+            { organizer_user_id: userId }, { notetaker_user_id: userId }, { id: { in: accessibleMeetingIds } },
+          ]
+        }),
       },
       orderBy: { start_at: 'desc' }, take: 100,
     });
@@ -490,14 +492,18 @@ export class MeetingRequestService {
       });
       if (removed.count !== 1) throw new NotFoundError('Meeting Request');
       await tx.request_ticket.updateMany({ where: { id: ticket.id, company_id: companyId }, data: { status: 'CANCELLED', cancelled_at: now } });
-      await tx.core_workflow_instance.updateMany({ where: { id: ticket.workflow_instance_id, company_id: companyId },
-        data: { current_state: 'CANCELLED', status: 'CANCELLED', completed_at: now } });
-      await tx.core_audit_event.create({ data: {
-        id: crypto.randomUUID(), tenant_id: ticket.tenant_id, company_id: companyId, user_id: userId,
-        entity_name: 'core_internal_request', entity_id: ticket.id, event_type: 'DELETE_MEETING_REQUEST', occurred_at: now,
-        before_data: { status: ticket.status, meeting_id: meetingId, title: ticket.title },
-        after_data: { status: 'CANCELLED', meeting_id: meetingId, cancelled_at: now.toISOString() },
-      } });
+      await tx.core_workflow_instance.updateMany({
+        where: { id: ticket.workflow_instance_id, company_id: companyId },
+        data: { current_state: 'CANCELLED', status: 'CANCELLED', completed_at: now }
+      });
+      await tx.core_audit_event.create({
+        data: {
+          id: crypto.randomUUID(), tenant_id: ticket.tenant_id, company_id: companyId, user_id: userId,
+          entity_name: 'core_internal_request', entity_id: ticket.id, event_type: 'DELETE_MEETING_REQUEST', occurred_at: now,
+          before_data: { status: ticket.status, meeting_id: meetingId, title: ticket.title },
+          after_data: { status: 'CANCELLED', meeting_id: meetingId, cancelled_at: now.toISOString() },
+        }
+      });
     });
   }
 
@@ -527,31 +533,36 @@ export class MeetingRequestService {
           next_meeting_at: nextMeetingAt,
         },
         create: {
-            id: crypto.randomUUID(), tenant_id: detail.tenant_id, company_id: companyId, created_by_id: userId,
-            meeting_id: meetingId, occurrence_date: occurrenceDateForDatabase(occurrenceDate), prepared_by_id: userId, summary: payload.summary?.trim() ?? '',
-            opening_notes: payload.opening_notes?.trim() ?? '', general_discussion: payload.general_discussion?.trim() ?? '',
-            conclusion: payload.conclusion?.trim() ?? '', next_meeting_at: nextMeetingAt,
+          id: crypto.randomUUID(), tenant_id: detail.tenant_id, company_id: companyId, created_by_id: userId,
+          meeting_id: meetingId, occurrence_date: occurrenceDateForDatabase(occurrenceDate), prepared_by_id: userId, summary: payload.summary?.trim() ?? '',
+          opening_notes: payload.opening_notes?.trim() ?? '', general_discussion: payload.general_discussion?.trim() ?? '',
+          conclusion: payload.conclusion?.trim() ?? '', next_meeting_at: nextMeetingAt,
         },
       });
       await tx.request_meeting_decision.deleteMany({ where: { minutes_id: record.id, company_id: companyId } });
       await tx.request_meeting_action_item.deleteMany({ where: { minutes_id: record.id, company_id: companyId } });
-      if (decisions.length) await tx.request_meeting_decision.createMany({ data: decisions.map((item, index) => ({
-        id: crypto.randomUUID(), tenant_id: detail.tenant_id, company_id: companyId, created_by_id: userId,
-        meeting_id: meetingId, minutes_id: record.id, decision_number: index + 1,
-        decision_text: item.text.trim(), owner_user_id: item.owner_user_id ?? null,
-      })) });
-      if (actionItems.length) await tx.request_meeting_action_item.createMany({ data: actionItems.map((item) => ({
-        id: crypto.randomUUID(), tenant_id: detail.tenant_id, company_id: companyId, created_by_id: userId,
-        meeting_id: meetingId, minutes_id: record.id, title: item.title.trim(), description: item.description?.trim() ?? '',
-        assignee_user_id: item.assignee_user_id ?? null, due_at: item.due_at ? new Date(item.due_at) : null,
-        priority: item.priority ?? 'MEDIUM', project_id: item.project_id ?? detail.request?.project_id ?? null,
-      })) });
+      if (decisions.length) await tx.request_meeting_decision.createMany({
+        data: decisions.map((item, index) => ({
+          id: crypto.randomUUID(), tenant_id: detail.tenant_id, company_id: companyId, created_by_id: userId,
+          meeting_id: meetingId, minutes_id: record.id, decision_number: index + 1,
+          decision_text: item.text.trim(), owner_user_id: item.owner_user_id ?? null,
+        }))
+      });
+      if (actionItems.length) await tx.request_meeting_action_item.createMany({
+        data: actionItems.map((item) => ({
+          id: crypto.randomUUID(), tenant_id: detail.tenant_id, company_id: companyId, created_by_id: userId,
+          meeting_id: meetingId, minutes_id: record.id, title: item.title.trim(), description: item.description?.trim() ?? '',
+          assignee_user_id: item.assignee_user_id ?? null, due_at: item.due_at ? new Date(item.due_at) : null,
+          priority: item.priority ?? 'MEDIUM', project_id: item.project_id ?? detail.request?.project_id ?? null,
+        }))
+      });
       await tx.request_meeting.update({ where: { id: meetingId }, data: { status: 'IN_MINUTES' } });
       return record;
     });
     // Audit: note that draft was saved WITHOUT sending any notification.
     // Participants receive no notification at this stage — notification is sent only on publish.
-    await AuditService.logDeltaEvent({ entity: 'request_meeting_minutes', entityId: minutes.id, action: 'SAVE_MINUTES', before: {},
+    await AuditService.logDeltaEvent({
+      entity: 'request_meeting_minutes', entityId: minutes.id, action: 'SAVE_MINUTES', before: {},
       after: { meeting_id: meetingId, occurrence_date: occurrenceDate, status: 'DRAFT', decision_count: decisions.length, action_item_count: actionItems.length }, userId, companyId,
       description: `Draft notulensi ${detail.request.request_number} (${occurrenceDate}) disimpan — belum dipublikasikan, notifikasi belum dikirim.`,
     });

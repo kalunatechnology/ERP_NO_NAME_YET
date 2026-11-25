@@ -1592,6 +1592,7 @@ const DEFAULT_HIERARCHY_MODULES = [
   'PROJECTS',
   'CRM',
   'INVENTORY',
+  'HR',
   'HRMS',
   'MARBOT',
 ];
@@ -1939,6 +1940,7 @@ async function getModuleHierarchy(req: Request, res: Response, next: NextFunctio
 }
 
 const MODULE_PROFILE_CAPABILITIES = new Set(['READ', 'WRITE', 'APPROVE', 'DELETE', 'MANAGE_USERS', 'EXPORT']);
+const HR_MODULE_ALIASES = ['HR', 'HRMS', 'REQUESTS'];
 const MODULE_LEGACY_ROLE_MAP: Record<string, RoleCode[]> = {
   CRM: [RoleCode.SALES, RoleCode.CRM_LEAD, RoleCode.DIRECTOR],
   SALES: [RoleCode.SALES, RoleCode.CRM_LEAD, RoleCode.DIRECTOR],
@@ -1947,8 +1949,30 @@ const MODULE_LEGACY_ROLE_MAP: Record<string, RoleCode[]> = {
   FINANCE: [RoleCode.FINANCE, RoleCode.DIRECTOR],
   PROCUREMENT: [RoleCode.FINANCE, RoleCode.OPERATIONAL_MANAGER, RoleCode.DIRECTOR],
   REPORTING: [RoleCode.STAFF, RoleCode.SUPERVISOR, RoleCode.FINANCE, RoleCode.OPERATIONAL_MANAGER, RoleCode.DIRECTOR],
+  HR: [RoleCode.STAFF, RoleCode.SUPERVISOR, RoleCode.FINANCE, RoleCode.OPERATIONAL_MANAGER, RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR],
+  HRMS: [RoleCode.STAFF, RoleCode.SUPERVISOR, RoleCode.FINANCE, RoleCode.OPERATIONAL_MANAGER, RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR],
   REQUESTS: [RoleCode.STAFF, RoleCode.SUPERVISOR, RoleCode.FINANCE, RoleCode.OPERATIONAL_MANAGER, RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR],
 };
+
+async function findActiveModuleEntitlement(companyId: string, moduleCode: string) {
+  const normalized = String(moduleCode || '').trim().toUpperCase();
+  const candidateCodes = HR_MODULE_ALIASES.includes(normalized) ? HR_MODULE_ALIASES : [normalized];
+  const entitlements = await prisma.iam_company_module_access.findMany({
+    where: { company_id: companyId, module_code: { in: candidateCodes } },
+  });
+  const now = new Date();
+  return (
+    entitlements.find(
+      (e) =>
+        e.enabled
+        && e.allow_read
+        && (!e.effective_from || e.effective_from <= now)
+        && (!e.effective_until || e.effective_until >= now),
+    )
+    ?? entitlements[0]
+    ?? null
+  );
+}
 
 async function upsertModuleRoleProfile(req: Request, res: Response, next: NextFunction) {
   try {
@@ -1956,7 +1980,8 @@ async function upsertModuleRoleProfile(req: Request, res: Response, next: NextFu
     const tenantId = req.user?.tenant_id;
     if (!companyId || !tenantId) throw new ForbiddenError('Company dan tenant aktif wajib tersedia.');
 
-    const moduleCode = String(req.body.module_code || '').trim().toUpperCase();
+    const rawModuleCode = String(req.body.module_code || '').trim().toUpperCase();
+    const moduleCode = HR_MODULE_ALIASES.includes(rawModuleCode) ? 'HR' : rawModuleCode;
     const rawProfileCode = String(req.body.profile_code || '').trim().toUpperCase();
     const profileSuffix = rawProfileCode.includes(':') ? rawProfileCode.split(':').slice(1).join(':') : rawProfileCode;
     const profileCode = `${moduleCode}:${profileSuffix}`;
@@ -1977,9 +2002,7 @@ async function upsertModuleRoleProfile(req: Request, res: Response, next: NextFu
       throw new ValidationError(`Role kompatibilitas ${legacyRoleCode} tidak sesuai dengan modul ${moduleCode}.`);
     }
 
-    const entitlement = await prisma.iam_company_module_access.findUnique({
-      where: { company_id_module_code: { company_id: companyId, module_code: moduleCode } },
-    });
+    const entitlement = await findActiveModuleEntitlement(companyId, moduleCode);
     const now = new Date();
     if (!entitlement?.enabled || !entitlement.allow_read
       || (entitlement.effective_from && entitlement.effective_from > now)
@@ -2044,9 +2067,7 @@ async function assignModuleRoleProfile(req: Request, res: Response, next: NextFu
       include: { capabilities: true },
     });
     if (!profile) throw new NotFoundError('Role profile aktif tidak ditemukan pada company ini.');
-    const entitlement = await prisma.iam_company_module_access.findUnique({
-      where: { company_id_module_code: { company_id: companyId, module_code: profile.module_code } },
-    });
+    const entitlement = await findActiveModuleEntitlement(companyId, profile.module_code);
     const now = new Date();
     if (!entitlement?.enabled || !entitlement.allow_read
       || (entitlement.effective_from && entitlement.effective_from > now)
@@ -2058,22 +2079,34 @@ async function assignModuleRoleProfile(req: Request, res: Response, next: NextFu
     });
     if (!membership) throw new ForbiddenError('User bukan anggota aktif company ini.');
 
+    const tierLevel = req.body.tier_level !== undefined ? Number(req.body.tier_level) : 3;
+    if (![0, 1, 2, 3].includes(tierLevel)) {
+      throw new ValidationError('tier_level harus bernilai 0, 1, 2, atau 3.');
+    }
     const effectiveFrom = req.body.effective_from ? new Date(req.body.effective_from) : now;
     const effectiveUntil = req.body.effective_until ? new Date(req.body.effective_until) : null;
     if (Number.isNaN(effectiveFrom.getTime()) || (effectiveUntil && Number.isNaN(effectiveUntil.getTime()))
       || (effectiveUntil && effectiveUntil <= effectiveFrom)) {
       throw new ValidationError('Periode assignment tidak valid.');
     }
+    const canonicalModule = HR_MODULE_ALIASES.includes(String(profile.module_code || '').toUpperCase())
+      ? 'HR'
+      : String(profile.module_code || '').toUpperCase();
+    const modulesToReplace = canonicalModule === 'HR' ? HR_MODULE_ALIASES : [canonicalModule];
     const record = await prisma.$transaction(async (tx) => {
+      await (tx as any).iam_user_module_assignment.updateMany({
+        where: { company_id: companyId, user_id: userId, module_code: { in: modulesToReplace }, status: 'ACTIVE' },
+        data: { status: 'INACTIVE' },
+      });
       const assignment = await (tx as any).iam_user_module_assignment.create({
         data: {
           tenant_id: tenantId,
           company_id: companyId,
           user_id: userId,
-          module_code: profile.module_code,
+          module_code: canonicalModule,
           profile_id: profile.id,
           profile_code: profile.profile_code,
-          tier_level: Number(req.body.tier_level ?? 3),
+          tier_level: tierLevel,
           position_title: String(req.body.position_title || profile.display_name).trim(),
           department_id: req.body.department_id || null,
           reports_to_user_id: req.body.reports_to_user_id || null,
@@ -2198,16 +2231,19 @@ async function upsertModuleAssignment(req: Request, res: Response, next: NextFun
     if (!companyId) throw new ForbiddenError('Pilih company terlebih dahulu.');
 
     const userId = String(req.body.user_id || '').trim();
-    const moduleCode = String(req.body.module_code || '').trim().toUpperCase();
+    const rawModuleCode = String(req.body.module_code || '').trim().toUpperCase();
+    const moduleCode = ['HR', 'HRMS', 'REQUESTS'].includes(rawModuleCode) ? 'HR' : rawModuleCode;
     const tierLevel = Number(req.body.tier_level);
 
-    const entitlement = await prisma.iam_company_module_access.findUnique({
-      where: { company_id_module_code: { company_id: companyId, module_code: moduleCode } },
+    const candidateCodes = moduleCode === 'HR' ? ['HR', 'HRMS', 'REQUESTS'] : [moduleCode];
+    const entitlements = await prisma.iam_company_module_access.findMany({
+      where: { company_id: companyId, module_code: { in: candidateCodes } },
     });
+    const entitlement = entitlements.find((e) => e.enabled && e.allow_read) ?? entitlements[0];
     if (!entitlement?.enabled || !entitlement.allow_read) {
       throw new ForbiddenError(`Entitlement ${moduleCode || 'modul'} tidak aktif; assignment tidak dapat dibuat.`);
     }
-    if (String((entitlement as any).access_mode || 'LEGACY').toUpperCase() === 'ASSIGNMENT') {
+    if (String((entitlement as any).access_mode || 'LEGACY').toUpperCase() === 'ASSIGNMENT' && moduleCode !== 'HR') {
       throw new ValidationError('Gunakan endpoint role profile modul; assignment tier legacy tidak berlaku pada modul ini.');
     }
 
@@ -2226,12 +2262,15 @@ async function upsertModuleAssignment(req: Request, res: Response, next: NextFun
 
     const existing = await (prisma as any).iam_user_module_assignment.findFirst({
       where: { company_id: companyId, user_id: userId, module_code: moduleCode },
+      orderBy: [{ status: 'asc' }, { updated_at: 'desc' }],
     });
 
     const record = existing
       ? await (prisma as any).iam_user_module_assignment.update({
           where: { id: existing.id },
           data: {
+            profile_id: null,
+            profile_code: null,
             tier_level: tierLevel,
             position_title: positionTitle,
             department_id: departmentId,
@@ -2260,6 +2299,18 @@ async function upsertModuleAssignment(req: Request, res: Response, next: NextFun
             created_by_id: req.user?.id || null,
           },
         });
+
+    const staleModuleCodes = moduleCode === 'HR' ? HR_MODULE_ALIASES : [moduleCode];
+    await (prisma as any).iam_user_module_assignment.updateMany({
+      where: {
+        company_id: companyId,
+        user_id: userId,
+        module_code: { in: staleModuleCodes },
+        status: 'ACTIVE',
+        id: { not: record.id },
+      },
+      data: { status: 'INACTIVE' },
+    });
 
     await (prisma as any).iam_assignment_history.create({
       data: {
@@ -2312,6 +2363,7 @@ async function deleteModuleAssignment(req: Request, res: Response, next: NextFun
         },
       });
     }
+
     await (prisma as any).iam_assignment_history.create({
       data: {
         tenant_id: tenantId || existing.tenant_id,
@@ -2354,10 +2406,19 @@ async function updateModuleRoleAssignment(req: Request, res: Response, next: Nex
     if (!existing) throw new NotFoundError('Penugasan role modul tidak ditemukan pada company ini.');
 
     const profileId = String(req.body.profile_id || '').trim();
-    const profile = await (prisma as any).iam_module_role_profile.findFirst({
-      where: { id: profileId, company_id: companyId, tenant_id: tenantId, module_code: existing.module_code, is_active: true },
-    });
-    if (!profile) throw new NotFoundError('Pilih role profile aktif dari modul yang sama.');
+    const existingModuleUpper = String(existing.module_code || '').toUpperCase();
+    const moduleGroup = HR_MODULE_ALIASES.includes(existingModuleUpper) ? HR_MODULE_ALIASES : [existingModuleUpper];
+    const profile = profileId
+      ? await (prisma as any).iam_module_role_profile.findFirst({
+          where: { id: profileId, company_id: companyId, tenant_id: tenantId, module_code: { in: moduleGroup }, is_active: true },
+        })
+      : null;
+    if (profileId && !profile) throw new NotFoundError('Pilih role profile aktif dari modul yang sama.');
+
+    const tierLevel = req.body.tier_level !== undefined ? Number(req.body.tier_level) : Number(existing.tier_level ?? 3);
+    if (![0, 1, 2, 3].includes(tierLevel)) {
+      throw new ValidationError('tier_level harus bernilai 0, 1, 2, atau 3.');
+    }
 
     const effectiveFrom = req.body.effective_from ? new Date(req.body.effective_from) : existing.effective_from || new Date();
     const effectiveUntil = req.body.effective_until === undefined
@@ -2371,21 +2432,34 @@ async function updateModuleRoleAssignment(req: Request, res: Response, next: Nex
       ? [...new Set(req.body.scope_resource_ids.map((value: unknown) => String(value || '').trim()).filter(Boolean))]
       : existing.scope_resource_ids;
 
+    const canonicalModule = HR_MODULE_ALIASES.includes(existingModuleUpper) ? 'HR' : existingModuleUpper;
     const record = await prisma.$transaction(async (tx) => {
       const assignment = await (tx as any).iam_user_module_assignment.update({
         where: { id: existing.id },
         data: {
-          profile_id: profile.id,
-          profile_code: profile.profile_code,
-          tier_level: Number(req.body.tier_level ?? existing.tier_level),
-          position_title: String(req.body.position_title ?? existing.position_title ?? profile.display_name).trim() || profile.display_name,
+          module_code: canonicalModule,
+          profile_id: profile ? profile.id : null,
+          profile_code: profile ? profile.profile_code : null,
+          tier_level: tierLevel,
+          position_title: String(req.body.position_title ?? existing.position_title ?? profile?.display_name ?? '').trim() || profile?.display_name || '',
           department_id: req.body.department_id === undefined ? existing.department_id : req.body.department_id || null,
           reports_to_user_id: req.body.reports_to_user_id === undefined ? existing.reports_to_user_id : req.body.reports_to_user_id || null,
           data_scope: scope,
           scope_resource_ids: scopeResourceIds,
           effective_from: effectiveFrom,
           effective_until: effectiveUntil,
+          status: 'ACTIVE',
         },
+      });
+      await (tx as any).iam_user_module_assignment.updateMany({
+        where: {
+          company_id: companyId,
+          user_id: existing.user_id,
+          module_code: { in: moduleGroup },
+          status: 'ACTIVE',
+          id: { not: existing.id },
+        },
+        data: { status: 'INACTIVE' },
       });
       await (tx as any).iam_assignment_history.create({
         data: {
@@ -2393,10 +2467,10 @@ async function updateModuleRoleAssignment(req: Request, res: Response, next: Nex
           company_id: companyId,
           actor_id: req.user?.id || null,
           target_user_id: existing.user_id,
-          module_code: existing.module_code,
+          module_code: canonicalModule,
           change_type: 'UPDATED',
           before_json: JSON.stringify({ profile_code: existing.profile_code, tier_level: existing.tier_level, position_title: existing.position_title, data_scope: existing.data_scope, scope_resource_ids: existing.scope_resource_ids }),
-          after_json: JSON.stringify({ profile_code: profile.profile_code, tier_level: assignment.tier_level, position_title: assignment.position_title, data_scope: assignment.data_scope, scope_resource_ids: scopeResourceIds }),
+          after_json: JSON.stringify({ profile_code: profile?.profile_code ?? null, tier_level: assignment.tier_level, position_title: assignment.position_title, data_scope: assignment.data_scope, scope_resource_ids: scopeResourceIds }),
           reason: String(req.body.reason || 'Perubahan role profile dan penugasan modul').trim(),
         },
       });

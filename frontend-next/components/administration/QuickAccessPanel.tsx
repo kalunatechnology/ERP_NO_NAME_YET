@@ -306,6 +306,31 @@ export function QuickAccessPanel({
   const [derivedRoles, setDerivedRoles] = useState<string[]>([]);
   const [isLegacyTransition, setIsLegacyTransition] = useState(false);
 
+  const normalizeModulesList = useCallback((rawList: ModuleGrantItem[]): ModuleGrantItem[] => {
+    const normalized: ModuleGrantItem[] = [];
+    const sourceByCode = new Map<string, string>();
+    for (const item of rawList) {
+      const upper = String(item.module_code || "").toUpperCase();
+      const mappedCode = ["HR", "HRMS", "REQUESTS"].includes(upper) ? "HR" : upper;
+      const existingIdx = normalized.findIndex((m) => m.module_code === mappedCode);
+      if (existingIdx >= 0) {
+        const prevSource = sourceByCode.get(mappedCode) ?? mappedCode;
+        const incomingIsExplicitHr = upper === "HR" && prevSource !== "HR";
+        const sameSourceBetterTier =
+          (upper === prevSource || prevSource === "HR") &&
+          Number(item.tier_level) < Number(normalized[existingIdx].tier_level);
+        if (incomingIsExplicitHr || sameSourceBetterTier) {
+          normalized[existingIdx] = { ...item, module_code: mappedCode };
+          sourceByCode.set(mappedCode, upper);
+        }
+      } else {
+        normalized.push({ ...item, module_code: mappedCode });
+        sourceByCode.set(mappedCode, upper);
+      }
+    }
+    return normalized;
+  }, []);
+
   const loadQuickAccess = useCallback(async () => {
     if (!companyId || !selectedUserId) return;
     setLoading(true);
@@ -330,28 +355,17 @@ export function QuickAccessPanel({
         setSelectedWidgets(Array.from(new Set(["DASH_PERSONAL", ...payload.dashboard_widgets])));
       }
       if (Array.isArray(payload.modules) && payload.modules.length > 0) {
-        const normalizedModules: ModuleGrantItem[] = [];
-        for (const item of payload.modules as ModuleGrantItem[]) {
-          const upper = String(item.module_code || "").toUpperCase();
-          const mappedCode = ["HR", "HRMS", "REQUESTS"].includes(upper) ? "HR" : upper;
-          const existingIdx = normalizedModules.findIndex((m) => m.module_code === mappedCode);
-          if (existingIdx >= 0) {
-            if (Number(item.tier_level) < Number(normalizedModules[existingIdx].tier_level)) {
-              normalizedModules[existingIdx] = { ...item, module_code: mappedCode };
-            }
-          } else {
-            normalizedModules.push({ ...item, module_code: mappedCode });
-          }
-        }
-        setModules(normalizedModules);
+        setModules(normalizeModulesList(payload.modules as ModuleGrantItem[]));
       } else {
         setModules([]);
       }
       const rawEnabled = Array.isArray(payload.enabled_modules)
         ? payload.enabled_modules.map((module: unknown) => String(module).toUpperCase())
         : [];
-      if (rawEnabled.some((m: string) => ["HR", "HRMS", "REQUESTS"].includes(m)) && !rawEnabled.includes("HR")) {
-        rawEnabled.push("HR");
+      if (rawEnabled.some((m: string) => ["HR", "HRMS", "REQUESTS"].includes(m))) {
+        for (const alias of ["HR", "HRMS", "REQUESTS"]) {
+          if (!rawEnabled.includes(alias)) rawEnabled.push(alias);
+        }
       }
       setEnabledModules(rawEnabled);
       if (Array.isArray(payload.roles)) {
@@ -365,7 +379,7 @@ export function QuickAccessPanel({
     } finally {
       setLoading(false);
     }
-  }, [companyId, selectedUserId]);
+  }, [companyId, normalizeModulesList, selectedUserId]);
 
   useEffect(() => {
     void loadQuickAccess();
@@ -375,13 +389,15 @@ export function QuickAccessPanel({
     setActivePresetKey(presetKey);
     const preset = presets.find((p) => p.preset_key === presetKey);
     if (!preset) return;
+    setRoleLevel(preset.role_level);
     if (!jobTitle.trim() || presets.some((p) => p.default_job_title === jobTitle.trim())) {
       setJobTitle(preset.default_job_title);
     }
     setSelectedWidgets(Array.from(new Set(["DASH_PERSONAL", ...preset.dashboard_widgets])));
-    setModules(preset.modules
-      .filter((module) => enabledModules.includes(module.module_code.toUpperCase()))
-      .map((m) => ({ ...m })));
+    setModules(
+      normalizeModulesList(preset.modules.map((m) => ({ ...m })))
+        .filter((module) => enabledModules.includes(module.module_code.toUpperCase())),
+    );
     setModuleConfigDirty(true);
   };
 
@@ -465,6 +481,12 @@ export function QuickAccessPanel({
       );
       if (Array.isArray(res.data?.roles)) {
         setDerivedRoles(res.data.roles);
+      }
+      if (Array.isArray(res.data?.modules)) {
+        setModules(normalizeModulesList(res.data.modules as ModuleGrantItem[]));
+      }
+      if (res.data?.user?.role_level) {
+        setRoleLevel(res.data.user.role_level as "GM" | "SPV" | "STAFF");
       }
       setModuleConfigDirty(false);
       toast.success("Pengaturan user berhasil disimpan.");

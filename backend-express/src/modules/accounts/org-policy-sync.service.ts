@@ -510,6 +510,7 @@ export async function getUserQuickAccess(companyId: string, userId: string) {
   }
   if (enabledModules.has('HR')) {
     enabledModules.add('HRMS');
+    enabledModules.add('REQUESTS');
   }
   const activeAssignments = moduleAssignments.filter((assignment) =>
     assignment.status === 'ACTIVE'
@@ -517,10 +518,30 @@ export async function getUserQuickAccess(companyId: string, userId: string) {
     && (!assignment.effective_from || assignment.effective_from <= now)
     && (!assignment.effective_until || assignment.effective_until >= now),
   );
-  const visibleModules = effectiveModules.filter((module) => enabledModules.has(module.module_code.toUpperCase()));
+  const rawVisibleModules = effectiveModules.filter((module) => enabledModules.has(module.module_code.toUpperCase()));
+  const visibleModules: TranslatedModuleGrant[] = [];
+  const visibleSourceCodes = new Map<string, string>();
+  for (const mod of rawVisibleModules) {
+    const rawCode = mod.module_code.toUpperCase();
+    const code = ['HR', 'HRMS', 'REQUESTS'].includes(rawCode) ? 'HR' : rawCode;
+    const existingIdx = visibleModules.findIndex((item) => item.module_code === code);
+    if (existingIdx >= 0) {
+      const prevRawCode = visibleSourceCodes.get(code) ?? code;
+      const incomingIsExplicitHr = rawCode === 'HR' && prevRawCode !== 'HR';
+      const sameSourceBetterTier =
+        (rawCode === prevRawCode || prevRawCode === 'HR') && mod.tier_level < visibleModules[existingIdx].tier_level;
+      if (incomingIsExplicitHr || sameSourceBetterTier) {
+        visibleModules[existingIdx] = { ...mod, module_code: code };
+        visibleSourceCodes.set(code, rawCode);
+      }
+    } else {
+      visibleModules.push({ ...mod, module_code: code });
+      visibleSourceCodes.set(code, rawCode);
+    }
+  }
   if (
     enabledModules.has('HR')
-    && !visibleModules.some((m) => ['HR', 'HRMS', 'REQUESTS'].includes(m.module_code.toUpperCase()))
+    && !visibleModules.some((m) => m.module_code === 'HR')
   ) {
     visibleModules.push({
       module_code: 'HR',
@@ -632,6 +653,16 @@ export async function syncUserQuickAccess(input: SyncUserQuickAccessInput) {
     const tenantId = input.tenantId || membership.tenant_id;
     const companyEntitlements = await tx.iam_company_module_access.findMany({ where: { company_id: companyId } });
     const entitlementByModule = new Map(companyEntitlements.map((row) => [row.module_code.toUpperCase(), row]));
+    const activeHrEntitlement =
+      companyEntitlements.find(
+        (row) => ['HR', 'HRMS', 'REQUESTS'].includes(row.module_code.toUpperCase()) && row.enabled && row.allow_read,
+      )
+      ?? entitlementByModule.get('HR')
+      ?? entitlementByModule.get('HRMS')
+      ?? entitlementByModule.get('REQUESTS');
+    if (activeHrEntitlement) {
+      entitlementByModule.set('HR', activeHrEntitlement);
+    }
     const existingUser = await tx.iam_user.findUnique({ where: { id: userId } });
     if (!existingUser) {
       throw new NotFoundError('User tidak ditemukan.');
@@ -802,8 +833,9 @@ export async function syncUserQuickAccess(input: SyncUserQuickAccessInput) {
     const moduleGrantMap = new Map<string, TranslatedModuleGrant>();
     if (input.modules !== undefined) {
       for (const m of input.modules) {
-        const code = String(m.module_code || '').trim().toUpperCase();
-        if (!code) continue;
+        const rawCode = String(m.module_code || '').trim().toUpperCase();
+        if (!rawCode) continue;
+        const code = ['HR', 'HRMS', 'REQUESTS'].includes(rawCode) ? 'HR' : rawCode;
         const enabled = m.enabled !== undefined ? Boolean(m.enabled) : Boolean(m.allow_read ?? true);
         const entitlement = entitlementByModule.get(code);
         const now = new Date();
@@ -835,7 +867,9 @@ export async function syncUserQuickAccess(input: SyncUserQuickAccessInput) {
       }
     } else if (presetSpec) {
       for (const m of presetSpec.modules) {
-        moduleGrantMap.set(m.module_code, { ...m });
+        const rawCode = String(m.module_code || '').trim().toUpperCase();
+        const code = ['HR', 'HRMS', 'REQUESTS'].includes(rawCode) ? 'HR' : rawCode;
+        moduleGrantMap.set(code, { ...m, module_code: code });
       }
     }
 
@@ -877,10 +911,12 @@ export async function syncUserQuickAccess(input: SyncUserQuickAccessInput) {
           });
         }
 
-        const existingLegacyAssignment = await tx.iam_user_module_assignment.findFirst({
+        const existingLegacyAssignments = await tx.iam_user_module_assignment.findMany({
           where: { company_id: companyId, user_id: userId, module_code: modCode },
+          orderBy: [{ status: 'asc' }, { updated_at: 'desc' }],
           select: { id: true },
         });
+        const primaryAssignment = existingLegacyAssignments[0];
         const assignmentData = {
             profile_id: null,
             profile_code: null,
@@ -893,8 +929,15 @@ export async function syncUserQuickAccess(input: SyncUserQuickAccessInput) {
             effective_until: null,
             status: 'ACTIVE',
         };
-        if (existingLegacyAssignment) {
-          await tx.iam_user_module_assignment.update({ where: { id: existingLegacyAssignment.id }, data: assignmentData });
+        if (primaryAssignment) {
+          await tx.iam_user_module_assignment.update({ where: { id: primaryAssignment.id }, data: assignmentData });
+          const duplicateIds = existingLegacyAssignments.slice(1).map((row) => row.id);
+          if (duplicateIds.length > 0) {
+            await tx.iam_user_module_assignment.updateMany({
+              where: { id: { in: duplicateIds }, status: 'ACTIVE' },
+              data: { status: 'INACTIVE' },
+            });
+          }
         } else {
           await tx.iam_user_module_assignment.create({
             data: {
@@ -917,6 +960,12 @@ export async function syncUserQuickAccess(input: SyncUserQuickAccessInput) {
               status: 'ACTIVE',
               created_by_id: actorId || null,
             },
+          });
+        }
+        if (modCode === 'HR') {
+          await tx.iam_user_module_assignment.updateMany({
+            where: { company_id: companyId, user_id: userId, module_code: { in: ['HRMS', 'REQUESTS'] }, status: 'ACTIVE' },
+            data: { status: 'INACTIVE' },
           });
         }
       } else {

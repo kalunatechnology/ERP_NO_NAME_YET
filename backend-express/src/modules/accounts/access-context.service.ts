@@ -423,16 +423,25 @@ export async function loadUserAccessContext(
   );
 
   const applyOverride = (modCode: string, actionKey: string, base: boolean): boolean => {
-    const eff = overrideEffectMap.get(`${modCode}:${actionKey}`);
-    if (eff === 'DENY') return false;
-    if (eff === 'ALLOW') return true;
+    const candidateMods = ['HR', 'HRMS', 'REQUESTS'].includes(modCode)
+      ? [modCode, 'HR', 'HRMS', 'REQUESTS']
+      : [modCode];
+    for (const candidate of candidateMods) {
+      const eff = overrideEffectMap.get(`${candidate}:${actionKey}`);
+      if (eff === 'DENY') return false;
+      if (eff === 'ALLOW') return true;
+    }
     return base;
   };
 
   const moduleAssignments: UserModuleAssignmentContext[] = (Array.isArray(rawModuleAssignments) ? rawModuleAssignments : []).map((ma: any) => {
     const code = String(ma.module_code || '').trim().toUpperCase();
     const tier = Number(ma.tier_level ?? 3);
-    const tp = tierPermMap.get(`${code}:${tier}`);
+    const tp =
+      tierPermMap.get(`${code}:${tier}`)
+      ?? (['HR', 'HRMS', 'REQUESTS'].includes(code)
+        ? (tierPermMap.get(`HR:${tier}`) ?? tierPermMap.get(`HRMS:${tier}`) ?? tierPermMap.get(`REQUESTS:${tier}`))
+        : undefined);
     const profileCapabilities = new Set<string>(Array.isArray(ma.role_profile?.capabilities)
       ? ma.role_profile.capabilities
           .filter((capability: any) => String(capability.effect || 'ALLOW').toUpperCase() === 'ALLOW')
@@ -440,11 +449,11 @@ export async function loadUserAccessContext(
       : []);
     const profileHas = (action: string) => profileCapabilities.has(action) || profileCapabilities.has(`${code}:${action}`);
     const hasProfile = Boolean(ma.profile_id && ma.role_profile?.is_active);
-    const allowRead = hasProfile ? profileHas('READ') : applyOverride(code, 'READ', tp ? Boolean(tp.allow_read) : true);
-    const allowWrite = hasProfile ? profileHas('WRITE') : applyOverride(code, 'WRITE', tp ? Boolean(tp.allow_write) : (tier === 0 ? code !== 'FINANCE' : tier >= 1));
-    const allowApprove = hasProfile ? profileHas('APPROVE') : applyOverride(code, 'APPROVE', tp ? Boolean(tp.allow_approve) : tier <= 2);
-    const allowDelete = hasProfile ? profileHas('DELETE') : applyOverride(code, 'DELETE', tp ? Boolean(tp.allow_delete) : tier === 1);
-    const allowManageUsers = hasProfile ? profileHas('MANAGE_USERS') : applyOverride(code, 'MANAGE_USERS', tp ? Boolean(tp.allow_manage_users) : tier <= 1);
+    const allowRead = applyOverride(code, 'READ', hasProfile ? profileHas('READ') : (tp ? Boolean(tp.allow_read) : true));
+    const allowWrite = applyOverride(code, 'WRITE', hasProfile ? profileHas('WRITE') : (tp ? Boolean(tp.allow_write) : (tier === 0 ? code !== 'FINANCE' : tier >= 1)));
+    const allowApprove = applyOverride(code, 'APPROVE', hasProfile ? profileHas('APPROVE') : (tp ? Boolean(tp.allow_approve) : tier <= 2));
+    const allowDelete = applyOverride(code, 'DELETE', hasProfile ? profileHas('DELETE') : (tp ? Boolean(tp.allow_delete) : tier === 1));
+    const allowManageUsers = applyOverride(code, 'MANAGE_USERS', hasProfile ? profileHas('MANAGE_USERS') : (tp ? Boolean(tp.allow_manage_users) : tier <= 1));
     return {
       id: String(ma.id),
       module_code: code,

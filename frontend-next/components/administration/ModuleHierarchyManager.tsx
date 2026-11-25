@@ -208,9 +208,12 @@ export function ModuleHierarchyManager({
       setTierConfigs(Array.isArray(data.tier_configs) ? data.tier_configs : []);
       setTierPermissions(Array.isArray(data.tier_permissions) ? data.tier_permissions : []);
       setAssignments(Array.isArray(data.assignments) ? data.assignments : []);
-      const available = Array.isArray(data.module_entitlements)
+      const available: string[] = Array.isArray(data.module_entitlements)
         ? data.module_entitlements.filter((item: any) => item.enabled && item.allow_read).map((item: any) => String(item.module_code).toUpperCase())
         : [];
+      if (available.some((m) => ["HR", "HRMS", "REQUESTS"].includes(m)) && !available.includes("HR")) {
+        available.push("HR");
+      }
       setEnabledModules(available);
       setRoleProfiles(Array.isArray(data.role_profiles) ? data.role_profiles : []);
       setCapabilities(Array.isArray(data.cross_module_capabilities) ? data.cross_module_capabilities : []);
@@ -294,7 +297,12 @@ export function ModuleHierarchyManager({
     }
   };
 
-  const availableProfiles = roleProfiles.filter((profile) => profile.module_code === assignForm.module_code && profile.is_active);
+  const availableProfiles = roleProfiles.filter((profile) => {
+    const profileMod = String(profile.module_code || "").toUpperCase();
+    const targetMod = String(assignForm.module_code || "").toUpperCase();
+    const sameModule = profileMod === targetMod || (targetMod === "HR" && ["HR", "HRMS", "REQUESTS"].includes(profileMod));
+    return sameModule && profile.is_active;
+  });
 
   const handleDeleteAssignment = async (id: string) => {
     const assignment = assignments.find((item) => item.id === id);
@@ -314,10 +322,12 @@ export function ModuleHierarchyManager({
   const startEditAssignment = (assignment: ModuleAssignmentRow) => {
     setEditingAssignmentId(assignment.id);
     setSubTab("assignments");
+    const rawMod = String(assignment.module_code || "").toUpperCase();
+    const normalizedMod = ["HR", "HRMS", "REQUESTS"].includes(rawMod) ? "HR" : rawMod;
     setAssignForm({
       user_id: assignment.user_id,
       profile_id: assignment.profile_id || "",
-      module_code: assignment.module_code,
+      module_code: normalizedMod,
       tier_level: assignment.tier_level,
       position_title: assignment.position_title || "",
       department_id: assignment.department_id || "",
@@ -438,6 +448,9 @@ export function ModuleHierarchyManager({
 
   const filteredAssignments = useMemo(() => {
     if (selectedModuleFilter === "ALL") return assignments;
+    if (selectedModuleFilter === "HR") {
+      return assignments.filter((a) => ["HR", "HRMS", "REQUESTS"].includes(String(a.module_code || "").toUpperCase()));
+    }
     return assignments.filter((a) => a.module_code === selectedModuleFilter);
   }, [assignments, selectedModuleFilter]);
 
@@ -613,6 +626,19 @@ export function ModuleHierarchyManager({
                 </select>
               </div>
 
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-[#334155]">Tingkatan Wewenang (Tier)</label>
+                <select
+                  value={assignForm.tier_level}
+                  onChange={(e) => setAssignForm((p) => ({ ...p, tier_level: Number(e.target.value) }))}
+                  className="h-10 w-full rounded-xl border border-[#CBD5E1] bg-white px-3 text-xs font-semibold text-[#0F172A]"
+                >
+                  <option value={3}>Level 3 — Staff / Executor</option>
+                  <option value={2}>Level 2 — Supervisor / Team Lead</option>
+                  <option value={1}>Level 1 — Module Head / Manager</option>
+                  <option value={0}>Level 0 — GM Oversight (Payung Lintas Modul)</option>
+                </select>
+              </div>
             </div>
 
             <div className="space-y-1">
@@ -680,7 +706,7 @@ export function ModuleHierarchyManager({
             <button
               type="button"
               onClick={() => void handleAssignSubmit()}
-              disabled={submittingAssign || !assignForm.profile_id || !enabledModules.includes(assignForm.module_code)}
+              disabled={submittingAssign || (!assignForm.profile_id && !editingAssignmentId) || !enabledModules.includes(assignForm.module_code)}
               className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#163D64] px-4 text-xs font-bold text-white hover:bg-[#1D3A96] disabled:opacity-50"
             >
               {editingAssignmentId ? <Pencil size={14} /> : <Plus size={15} />}
@@ -710,7 +736,9 @@ export function ModuleHierarchyManager({
                       ? [["ROLE-STAFF", "Staff"], ["ROLE-SUPERVISOR", "Supervisor"], ["ROLE-PM", "Project Manager"]]
                       : assignForm.module_code === "FINANCE"
                         ? [["ROLE-FINANCE", "Finance"]]
-                        : [["ROLE-OM", "Operational Manager"], ["ROLE-SUPERVISOR", "Supervisor"]]
+                        : ["HR", "HRMS", "REQUESTS"].includes(assignForm.module_code)
+                          ? [["ROLE-STAFF", "Staff"], ["ROLE-SUPERVISOR", "Supervisor"], ["ROLE-PM", "Project Manager"], ["ROLE-OM", "Operational Manager"], ["ROLE-FINANCE", "Finance"], ["ROLE-DIRECTOR", "Director"]]
+                          : [["ROLE-OM", "Operational Manager"], ["ROLE-SUPERVISOR", "Supervisor"]]
                   ).map(([code, label]) => <option key={code} value={code}>{label}</option>)}
                 </select>
                 <input

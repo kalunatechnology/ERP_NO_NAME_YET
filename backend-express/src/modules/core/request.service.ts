@@ -1237,7 +1237,8 @@ static async getRequests(params: {
   const isPMRole =
     normalizedRole === 'PROJECT_MANAGER' ||
     normalizedRole === 'ROLE-PROJECT-MANAGER';
-  const assignmentScope = String(dataScope || '').trim().toUpperCase();
+  const rawScope = String(dataScope || '').trim().toUpperCase();
+  const assignmentScope = rawScope === 'ALL_MODULE' ? 'ALL' : rawScope;
   const isAssignmentScoped = ['OWN', 'TEAM', 'ALL'].includes(assignmentScope);
   const isAllScope = assignmentScope === 'ALL';
   const isTeamScope = assignmentScope === 'TEAM';

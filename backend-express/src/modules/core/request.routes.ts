@@ -99,9 +99,29 @@ function activeUserId(req: Request): string {
   return req.user.id;
 }
 
+function getActiveHrAssignment(req: Request) {
+  const matches = (req.user?.module_assignments ?? []).filter((assignment: any) =>
+    ['REQUESTS', 'HR', 'HRMS'].some((code) => isUsableModuleAssignment(assignment, code)),
+  );
+  if (!matches.length) return undefined;
+  return [...matches].sort((a: any, b: any) => Number(a.tier_level ?? 3) - Number(b.tier_level ?? 3))[0];
+}
+
+function resolveHrFallbackRole(req: Request): string {
+  const assignment = getActiveHrAssignment(req);
+  if (assignment?.legacy_role_code) return String(assignment.legacy_role_code);
+  const tier = Number(assignment?.tier_level ?? 3);
+  if (tier === 0) return RoleCode.DIRECTOR;
+  if (tier === 1) return RoleCode.PROJECT_MANAGER;
+  if (tier === 2) return RoleCode.SUPERVISOR;
+  return RoleCode.STAFF;
+}
+
 function activeRoleCode(req: Request): string {
   if (!req.user?.active_role_code && req.moduleAccess?.accessMode === 'ASSIGNMENT'
-    && req.moduleAccess.moduleCode === 'REQUESTS') return RoleCode.STAFF;
+    && ['REQUESTS', 'HR', 'HRMS'].includes(req.moduleAccess.moduleCode)) {
+    return resolveHrFallbackRole(req);
+  }
   if (!req.user?.active_role_code) throw new ForbiddenError('Role aktif diperlukan.');
   return String(req.user.active_role_code);
 }
@@ -279,11 +299,9 @@ requestRouter.get(
       const userId =
         req.user?.id;
 
-      const requestAssignment = (req.user?.module_assignments ?? []).find((assignment: any) =>
-        isUsableModuleAssignment(assignment, 'REQUESTS')
-      );
+      const requestAssignment = getActiveHrAssignment(req);
       const assignmentMode = req.moduleAccess?.accessMode === 'ASSIGNMENT';
-      const activeRole = req.user?.active_role_code ?? (assignmentMode ? RoleCode.STAFF : null);
+      const activeRole = req.user?.active_role_code ?? (assignmentMode ? resolveHrFallbackRole(req) : null);
 
       if (!companyId) {
         throw new ForbiddenError(
@@ -327,7 +345,7 @@ requestRouter.get(
           Math.trunc(
             Number(
               req.query.page_size ??
-                req.query.pageSize,
+              req.query.pageSize,
             ) || 20,
           ),
         ),
@@ -522,7 +540,7 @@ requestRouter.post('/:id/validate-om', requireActiveRole(RoleCode.OPERATIONAL_MA
       requestId: req.params.id,
       decision,
       remarks,
-      omUserId:  activeUserId(req),
+      omUserId: activeUserId(req),
       companyId: activeCompanyId(req),
     });
     invalidateRequestFeedCache();
@@ -538,7 +556,7 @@ requestRouter.post('/:id/approve-exec', requireActiveRole(RoleCode.PROJECT_MANAG
       return sendError(res, 'decision wajib diisi (APPROVE atau REJECT).', 400);
     }
     const result = await RequestService.approveByExecutive({
-      requestId:  req.params.id,
+      requestId: req.params.id,
       decision,
       remarks,
       execUserId: activeUserId(req),
@@ -554,11 +572,11 @@ requestRouter.post('/:id/disburse', requireActiveRole(RoleCode.FINANCE), async (
   try {
     const { disburse_account_id, disburse_reference } = req.body;
     const result = await RequestService.disburseRequest({
-      requestId:          req.params.id,
-      disburseAccountId:  disburse_account_id,
-      disburseReference:  disburse_reference,
-      disburseUserId:     activeUserId(req),
-      companyId:          activeCompanyId(req),
+      requestId: req.params.id,
+      disburseAccountId: disburse_account_id,
+      disburseReference: disburse_reference,
+      disburseUserId: activeUserId(req),
+      companyId: activeCompanyId(req),
     });
     invalidateRequestFeedCache();
     sendSuccess(res, result);
@@ -573,14 +591,14 @@ requestRouter.post('/:id/submit-lpj', async (req: Request, res: Response, next: 
       return sendError(res, 'realization_amount (total belanja riil) wajib diisi lebih dari 0.', 400);
     }
     const result = await RequestService.submitLPJ({
-      requestId:          req.params.id,
-      realizationAmount:  Number(realization_amount),
-      discrepancyAmount:  discrepancy_amount ? Number(discrepancy_amount) : 0,
-      discrepancyType:    discrepancy_type ?? 'NONE',
+      requestId: req.params.id,
+      realizationAmount: Number(realization_amount),
+      discrepancyAmount: discrepancy_amount ? Number(discrepancy_amount) : 0,
+      discrepancyType: discrepancy_type ?? 'NONE',
       notes,
       invoices,
-      requesterUserId:    activeUserId(req),
-      companyId:          activeCompanyId(req),
+      requesterUserId: activeUserId(req),
+      companyId: activeCompanyId(req),
     });
     invalidateRequestFeedCache();
     sendSuccess(res, result);
@@ -598,7 +616,7 @@ requestRouter.post('/:id/verify-lpj-om', requireActiveRole(RoleCode.OPERATIONAL_
       requestId: req.params.id,
       decision,
       remarks,
-      omUserId:  activeUserId(req),
+      omUserId: activeUserId(req),
       companyId: activeCompanyId(req),
     });
     invalidateRequestFeedCache();
@@ -649,7 +667,7 @@ requestRouter.patch(
 
       const assigneeUserId =
         typeof req.body?.assignee_user_id ===
-        'string'
+          'string'
           ? req.body.assignee_user_id.trim()
           : '';
 
