@@ -174,10 +174,10 @@ static async createRequest(
     }
   } else if (request_type === 'LEAVE') {
     if (!meetingStart || !meetingEnd || Number.isNaN(meetingStart.getTime()) || Number.isNaN(meetingEnd.getTime())) {
-      throw new ValidationError('Tanggal mulai dan selesai wajib diisi untuk cuti/izin.');
+      throw new ValidationError('Tanggal dan jam mulai serta selesai wajib diisi untuk cuti/izin.');
     }
-    if (meetingEnd < meetingStart) {
-      throw new ValidationError('Tanggal selesai cuti harus sama dengan atau setelah tanggal mulai.');
+    if (meetingEnd <= meetingStart) {
+      throw new ValidationError('Waktu selesai cuti harus setelah waktu mulai.');
     }
   } else if (crm_opportunity_id || external_participants.length) {
     throw new ValidationError('Tautan Opportunity dan peserta eksternal hanya berlaku untuk Meeting.');

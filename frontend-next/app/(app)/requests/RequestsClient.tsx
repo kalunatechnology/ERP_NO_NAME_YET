@@ -680,6 +680,11 @@ export default function RequestsClient(){
                     <p className="mt-1 text-xs text-[#64748B] line-clamp-2 leading-relaxed">
                       {req.description || "Tanpa deskripsi"}
                     </p>
+                    {isLeave && req.start_at && req.end_at && (
+                      <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-[#2B7A42]">
+                        <Clock3 size={13} /> {displayDate(req.start_at)} – {displayDate(req.end_at)}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -1233,8 +1238,8 @@ function NewNonMeetingRequestModal({members,busy,onClose,onSuccess}:{members:Mem
   async function handleSubmit(event:React.FormEvent){
     event.preventDefault();
     if(!title.trim()){toast.error('Judul request wajib diisi.');return;}
-    if(type==='LEAVE'&&(!startAt||!endAt)){toast.error('Tanggal mulai dan selesai wajib diisi untuk cuti/izin.');return;}
-    if(type==='LEAVE'&&startAt&&endAt&&endAt<startAt){toast.error('Tanggal selesai cuti harus sama dengan atau setelah tanggal mulai.');return;}
+    if(type==='LEAVE'&&(!startAt||!endAt)){toast.error('Tanggal dan jam mulai serta selesai wajib diisi untuk cuti/izin.');return;}
+    if(type==='LEAVE'&&startAt&&endAt&&endAt<=startAt){toast.error('Waktu selesai cuti harus setelah waktu mulai.');return;}
     setSubmitting(true);
     try{
       await requestApi.createNonMeetingRequest({
@@ -1259,8 +1264,8 @@ function NewNonMeetingRequestModal({members,busy,onClose,onSuccess}:{members:Mem
       <Field label="Judul Request" required value={title} onChange={setTitle}/>
       <TextArea label="Deskripsi" rows={4} value={description} onChange={setDescription}/>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={type==='LEAVE'?'Mulai Cuti':'Mulai'} type="date" required={type==='LEAVE'} value={startAt} onChange={setStartAt}/>
-        <Field label={type==='LEAVE'?'Selesai Cuti':'Selesai'} type="date" required={type==='LEAVE'} value={endAt} onChange={setEndAt}/>
+        <Field label={type==='LEAVE'?'Mulai Cuti (tanggal & jam)':'Mulai (opsional)'} type="datetime-local" required={type==='LEAVE'} value={startAt} onChange={setStartAt}/>
+        <Field label={type==='LEAVE'?'Selesai Cuti (tanggal & jam)':'Selesai (opsional)'} type="datetime-local" required={type==='LEAVE'} value={endAt} onChange={setEndAt}/>
       </div>
       {type==='OTHER'&&<div><span className="mb-2 block text-sm font-bold text-[#0876CD]">Assign kepada</span><SearchableSelect value={assigneeId} onChange={setAssigneeId} placeholder="Pilih anggota (opsional)" emptyOptionLabel="Pilih anggota (opsional)" searchPlaceholder="Cari nama atau role anggota..." options={members.map(m=>({value:String(m.id),label:`${m.name} — ${m.role}`,sublabel:m.email}))}/></div>}
       {type==='LEAVE'&&<div className="rounded-xl bg-[#FFF9E6] border border-[#F5C842] px-4 py-3 text-xs text-[#7A5C00]">Permohonan cuti/izin akan otomatis diarahkan ke HR atau Eksekutif yang bertanggung jawab. Anda tidak perlu memilih tujuan.</div>}
