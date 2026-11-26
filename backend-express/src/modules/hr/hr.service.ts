@@ -80,6 +80,48 @@ export async function ensureHrTables(): Promise<void> {
 }
 
 export class HrService {
+  static async getHrTier1Users(companyId: string) {
+    const assignments = await (prisma as any).iam_user_module_assignment.findMany({
+      where: { company_id: companyId, module_code: { in: ['HR', 'HRMS', 'REQUESTS'] }, tier_level: 1, status: 'ACTIVE' },
+      select: { user_id: true },
+      orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
+    }).catch(() => [] as Array<{ user_id: string }>);
+    const userIds = [...new Set(assignments.map((assignment: { user_id: string }) => assignment.user_id).filter(Boolean))];
+    if (!userIds.length) return [] as string[];
+    const [memberships, users] = await Promise.all([
+      prisma.iam_user_company_membership.findMany({ where: { company_id: companyId, user_id: { in: userIds }, status: 'ACTIVE' }, select: { user_id: true } }),
+      prisma.iam_user.findMany({ where: { id: { in: userIds }, is_active: true, status: 'ACTIVE' }, select: { id: true } }),
+    ]);
+    const activeIds = new Set(users.map((user) => user.id));
+    return [...new Set(memberships.map((membership) => membership.user_id).filter((id) => activeIds.has(id)))];
+  }
+
+  static async notifyHrTier1(companyId: string, actorId: string, params: { title: string; message: string; actionUrl: string; referenceId: string }) {
+    const recipients = (await this.getHrTier1Users(companyId).catch(() => [])).filter((id) => id !== actorId);
+    if (!recipients.length) return;
+    const now = new Date();
+    for (const recipientId of recipients) {
+      const notificationId = crypto.randomUUID();
+      try {
+        await prisma.core_notification.create({ data: {
+          id: notificationId, title: params.title, message: params.message, action_url: params.actionUrl,
+          notification_type: 'APPROVAL_REQUEST', priority: 'HIGH', company_id: companyId, created_at: now,
+        } });
+        await prisma.core_notification_recipient.create({ data: {
+          id: crypto.randomUUID(), notification_id: notificationId, recipient_user_id: recipientId,
+          recipient_role_id: null, company_id: companyId, delivery_status: 'UNREAD',
+        } });
+        await prisma.core_app_notification.create({ data: {
+          id: crypto.randomUUID(), company_id: companyId, recipient_id: recipientId, actor_id: actorId,
+          category: 'APPROVAL_REQUEST', title: params.title, description: params.message, target_url: params.actionUrl,
+          is_read: false, created_at: now, updated_at: now, reference_type: 'HR_APPROVAL', reference_id: params.referenceId,
+        } });
+      } catch (error) {
+        console.warn(`[HR] Gagal mengirim notifikasi approval ke ${recipientId}:`, error);
+      }
+    }
+  }
+
   static async getMyEmployeeOrThrow(companyId: string, userId: string) {
     const emp = await prisma.master_employee.findFirst({
       where: { company_id: companyId, user_id: userId, employment_status: 'ACTIVE' },
@@ -231,12 +273,15 @@ export class HrService {
     if (!Number.isFinite(workDate.getTime())) {
       throw new ValidationError('Tanggal kerja lembur tidak valid.');
     }
-    const { rate } = await this.resolveOvertimeHourlyRate(companyId, emp);
-    if (rate <= 0) {
-      throw new ValidationError('Tarif lembur belum diatur. Minta HR mengisi tarif umum atau tarif khusus pada profil karyawan.');
+    const startTime = String(input.start_time || '').trim();
+    const endTime = String(input.end_time || '').trim();
+    const timePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+    if (!timePattern.test(startTime) || !timePattern.test(endTime) || endTime <= startTime) {
+      throw new ValidationError('Jam mulai dan selesai lembur wajib valid, dan jam selesai harus setelah jam mulai.');
     }
+    const { rate } = await this.resolveOvertimeHourlyRate(companyId, emp);
     const amount = Math.round(rate * hours * 100) / 100;
-    return prisma.hr_overtime_request.create({
+    const created = await prisma.hr_overtime_request.create({
       data: {
         id: crypto.randomUUID(),
         tenant_id: tenantId,
@@ -245,15 +290,21 @@ export class HrService {
         user_id: userId,
         project_id: null,
         work_date: workDate,
-        start_time: String(input.start_time || ''),
-        end_time: String(input.end_time || ''),
+        start_time: startTime,
+        end_time: endTime,
         duration_hours: hours,
         overtime_rate: rate,
         overtime_amount: amount,
         reason: String(input.reason).trim(),
+        evidence_url: input.evidence_url ?? null,
         status: 'SUBMITTED',
       },
     });
+    await this.notifyHrTier1(companyId, userId, {
+      title: 'Pengajuan lembur baru', message: `${emp.employee_name || emp.employee_number} mengajukan lembur ${hours} jam.`,
+      actionUrl: '/requests?tab=hr_ops', referenceId: created.id,
+    }).catch(() => null);
+    return created;
   }
 
   /**
@@ -299,9 +350,20 @@ export class HrService {
       return Number.isFinite(d.getTime()) ? d.toISOString().slice(11, 16) : '';
     };
     const workDate = new Date(input.work_date);
+    const startTime = toHhMm(input.overtime_started_at);
+    const endTime = toHhMm(input.overtime_ended_at);
+    const existing = await prisma.hr_overtime_request.findFirst({
+      where: { company_id: companyId, employee_id: emp.id, work_date: Number.isFinite(workDate.getTime()) ? workDate : new Date(), start_time: startTime, project_id: input.project_id ?? null },
+    });
+    if (existing) {
+      if (!existing.evidence_url && input.evidence_url) {
+        return prisma.hr_overtime_request.update({ where: { id: existing.id }, data: { evidence_url: input.evidence_url } });
+      }
+      return existing;
+    }
     const { rate } = await this.resolveOvertimeHourlyRate(companyId, emp);
     const amount = Math.round(rate * hours * 100) / 100;
-    return prisma.hr_overtime_request.create({
+    const created = await prisma.hr_overtime_request.create({
       data: {
         id: crypto.randomUUID(),
         tenant_id: tenantId,
@@ -310,8 +372,8 @@ export class HrService {
         user_id: userId,
         project_id: input.project_id ?? null,
         work_date: Number.isFinite(workDate.getTime()) ? workDate : new Date(),
-        start_time: toHhMm(input.overtime_started_at),
-        end_time: toHhMm(input.overtime_ended_at),
+        start_time: startTime,
+        end_time: endTime,
         duration_hours: Math.min(hours, 16),
         overtime_rate: rate,
         overtime_amount: amount,
@@ -320,6 +382,12 @@ export class HrService {
         status: 'SUBMITTED',
       },
     });
+    await this.notifyHrTier1(companyId, userId, {
+      title: 'Pengajuan lembur baru',
+      message: `${emp.employee_name || emp.employee_number} mengirim timesheet lembur ${Math.min(hours, 16)} jam untuk ditinjau HR.`,
+      actionUrl: '/requests?tab=hr_ops', referenceId: created.id,
+    }).catch(() => null);
+    return created;
   }
 
   static async saveEvidenceAttachment(companyId: string, userId: string, input: any) {
@@ -365,6 +433,27 @@ export class HrService {
 
   static async listCompanyOvertimes(companyId: string) {
     await ensureHrTables();
+    const [pendingTimesheets, activeEmployees] = await Promise.all([
+      prisma.project_timesheet.findMany({
+        where: { company_id: companyId, overtime_hours: { gt: 0 }, approval_status: { not: 'REJECTED' } },
+        orderBy: { created_at: 'asc' }, take: 1000,
+      }),
+      prisma.master_employee.findMany({ where: { company_id: companyId, employment_status: 'ACTIVE', user_id: { not: null } }, select: { id: true, user_id: true } }),
+    ]);
+    const userByEmployeeId = new Map(activeEmployees.map((employee) => [employee.id, employee.user_id]));
+    for (const timesheet of pendingTimesheets) {
+      const userId = timesheet.employee_id ? userByEmployeeId.get(timesheet.employee_id) : null;
+      if (!userId || !timesheet.work_date) continue;
+      await this.syncOvertimeFromDailyTimesheet(companyId, null, userId, {
+        work_date: timesheet.work_date,
+        overtime_hours: Number(timesheet.overtime_hours ?? 0),
+        overtime_started_at: timesheet.overtime_started_at,
+        overtime_ended_at: timesheet.overtime_ended_at,
+        project_id: timesheet.project_id,
+        reason: timesheet.overtime_reason || 'Lembur Daily Task / Timesheet',
+        evidence_url: timesheet.evidence_url,
+      }).catch(() => null);
+    }
     const [rows, employees] = await Promise.all([
       prisma.hr_overtime_request.findMany({
         where: { company_id: companyId },

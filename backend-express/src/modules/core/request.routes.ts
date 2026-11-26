@@ -302,6 +302,11 @@ requestRouter.get(
       const requestAssignment = getActiveHrAssignment(req);
       const assignmentMode = req.moduleAccess?.accessMode === 'ASSIGNMENT';
       const activeRole = req.user?.active_role_code ?? (assignmentMode ? resolveHrFallbackRole(req) : null);
+      const canReviewHrRequests = (req.user?.module_assignments ?? []).some((assignment: any) =>
+        ['HR', 'HRMS', 'REQUESTS'].includes(String(assignment.module_code || '').toUpperCase())
+        && String(assignment.status || '').toUpperCase() === 'ACTIVE'
+        && Number(assignment.tier_level ?? 3) <= 1,
+      );
 
       if (!companyId) {
         throw new ForbiddenError(
@@ -393,6 +398,7 @@ requestRouter.get(
         activeRole,
         requestAssignment?.profile_code ?? '',
         requestAssignment?.data_scope ?? '',
+        canReviewHrRequests ? 'hr-tier-1' : '',
         requestAssignment?.department_id ?? req.user?.department_id ?? '',
 
         /**
@@ -434,6 +440,7 @@ requestRouter.get(
                */
               activeRole,
               dataScope: assignmentMode ? requestAssignment?.data_scope : undefined,
+              canReviewHrRequests,
               scopeDepartmentId: assignmentMode
                 ? requestAssignment?.department_id ?? req.user?.department_id ?? null
                 : undefined,

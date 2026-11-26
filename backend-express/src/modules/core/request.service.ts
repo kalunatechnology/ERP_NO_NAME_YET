@@ -190,32 +190,8 @@ static async createRequest(
   // ---------------------------------------------------------------------------
   let effectiveAssigneeUserId = assignee_user_id ?? null;
   if (request_type === 'LEAVE' && !effectiveAssigneeUserId) {
-    // 1. Cari role HR
-    const hrRole = await prisma.iam_role.findFirst({
-      where: { role_code: { in: ['HR', 'HUMAN_RESOURCE', 'HR_MANAGER', 'HR_STAFF'] as any } },
-      select: { id: true },
-    }).catch(() => null);
-    if (hrRole) {
-      const hrUserRole = await prisma.iam_user_role.findFirst({
-        where: { role_id: hrRole.id, company_id: companyId },
-        select: { user_id: true },
-      }).catch(() => null);
-      if (hrUserRole?.user_id) effectiveAssigneeUserId = hrUserRole.user_id;
-    }
-    // 2. Fallback ke Executive/Director aktif di company jika tidak ada HR
-    if (!effectiveAssigneeUserId) {
-      const execRoles = await prisma.iam_role.findMany({
-        where: { role_code: { in: ['DIRECTOR', 'COMPANY_ADMIN'] as any } },
-        select: { id: true },
-      }).catch(() => []);
-      if (execRoles.length) {
-        const execUserRole = await prisma.iam_user_role.findFirst({
-          where: { role_id: { in: execRoles.map((r) => r.id) }, company_id: companyId },
-          select: { user_id: true },
-        }).catch(() => null);
-        if (execUserRole?.user_id) effectiveAssigneeUserId = execUserRole.user_id;
-      }
-    }
+    const hrApprovers = await HrService.getHrTier1Users(companyId);
+    effectiveAssigneeUserId = hrApprovers[0] ?? null;
   }
 
   /**
@@ -227,7 +203,7 @@ static async createRequest(
    */
   if (effectiveAssigneeUserId) {
     const assigneeToValidate = effectiveAssigneeUserId;
-    const [assignee, membership] = await Promise.all([
+    const [assignee, membership, activeMembership] = await Promise.all([
       prisma.iam_user.findFirst({
         where: {
           id: assigneeToValidate,
@@ -248,9 +224,13 @@ static async createRequest(
           id: true,
         },
       }),
+      prisma.iam_user_company_membership.findFirst({
+        where: { user_id: assigneeToValidate, company_id: companyId, status: 'ACTIVE' },
+        select: { id: true },
+      }),
     ]);
 
-    if (!assignee || !membership) {
+    if (!assignee || (!membership && !activeMembership)) {
       throw new ValidationError(
         'User assignee tidak ditemukan atau bukan anggota company aktif.',
       );
@@ -565,18 +545,12 @@ static async createRequest(
    */
   if (!is_draft) {
     if (request_type === 'LEAVE') {
-      if (effectiveAssigneeUserId && effectiveAssigneeUserId !== userId) {
-        await this.createNotification({
-          title: `Permohonan Cuti/Izin Baru: ${title}`,
-          message: `${requestNumber} memerlukan penanganan Anda.`,
-          action_url: `/dashboard?tab=requests&id=${instanceId}`,
-          notification_type: 'APPROVAL_REQUEST',
-          priority: 'HIGH',
-          recipient_user_id: effectiveAssigneeUserId,
-          actor_user_id: userId,
-          company_id: companyId ?? null,
-        });
-      }
+      await HrService.notifyHrTier1(companyId, userId, {
+        title: `Permohonan Cuti/Izin Baru: ${title}`,
+        message: `${requestNumber} memerlukan penanganan HR Level 1.`,
+        actionUrl: `/requests?tab=request&requestId=${instanceId}`,
+        referenceId: instanceId,
+      });
     } else if (request_type === 'OTHER') {
       if (effectiveAssigneeUserId && effectiveAssigneeUserId !== userId) {
         await this.createNotification({
@@ -1198,6 +1172,7 @@ static async getRequests(params: {
   activeRole?: RoleCode | string | null;
   dataScope?: 'OWN' | 'TEAM' | 'ALL' | string | null;
   scopeDepartmentId?: string | null;
+  canReviewHrRequests?: boolean;
 }) {
   const {
     type,
@@ -1207,6 +1182,7 @@ static async getRequests(params: {
     activeRole,
     dataScope,
     scopeDepartmentId,
+    canReviewHrRequests = false,
   } = params;
 
   const page = Math.max(
@@ -1469,14 +1445,24 @@ static async getRequests(params: {
                     OR rs.assignee_user_id = ${effectiveRequesterUserId}::text
                   )
                 )
+                OR (
+                  ${canReviewHrRequests}::boolean = true
+                  AND rs.after_data ->> 'request_type' = 'LEAVE'
+                )
               )
             )
 
             OR (
             NOT ${isAssignmentScoped}::boolean
             AND (
+            -- HR Tier 1 can review company leave requests in either access mode.
+            (
+              ${canReviewHrRequests}::boolean = true
+              AND rs.after_data ->> 'request_type' = 'LEAVE'
+            )
+
             -- Executive sees everything
-            ${isExecutiveRole}::boolean = true
+            OR ${isExecutiveRole}::boolean = true
 
             -- OM: milik sendiri + di-assign ke sendiri; validasi awal OM dihapus
             OR (

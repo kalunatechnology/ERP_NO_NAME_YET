@@ -143,6 +143,13 @@ export default function RequestsClient(){
   const openMeeting=useCallback(async(id:string,occurrenceDate?:string)=>{try{const detail=await requestApi.getMeeting(id,occurrenceDate);setSelected(detail);setPersonInCharge(detail.request?.assignee_user_id??detail.notetaker_user_id??"");const loadedMinutes={summary:detail.minutes?.summary??"",opening_notes:detail.minutes?.opening_notes??"",general_discussion:markdownToRichText(detail.minutes?.general_discussion??""),conclusion:detail.minutes?.conclusion??"",decisions:detail.minutes?.decisions.map(item=>item.decision_text).join("\n")??"",action_items:detail.minutes?.action_items.map(item=>item.title).join("\n")??""};setMinutes(loadedMinutes);setSavedMinutes(loadedMinutes);return detail;}catch(error){toast.error(getUserFacingApiError(error,"Detail meeting belum dapat dimuat. Muat ulang halaman, lalu coba lagi."));return null;}},[]);
   const load=useCallback(async()=>{setLoading(true);try{const [rows,team,nonMeet]=await Promise.all([requestApi.listMeetings(),requestApi.listTeamMembers(),requestApi.listNonMeetingRequests()]);setMeetings(rows);setMembers(team);setNonMeetingRequests(nonMeet.rows??[]);if(typeof window!=="undefined"){const params=new URLSearchParams(window.location.search);const id=params.get("meeting");const date=params.get("date")||params.get("occurrenceDate");const shouldOpenNotes=params.get("note")==="1"||params.get("openNotes")==="1"||params.get("openNotes")==="true";if(id){const detail=await openMeeting(id,date||undefined);if(detail&&shouldOpenNotes){setNotesOpen(true);}}}}catch(error){toast.error(getUserFacingApiError(error,"Data meeting dan request belum dapat dimuat. Periksa akses, lalu coba lagi."));}finally{setLoading(false);}},[openMeeting]);
   const searchParams = useSearchParams();
+  useEffect(() => {
+    const requestedTab = searchParams?.get('tab');
+    if (requestedTab === 'hr_ops' && hrTier <= 2) setActiveTab('hr_ops');
+    else if (requestedTab === 'hr_lead' && hrTier === 1) setActiveTab('hr_lead');
+    else if (requestedTab === 'overtime') setActiveTab('overtime');
+    else if (requestedTab === 'request') setActiveTab('request');
+  }, [searchParams, hrTier]);
   const queryRequestId = searchParams?.get('requestId');
   const queryMeetingId = searchParams?.get('meeting') || searchParams?.get('meetingId');
   const queryMinuteId = searchParams?.get('minuteId') || searchParams?.get('date') || searchParams?.get('occurrenceDate');
@@ -715,7 +722,6 @@ export default function RequestsClient(){
           section={activeTab === 'overtime' ? 'overtime' : activeTab === 'hr_ops' ? 'ops' : 'lead'}
           hrTier={hrTier}
           financeTier={financeTier}
-          isStaff={userRole === "staff"}
         />
       )}
 

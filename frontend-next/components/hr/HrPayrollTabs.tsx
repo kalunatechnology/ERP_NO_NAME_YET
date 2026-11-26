@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import {
   Wallet,
   CheckCircle2,
@@ -15,7 +14,7 @@ import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
 import { localDateKey } from "@/lib/utils";
 import { getApiErrorDetail } from "@/lib/api/project.api";
-import { loadHrEvidence } from "@/lib/api/hr-evidence.api";
+import { loadHrEvidence, uploadHrEvidence } from "@/lib/api/hr-evidence.api";
 
 interface OvertimeItem {
   id: string;
@@ -120,10 +119,9 @@ interface HrPayrollTabsProps {
   section: "overtime" | "ops" | "lead";
   hrTier: number;
   financeTier: number;
-  isStaff?: boolean;
 }
 
-export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }: HrPayrollTabsProps) {
+export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsProps) {
   const [loading, setLoading] = useState(true);
   const [myOvertimes, setMyOvertimes] = useState<OvertimeItem[]>([]);
   const [myOvertimePricing, setMyOvertimePricing] = useState<MyOvertimePricing>({ configured: false, overtime_hourly_rate: null });
@@ -157,6 +155,9 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
     reason: "",
   });
   const [submittingOt, setSubmittingOt] = useState(false);
+  const [overtimeEvidenceUrl, setOvertimeEvidenceUrl] = useState("");
+  const [overtimeEvidenceName, setOvertimeEvidenceName] = useState("");
+  const [uploadingOvertimeEvidence, setUploadingOvertimeEvidence] = useState(false);
 
   const [periodStart, setPeriodStart] = useState(() => {
     const d = new Date();
@@ -340,18 +341,17 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
 
   const handleSubmitOvertime = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!myOvertimePricing.configured || !myOvertimePricing.overtime_hourly_rate) {
-      toast.error("Tarif lembur belum tersedia. Minta HR menetapkan tarif umum atau tarif khusus pada profil karyawan.");
-      return;
-    }
     setSubmittingOt(true);
     try {
       await api.post("/api/v1/hr/overtimes/my", {
         ...otForm,
         duration_hours: Number(otForm.duration_hours),
+        evidence_url: overtimeEvidenceUrl || undefined,
       });
       toast.success("Pengajuan lembur berhasil dikirim.");
       setOtForm((p) => ({ ...p, reason: "" }));
+      setOvertimeEvidenceUrl("");
+      setOvertimeEvidenceName("");
       await loadData();
     } catch (err: unknown) {
       toast.error(getApiErrorDetail(err, "Gagal mengajukan lembur."));
@@ -399,14 +399,8 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
       {section === "overtime" && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-            {isStaff ? (
-              <div className="lg:col-span-5 rounded-2xl border border-[#BAE6FD] bg-white p-5 text-xs">
-                <h2 className="text-sm font-bold text-[#163D64]">Catat Lembur pada Proyek Ditugaskan</h2>
-                <p className="mt-2 leading-5 text-slate-600">Untuk memastikan jam lembur terkait dengan proyek dan tugas yang benar, staf mencatatnya melalui Timesheet di Tugas Harian. Daftar proyek di sana mengikuti akses dan penugasan akun Anda.</p>
-                <Link href="/tasks" className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#0876CD] px-4 py-2.5 font-semibold text-white hover:bg-[#163D64]">Buka Tugas Harian</Link>
-              </div>
-            ) : <form onSubmit={handleSubmitOvertime} className="lg:col-span-5 rounded-2xl border border-[#E2E8F0] bg-white p-5 space-y-3 text-xs">
-              <h2 className="text-sm font-bold text-[#163D64]">Ajukan Lembur Pribadi</h2>
+            <form onSubmit={handleSubmitOvertime} className="lg:col-span-5 rounded-2xl border border-[#E2E8F0] bg-white p-5 space-y-3 text-xs">
+              <h2 className="text-sm font-bold text-[#163D64]">Ajukan Lembur</h2>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Tanggal</label>
@@ -435,6 +429,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                   <label className="block font-semibold text-slate-700 mb-1">Jam Mulai</label>
                   <input
                     type="time"
+                    required
                     value={otForm.start_time}
                     onChange={(e) => setOtForm((p) => ({ ...p, start_time: e.target.value }))}
                     className="w-full h-9 rounded-xl border border-slate-200 bg-slate-50 px-3"
@@ -444,6 +439,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                   <label className="block font-semibold text-slate-700 mb-1">Jam Selesai</label>
                   <input
                     type="time"
+                    required
                     value={otForm.end_time}
                     onChange={(e) => setOtForm((p) => ({ ...p, end_time: e.target.value }))}
                     className="w-full h-9 rounded-xl border border-slate-200 bg-slate-50 px-3"
@@ -475,7 +471,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
               <p className={`text-[11px] leading-4 ${myOvertimePricing.configured ? "text-slate-500" : "text-amber-700"}`}>
                 {myOvertimePricing.configured
                   ? "Tarif mengikuti pengaturan HR: tarif khusus karyawan, lalu tarif umum perusahaan. Jika keduanya kosong, sistem memakai rumus dari profil upah."
-                  : "Tarif belum tersedia. Minta HR menetapkan tarif umum atau tarif khusus karyawan; bila keduanya kosong, lengkapi profil upah."}
+                  : "Pengajuan tetap dapat dikirim. HR perlu menetapkan tarif umum atau tarif khusus sebelum nominal lembur dihitung."}
               </p>
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Alasan / Pekerjaan Lembur</label>
@@ -488,15 +484,20 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3"
                 />
               </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Bukti lembur (opsional)</label>
+                <label className="inline-flex cursor-pointer items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-[#163D64]">{uploadingOvertimeEvidence ? "Mengunggah foto…" : "Unggah foto bukti"}<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={uploadingOvertimeEvidence || submittingOt} onChange={async (event) => { const file=event.target.files?.[0]; event.target.value=""; if(!file)return; setUploadingOvertimeEvidence(true); try { setOvertimeEvidenceUrl(await uploadHrEvidence(file)); setOvertimeEvidenceName(file.name); toast.success("Foto bukti tersimpan."); } catch(error) { toast.error(error instanceof Error ? error.message : "Foto gagal diunggah."); } finally { setUploadingOvertimeEvidence(false); } }} /></label>
+                {overtimeEvidenceName && <span className="ml-2 text-[11px] text-emerald-700">{overtimeEvidenceName}</span>}
+              </div>
               <button
                 type="submit"
-                disabled={submittingOt || !myOvertimePricing.configured}
+                disabled={submittingOt || uploadingOvertimeEvidence}
                 className="inline-flex items-center gap-2 rounded-xl bg-[#0876CD] hover:bg-[#163D64] px-4 py-2.5 font-semibold text-white cursor-pointer disabled:opacity-50"
               >
                 <Send size={14} />
                 {submittingOt ? "Mengirim..." : "Kirim Pengajuan Lembur"}
               </button>
-            </form>}
+            </form>
 
             <div className="lg:col-span-7 rounded-2xl border border-[#E2E8F0] bg-white overflow-hidden">
               <div className="p-4 border-b border-slate-200 font-bold text-sm text-[#163D64]">

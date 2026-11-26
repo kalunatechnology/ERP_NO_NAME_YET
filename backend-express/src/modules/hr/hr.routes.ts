@@ -3,8 +3,6 @@ import { requireModuleAccess } from '../../middlewares/entitlement.middleware';
 import { requireModuleTier } from '../../middlewares/rbac.middleware';
 import { HrService } from './hr.service';
 import { PayrollService } from '../finance/payroll.service';
-import { ValidationError } from '../../utils/errors';
-import { RoleCode } from '../../types/roles';
 
 export const hrRouter = Router();
 export const hrFinanceRouter = Router();
@@ -43,9 +41,6 @@ hrRouter.get('/attachments/:id', requireModuleTier('HR', 2), async (req, res, ne
 // --- TIER 3 / SELF-SERVICE: Seluruh User Perusahaan (Meeting, Lembur/Request & Slip Gaji Pribadi) ---
 hrRouter.post('/overtimes/my', async (req, res, next) => {
   try {
-    if (req.user?.active_role_code === RoleCode.STAFF) {
-      throw new ValidationError('Staf harus mencatat lembur melalui Timesheet di Tugas Harian agar terhubung ke proyek yang ditugaskan.');
-    }
     const data = await HrService.submitOvertime(req.companyId!, req.tenantId ?? null, req.user!.id, req.body);
     res.status(201).json({ success: true, data });
   } catch (err) {
