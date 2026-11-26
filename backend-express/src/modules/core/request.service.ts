@@ -420,12 +420,6 @@ static async createRequest(
   /**
    * Persistent request payload.
    */
-  let leaveCompensation: Awaited<ReturnType<typeof HrService.quoteMyLeavePay>> | null = null;
-  if (request_type === 'LEAVE' && start_at && end_at) {
-    const hours = (new Date(end_at).getTime() - new Date(start_at).getTime()) / 3_600_000;
-    if (Number.isFinite(hours) && hours > 0) leaveCompensation = await HrService.quoteMyLeavePay(companyId, userId, hours);
-  }
-
   const requestData = {
     id: instanceId,
 
@@ -489,8 +483,6 @@ static async createRequest(
 
     attachment_url:
       attachment_url ?? null,
-
-    leave_compensation: leaveCompensation,
 
     status:
       initialStatus,
@@ -1600,13 +1592,6 @@ static async getRequests(params: {
       feedRows[0]?.total_count ?? 0,
     );
 
-  const legacyLeaveQuotes = hasCompanyId ? await HrService.quoteLeavePayForRequests(companyId!, feedRows.flatMap((log) => {
-    const payload = (log.after_data as any) || {};
-    if (payload.request_type !== 'LEAVE' || payload.leave_compensation || !payload.start_at || !payload.end_at) return [];
-    const hours = (new Date(payload.end_at).getTime() - new Date(payload.start_at).getTime()) / 3_600_000;
-    return Number.isFinite(hours) && hours > 0 ? [{ id: log.entity_id || log.id, userId: log.user_id, hours }] : [];
-  })) : new Map<string, any>();
-
   const rows =
     feedRows.map((log) => {
       const payload =
@@ -1693,9 +1678,6 @@ static async getRequests(params: {
 
         attachment_url:
           payload.attachment_url ?? null,
-
-        leave_compensation:
-          payload.leave_compensation ?? legacyLeaveQuotes.get(entityId) ?? null,
 
         tagged_users:
           payload.tagged_users ||

@@ -76,7 +76,6 @@ export interface NonMeetingRequest {
   start_at: string | null;
   end_at: string | null;
   attachment_url?: string | null;
-  leave_compensation?: { hours: number; leave_hourly_rate: number | null; base_hourly_rate: number | null; total_amount: number | null; configured: boolean } | null;
   created_at: string;
   company_id: string | null;
 }

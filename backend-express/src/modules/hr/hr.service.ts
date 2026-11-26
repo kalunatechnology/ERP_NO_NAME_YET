@@ -50,18 +50,15 @@ export async function ensureHrTables(): Promise<void> {
       );
     `);
     await prisma.$executeRawUnsafe(`ALTER TABLE "master_employee" ADD COLUMN IF NOT EXISTS "overtime_hourly_rate" DECIMAL(18, 2);`);
-    await prisma.$executeRawUnsafe(`ALTER TABLE "master_employee" ADD COLUMN IF NOT EXISTS "leave_hourly_rate" DECIMAL(18, 2);`);
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "hr_company_overtime_setting" (
         "company_id" TEXT PRIMARY KEY,
         "tenant_id" TEXT,
         "default_overtime_hourly_rate" DECIMAL(18, 2),
-        "default_leave_hourly_rate" DECIMAL(18, 2),
         "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
-    await prisma.$executeRawUnsafe(`ALTER TABLE "hr_company_overtime_setting" ADD COLUMN IF NOT EXISTS "default_leave_hourly_rate" DECIMAL(18, 2);`);
     await prisma.$executeRawUnsafe(
       `ALTER TABLE "fin_payroll_run"
        ADD COLUMN IF NOT EXISTS "hr_approved_by_id" TEXT,
@@ -150,77 +147,6 @@ export class HrService {
       update: { tenant_id: tenantId, default_overtime_hourly_rate: rate },
     });
     return { default_overtime_hourly_rate: setting.default_overtime_hourly_rate == null ? null : Number(setting.default_overtime_hourly_rate) };
-  }
-
-  static async getLeaveRateSettings(companyId: string) {
-    await ensureHrTables();
-    const setting = await prisma.hr_company_overtime_setting.findUnique({ where: { company_id: companyId } });
-    return { default_leave_hourly_rate: setting?.default_leave_hourly_rate == null ? null : Number(setting.default_leave_hourly_rate) };
-  }
-
-  static async updateLeaveRateSettings(companyId: string, tenantId: string | null, input: any) {
-    await ensureHrTables();
-    const rawRate = input.default_leave_hourly_rate;
-    const rate = rawRate === null || rawRate === undefined || String(rawRate).trim() === '' ? null : Number(rawRate);
-    if (rate !== null && (!Number.isFinite(rate) || rate <= 0)) throw new ValidationError('Tarif cuti umum harus lebih dari nol atau dikosongkan.');
-    const setting = await prisma.hr_company_overtime_setting.upsert({
-      where: { company_id: companyId },
-      create: { company_id: companyId, tenant_id: tenantId, default_leave_hourly_rate: rate },
-      update: { tenant_id: tenantId, default_leave_hourly_rate: rate },
-    });
-    return { default_leave_hourly_rate: setting.default_leave_hourly_rate == null ? null : Number(setting.default_leave_hourly_rate) };
-  }
-
-  static async quoteMyLeavePay(companyId: string, userId: string, hours: number) {
-    await ensureHrTables();
-    const duration = Number(hours);
-    if (!Number.isFinite(duration) || duration <= 0 || duration > 24 * 31) throw new ValidationError('Durasi cuti tidak valid.');
-    const employee = await prisma.master_employee.findFirst({
-      where: { company_id: companyId, user_id: userId, employment_status: 'ACTIVE' },
-      select: { monthly_salary: true, standard_hourly_rate: true, leave_hourly_rate: true },
-    });
-    if (!employee) return { configured: false, hours: duration, leave_hourly_rate: null, base_hourly_rate: null, total_amount: null };
-    const settings = await this.getLeaveRateSettings(companyId);
-    const leaveRate = Number(employee.leave_hourly_rate ?? settings.default_leave_hourly_rate ?? 0);
-    const salary = Number(employee.monthly_salary ?? 0);
-    const baseRate = salary > 0 ? salary / 173 : 0;
-    const configured = leaveRate > 0 && baseRate > 0;
-    return {
-      configured,
-      hours: duration,
-      leave_hourly_rate: leaveRate > 0 ? leaveRate : null,
-      base_hourly_rate: baseRate > 0 ? baseRate : null,
-      total_amount: configured ? Math.round((leaveRate + baseRate) * duration * 100) / 100 : null,
-    };
-  }
-
-  static async quoteLeavePayForRequests(companyId: string, requests: Array<{ id: string; userId: string | null; hours: number }>) {
-    await ensureHrTables();
-    const userIds = [...new Set(requests.map((request) => request.userId).filter((id): id is string => Boolean(id)))];
-    if (!userIds.length) return new Map<string, any>();
-    const [employees, settings] = await Promise.all([
-      prisma.master_employee.findMany({
-        where: { company_id: companyId, user_id: { in: userIds }, employment_status: 'ACTIVE' },
-        select: { user_id: true, monthly_salary: true, leave_hourly_rate: true },
-      }),
-      this.getLeaveRateSettings(companyId),
-    ]);
-    const employeeByUser = new Map(employees.map((employee) => [employee.user_id, employee]));
-    return new Map(requests.map((request) => {
-      const employee = request.userId ? employeeByUser.get(request.userId) : null;
-      if (!employee) return [request.id, null];
-      const leaveRate = Number(employee.leave_hourly_rate ?? settings.default_leave_hourly_rate ?? 0);
-      const salary = Number(employee.monthly_salary ?? 0);
-      const baseHourlyRate = salary > 0 ? salary / 173 : 0;
-      const configured = leaveRate > 0 && baseHourlyRate > 0;
-      return [request.id, {
-        configured,
-        hours: request.hours,
-        leave_hourly_rate: leaveRate > 0 ? leaveRate : null,
-        base_hourly_rate: baseHourlyRate > 0 ? baseHourlyRate : null,
-        total_amount: configured ? Math.round((leaveRate + baseHourlyRate) * request.hours * 100) / 100 : null,
-      }];
-    }));
   }
 
   static async resolveOvertimeHourlyRate(companyId: string, employee: { monthly_salary: any; standard_hourly_rate: any; overtime_hourly_rate?: any }) {

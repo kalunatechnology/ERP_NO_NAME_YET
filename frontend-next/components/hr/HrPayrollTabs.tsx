@@ -57,7 +57,6 @@ interface EmployeeItem {
   monthly_salary: number | string | null;
   standard_hourly_rate?: number | string | null;
   overtime_hourly_rate?: number | string | null;
-  leave_hourly_rate?: number | string | null;
   cost_center_id?: string | null;
   user_id?: string | null;
   linked_user?: { id: string; full_name: string; email: string } | null;
@@ -126,11 +125,6 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
   const [myOvertimes, setMyOvertimes] = useState<OvertimeItem[]>([]);
   const [myOvertimePricing, setMyOvertimePricing] = useState<MyOvertimePricing>({ configured: false, overtime_hourly_rate: null });
   const [defaultOvertimeRate, setDefaultOvertimeRate] = useState("");
-  const [defaultLeaveRate, setDefaultLeaveRate] = useState("");
-  const [savingDefaultLeaveRate, setSavingDefaultLeaveRate] = useState(false);
-  const [leaveRateEdits, setLeaveRateEdits] = useState<Record<string, string>>({});
-  const [savingLeaveRates, setSavingLeaveRates] = useState<Record<string, boolean>>({});
-  const [savedLeaveRates, setSavedLeaveRates] = useState<Record<string, boolean>>({});
   const [savingDefaultOvertimeRate, setSavingDefaultOvertimeRate] = useState(false);
   const [defaultOvertimeRateSaveStatus, setDefaultOvertimeRateSaveStatus] = useState<"idle" | "saved" | "error">("idle");
   const [overtimeRateEdits, setOvertimeRateEdits] = useState<Record<string, string>>({});
@@ -177,18 +171,16 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [myOtRes, mySlipRes, myRateRes, companyRateRes, leaveRateRes] = await Promise.all([
+      const [myOtRes, mySlipRes, myRateRes, companyRateRes] = await Promise.all([
         api.get("/api/v1/hr/overtimes/my").catch(() => ({ data: { results: [] } })),
         api.get("/api/v1/hr/payslips/my").catch(() => ({ data: { results: [] } })),
         api.get("/api/v1/hr/overtimes/my/rate").catch(() => ({ data: { data: { configured: false, overtime_hourly_rate: null } } })),
         hrTier <= 2 ? api.get("/api/v1/hr/overtimes/rate-settings").catch(() => ({ data: { data: { default_overtime_hourly_rate: null } } })) : Promise.resolve({ data: { data: { default_overtime_hourly_rate: null } } }),
-        hrTier <= 2 ? api.get("/api/v1/hr/leave/rate-settings").catch(() => ({ data: { data: { default_leave_hourly_rate: null } } })) : Promise.resolve({ data: { data: { default_leave_hourly_rate: null } } }),
       ]);
       setMyOvertimes(myOtRes.data?.results ?? []);
       setMyPayslips(mySlipRes.data?.results ?? []);
       setMyOvertimePricing(myRateRes.data?.data ?? { configured: false, overtime_hourly_rate: null });
       setDefaultOvertimeRate(formatRateInput(companyRateRes.data?.data?.default_overtime_hourly_rate));
-      setDefaultLeaveRate(formatRateInput(leaveRateRes.data?.data?.default_leave_hourly_rate));
 
       if (hrTier <= 2 || financeTier <= 1) {
         const [compOtRes, runsRes, empRes, costCenterRes, userOptionsRes] = await Promise.all([
@@ -220,21 +212,18 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
         const edits: Record<string, string> = {};
         const rateEdits: Record<string, string> = {};
         const overtimeRatesByEmployee: Record<string, string> = {};
-        const leaveRatesByEmployee: Record<string, string> = {};
         const profileEdits: Record<string, { name: string; number: string; status: string }> = {};
         const costCenterEditsByEmployee: Record<string, string> = {};
         for (const e of empList) {
           edits[e.id] = e.monthly_salary == null ? "" : String(e.monthly_salary);
           rateEdits[e.id] = e.standard_hourly_rate == null ? "" : String(e.standard_hourly_rate);
           overtimeRatesByEmployee[e.id] = formatRateInput(e.overtime_hourly_rate);
-          leaveRatesByEmployee[e.id] = formatRateInput(e.leave_hourly_rate);
           profileEdits[e.id] = { name: e.employee_name, number: e.employee_number, status: e.employment_status };
           costCenterEditsByEmployee[e.id] = String(e.cost_center_id ?? "");
         }
         setSalaryEdits(edits);
         setHourlyRateEdits(rateEdits);
         setOvertimeRateEdits(overtimeRatesByEmployee);
-        setLeaveRateEdits(leaveRatesByEmployee);
         setEmployeeProfileEdits(profileEdits);
         setCostCenterEdits(costCenterEditsByEmployee);
         setEmployeeUserEdits({});
@@ -272,19 +261,6 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
     }
   };
 
-  const saveDefaultLeaveRate = async () => {
-    if (hrTier !== 1 || savingDefaultLeaveRate) return;
-    setSavingDefaultLeaveRate(true);
-    try {
-      const response = await api.put("/api/v1/hr/leave/rate-settings", {
-        default_leave_hourly_rate: defaultLeaveRate.trim() ? Number(defaultLeaveRate) : null,
-      });
-      setDefaultLeaveRate(formatRateInput(response.data?.data?.default_leave_hourly_rate));
-      toast.success("Tarif cuti umum tersimpan.");
-    } catch (err: unknown) { toast.error(getApiErrorDetail(err, "Gagal menyimpan tarif cuti umum.")); }
-    finally { setSavingDefaultLeaveRate(false); }
-  };
-
   const saveEmployeeOvertimeRate = async (employee: EmployeeItem) => {
     if (hrTier > 2 || savingEmployeeOvertimeRates[employee.id]) return;
     const inputRate = overtimeRateEdits[employee.id] ?? "";
@@ -314,29 +290,6 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
     } finally {
       setSavingEmployeeOvertimeRates((current) => ({ ...current, [employee.id]: false }));
     }
-  };
-
-  const saveEmployeeLeaveRate = async (employee: EmployeeItem) => {
-    if (hrTier > 2 || savingLeaveRates[employee.id]) return;
-    const inputRate = leaveRateEdits[employee.id] ?? "";
-    const numericRate = inputRate.trim() ? Number(inputRate) : null;
-    if (numericRate !== null && (!Number.isFinite(numericRate) || numericRate <= 0)) {
-      toast.error("Tarif cuti karyawan harus lebih dari nol atau dikosongkan untuk memakai tarif umum.");
-      setLeaveRateEdits((current) => ({ ...current, [employee.id]: formatRateInput(employee.leave_hourly_rate) }));
-      return;
-    }
-    setSavingLeaveRates((current) => ({ ...current, [employee.id]: true }));
-    setSavedLeaveRates((current) => ({ ...current, [employee.id]: false }));
-    try {
-      const response = await api.put(`/api/v1/hr/employees/${employee.id}`, { leave_hourly_rate: numericRate });
-      const rate = response.data?.data?.leave_hourly_rate ?? null;
-      setEmployees((current) => current.map((row) => row.id === employee.id ? { ...row, leave_hourly_rate: rate } : row));
-      setLeaveRateEdits((current) => ({ ...current, [employee.id]: formatRateInput(rate) }));
-      setSavedLeaveRates((current) => ({ ...current, [employee.id]: true }));
-    } catch (err: unknown) {
-      setLeaveRateEdits((current) => ({ ...current, [employee.id]: formatRateInput(employee.leave_hourly_rate) }));
-      toast.error(getApiErrorDetail(err, `Gagal menyimpan tarif cuti ${employee.employee_name}.`));
-    } finally { setSavingLeaveRates((current) => ({ ...current, [employee.id]: false })); }
   };
 
   const handleSubmitOvertime = async (e: React.FormEvent) => {
@@ -734,12 +687,6 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
                 <span className="text-slate-500">Berlaku sebagai default; tarif khusus karyawan akan menggantikannya. Kosong memakai rumus dari profil upah.</span>
                 {savingDefaultOvertimeRate ? <span className="font-medium text-sky-700">Menyimpan…</span> : defaultOvertimeRateSaveStatus === "saved" ? <span className="font-medium text-emerald-700">Tersimpan</span> : null}
               </div>
-              <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-emerald-50/70 px-4 py-3 text-xs">
-                <label htmlFor="default-leave-rate-ops" className="font-semibold text-slate-700">Tarif cuti umum tambahan per jam</label>
-                <input id="default-leave-rate-ops" type="number" min="0.01" step="100" value={defaultLeaveRate} disabled={hrTier !== 1 || savingDefaultLeaveRate} onChange={(event) => setDefaultLeaveRate(event.target.value)} placeholder="Contoh: 25000" className="h-9 w-44 rounded-lg border border-slate-200 bg-white px-3 disabled:bg-slate-100" />
-                <button type="button" onClick={() => void saveDefaultLeaveRate()} disabled={hrTier !== 1 || savingDefaultLeaveRate} className="h-9 rounded-lg bg-emerald-600 px-3 font-semibold text-white disabled:opacity-50">{savingDefaultLeaveRate?"Menyimpan…":"Simpan tarif cuti"}</button>
-                <span className="text-slate-500">Nominal cuti = (gaji bulanan ÷ 173 + tarif ini) × jam cuti. Tarif khusus karyawan menggantikan tarif umum.</span>
-              </div>
               {employeeCreateOpen && (
                 <form className="grid gap-2 border-b border-slate-100 bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-6" onSubmit={async (event) => {
                   event.preventDefault();
@@ -852,10 +799,6 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
                         <div className="flex flex-col gap-1">
                           <input type="number" min="0.01" step="100" aria-label={`Tarif lembur khusus per jam ${emp.employee_name}`} placeholder="Lembur khusus (kosong = umum)" value={overtimeRateEdits[emp.id] ?? ""} onChange={(event) => { setOvertimeRateEdits((current) => ({ ...current, [emp.id]: event.target.value })); setSavedEmployeeOvertimeRates((current) => ({ ...current, [emp.id]: false })); }} onBlur={() => void saveEmployeeOvertimeRate(emp)} disabled={savingEmployeeOvertimeRates[emp.id]} className="h-9 w-52 rounded-lg border border-slate-200 bg-slate-50 px-3 disabled:opacity-60" />
                           {savingEmployeeOvertimeRates[emp.id] ? <span className="text-[10px] text-sky-700">Menyimpan…</span> : savedEmployeeOvertimeRates[emp.id] ? <span className="text-[10px] text-emerald-700">Tersimpan</span> : null}
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <input type="number" min="0.01" step="100" aria-label={`Tarif cuti khusus per jam ${emp.employee_name}`} placeholder="Cuti khusus/jam (kosong = umum)" value={leaveRateEdits[emp.id] ?? ""} onChange={(event) => { setLeaveRateEdits((current) => ({ ...current, [emp.id]: event.target.value })); setSavedLeaveRates((current) => ({ ...current, [emp.id]: false })); }} onBlur={() => void saveEmployeeLeaveRate(emp)} disabled={savingLeaveRates[emp.id]} className="h-9 w-56 rounded-lg border border-slate-200 bg-slate-50 px-3 disabled:opacity-60" />
-                          {savingLeaveRates[emp.id] ? <span className="text-[10px] text-sky-700">Menyimpan…</span> : savedLeaveRates[emp.id] ? <span className="text-[10px] text-emerald-700">Tarif cuti tersimpan</span> : null}
                         </div>
                         <button
                           type="button"
@@ -1091,12 +1034,6 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
                 <span className="text-slate-500">Tarif khusus karyawan akan menggantikan default. Kosong memakai rumus profil upah.</span>
                 {savingDefaultOvertimeRate ? <span className="font-medium text-sky-700">Menyimpan…</span> : defaultOvertimeRateSaveStatus === "saved" ? <span className="font-medium text-emerald-700">Tersimpan</span> : null}
               </div>
-              <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-emerald-50/70 px-4 py-3 text-xs">
-                <label htmlFor="default-leave-rate-lead" className="font-semibold text-slate-700">Tarif cuti umum tambahan per jam</label>
-                <input id="default-leave-rate-lead" type="number" min="0.01" step="100" value={defaultLeaveRate} disabled={hrTier !== 1 || savingDefaultLeaveRate} onChange={(event) => setDefaultLeaveRate(event.target.value)} placeholder="Contoh: 25000" className="h-9 w-44 rounded-lg border border-slate-200 bg-white px-3 disabled:bg-slate-100" />
-                <button type="button" onClick={() => void saveDefaultLeaveRate()} disabled={hrTier !== 1 || savingDefaultLeaveRate} className="h-9 rounded-lg bg-emerald-600 px-3 font-semibold text-white disabled:opacity-50">{savingDefaultLeaveRate?"Menyimpan…":"Simpan tarif cuti"}</button>
-                <span className="text-slate-500">Nominal cuti = (gaji bulanan ÷ 173 + tarif ini) × jam cuti. Tarif khusus karyawan menggantikan tarif umum.</span>
-              </div>
               {employeeCreateOpen && (
                 <form className="grid gap-2 border-b border-slate-100 bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-6" onSubmit={async (event) => {
                   event.preventDefault();
@@ -1209,10 +1146,6 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
                         <div className="flex flex-col gap-1">
                           <input type="number" min="0.01" step="100" aria-label={`Tarif lembur khusus per jam ${emp.employee_name}`} placeholder="Lembur khusus (kosong = umum)" value={overtimeRateEdits[emp.id] ?? ""} onChange={(event) => { setOvertimeRateEdits((current) => ({ ...current, [emp.id]: event.target.value })); setSavedEmployeeOvertimeRates((current) => ({ ...current, [emp.id]: false })); }} onBlur={() => void saveEmployeeOvertimeRate(emp)} disabled={savingEmployeeOvertimeRates[emp.id]} className="h-9 w-52 rounded-lg border border-slate-200 bg-slate-50 px-3 disabled:opacity-60" />
                           {savingEmployeeOvertimeRates[emp.id] ? <span className="text-[10px] text-sky-700">Menyimpan…</span> : savedEmployeeOvertimeRates[emp.id] ? <span className="text-[10px] text-emerald-700">Tersimpan</span> : null}
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <input type="number" min="0.01" step="100" aria-label={`Tarif cuti khusus per jam ${emp.employee_name}`} placeholder="Cuti khusus/jam (kosong = umum)" value={leaveRateEdits[emp.id] ?? ""} onChange={(event) => { setLeaveRateEdits((current) => ({ ...current, [emp.id]: event.target.value })); setSavedLeaveRates((current) => ({ ...current, [emp.id]: false })); }} onBlur={() => void saveEmployeeLeaveRate(emp)} disabled={savingLeaveRates[emp.id]} className="h-9 w-56 rounded-lg border border-slate-200 bg-slate-50 px-3 disabled:opacity-60" />
-                          {savingLeaveRates[emp.id] ? <span className="text-[10px] text-sky-700">Menyimpan…</span> : savedLeaveRates[emp.id] ? <span className="text-[10px] text-emerald-700">Tarif cuti tersimpan</span> : null}
                         </div>
                         <button
                           type="button"

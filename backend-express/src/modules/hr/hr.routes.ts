@@ -57,23 +57,6 @@ hrRouter.get('/overtimes/my/rate', async (req, res, next) => {
   }
 });
 
-hrRouter.get('/leave/my/quote', async (req, res, next) => {
-  try {
-    const data = await HrService.quoteMyLeavePay(req.companyId!, req.user!.id, Number(req.query.hours));
-    res.json({ success: true, data });
-  } catch (err) { next(err); }
-});
-
-hrRouter.get('/leave/rate-settings', requireModuleTier('HR', 2), async (req, res, next) => {
-  try { res.json({ success: true, data: await HrService.getLeaveRateSettings(req.companyId!) }); }
-  catch (err) { next(err); }
-});
-
-hrRouter.put('/leave/rate-settings', requireModuleTier('HR', 1), async (req, res, next) => {
-  try { res.json({ success: true, data: await HrService.updateLeaveRateSettings(req.companyId!, req.tenantId ?? null, req.body) }); }
-  catch (err) { next(err); }
-});
-
 hrRouter.get('/overtimes/rate-settings', requireModuleTier('HR', 2), async (req, res, next) => {
   try {
     const data = await HrService.getOvertimeRateSettings(req.companyId!);

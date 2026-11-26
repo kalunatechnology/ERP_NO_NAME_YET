@@ -694,9 +694,6 @@ export default function RequestsClient(){
                         <Clock3 size={13} /> {displayDate(req.start_at)} – {displayDate(req.end_at)}
                       </p>
                     )}
-                    {isLeave && req.leave_compensation?.configured && req.leave_compensation.total_amount != null && (
-                      <p className="mt-2 text-xs font-bold text-[#2B7A42]">Perkiraan uang cuti: {new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(req.leave_compensation.total_amount)}</p>
-                    )}
                     {isLeave && req.attachment_url && <RequestAttachmentPreview attachmentUrl={req.attachment_url} forHr={hrTier <= 2} />}
                   </div>
                 </div>
@@ -1264,14 +1261,6 @@ function NewNonMeetingRequestModal({members,busy,onClose,onSuccess}:{members:Mem
   const [attachmentUrl,setAttachmentUrl]=useState("");
   const [attachmentName,setAttachmentName]=useState("");
   const [uploadingAttachment,setUploadingAttachment]=useState(false);
-  const [leaveQuote,setLeaveQuote]=useState<{configured:boolean;hours:number;leave_hourly_rate:number|null;base_hourly_rate:number|null;total_amount:number|null}|null>(null);
-  const requestedHours = startAt && endAt && new Date(endAt) > new Date(startAt) ? (new Date(endAt).getTime()-new Date(startAt).getTime())/3600000 : 0;
-  useEffect(()=>{
-    if(type!=='LEAVE'||requestedHours<=0){setLeaveQuote(null);return;}
-    let active=true;
-    const timer=window.setTimeout(()=>{void api.get('/api/v1/hr/leave/my/quote',{params:{hours:requestedHours}}).then(response=>{if(active)setLeaveQuote(response.data?.data??null);}).catch(()=>{if(active)setLeaveQuote(null);});},250);
-    return ()=>{active=false;window.clearTimeout(timer);};
-  },[type,requestedHours]);
   async function handleSubmit(event:React.FormEvent){
     event.preventDefault();
     if(!title.trim()){toast.error('Judul request wajib diisi.');return;}
@@ -1307,10 +1296,6 @@ function NewNonMeetingRequestModal({members,busy,onClose,onSuccess}:{members:Mem
       </div>
       {type==='OTHER'&&<div><span className="mb-2 block text-sm font-bold text-[#0876CD]">Assign kepada</span><SearchableSelect value={assigneeId} onChange={setAssigneeId} placeholder="Pilih anggota (opsional)" emptyOptionLabel="Pilih anggota (opsional)" searchPlaceholder="Cari nama atau role anggota..." options={members.map(m=>({value:String(m.id),label:`${m.name} — ${m.role}`,sublabel:m.email}))}/></div>}
       {type==='LEAVE'&&<div className="rounded-xl bg-[#FFF9E6] border border-[#F5C842] px-4 py-3 text-xs text-[#7A5C00]">Permohonan cuti/izin akan otomatis diarahkan ke HR atau Eksekutif yang bertanggung jawab. Anda tidak perlu memilih tujuan.</div>}
-      {type==='LEAVE'&&<div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
-        <div className="text-xs font-bold text-[#163D64]">Perkiraan uang cuti</div>
-        {requestedHours<=0?<p className="mt-1 text-[11px] text-[#64748B]">Isi waktu mulai dan selesai untuk melihat perhitungan.</p>:leaveQuote?.configured?<div className="mt-2 text-xs text-[#334155]">{requestedHours.toFixed(2)} jam × (gaji dasar {new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(leaveQuote.base_hourly_rate??0) + ' / jam + tarif cuti ' + new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(leaveQuote.leave_hourly_rate??0) + ' / jam'})<strong className="mt-1 block text-sm text-[#2B7A42]">{new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(leaveQuote.total_amount??0)}</strong></div>:<p className="mt-1 text-[11px] text-amber-700">Tarif cuti umum/karyawan dan gaji dasar per jam belum lengkap. HR perlu melengkapinya.</p>}
-      </div>}
       {type==='LEAVE'&&<div><span className="mb-1.5 block text-xs font-bold text-[#0F172A]">Lampiran foto (opsional)</span><label className="inline-flex cursor-pointer items-center rounded-lg border border-[#D7E2EE] bg-white px-3 py-2 text-xs font-semibold text-[#163D64]">{uploadingAttachment?'Mengunggah…':'Pilih foto'}<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={uploadingAttachment||submitting} onChange={async(event)=>{const file=event.target.files?.[0];event.target.value='';if(!file)return;setUploadingAttachment(true);try{setAttachmentUrl(await uploadHrEvidence(file));setAttachmentName(file.name);toast.success('Lampiran foto tersimpan.');}catch(error){toast.error(error instanceof Error?error.message:'Foto gagal diunggah.');}finally{setUploadingAttachment(false);}}}/></label>{attachmentName&&<span className="ml-2 text-[11px] text-emerald-700">{attachmentName}</span>}<p className="mt-1 text-[10px] text-[#64748B]">JPG, PNG, WebP maksimal 4 MB. Disimpan internal.</p></div>}
       <div className="flex gap-3 pt-2">
         <button type="button" onClick={onClose} className="flex-1 h-11 rounded-xl border-2 border-[#E2E8F0] font-bold text-[#64748B] hover:bg-[#F4F6FB]">Batal</button>
