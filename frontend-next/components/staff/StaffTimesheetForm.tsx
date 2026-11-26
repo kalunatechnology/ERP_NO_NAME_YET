@@ -19,6 +19,7 @@ import {
   submitStaffTimer,
 } from "@/lib/api/timesheet-timer.api";
 import { localDateKey } from "@/lib/utils";
+import { uploadHrEvidence } from "@/lib/api/hr-evidence.api";
 
 interface StaffTimesheetFormProps {
   projects: Project[];
@@ -51,6 +52,8 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
   const [overtimeStartedAt, setOvertimeStartedAt] = useState<string | null>(null);
   const [overtimeEndedAt, setOvertimeEndedAt] = useState<string | null>(null);
   const [evidenceUrl, setEvidenceUrl] = useState("");
+  const [evidenceFileName, setEvidenceFileName] = useState("");
+  const [uploadingEvidence, setUploadingEvidence] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [serverClockOffsetMs, setServerClockOffsetMs] = useState(0);
   const [, setTimerTick] = useState(0);
@@ -400,22 +403,42 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
           <span className="mt-1 flex h-[38px] items-center gap-2 rounded-[11px] border border-text-tertiary bg-white px-3 focus-within:border-brand-green focus-within:ring-2 focus-within:ring-brand-green/20 transition-all">
             <Link2 size={14} className="shrink-0 text-[#163D64]" />
             <input
-              type="url"
+              type="text"
               value={evidenceUrl}
               onChange={(event) => setEvidenceUrl(event.target.value)}
-              placeholder="Tempel link dokumen, Drive, hasil kerja, atau tiket"
+              placeholder="Tempel link bukti atau unggah foto di bawah"
               className="h-full w-full bg-transparent text-xs outline-none placeholder:text-gray-400"
               required={Number(overtimeHours) > 0}
             />
           </span>
           <span className="form-helper">Timestamp &amp; bukti lembur dikirim dari sesi timer server</span>
+          <span className="mt-2 flex flex-wrap items-center gap-2">
+            <label className="inline-flex cursor-pointer items-center rounded-lg border border-[#D7E2EE] bg-white px-3 py-2 text-[11px] font-semibold text-[#163D64] hover:bg-[#F5F9FD]">
+              {uploadingEvidence ? "Mengunggah foto…" : "Unggah foto bukti"}
+              <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={uploadingEvidence || submitting} onChange={async (event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (!file) return;
+                setUploadingEvidence(true);
+                try {
+                  const url = await uploadHrEvidence(file);
+                  setEvidenceUrl(url);
+                  setEvidenceFileName(file.name);
+                  toast.success("Foto bukti tersimpan.");
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : "Foto bukti gagal diunggah.");
+                } finally { setUploadingEvidence(false); }
+              }} />
+            </label>
+            {evidenceFileName && <span className="text-[11px] text-emerald-700">Foto: {evidenceFileName}</span>}
+          </span>
         </label>
       </div>
 
       <div className="mt-4 flex justify-end">
         <button
           type="submit"
-        disabled={submitting || actionBusy || (!sessionId && assignedProjects.length === 0) || (loadingAssignments && !sessionId) || !sessionId || workTimerRunning || timerRunning || !workEndedAt}
+        disabled={submitting || uploadingEvidence || actionBusy || (!sessionId && assignedProjects.length === 0) || (loadingAssignments && !sessionId) || !sessionId || workTimerRunning || timerRunning || !workEndedAt}
           className="btn-primary gap-2 px-4 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Send size={14} /> {submitting ? "Mengirim..." : "Kirim Timesheet"}

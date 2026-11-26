@@ -17,6 +17,7 @@ import { BudgetingService } from '../finance/budgeting.service';
 import { DEFAULT_RECURRING_DAYS, meetingOccurrenceDates, normalizeRecurringDays } from './meeting-occurrence.service';
 import { normalizeRequestStatus } from './request-status';
 import { moveOpportunityStage } from '../crm/crm-pipeline.service';
+import { HrService } from '../hr/hr.service';
 
 export interface TaggedUser {
   id: string;
@@ -439,6 +440,12 @@ static async createRequest(
   /**
    * Persistent request payload.
    */
+  let leaveCompensation: Awaited<ReturnType<typeof HrService.quoteMyLeavePay>> | null = null;
+  if (request_type === 'LEAVE' && start_at && end_at) {
+    const hours = (new Date(end_at).getTime() - new Date(start_at).getTime()) / 3_600_000;
+    if (Number.isFinite(hours) && hours > 0) leaveCompensation = await HrService.quoteMyLeavePay(companyId, userId, hours);
+  }
+
   const requestData = {
     id: instanceId,
 
@@ -502,6 +509,8 @@ static async createRequest(
 
     attachment_url:
       attachment_url ?? null,
+
+    leave_compensation: leaveCompensation,
 
     status:
       initialStatus,
@@ -1689,12 +1698,15 @@ static async getRequests(params: {
         end_at:
           payload.end_at,
 
+        attachment_url:
+          payload.attachment_url ?? null,
+
+        leave_compensation:
+          payload.leave_compensation ?? null,
+
         tagged_users:
           payload.tagged_users ||
           [],
-
-        attachment_url:
-          payload.attachment_url,
 
         status: normalizeRequestStatus(
           log.current_state ||

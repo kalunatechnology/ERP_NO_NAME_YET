@@ -1578,6 +1578,7 @@ model master_employee {
   cost_center_id       String?  @map("cost_center_id")
   standard_hourly_rate Decimal?
   overtime_hourly_rate Decimal? @map("overtime_hourly_rate") @db.Decimal(18, 2)
+  leave_hourly_rate    Decimal? @map("leave_hourly_rate") @db.Decimal(18, 2)
 
   @@unique([company_id, user_id])
   @@index([tenant_id, company_id])
@@ -1589,6 +1590,7 @@ model hr_company_overtime_setting {
   company_id                    String   @id @map("company_id")
   tenant_id                     String?  @map("tenant_id")
   default_overtime_hourly_rate  Decimal? @map("default_overtime_hourly_rate") @db.Decimal(18, 2)
+  default_leave_hourly_rate     Decimal? @map("default_leave_hourly_rate") @db.Decimal(18, 2)
   created_at                    DateTime @default(now()) @map("created_at")
   updated_at                    DateTime @updatedAt @map("updated_at")
 
@@ -4974,6 +4976,7 @@ model hr_overtime_request {
   employee_id      String    @map("employee_id")
   user_id          String    @map("user_id")
   project_id       String?   @map("project_id")
+  evidence_url     String?   @map("evidence_url")
   work_date        DateTime  @db.Date @map("work_date")
   start_time       String    @map("start_time")
   end_time         String    @map("end_time")

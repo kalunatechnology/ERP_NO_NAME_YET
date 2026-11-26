@@ -16,6 +16,7 @@ export async function ensureHrTables(): Promise<void> {
         "employee_id" TEXT NOT NULL,
         "user_id" TEXT NOT NULL,
         "project_id" TEXT,
+        "evidence_url" TEXT,
         "work_date" DATE NOT NULL,
         "start_time" TEXT NOT NULL,
         "end_time" TEXT NOT NULL,
@@ -35,16 +36,32 @@ export async function ensureHrTables(): Promise<void> {
       );
     `);
     await prisma.$executeRawUnsafe(`ALTER TABLE "hr_overtime_request" ADD COLUMN IF NOT EXISTS "project_id" TEXT;`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "hr_overtime_request" ADD COLUMN IF NOT EXISTS "evidence_url" TEXT;`);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "hr_evidence_attachment" (
+        "id" TEXT PRIMARY KEY,
+        "company_id" TEXT NOT NULL,
+        "uploaded_by_id" TEXT NOT NULL,
+        "file_name" TEXT NOT NULL,
+        "mime_type" TEXT NOT NULL,
+        "file_size" INTEGER NOT NULL,
+        "content" BYTEA NOT NULL,
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
     await prisma.$executeRawUnsafe(`ALTER TABLE "master_employee" ADD COLUMN IF NOT EXISTS "overtime_hourly_rate" DECIMAL(18, 2);`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "master_employee" ADD COLUMN IF NOT EXISTS "leave_hourly_rate" DECIMAL(18, 2);`);
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "hr_company_overtime_setting" (
         "company_id" TEXT PRIMARY KEY,
         "tenant_id" TEXT,
         "default_overtime_hourly_rate" DECIMAL(18, 2),
+        "default_leave_hourly_rate" DECIMAL(18, 2),
         "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "hr_company_overtime_setting" ADD COLUMN IF NOT EXISTS "default_leave_hourly_rate" DECIMAL(18, 2);`);
     await prisma.$executeRawUnsafe(
       `ALTER TABLE "fin_payroll_run"
        ADD COLUMN IF NOT EXISTS "hr_approved_by_id" TEXT,
@@ -90,6 +107,48 @@ export class HrService {
       update: { tenant_id: tenantId, default_overtime_hourly_rate: rate },
     });
     return { default_overtime_hourly_rate: setting.default_overtime_hourly_rate == null ? null : Number(setting.default_overtime_hourly_rate) };
+  }
+
+  static async getLeaveRateSettings(companyId: string) {
+    await ensureHrTables();
+    const setting = await prisma.hr_company_overtime_setting.findUnique({ where: { company_id: companyId } });
+    return { default_leave_hourly_rate: setting?.default_leave_hourly_rate == null ? null : Number(setting.default_leave_hourly_rate) };
+  }
+
+  static async updateLeaveRateSettings(companyId: string, tenantId: string | null, input: any) {
+    await ensureHrTables();
+    const rawRate = input.default_leave_hourly_rate;
+    const rate = rawRate === null || rawRate === undefined || String(rawRate).trim() === '' ? null : Number(rawRate);
+    if (rate !== null && (!Number.isFinite(rate) || rate <= 0)) throw new ValidationError('Tarif cuti umum harus lebih dari nol atau dikosongkan.');
+    const setting = await prisma.hr_company_overtime_setting.upsert({
+      where: { company_id: companyId },
+      create: { company_id: companyId, tenant_id: tenantId, default_leave_hourly_rate: rate },
+      update: { tenant_id: tenantId, default_leave_hourly_rate: rate },
+    });
+    return { default_leave_hourly_rate: setting.default_leave_hourly_rate == null ? null : Number(setting.default_leave_hourly_rate) };
+  }
+
+  static async quoteMyLeavePay(companyId: string, userId: string, hours: number) {
+    await ensureHrTables();
+    const duration = Number(hours);
+    if (!Number.isFinite(duration) || duration <= 0 || duration > 24 * 31) throw new ValidationError('Durasi cuti tidak valid.');
+    const employee = await prisma.master_employee.findFirst({
+      where: { company_id: companyId, user_id: userId, employment_status: 'ACTIVE' },
+      select: { monthly_salary: true, standard_hourly_rate: true, leave_hourly_rate: true },
+    });
+    if (!employee) return { configured: false, hours: duration, leave_hourly_rate: null, base_hourly_rate: null, total_amount: null };
+    const settings = await this.getLeaveRateSettings(companyId);
+    const leaveRate = Number(employee.leave_hourly_rate ?? settings.default_leave_hourly_rate ?? 0);
+    const salary = Number(employee.monthly_salary ?? 0);
+    const baseRate = salary > 0 ? salary / 173 : 0;
+    const configured = leaveRate > 0 && baseRate > 0;
+    return {
+      configured,
+      hours: duration,
+      leave_hourly_rate: leaveRate > 0 ? leaveRate : null,
+      base_hourly_rate: baseRate > 0 ? baseRate : null,
+      total_amount: configured ? Math.round((leaveRate + baseRate) * duration * 100) / 100 : null,
+    };
   }
 
   static async resolveOvertimeHourlyRate(companyId: string, employee: { monthly_salary: any; standard_hourly_rate: any; overtime_hourly_rate?: any }) {
@@ -183,6 +242,7 @@ export class HrService {
       overtime_ended_at?: Date | string | null;
       project_id?: string | null;
       reason?: string | null;
+      evidence_url?: string | null;
     },
   ) {
     const hours = Number(input.overtime_hours ?? 0);
@@ -227,9 +287,43 @@ export class HrService {
         overtime_rate: rate,
         overtime_amount: amount,
         reason: String(input.reason || 'Lembur Daily Task / Timesheet').trim(),
+        evidence_url: input.evidence_url ?? null,
         status: 'SUBMITTED',
       },
     });
+  }
+
+  static async saveEvidenceAttachment(companyId: string, userId: string, input: any) {
+    await ensureHrTables();
+    const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+    const mimeType = String(input.mime_type ?? '').toLowerCase();
+    const fileName = String(input.file_name ?? '').trim().replace(/[\\/\r\n\u0000]/g, '_').slice(0, 255);
+    const encoded = String(input.content_base64 ?? '');
+    if (!allowedTypes.has(mimeType) || !fileName || encoded.length > 5_600_000) {
+      throw new ValidationError('Lampiran harus berupa JPG, PNG, atau WebP maksimal 4 MB.');
+    }
+    const content = Buffer.from(encoded, 'base64');
+    if (!content.length || content.length > 4 * 1024 * 1024 || content.toString('base64') !== encoded) {
+      throw new ValidationError('Isi gambar tidak valid atau ukurannya melebihi 4 MB.');
+    }
+    const id = crypto.randomUUID();
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO "hr_evidence_attachment" ("id", "company_id", "uploaded_by_id", "file_name", "mime_type", "file_size", "content") VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      id, companyId, userId, fileName, mimeType, content.length, content,
+    );
+    return { attachment_url: `hr-attachment:${id}` };
+  }
+
+  static async getEvidenceAttachment(companyId: string, id: string, userId: string, allowCompanyAccess = false) {
+    await ensureHrTables();
+    const rows = await prisma.$queryRawUnsafe<Array<{ uploaded_by_id: string; file_name: string; mime_type: string; content: Buffer }>>(
+      `SELECT "uploaded_by_id", "file_name", "mime_type", "content" FROM "hr_evidence_attachment" WHERE "company_id" = $1 AND "id" = $2 LIMIT 1`,
+      companyId, id,
+    );
+    const attachment = rows[0];
+    if (!attachment) throw new NotFoundError('Lampiran');
+    if (!allowCompanyAccess && attachment.uploaded_by_id !== userId) throw new ForbiddenError('Lampiran ini bukan milik akun Anda.');
+    return attachment;
   }
 
   static async listMyOvertimes(companyId: string, userId: string) {
@@ -273,13 +367,31 @@ export class HrService {
     }) : [];
     const empMap = new Map(employees.map((e) => [e.id, e]));
     const projectMap = new Map(projects.map((project) => [project.id, project]));
+    const employeeIds = [...new Set(rows.map((row) => row.employee_id))];
+    const olderTimesheets = employeeIds.length ? await prisma.project_timesheet.findMany({
+      where: { company_id: companyId, employee_id: { in: employeeIds }, overtime_hours: { gt: 0 }, evidence_url: { not: null } },
+      select: { employee_id: true, project_id: true, work_date: true, overtime_started_at: true, evidence_url: true },
+      orderBy: { created_at: 'desc' },
+      take: 1000,
+    }) : [];
+    const timeKey = (employeeId: string, workDate: Date, projectId?: string | null, startedAt?: Date | null) =>
+      `${employeeId}|${workDate.toISOString().slice(0, 10)}|${projectId ?? ''}|${startedAt?.toISOString().slice(11, 16) ?? ''}`;
+    const oldEvidenceByKey = new Map<string, string>();
+    for (const timesheet of olderTimesheets) {
+      if (!timesheet.employee_id || !timesheet.work_date || !timesheet.evidence_url) continue;
+      const key = timeKey(timesheet.employee_id, timesheet.work_date, timesheet.project_id, timesheet.overtime_started_at);
+      if (!oldEvidenceByKey.has(key)) oldEvidenceByKey.set(key, timesheet.evidence_url);
+    }
     return rows.map((row) => {
       const employee = empMap.get(row.employee_id);
       const project = row.project_id ? projectMap.get(row.project_id) : null;
       const storedName = String(employee?.employee_name ?? '').trim();
       const employeeName = storedName && storedName !== employee?.employee_number ? storedName : '';
+      const evidenceKey = `${row.employee_id}|${row.work_date.toISOString().slice(0, 10)}|${row.project_id ?? ''}|${row.start_time}`;
+      const evidenceFromTimesheet = row.evidence_url ?? oldEvidenceByKey.get(evidenceKey) ?? null;
       return {
         ...row,
+        evidence_url: evidenceFromTimesheet,
         employee_number: employee?.employee_number ?? '',
         employee_name: employeeName
           || partyById.get(employee?.party_id ?? '')?.display_name

@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, ArrowRight, AtSign, Bold, Calendar, CalendarDays, Check, CheckCircle2, Clock, Clock3, Coffee, Briefcase, FileDown, FileSpreadsheet, FileText, Filter, Italic, Link2, MapPin, Plus, Repeat, Save, Search, Send, ShieldCheck, Strikethrough, Trash2, UserCircle2, Video, X, ClipboardList } from "lucide-react";
+import { ArrowLeft, ArrowRight, AtSign, Bold, Calendar, CalendarDays, Check, CheckCircle2, Clock, Clock3, Coffee, Briefcase, Eye, FileDown, FileSpreadsheet, FileText, Filter, Italic, Link2, MapPin, Plus, Repeat, Save, Search, Send, ShieldCheck, Strikethrough, Trash2, UserCircle2, Video, X, ClipboardList } from "lucide-react";
 import toast from "react-hot-toast";
 import { MeetingDetail, MeetingRequestSummary, NonMeetingRequest, requestApi } from "@/lib/api/request.api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 import { getUserFacingApiError } from "@/lib/api/error-message";
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import { HrPayrollTabs } from "@/components/hr/HrPayrollTabs";
+import { loadHrEvidence, uploadHrEvidence } from "@/lib/api/hr-evidence.api";
+import api from "@/lib/api/axios";
 
 type Member = { id: string; name: string; email: string; role: string };
 type CreateForm = { title:string; description:string; date:string; recurrenceEndDate:string; startTime:string; endTime:string; location:string; meetingType:string; recurrenceType:"RECURRING"|"NON_RECURRING"; recurringDays:number[]; assigneeId:string; notetakerId:string; participantIds:string[]; agenda:string };
@@ -685,6 +687,10 @@ export default function RequestsClient(){
                         <Clock3 size={13} /> {displayDate(req.start_at)} – {displayDate(req.end_at)}
                       </p>
                     )}
+                    {isLeave && req.leave_compensation?.configured && req.leave_compensation.total_amount != null && (
+                      <p className="mt-2 text-xs font-bold text-[#2B7A42]">Perkiraan uang cuti: {new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(req.leave_compensation.total_amount)}</p>
+                    )}
+                    {isLeave && req.attachment_url && <RequestAttachmentPreview attachmentUrl={req.attachment_url} forHr={hrTier <= 2} />}
                   </div>
                 </div>
 
@@ -1227,6 +1233,20 @@ function SelectField({label,value,onChange,children,icon}:{label:string;value:st
 function InvitePeoplePicker({members,selectedIds,onChange}:{members:Member[];selectedIds:string[];onChange:(ids:string[])=>void}){const selected=new Set(selectedIds);const toggle=(id:string)=>onChange(selected.has(id)?selectedIds.filter(item=>item!==id):[...selectedIds,id]);return <fieldset><legend className="flex w-full items-center justify-between gap-3 text-xs font-bold text-[#0F172A]"><span className="flex items-center gap-2"><Link2 size={16} className="text-[#163D64]"/>Undang Anggota</span>{selectedIds.length>0&&<button type="button" onClick={()=>onChange([])} className="text-3xs font-semibold text-[#163D64] hover:underline">Hapus semua</button>}</legend><p className="mt-1 text-3xs font-normal text-[#6B7280]">Pilih anggota yang akan diundang ke meeting ini.</p><div className="mt-2.5 max-h-48 space-y-1 overflow-y-auto rounded-xl border border-[#E2E8F0] bg-white p-2" role="group" aria-label="Pilih anggota yang akan diundang">{members.length===0?<p className="px-3 py-4 text-center text-xs text-[#6B7280]">Belum ada anggota tim aktif.</p>:members.map(member=>{const checked=selected.has(member.id);return <button key={member.id} type="button" role="checkbox" aria-checked={checked} onClick={()=>toggle(member.id)} className={cn("flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition text-xs", checked?"bg-[#163D64] text-white":"text-[#0F172A] hover:bg-[#E7F2FF]")}><span className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded border", checked?"border-white bg-white text-[#163D64]":"border-[#E2E8F0] bg-white")}>{checked&&<Check size={12} strokeWidth={3}/>}</span><span className="min-w-0 flex-1"><strong className="block truncate text-xs">{member.name}</strong><span className={cn("block truncate text-3xs font-normal", checked?"text-blue-100":"text-[#6B7280]")}>{member.role} · {member.email}</span></span></button>})}</div><div className="mt-1.5 flex items-center justify-between text-3xs"><span className={selectedIds.length?"font-bold text-[#163D64]":"text-[#6B7280]"}>{selectedIds.length} anggota dipilih</span>{selectedIds.length>0&&<span className="text-[#6B7280]">Klik untuk membatalkan</span>}</div></fieldset>;}
 function TextArea({label,value,onChange,rows,hint,disabled=false}:{label:string;value:string;onChange:(value:string)=>void;rows:number;hint?:string;disabled?:boolean}){return <label className="block text-xs font-bold text-[#0F172A]">{label}{hint&&<span className="mt-0.5 block text-3xs font-normal text-[#6B7280]">{hint}</span>}<textarea disabled={disabled} rows={rows} value={value} onChange={event=>onChange(event.target.value)} className="mt-1.5 w-full resize-none rounded-xl border border-[#E2E8F0] bg-white p-3 text-xs leading-5 text-[#0F172A] outline-none focus:border-[#163D64] focus:ring-1 focus:ring-[#163D64]/20 disabled:cursor-default disabled:bg-neutral-50 transition-all"/></label>;}
 
+function RequestAttachmentPreview({attachmentUrl,forHr}:{attachmentUrl:string;forHr:boolean}){
+  const [open,setOpen]=useState(false);
+  const [imageUrl,setImageUrl]=useState("");
+  const [error,setError]=useState("");
+  useEffect(()=>{
+    if(!open||!attachmentUrl.startsWith('hr-attachment:'))return;
+    let active=true;let objectUrl='';
+    void loadHrEvidence(attachmentUrl,forHr).then(url=>{objectUrl=url;if(active)setImageUrl(url);else URL.revokeObjectURL(url);}).catch(()=>{if(active)setError('Lampiran tidak dapat dibuka dengan akses akun ini.');});
+    return()=>{active=false;if(objectUrl)URL.revokeObjectURL(objectUrl);};
+  },[open,attachmentUrl,forHr]);
+  if(!attachmentUrl.startsWith('hr-attachment:'))return <a href={attachmentUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-semibold text-blue-700 underline">Buka lampiran request</a>;
+  return <><button type="button" onClick={()=>{setError('');setOpen(true);}} className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-[#163D64]"><Eye size={13}/>Lihat lampiran foto</button>{open&&<div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-4" onMouseDown={event=>{if(event.target===event.currentTarget)setOpen(false);}}><div role="dialog" aria-modal="true" className="w-full max-w-3xl rounded-2xl bg-white p-4 shadow-2xl"><div className="mb-3 flex justify-between"><strong className="text-sm text-[#163D64]">Lampiran foto cuti</strong><button type="button" onClick={()=>setOpen(false)} aria-label="Tutup"><X size={18}/></button></div>{imageUrl?<img src={imageUrl} alt="Lampiran permohonan cuti" className="max-h-[75vh] w-full rounded-lg object-contain"/>:<p className="p-8 text-center text-sm text-slate-500">{error||'Memuat foto…'}</p>}</div></div>}</>;
+}
+
 function NewNonMeetingRequestModal({members,busy,onClose,onSuccess}:{members:Member[];busy:boolean;onClose:()=>void;onSuccess:()=>void}){
   const [type,setType]=useState<'LEAVE'|'OTHER'>('LEAVE');
   const [title,setTitle]=useState('');
@@ -1235,6 +1255,17 @@ function NewNonMeetingRequestModal({members,busy,onClose,onSuccess}:{members:Mem
   const [endAt,setEndAt]=useState('');
   const [assigneeId,setAssigneeId]=useState('');
   const [submitting,setSubmitting]=useState(false);
+  const [attachmentUrl,setAttachmentUrl]=useState("");
+  const [attachmentName,setAttachmentName]=useState("");
+  const [uploadingAttachment,setUploadingAttachment]=useState(false);
+  const [leaveQuote,setLeaveQuote]=useState<{configured:boolean;hours:number;leave_hourly_rate:number|null;base_hourly_rate:number|null;total_amount:number|null}|null>(null);
+  const requestedHours = startAt && endAt && new Date(endAt) > new Date(startAt) ? (new Date(endAt).getTime()-new Date(startAt).getTime())/3600000 : 0;
+  useEffect(()=>{
+    if(type!=='LEAVE'||requestedHours<=0){setLeaveQuote(null);return;}
+    let active=true;
+    const timer=window.setTimeout(()=>{void api.get('/api/v1/hr/leave/my/quote',{params:{hours:requestedHours}}).then(response=>{if(active)setLeaveQuote(response.data?.data??null);}).catch(()=>{if(active)setLeaveQuote(null);});},250);
+    return ()=>{active=false;window.clearTimeout(timer);};
+  },[type,requestedHours]);
   async function handleSubmit(event:React.FormEvent){
     event.preventDefault();
     if(!title.trim()){toast.error('Judul request wajib diisi.');return;}
@@ -1246,6 +1277,7 @@ function NewNonMeetingRequestModal({members,busy,onClose,onSuccess}:{members:Mem
         request_type:type,title:title.trim(),description:description.trim()||undefined,
         start_at:startAt?new Date(startAt).toISOString():undefined,
         end_at:endAt?new Date(endAt).toISOString():undefined,
+        attachment_url:attachmentUrl||undefined,
         assignee_user_id:type==='OTHER'&&assigneeId?assigneeId:undefined,
       });
       toast.success(type==='LEAVE'?'Request cuti/izin berhasil dibuat.':'Request berhasil dibuat.');
@@ -1269,9 +1301,14 @@ function NewNonMeetingRequestModal({members,busy,onClose,onSuccess}:{members:Mem
       </div>
       {type==='OTHER'&&<div><span className="mb-2 block text-sm font-bold text-[#0876CD]">Assign kepada</span><SearchableSelect value={assigneeId} onChange={setAssigneeId} placeholder="Pilih anggota (opsional)" emptyOptionLabel="Pilih anggota (opsional)" searchPlaceholder="Cari nama atau role anggota..." options={members.map(m=>({value:String(m.id),label:`${m.name} — ${m.role}`,sublabel:m.email}))}/></div>}
       {type==='LEAVE'&&<div className="rounded-xl bg-[#FFF9E6] border border-[#F5C842] px-4 py-3 text-xs text-[#7A5C00]">Permohonan cuti/izin akan otomatis diarahkan ke HR atau Eksekutif yang bertanggung jawab. Anda tidak perlu memilih tujuan.</div>}
+      {type==='LEAVE'&&<div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
+        <div className="text-xs font-bold text-[#163D64]">Perkiraan uang cuti</div>
+        {requestedHours<=0?<p className="mt-1 text-[11px] text-[#64748B]">Isi waktu mulai dan selesai untuk melihat perhitungan.</p>:leaveQuote?.configured?<div className="mt-2 text-xs text-[#334155]">{requestedHours.toFixed(2)} jam × (gaji dasar {new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(leaveQuote.base_hourly_rate??0) + ' / jam + tarif cuti ' + new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(leaveQuote.leave_hourly_rate??0) + ' / jam'})<strong className="mt-1 block text-sm text-[#2B7A42]">{new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(leaveQuote.total_amount??0)}</strong></div>:<p className="mt-1 text-[11px] text-amber-700">Tarif cuti umum/karyawan dan gaji dasar per jam belum lengkap. HR perlu melengkapinya.</p>}
+      </div>}
+      {type==='LEAVE'&&<div><span className="mb-1.5 block text-xs font-bold text-[#0F172A]">Lampiran foto (opsional)</span><label className="inline-flex cursor-pointer items-center rounded-lg border border-[#D7E2EE] bg-white px-3 py-2 text-xs font-semibold text-[#163D64]">{uploadingAttachment?'Mengunggah…':'Pilih foto'}<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={uploadingAttachment||submitting} onChange={async(event)=>{const file=event.target.files?.[0];event.target.value='';if(!file)return;setUploadingAttachment(true);try{setAttachmentUrl(await uploadHrEvidence(file));setAttachmentName(file.name);toast.success('Lampiran foto tersimpan.');}catch(error){toast.error(error instanceof Error?error.message:'Foto gagal diunggah.');}finally{setUploadingAttachment(false);}}}/></label>{attachmentName&&<span className="ml-2 text-[11px] text-emerald-700">{attachmentName}</span>}<p className="mt-1 text-[10px] text-[#64748B]">JPG, PNG, WebP maksimal 4 MB. Disimpan internal.</p></div>}
       <div className="flex gap-3 pt-2">
         <button type="button" onClick={onClose} className="flex-1 h-11 rounded-xl border-2 border-[#E2E8F0] font-bold text-[#64748B] hover:bg-[#F4F6FB]">Batal</button>
-        <button type="submit" disabled={submitting||busy} className="flex-1 h-11 rounded-xl bg-[#2B7A42] font-bold text-white hover:bg-[#226135] disabled:opacity-50">Buat Request</button>
+        <button type="submit" disabled={submitting||busy||uploadingAttachment} className="flex-1 h-11 rounded-xl bg-[#2B7A42] font-bold text-white hover:bg-[#226135] disabled:opacity-50">{uploadingAttachment?'Mengunggah lampiran…':'Buat Request'}</button>
       </div>
     </form>
   </ModalBackdrop>;

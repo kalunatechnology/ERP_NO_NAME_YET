@@ -9,6 +9,37 @@ import { RoleCode } from '../../types/roles';
 export const hrRouter = Router();
 export const hrFinanceRouter = Router();
 
+hrRouter.post('/attachments', async (req, res, next) => {
+  try {
+    const data = await HrService.saveEvidenceAttachment(req.companyId!, req.user!.id, req.body);
+    res.status(201).json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+hrRouter.get('/attachments/my/:id', async (req, res, next) => {
+  try {
+    const id = String(req.params.id || '').replace(/^hr-attachment:/, '');
+    const file = await HrService.getEvidenceAttachment(req.companyId!, id, req.user!.id);
+    res.setHeader('Content-Type', file.mime_type);
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(Buffer.from(file.content));
+  } catch (err) { next(err); }
+});
+
+hrRouter.get('/attachments/:id', requireModuleTier('HR', 2), async (req, res, next) => {
+  try {
+    const id = String(req.params.id || '').replace(/^hr-attachment:/, '');
+    const file = await HrService.getEvidenceAttachment(req.companyId!, id, req.user!.id, true);
+    res.setHeader('Content-Type', file.mime_type);
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(Buffer.from(file.content));
+  } catch (err) { next(err); }
+});
+
 // --- TIER 3 / SELF-SERVICE: Seluruh User Perusahaan (Meeting, Lembur/Request & Slip Gaji Pribadi) ---
 hrRouter.post('/overtimes/my', async (req, res, next) => {
   try {
@@ -29,6 +60,23 @@ hrRouter.get('/overtimes/my/rate', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+hrRouter.get('/leave/my/quote', async (req, res, next) => {
+  try {
+    const data = await HrService.quoteMyLeavePay(req.companyId!, req.user!.id, Number(req.query.hours));
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+hrRouter.get('/leave/rate-settings', requireModuleTier('HR', 2), async (req, res, next) => {
+  try { res.json({ success: true, data: await HrService.getLeaveRateSettings(req.companyId!) }); }
+  catch (err) { next(err); }
+});
+
+hrRouter.put('/leave/rate-settings', requireModuleTier('HR', 1), async (req, res, next) => {
+  try { res.json({ success: true, data: await HrService.updateLeaveRateSettings(req.companyId!, req.tenantId ?? null, req.body) }); }
+  catch (err) { next(err); }
 });
 
 hrRouter.get('/overtimes/rate-settings', requireModuleTier('HR', 2), async (req, res, next) => {

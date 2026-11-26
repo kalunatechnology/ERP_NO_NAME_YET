@@ -379,6 +379,7 @@ timesheetTimerRouter.post(
             overtime_started_at: updated.overtime_started_at,
             overtime_ended_at: updated.overtime_ended_at,
             reason: overtimeReason || `Lembur Daily Task (${overtimeHours} jam)`,
+            evidence_url: updated.evidence_url,
           },
         ).catch(() => null);
       }

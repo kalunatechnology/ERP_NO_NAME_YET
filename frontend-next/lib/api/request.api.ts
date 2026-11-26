@@ -75,6 +75,8 @@ export interface NonMeetingRequest {
   assignee_user: { id: string; name: string; email: string } | null;
   start_at: string | null;
   end_at: string | null;
+  attachment_url?: string | null;
+  leave_compensation?: { hours: number; leave_hourly_rate: number | null; base_hourly_rate: number | null; total_amount: number | null; configured: boolean } | null;
   created_at: string;
   company_id: string | null;
 }
@@ -85,6 +87,7 @@ export interface CreateNonMeetingInput {
   description?: string;
   start_at?: string;
   end_at?: string;
+  attachment_url?: string;
   assignee_user_id?: string;
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
   is_draft?: boolean;
