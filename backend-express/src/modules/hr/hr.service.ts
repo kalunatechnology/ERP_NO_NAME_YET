@@ -85,8 +85,9 @@ export class HrService {
       where: { company_id: companyId, module_code: { in: ['HR', 'HRMS', 'REQUESTS'] }, tier_level: 1, status: 'ACTIVE' },
       select: { user_id: true },
       orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
-    }).catch(() => [] as Array<{ user_id: string }>);
-    const userIds = [...new Set(assignments.map((assignment: { user_id: string }) => assignment.user_id).filter(Boolean))];
+    }).catch((): Array<{ user_id: string }> => []);
+    const assignmentUserIds = (assignments as Array<{ user_id: string }>).map((assignment) => assignment.user_id);
+    const userIds: string[] = [...new Set<string>(assignmentUserIds.filter((id): id is string => typeof id === 'string' && id.length > 0))];
     if (!userIds.length) return [] as string[];
     const [memberships, users] = await Promise.all([
       prisma.iam_user_company_membership.findMany({ where: { company_id: companyId, user_id: { in: userIds }, status: 'ACTIVE' }, select: { user_id: true } }),
