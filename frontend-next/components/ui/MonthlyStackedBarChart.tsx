@@ -511,7 +511,7 @@ export function MonthlyStackedBarChart({
       {/* Floating Tooltip Detail on Hover */}
       {hoveredItem && (
         <div
-          className="fixed z-50 bg-[#163D64] text-[13px] px-3.5 py-2.5 rounded-xl border border-[#4F70D8] shadow-xl pointer-events-none transform -translate-x-1/2 -translate-y-full -mt-2 flex flex-col gap-1.5 min-w-[210px]"
+          className="fixed z-50 bg-white text-[#0F172A] text-[13px] px-3.5 py-2.5 rounded-xl border border-[#E2E8F0] shadow-xl pointer-events-none transform -translate-x-1/2 -translate-y-full -mt-2 flex flex-col gap-1.5 min-w-[210px]"
           style={{
             left: hoveredItem.x,
             top: hoveredItem.y,
@@ -519,48 +519,48 @@ export function MonthlyStackedBarChart({
         >
           {hoveredItem.item.bottomValue <= 0 && hoveredItem.item.topValue <= 0 ? (
             <>
-              <div className="flex items-center justify-between border-b border-white/20 pb-1 font-bold text-gray-200">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-1 font-bold text-[#0F172A]">
                 <span>Bulan {hoveredItem.item.month}</span>
-                <span className="text-amber-300 font-semibold text-xs px-1.5 py-0.5 rounded bg-amber-950/60 border border-amber-500/40">
+                <span className="text-amber-700 font-semibold text-xs px-1.5 py-0.5 rounded bg-amber-50 border border-amber-300">
                   Belum ada transaksi
                 </span>
               </div>
               <div className="flex items-center justify-between gap-3 text-xs pt-1">
-                <span className="text-gray-300">{primaryLabel}:</span>
-                <span className="font-semibold text-gray-400">Rp 0</span>
+                <span className="text-[#475569]">{primaryLabel}:</span>
+                <span className="font-semibold text-[#64748B]">Rp 0</span>
               </div>
               <div className="flex items-center justify-between gap-3 text-xs">
-                <span className="text-gray-300">{secondaryLabel}:</span>
-                <span className="font-semibold text-gray-400">Rp 0</span>
+                <span className="text-[#475569]">{secondaryLabel}:</span>
+                <span className="font-semibold text-[#64748B]">Rp 0</span>
               </div>
-              <p className="text-xs text-gray-400 mt-1 border-t border-white/10 pt-1 italic">
+              <p className="text-xs text-[#64748B] mt-1 border-t border-slate-200 pt-1 italic">
                 Belum ada transaksi riil tercatat pada bulan ini.
               </p>
             </>
           ) : (
             <>
-              <div className="flex items-center justify-between border-b border-white/20 pb-1 font-bold text-[#BAE6FD]">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-1 font-bold text-[#163D64]">
                 <span>Bulan {hoveredItem.item.month}</span>
                 <span>
                   Total: {formatValueDisplay(hoveredItem.item.bottomValue + hoveredItem.item.topValue)}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-3 text-xs pt-0.5">
-                <span className="flex items-center gap-1 text-[#EFEFEF]">
+                <span className="flex items-center gap-1 text-[#475569]">
                   <span className="w-2 h-2 rounded-full bg-[#163D64]" />
                   {primaryLabel}:
                 </span>
-                <span className="font-semibold">{formatValueDisplay(hoveredItem.item.bottomValue)}</span>
+                <span className="font-semibold text-[#0F172A]">{formatValueDisplay(hoveredItem.item.bottomValue)}</span>
               </div>
               <div className="flex items-center justify-between gap-3 text-xs">
-                <span className="flex items-center gap-1 text-[#EFEFEF]">
+                <span className="flex items-center gap-1 text-[#475569]">
                   <span className="w-2 h-2 rounded-full bg-[#0876CD]" />
                   {secondaryLabel}:
                 </span>
-                <span className="font-semibold">{formatValueDisplay(hoveredItem.item.topValue)}</span>
+                <span className="font-semibold text-[#0F172A]">{formatValueDisplay(hoveredItem.item.topValue)}</span>
               </div>
               {hoveredItem.item.notes && (
-                <p className="text-xs text-gray-300 mt-1 border-t border-white/10 pt-1 italic">
+                <p className="text-xs text-[#475569] mt-1 border-t border-slate-200 pt-1 italic">
                   {hoveredItem.item.notes}
                 </p>
               )}

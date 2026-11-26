@@ -43,34 +43,32 @@ export function BillingInvoiceModal({ invoice, onClose }: BillingInvoiceModalPro
       subtitle="Pratinjau dokumen invoice resmi hasil billing termin klien"
       size="2xl"
     >
-      <div className="flex flex-col gap-5 text-xs text-text-primary">
+      <div className="finance-scope flex flex-col gap-5 text-xs text-text-primary">
         {/* Invoice Paper */}
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-xs flex flex-col gap-5 print:border-0 print:shadow-none">
           {/* Top Header */}
           <div className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-200 pb-4">
             <div>
-              <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#163D64]">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-text-secondary">
                 Faktur Penagihan Resmi
               </span>
-              <h2 className="mt-1 text-lg font-black text-[#0F172A]">{invoice.companyName}</h2>
+              <h2 className="mt-1 text-lg font-bold text-text-primary">{invoice.companyName}</h2>
               <p className="mt-0.5 text-xs text-text-secondary">
                 Referensi Proyek: <span className="font-semibold text-text-primary">{invoice.projectName}</span>
                 {invoice.projectCode ? ` (${invoice.projectCode})` : ""}
               </p>
             </div>
             <div className="text-right">
-              <div className="text-xs font-bold text-text-secondary uppercase tracking-wider">No. Invoice</div>
-              <div className="mt-0.5 text-base font-black text-blue-700 font-mono">{invoice.invoiceNumber}</div>
+              <div className="text-xs font-semibold text-text-secondary uppercase tracking-wider">No. Faktur</div>
+              <div className="mt-0.5 text-base font-bold text-text-primary">{invoice.invoiceNumber}</div>
               <div className="mt-2 flex items-center justify-end gap-1.5">
-                <span className={cn("badge text-[10px] font-bold py-0.5 px-2", getStatusColor(invoice.status))}>
+                <span className={cn("badge text-[10px] font-semibold py-0.5 px-2", getStatusColor(invoice.status))}>
                   {invoice.status}
                 </span>
                 <span
                   className={cn(
-                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold",
-                    isPaid
-                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                      : "bg-amber-50 text-amber-800 border border-amber-200",
+                    "status-label",
+                    isPaid ? "is-ok" : "is-warn",
                   )}
                 >
                   {isPaid ? <CheckCircle2 size={11} /> : <Clock size={11} />}
@@ -83,10 +81,10 @@ export function BillingInvoiceModal({ invoice, onClose }: BillingInvoiceModalPro
           {/* Bill To & Dates */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl bg-slate-50/80 p-4 border border-slate-200/70">
             <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block">
-                Ditagihkan Kepada (Bill To)
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary block">
+                Ditagihkan Kepada
               </span>
-              <strong className="mt-1 block text-sm font-bold text-[#0F172A]">{invoice.customerName}</strong>
+              <strong className="mt-1 block text-sm font-semibold text-text-primary">{invoice.customerName}</strong>
               {isPosted && (
                 <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-brand-deep-green">
                   <CheckCircle2 size={12} className="text-brand-green" /> Tercatat di GL &amp; Buku Perpajakan
@@ -165,16 +163,16 @@ export function BillingInvoiceModal({ invoice, onClose }: BillingInvoiceModalPro
                 <span>PPN</span>
                 <span className="tabular-nums font-medium text-blue-700">{formatMoney(invoice.taxAmount)}</span>
               </div>
-              <div className="flex justify-between border-t border-gray-200 pt-2 text-sm font-black text-[#0F172A]">
+              <div className="flex justify-between border-t border-gray-200 pt-2 text-sm font-bold text-text-primary">
                 <span>Total Tagihan</span>
                 <span className="tabular-nums">{formatMoney(invoice.totalAmount)}</span>
               </div>
-              <div className="flex justify-between text-emerald-700">
+              <div className="flex justify-between amount-pos">
                 <span>Sudah Dibayar</span>
                 <span className="tabular-nums font-semibold">{formatMoney(invoice.paidAmount)}</span>
               </div>
-              <div className="flex justify-between border-t border-dashed border-gray-300 pt-1.5 font-bold text-amber-800">
-                <span>Sisa Piutang (Outstanding)</span>
+              <div className="flex justify-between border-t border-dashed border-gray-300 pt-1.5 font-semibold text-text-primary">
+                <span>Sisa Piutang</span>
                 <span className="tabular-nums">{formatMoney(invoice.outstandingAmount)}</span>
               </div>
             </div>
@@ -186,11 +184,11 @@ export function BillingInvoiceModal({ invoice, onClose }: BillingInvoiceModalPro
           <button
             type="button"
             onClick={() => window.print()}
-            className="btn-ghost gap-1.5 px-3.5 py-2 text-xs border border-gray-200"
+            className="btn-outline-soft inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs"
           >
             <Printer size={14} /> Cetak / Simpan PDF
           </button>
-          <button type="button" onClick={onClose} className="btn-primary px-4 py-2 text-xs">
+          <button type="button" onClick={onClose} className="btn-final rounded-full px-4 py-2 text-xs">
             Tutup
           </button>
         </div>

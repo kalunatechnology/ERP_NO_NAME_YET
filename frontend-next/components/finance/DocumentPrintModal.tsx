@@ -55,13 +55,13 @@ export function DocumentPrintModal({ isOpen, onClose, documentData }: DocumentPr
   };
 
   const titleMap = {
-    INVOICE: "FAKTUR PENAGIHAN (INVOICE)",
-    QUOTATION: "SURAT PENAWARAN HARGA (QUOTATION)",
-    BOM: "BILL OF MATERIALS (BOM) RESMI",
+    INVOICE: "FAKTUR PENAGIHAN",
+    QUOTATION: "SURAT PENAWARAN HARGA",
+    BOM: "DAFTAR KEBUTUHAN MATERIAL (BOM)",
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto print:p-0 print:bg-white">
+    <div className="finance-scope fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto print:p-0 print:bg-white">
       <div className="relative w-full max-w-[820px] my-auto bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh] print:max-h-none print:shadow-none print:rounded-none">
         
         {/* Modal Action Header (Hidden in Print) */}
@@ -77,7 +77,7 @@ export function DocumentPrintModal({ isOpen, onClose, documentData }: DocumentPr
             <button
               type="button"
               onClick={handlePrint}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#163D64] hover:bg-[#163D64] text-white text-xs font-bold shadow-xs transition-all"
+              className="btn-final inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs"
             >
               <Printer size={14} />
               <span>Cetak / Simpan PDF</span>
@@ -99,10 +99,10 @@ export function DocumentPrintModal({ isOpen, onClose, documentData }: DocumentPr
           <div className="flex items-start justify-between border-b-2 border-[#163D64] pb-6">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <div className="w-7 h-7 rounded-lg bg-[#163D64] text-white flex items-center justify-center font-black text-sm">
+                <div className="w-7 h-7 rounded-lg bg-[#163D64] text-white flex items-center justify-center font-bold text-sm">
                   M
                 </div>
-                <h1 className="text-xl font-black tracking-tight text-[#0F172A]">
+                <h1 className="text-xl font-bold tracking-tight text-[#0F172A]">
                   PT MARKA ARSALYNK INDONESIA
                 </h1>
               </div>
@@ -114,10 +114,10 @@ export function DocumentPrintModal({ isOpen, onClose, documentData }: DocumentPr
             </div>
 
             <div className="text-right">
-              <span className="text-xs font-black uppercase text-[#163D64] tracking-wider block">
+              <span className="text-xs font-bold uppercase text-[#163D64] tracking-wider block">
                 {titleMap[documentData.type]}
               </span>
-              <span className="text-base font-black font-mono text-[#0F172A] block mt-1">
+              <span className="text-base font-bold text-[#0F172A] block mt-1">
                 {documentData.documentNumber}
               </span>
               <span className="text-2xs text-[#64748B] block mt-0.5">
@@ -142,7 +142,7 @@ export function DocumentPrintModal({ isOpen, onClose, documentData }: DocumentPr
                 <p className="text-2xs text-[#64748B] mt-1 whitespace-pre-wrap">{documentData.clientAddress}</p>
               )}
               {documentData.clientNPWP && (
-                <span className="text-3xs text-[#64748B] block mt-1 font-mono">
+                <span className="text-3xs text-[#64748B] block mt-1">
                   NPWP: {documentData.clientNPWP}
                 </span>
               )}
@@ -178,11 +178,11 @@ export function DocumentPrintModal({ isOpen, onClose, documentData }: DocumentPr
                   <tr key={idx} className="hover:bg-[#FDFDFD]">
                     <td className="py-2.5 px-3 text-center text-[#64748B]">{idx + 1}</td>
                     <td className="py-2.5 px-3 font-semibold text-[#0F172A]">{it.description}</td>
-                    <td className="py-2.5 px-3 text-right font-mono">
+                    <td className="py-2.5 px-3 text-right tabular-nums">
                       {it.quantity} {it.uom || "Unit"}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono">{formatRupiah(it.unitPrice)}</td>
-                    <td className="py-2.5 px-3 text-right font-bold text-[#0F172A] font-mono">
+                    <td className="py-2.5 px-3 text-right tabular-nums">{formatRupiah(it.unitPrice)}</td>
+                    <td className="py-2.5 px-3 text-right font-semibold text-[#0F172A] tabular-nums">
                       {formatRupiah(it.total)}
                     </td>
                   </tr>
@@ -199,7 +199,7 @@ export function DocumentPrintModal({ isOpen, onClose, documentData }: DocumentPr
                 <Landmark size={14} />
                 <span>Instruksi Pembayaran Resmi:</span>
               </div>
-              <div className="font-mono text-xs text-[#0F172A] space-y-0.5">
+              <div className="text-xs text-[#0F172A] space-y-0.5">
                 <p><b>Bank:</b> {documentData.bankAccount?.bankName || "BCA (Bank Central Asia)"}</p>
                 <p><b>No. Rekening:</b> {documentData.bankAccount?.accountNumber || "8830-1928-11"}</p>
                 <p><b>Atas Nama:</b> {documentData.bankAccount?.accountName || "PT MARKA ARSALYNK INDONESIA"}</p>
@@ -213,15 +213,15 @@ export function DocumentPrintModal({ isOpen, onClose, documentData }: DocumentPr
             <div className="w-full sm:w-64 space-y-1.5 text-xs">
               <div className="flex justify-between py-1 border-b border-[#EFEFEF]">
                 <span className="text-[#64748B]">Subtotal</span>
-                <span className="font-bold font-mono">{formatRupiah(subtotal)}</span>
+                <span className="font-semibold tabular-nums">{formatRupiah(subtotal)}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-[#EFEFEF]">
                 <span className="text-[#64748B]">PPN (11%)</span>
-                <span className="font-bold font-mono text-[#163D64]">{formatRupiah(ppn)}</span>
+                <span className="font-semibold tabular-nums text-[#163D64]">{formatRupiah(ppn)}</span>
               </div>
               <div className="flex justify-between py-2 border-t-2 border-[#163D64] text-sm">
-                <span className="font-black text-[#0F172A]">TOTAL AKHIR</span>
-                <span className="font-black font-mono text-[#163D64] text-base">
+                <span className="font-bold text-[#0F172A]">TOTAL AKHIR</span>
+                <span className="font-bold tabular-nums text-[#163D64] text-base">
                   {formatRupiah(grandTotal)}
                 </span>
               </div>
@@ -235,10 +235,10 @@ export function DocumentPrintModal({ isOpen, onClose, documentData }: DocumentPr
                 <QrCode size={48} className="text-[#163D64]" />
               </div>
               <div className="text-3xs text-[#64748B] space-y-0.5">
-                <span className="font-bold text-[#163D64] block">DIGITALLY VERIFIED</span>
-                <span>Dokumen sah & diterbitkan oleh</span>
+                <span className="font-bold text-[#163D64] block">TERVERIFIKASI DIGITAL</span>
+                <span>Dokumen sah &amp; diterbitkan oleh</span>
                 <span className="flex items-center gap-1">
-                  <span className="font-mono">System ERP</span>
+                  <span>Sistem ERP</span>
                   <MarkaWordmark className="h-auto w-12 text-[#163D64]" />
                 </span>
               </div>
@@ -252,7 +252,7 @@ export function DocumentPrintModal({ isOpen, onClose, documentData }: DocumentPr
                 <span className="font-extrabold text-[#0F172A] text-xs block">
                   Arof Destianto, S.T.
                 </span>
-                <span className="text-3xs text-[#64748B] block">Director / Company Admin</span>
+                <span className="text-3xs text-[#64748B] block">Direktur / Admin Perusahaan</span>
               </div>
             </div>
           </div>

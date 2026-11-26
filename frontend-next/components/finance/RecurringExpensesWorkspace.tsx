@@ -15,6 +15,7 @@ import {
 import api from "@/lib/api/axios";
 import { cn, formatMoney } from "@/lib/utils";
 import { getApiErrorDetail } from "@/lib/api/project.api";
+import { IDRInput } from "@/components/ui/IDRInput";
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import {
   TablePagination,
@@ -35,9 +36,9 @@ const rowsOf = (value: any) =>
     ? value
     : value?.data?.results ?? value?.results ?? value?.data ?? [];
 const inputClass =
-  "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs";
+  "mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs";
 const gridInputClass =
-  "w-full rounded-md border border-[#E2E8F0] bg-white px-2 py-1.5 text-xs outline-none focus:border-[#163D64]";
+  "w-full rounded-lg border border-[#E2E8F0] bg-white px-2 py-1.5 text-xs outline-none focus:border-[#163D64]";
 const today = new Date();
 const dateValue = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
@@ -164,7 +165,7 @@ export function RecurringExpensesWorkspace({
       setForm(makeEmptyRule());
       setEditing(null);
       setNotice(
-        "Aturan biaya berulang tersimpan. Tagihan belum dibuat sampai Anda menekan Generate."
+        "Aturan biaya berulang tersimpan. Tagihan belum dibuat sampai Anda menekan Buat Tagihan Jatuh Tempo."
       );
       await load();
     } catch (cause) {
@@ -322,7 +323,7 @@ export function RecurringExpensesWorkspace({
           return {
             Kode: rule.rule_code,
             Deskripsi: rule.description,
-            Lingkup: project ? `Project (${project.project_code})` : "Operational",
+            Lingkup: project ? `Proyek (${project.project_code})` : "Operasional",
             Vendor: vendor?.display_name || vendor?.legal_name || "",
             DPP: Number(rule.amount ?? 0),
             Frekuensi: rule.recurrence_rule,
@@ -336,57 +337,30 @@ export function RecurringExpensesWorkspace({
 
   return (
     <div className="flex flex-col gap-4">
-      <section className="rounded-2xl border bg-white p-5">
+      <section className="fin-card">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="flex items-center gap-2 text-lg font-black">
-              <CalendarClock className="text-[#163D64]" /> Biaya Tetap & Tagihan Berulang
+            <h2 className="flex items-center gap-2 text-lg font-semibold">
+              <CalendarClock className="text-[#163D64]" /> Biaya Tetap &amp; Tagihan Berulang
             </h2>
             <p className="mt-1 text-xs text-slate-500">
               Aturan bisa untuk proyek atau kantor internal. Sistem hanya membuat tagihan DRAFT;
-              Finance memeriksa lalu melanjutkan approval dan posting di Tagihan Vendor.
+              Finance memeriksa lalu melanjutkan persetujuan dan posting di Tagihan Vendor.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {canOperate && !editing && (
-              <div className="inline-flex rounded-lg border border-[#E2E8F0] bg-slate-50 p-0.5 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setEntryMode("single")}
-                  className={cn(
-                    "rounded-md px-3 py-1.5 font-bold",
-                    entryMode === "single"
-                      ? "bg-[#163D64] text-white"
-                      : "text-slate-600 hover:text-[#163D64]"
-                  )}
-                >
-                  Form Satuan
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEntryMode("grid")}
-                  className={cn(
-                    "inline-flex items-center gap-1 rounded-md px-3 py-1.5 font-bold",
-                    entryMode === "grid"
-                      ? "bg-[#163D64] text-white"
-                      : "text-slate-600 hover:text-[#163D64]"
-                  )}
-                >
-                  <Table2 size={13} /> Mode Grid Excel
-                </button>
-              </div>
-            )}
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
               onClick={exportRulesXlsx}
-              className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-bold text-[#163D64] hover:bg-slate-50"
+              className="btn-outline-soft"
             >
-              <Download size={13} /> Export .xlsx
+              <Download size={13} /> Ekspor .xlsx
             </button>
             <button
               onClick={() => void load()}
               disabled={busy}
-              className="rounded-lg border p-2"
+              className="rounded-full border border-slate-200 p-2 hover:bg-slate-50"
+              title="Muat ulang"
             >
               <RefreshCw size={14} className={cn(busy && "animate-spin")} />
             </button>
@@ -394,9 +368,9 @@ export function RecurringExpensesWorkspace({
               <button
                 onClick={() => void generate()}
                 disabled={busy}
-                className="inline-flex items-center gap-1 rounded-lg bg-[#163D64] px-3 py-2 text-xs font-bold text-white"
+                className="btn-final"
               >
-                <Send size={13} /> Generate Tagihan Jatuh Tempo
+                <Send size={13} /> Buat Tagihan Jatuh Tempo
               </button>
             )}
           </div>
@@ -413,12 +387,23 @@ export function RecurringExpensesWorkspace({
           </p>
         )}
 
+        {canOperate && !editing && (
+          <div className="fin-subtabs mt-4">
+            <button type="button" data-active={entryMode === "single"} onClick={() => setEntryMode("single")}>
+              Form Satuan
+            </button>
+            <button type="button" data-active={entryMode === "grid"} onClick={() => setEntryMode("grid")}>
+              <Table2 size={13} className="mr-1 inline" /> Grid Excel
+            </button>
+          </div>
+        )}
+
         {canOperate && (entryMode === "single" || editing) && (
           <form
             onSubmit={saveRule}
-            className="mt-4 grid gap-3 rounded-xl bg-slate-50 p-4 md:grid-cols-4"
+            className="mt-3 grid gap-3 rounded-xl bg-slate-50 p-4 md:grid-cols-4"
           >
-            <label className="text-[10px] font-bold">
+            <label className="text-xs font-medium">
               Kode aturan
               <input
                 required
@@ -428,7 +413,7 @@ export function RecurringExpensesWorkspace({
                 placeholder="RENT-HEAD-OFFICE"
               />
             </label>
-            <label className="text-[10px] font-bold">
+            <label className="text-xs font-medium">
               Nama biaya
               <input
                 required
@@ -438,7 +423,7 @@ export function RecurringExpensesWorkspace({
                 placeholder="Sewa kantor pusat"
               />
             </label>
-            <div className="text-[10px] font-bold">
+            <div className="text-xs font-medium">
               <span className="mb-1 block">Vendor</span>
               <SearchableSelect
                 value={form.party_id}
@@ -451,7 +436,7 @@ export function RecurringExpensesWorkspace({
                 }))}
               />
             </div>
-            <label className="text-[10px] font-bold">
+            <label className="text-xs font-medium">
               Lingkup biaya
               <select
                 value={form.budget_scope}
@@ -466,12 +451,12 @@ export function RecurringExpensesWorkspace({
                 }
                 className={inputClass}
               >
-                <option value="OPERATIONAL">Operational Budget</option>
-                <option value="PROJECT">Project Budget</option>
+                <option value="OPERATIONAL">Anggaran Operasional</option>
+                <option value="PROJECT">Anggaran Proyek</option>
               </select>
             </label>
             {form.budget_scope === "PROJECT" ? (
-              <div className="text-[10px] font-bold">
+              <div className="text-xs font-medium">
                 <span className="mb-1 block">Proyek</span>
                 <SearchableSelect
                   value={form.project_id}
@@ -496,7 +481,7 @@ export function RecurringExpensesWorkspace({
                 Biaya operasional perusahaan · tidak terkait proyek
               </div>
             )}
-            <div className="text-[10px] font-bold">
+            <div className="text-xs font-medium">
               <span className="mb-1 block">COA beban</span>
               <SearchableSelect
                 value={form.expense_account_id}
@@ -516,7 +501,7 @@ export function RecurringExpensesWorkspace({
                 }))}
               />
             </div>
-            <div className="text-[10px] font-bold">
+            <div className="text-xs font-medium">
               <span className="mb-1 block">Alokasi anggaran</span>
               <SearchableSelect
                 value={form.budget_allocation_id}
@@ -553,19 +538,19 @@ export function RecurringExpensesWorkspace({
                 })}
               />
             </div>
-            <label className="text-[10px] font-bold">
-              DPP per tagihan (Rp)
-              <input
-                required
-                type="number"
-                min="1"
-                step="1"
-                value={form.amount}
-                onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                className={inputClass}
-              />
-            </label>
-            <label className="text-[10px] font-bold">
+            <div className="text-xs font-medium">
+              <span className="block">DPP per tagihan</span>
+              <div className="mt-1">
+                <IDRInput
+                  required
+                  value={form.amount}
+                  onChange={(v) => setForm({ ...form, amount: v })}
+                  className="rounded-xl text-xs"
+                  placeholder="2.500.000"
+                />
+              </div>
+            </div>
+            <label className="text-xs font-medium">
               Frekuensi
               <select
                 value={form.recurrence_rule}
@@ -577,7 +562,7 @@ export function RecurringExpensesWorkspace({
                 <option value="YEARLY">Tahunan</option>
               </select>
             </label>
-            <label className="text-[10px] font-bold">
+            <label className="text-xs font-medium">
               Tagihan berikutnya
               <input
                 required
@@ -587,7 +572,7 @@ export function RecurringExpensesWorkspace({
                 className={inputClass}
               />
             </label>
-            <label className="text-[10px] font-bold">
+            <label className="text-xs font-medium">
               Tanggal akhir (opsional)
               <input
                 type="date"
@@ -596,7 +581,7 @@ export function RecurringExpensesWorkspace({
                 className={inputClass}
               />
             </label>
-            <label className="text-[10px] font-bold">
+            <label className="text-xs font-medium">
               PPN masukan
               <select
                 value={form.input_tax_code_id}
@@ -624,14 +609,14 @@ export function RecurringExpensesWorkspace({
                     setEditing(null);
                     setForm(makeEmptyRule());
                   }}
-                  className="rounded-lg border px-3 py-2 text-xs"
+                  className="btn-outline-soft"
                 >
                   Batal
                 </button>
               )}
               <button
                 disabled={busy}
-                className="inline-flex items-center gap-1 rounded-lg bg-[#163D64] px-4 py-2 text-xs font-bold text-white"
+                className="btn-final"
               >
                 <Check size={13} />
                 {editing ? "Simpan perubahan" : "Simpan aturan"}
@@ -641,9 +626,9 @@ export function RecurringExpensesWorkspace({
         )}
 
         {canOperate && entryMode === "grid" && !editing && (
-          <form onSubmit={saveGridBatch} className="mt-4 flex flex-col gap-3">
+          <form onSubmit={saveGridBatch} className="mt-3 flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-[11px] text-slate-600">
+              <p className="cell-muted text-[11px]">
                 Ketik banyak baris sekaligus atau{" "}
                 <code className="rounded bg-slate-100 px-1">Ctrl+V</code> dari Excel. Kolom
                 DPP mendukung rumus (<code className="rounded bg-slate-100 px-1">=2500000*2</code>).
@@ -651,7 +636,7 @@ export function RecurringExpensesWorkspace({
               <button
                 type="button"
                 onClick={() => setGridRows((prev) => [...prev, makeEmptyRule()])}
-                className="inline-flex items-center gap-1 rounded-lg bg-[#E7F2FF] px-3 py-1.5 text-xs font-bold text-[#163D64]"
+                className="btn-outline-soft"
               >
                 <Plus size={13} /> Tambah Baris
               </button>
@@ -752,8 +737,8 @@ export function RecurringExpensesWorkspace({
                             }
                             className={gridInputClass}
                           >
-                            <option value="OPERATIONAL">Operational</option>
-                            <option value="PROJECT">Project</option>
+                            <option value="OPERATIONAL">Operasional</option>
+                            <option value="PROJECT">Proyek</option>
                           </select>
                         </td>
                         <td className="p-1.5">
@@ -846,7 +831,7 @@ export function RecurringExpensesWorkspace({
                             placeholder="0"
                             className={cn(
                               gridInputClass,
-                              "text-right font-bold text-[#1D4ED8]"
+                              "text-right font-medium text-[#1D4ED8]"
                             )}
                           />
                         </td>
@@ -871,7 +856,7 @@ export function RecurringExpensesWorkspace({
                               ))}
                           </select>
                         </td>
-                        <td className="whitespace-nowrap p-1.5 text-right font-bold text-[#0F172A]">
+                        <td className="whitespace-nowrap p-1.5 text-right font-medium text-[#0F172A]">
                           {formatMoney(rowTotal)}
                         </td>
                         <td className="p-1.5">
@@ -902,7 +887,7 @@ export function RecurringExpensesWorkspace({
               </table>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-600">
+              <span className="text-[11px] font-medium text-slate-600">
                 Total Estimasi DPP Grid:{" "}
                 {formatMoney(
                   gridRows.reduce(
@@ -915,7 +900,7 @@ export function RecurringExpensesWorkspace({
               </span>
               <button
                 disabled={busy}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[#163D64] px-4 py-2 text-xs font-bold text-white disabled:opacity-50"
+                className="btn-final disabled:opacity-50"
               >
                 <Check size={14} /> Simpan Semua Baris
               </button>
@@ -924,9 +909,9 @@ export function RecurringExpensesWorkspace({
         )}
       </section>
 
-      <section className="overflow-auto rounded-2xl border bg-white">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b p-4">
-          <h3 className="text-sm font-extrabold">Aturan biaya berulang</h3>
+      <section className="overflow-hidden rounded-2xl border bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
+          <h3 className="text-sm font-semibold">Aturan biaya berulang</h3>
           <TableSearchBar
             query={rulesTable.query}
             onQueryChange={rulesTable.setQuery}
@@ -935,9 +920,11 @@ export function RecurringExpensesWorkspace({
             placeholder="Cari kode, biaya, vendor, proyek..."
             totalItems={rules.length}
             filteredCount={rulesTable.totalItems}
+            showSubmitButton={false}
           />
         </div>
-        <table className="w-full min-w-[800px] text-left text-xs">
+        <div className="overflow-auto">
+        <table className="data-table w-full min-w-[800px] text-left text-xs">
           <thead className="bg-slate-50 text-[10px] uppercase text-slate-500">
             <tr>
               <th className="p-3">Kode / biaya</th>
@@ -952,23 +939,24 @@ export function RecurringExpensesWorkspace({
             {rulesTable.paginatedItems.map((rule) => {
               const vendor = vendors.find((row) => row.id === rule.party_id);
               const project = projects.find((row) => row.id === rule.project_id);
+              const isActive = rule.status === "ACTIVE";
               return (
                 <tr key={rule.id} className="border-t">
                   <td className="p-3">
-                    <b>{rule.rule_code}</b>
-                    <div>{rule.description}</div>
+                    <span className="font-medium">{rule.rule_code}</span>
+                    <div className="cell-muted text-[11px]">{rule.description}</div>
                   </td>
                   <td className="p-3">
                     {project ? (
                       <>
-                        <span className="font-bold text-[#163D64]">Project Budget</span>
-                        <div className="text-[10px] text-slate-500">
+                        <span className="font-medium text-[#163D64]">Anggaran Proyek</span>
+                        <div className="cell-muted text-[11px]">
                           {project.project_code} · {project.project_name}
                         </div>
                       </>
                     ) : (
-                      <span className="font-bold text-emerald-700">
-                        Operational Budget · Kantor internal
+                      <span className="font-medium text-emerald-700">
+                        Anggaran Operasional · Kantor internal
                       </span>
                     )}
                   </td>
@@ -977,12 +965,16 @@ export function RecurringExpensesWorkspace({
                   </td>
                   <td className="p-3">
                     {formatMoney(rule.amount)}
-                    <div className="text-[10px] text-slate-500">
+                    <div className="cell-muted text-[11px]">
                       {rule.recurrence_rule} · berikutnya{" "}
                       {String(rule.next_run_date).slice(0, 10)}
                     </div>
                   </td>
-                  <td className="p-3">{rule.status}</td>
+                  <td className="p-3">
+                    <span className={`status-label ${isActive ? "is-ok" : "is-idle"}`}>
+                      {isActive ? "Aktif" : "Nonaktif"}
+                    </span>
+                  </td>
                   <td className="p-3 text-right">
                     {canOperate && (
                       <button
@@ -1000,7 +992,8 @@ export function RecurringExpensesWorkspace({
                               : "",
                           });
                         }}
-                        className="rounded border p-1.5 text-[#163D64]"
+                        className="rounded-full border border-slate-200 p-1.5 text-[#163D64] hover:bg-slate-50"
+                        title="Edit aturan"
                       >
                         <Pencil size={13} />
                       </button>
@@ -1018,6 +1011,7 @@ export function RecurringExpensesWorkspace({
             )}
           </tbody>
         </table>
+        </div>
         {rulesTable.filteredItems.length > 0 && (
           <ExcelStatusBar
             label="Ringkasan DPP Aturan"
@@ -1036,11 +1030,11 @@ export function RecurringExpensesWorkspace({
         </div>
       </section>
 
-      <section className="overflow-auto rounded-2xl border bg-white">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b p-4">
+      <section className="overflow-hidden rounded-2xl border bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
           <div>
-            <h3 className="text-sm font-extrabold">Tagihan yang dihasilkan</h3>
-            <p className="text-[10px] text-slate-500">
+            <h3 className="text-sm font-semibold">Tagihan yang dihasilkan</h3>
+            <p className="cell-muted text-[11px]">
               Semua tagihan baru berstatus DRAFT dan muncul di menu Tagihan Vendor.
             </p>
           </div>
@@ -1052,9 +1046,11 @@ export function RecurringExpensesWorkspace({
             placeholder="Cari invoice atau status..."
             totalItems={runs.length}
             filteredCount={runsTable.totalItems}
+            showSubmitButton={false}
           />
         </div>
-        <table className="w-full min-w-[700px] text-left text-xs">
+        <div className="overflow-auto">
+        <table className="data-table w-full min-w-[700px] text-left text-xs">
           <thead className="bg-slate-50 text-[10px] uppercase text-slate-500">
             <tr>
               <th className="p-3">Jadwal</th>
@@ -1065,21 +1061,26 @@ export function RecurringExpensesWorkspace({
             </tr>
           </thead>
           <tbody>
-            {runsTable.paginatedItems.map((run) => (
+            {runsTable.paginatedItems.map((run) => {
+              const invStatus = run.billing_document?.status || run.run_status;
+              return (
               <tr key={run.id} className="border-t">
-                <td className="p-3">{String(run.scheduled_date ?? "").slice(0, 10)}</td>
-                <td className="p-3 font-mono">
+                <td className="p-3 cell-muted">{String(run.scheduled_date ?? "").slice(0, 10)}</td>
+                <td className="p-3 font-medium">
                   {run.billing_document?.invoice_number || run.id}
                 </td>
                 <td className="p-3">
                   {formatMoney(run.billing_document?.total_amount ?? 0)}
                 </td>
                 <td className="p-3">
-                  {run.billing_document?.status || run.run_status}
+                  <span className={`status-label ${invStatus === "POSTED" || invStatus === "PAID" ? "is-ok" : "is-idle"}`}>
+                    {invStatus}
+                  </span>
                 </td>
-                <td className="p-3">Review di Tagihan Vendor</td>
+                <td className="p-3 cell-muted">Tinjau di Tagihan Vendor</td>
               </tr>
-            ))}
+              );
+            })}
             {!runsTable.paginatedItems.length && (
               <tr>
                 <td colSpan={5} className="p-8 text-center text-slate-500">
@@ -1089,6 +1090,7 @@ export function RecurringExpensesWorkspace({
             )}
           </tbody>
         </table>
+        </div>
         <div className="px-4 pb-3">
           <TablePagination
             page={runsTable.page}
@@ -1101,8 +1103,8 @@ export function RecurringExpensesWorkspace({
         </div>
       </section>
 
-      <p className="text-[10px] text-slate-500">
-        Generate idempoten per aturan dan periode; menekan tombol kembali tidak membuat invoice
+      <p className="cell-muted text-[10px]">
+        Pembuatan tagihan bersifat idempoten per aturan dan periode; menekan tombol kembali tidak membuat invoice
         duplikat. Aturan tidak melakukan pembayaran otomatis.
       </p>
     </div>

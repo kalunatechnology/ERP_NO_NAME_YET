@@ -710,27 +710,26 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
   };
 
   return (
-    <div className="flex flex-col gap-5">
-      <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-2xs">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-xl font-black text-[#0F172A]">
-              <CircleDollarSign className="text-[#163D64]" size={24} /> Budgetary Control
-            </div>
+    <div className="finance-scope flex flex-col gap-5">
+      <section className="fin-card p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="page-title flex items-center gap-2">
+              <CircleDollarSign className="text-[#163D64] shrink-0" size={22} /> Kontrol Anggaran
+            </h2>
             <p className="mt-1 max-w-3xl text-xs leading-5 text-[#6B7280]">
-              Rencanakan pagu per cost center dan akun beban; kendalikan commitment, realisasi
-              accrual, revisi, transfer, dan audit ledger.
+              Rencanakan pagu per pusat biaya dan akun beban; kendalikan komitmen, realisasi akrual, revisi, transfer, dan audit buku besar.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <select
-              aria-label="Tahun fiskal Budgeting"
+              aria-label="Tahun fiskal anggaran"
               value={yearId}
               onChange={(event) => {
                 setYearId(event.target.value);
                 void load(event.target.value);
               }}
-              className="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 text-xs font-bold"
+              className="rounded-full border border-[#E2E8F0] bg-white px-3.5 py-2 text-xs font-semibold text-[#0F172A]"
             >
               <option value="">Semua tahun fiskal</option>
               {options.fiscal_years.map((year) => (
@@ -742,9 +741,9 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
             <button
               type="button"
               onClick={exportOverviewWorkbook}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 text-xs font-bold text-[#163D64] hover:bg-slate-50"
+              className="btn-outline-soft inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold"
             >
-              <Download size={14} /> Export .xlsx
+              <Download size={14} /> Ekspor .xlsx
             </button>
             {canOperate && (
               <button
@@ -764,7 +763,7 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
                   });
                   setShowPlanForm(true);
                 }}
-                className="inline-flex items-center gap-2 rounded-xl bg-[#163D64] px-4 py-2 text-xs font-bold text-white hover:bg-[#163D64]"
+                className="btn-final inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold"
               >
                 <Plus size={15} /> Rencana baru
               </button>
@@ -773,76 +772,72 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
               type="button"
               onClick={() => void refresh()}
               disabled={loading}
-              className="rounded-xl border border-[#E2E8F0] p-2 text-[#64748B] hover:bg-slate-50"
+              className="btn-outline-soft inline-flex h-9 w-9 items-center justify-center rounded-full"
               aria-label="Muat ulang"
             >
-              <RefreshCw size={16} className={cn(loading && "animate-spin")} />
+              <RefreshCw size={15} className={cn(loading && "animate-spin")} />
             </button>
           </div>
         </div>
-        <div className="mt-5 flex flex-wrap gap-1 border-b border-[#EFEFEF]">
-          {(
-            [
-              ["overview", "Ikhtisar"],
-              ["plans", `Rencana (${plans.length})`],
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#F1F5F9] pt-4">
+          <div role="tablist" aria-label="Bagian kontrol anggaran" className="fin-subtabs">
+            {(
               [
-                "workflow",
-                `Persetujuan (${
-                  queue.plans.length +
-                  queue.revisions.length +
-                  queue.transfers.length +
-                  queue.reservations.length
-                })`,
-              ],
-              ["ledger", "Ledger audit"],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setTab(id)}
-              className={cn(
-                "border-b-2 px-3 py-2 text-xs font-bold",
-                tab === id
-                  ? "border-[#163D64] text-[#163D64]"
-                  : "border-transparent text-[#6B7280] hover:text-[#0F172A]"
-              )}
-            >
-              {label}
-            </button>
-          ))}
+                ["overview", "Ikhtisar"],
+                ["plans", `Rencana (${plans.length})`],
+                [
+                  "workflow",
+                  `Persetujuan (${
+                    queue.plans.length +
+                    queue.revisions.length +
+                    queue.transfers.length +
+                    queue.reservations.length
+                  })`,
+                ],
+                ["ledger", "Ledger audit"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={tab === id}
+                data-active={tab === id}
+                onClick={() => setTab(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-[#64748B]">Lingkup anggaran:</span>
+            <div role="tablist" aria-label="Lingkup anggaran" className="fin-subtabs">
+              {(
+                [
+                  ["PROJECT", "Anggaran Proyek"],
+                  ["COMPANY", "Anggaran Perusahaan / Operasional"],
+                ] as const
+              ).map(([scope, label]) => (
+                <button
+                  key={scope}
+                  type="button"
+                  role="tab"
+                  aria-selected={budgetScope === scope}
+                  data-active={budgetScope === scope}
+                  onClick={() => setBudgetScope(scope)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-2">
-          <span className="px-2 text-[10px] font-bold uppercase tracking-wide text-[#6B7280]">
-            Lingkup anggaran
-          </span>
-          {(
-            [
-              ["PROJECT", "Budget Proyek"],
-              ["COMPANY", "Budget Perusahaan / Operasional"],
-            ] as const
-          ).map(([scope, label]) => (
-            <button
-              key={scope}
-              type="button"
-              onClick={() => setBudgetScope(scope)}
-              className={cn(
-                "rounded-lg px-3 py-2 text-xs font-bold",
-                budgetScope === scope
-                  ? "bg-[#163D64] text-white"
-                  : "bg-white text-[#64748B] hover:bg-blue-50"
-              )}
-            >
-              {label}
-            </button>
-          ))}
-          <span className="ml-auto text-[10px] text-[#6B7280]">
-            {budgetScope === "PROJECT"
-              ? "Alokasi dengan proyek terpilih"
-              : "Alokasi kantor/internal tanpa proyek"}{" "}
-            · ikhtisar & rencana
-          </span>
-        </div>
+        <p className="mt-2 text-xs text-[#6B7280]">
+          {budgetScope === "PROJECT"
+            ? "Alokasi dengan proyek terpilih"
+            : "Alokasi kantor/internal tanpa proyek"}{" "}
+          · ikhtisar &amp; rencana
+        </p>
       </section>
 
       {error && (
@@ -1060,7 +1055,7 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
         <section className="overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-2xs">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#EFEFEF] p-4">
             <div>
-              <h3 className="text-sm font-extrabold text-[#0F172A]">Budget Ledger</h3>
+              <h3 className="text-sm font-extrabold text-[#0F172A]">Ledger Audit Anggaran</h3>
               <p className="mt-1 text-[10px] text-[#6B7280]">
                 Entri posted bersifat append-only; koreksi dicatat dengan reversal.
               </p>

@@ -8,6 +8,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { Eye } from 'lucide-react';
 import api from '@/lib/api/axios';
 import { getUserFacingApiError } from '@/lib/api/error-message';
 
@@ -55,7 +56,7 @@ function DiffViewer({ before, after }: { before: Record<string, unknown>; after:
   return (
     <div className="space-y-1">
       {allKeys.map(key => (
-        <div key={key} className="flex gap-2 text-sm font-mono">
+        <div key={key} className="flex gap-2 text-sm">
           <span className="text-text-secondary min-w-[120px] shrink-0">{key}:</span>
           <span className="text-red-400 line-through opacity-70 truncate max-w-[180px]" title={String(before[key] ?? '—')}>
             {JSON.stringify(before[key] ?? null)}
@@ -113,45 +114,50 @@ export default function AuditTrailWorkspace({ startDate, endDate }: { startDate?
   const totalPages = Math.ceil(total / 25);
 
   return (
-    <div className="space-y-6">
+    <div className="finance-scope space-y-6">
       {/* Header */}
-      <div>
-        <h2 className="page-title">Audit Trail & Governance Log</h2>
-        <p className="text-sm text-text-secondary mt-1 leading-6">
-          Field-level delta logger · Before/After diff viewer · SoD maker-checker signature
-        </p>
+      <div className="fin-card p-5 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="page-title">Jejak Audit & Log Tata Kelola</h2>
+          <p className="text-xs text-[#64748B] mt-1 leading-5">
+            Pencatat perubahan per field · Perbandingan sebelum/sesudah · Tanda tangan maker-checker (pemisahan tugas)
+          </p>
+        </div>
+        <span className="status-label is-idle inline-flex items-center gap-1.5 whitespace-nowrap">
+          <Eye size={13} aria-hidden="true" /> Hanya lihat
+        </span>
       </div>
 
       {loadError && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{loadError}</div>}
 
       {/* Stats */}
       <div className="flex gap-3 items-center text-sm text-text-secondary">
-        <span className="font-semibold text-brand-green">{total.toLocaleString('id-ID')}</span> total event audit tercatat
+        <span className="font-semibold text-brand-green">{total.toLocaleString('id-ID')}</span> total peristiwa audit tercatat
         <span className="ml-auto text-sm">Halaman {page} / {totalPages || 1}</span>
       </div>
 
       {/* Filters */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         {[
-          { placeholder: 'Filter Entity (mis: fin_fiscal_year)', val: filterEntity, set: setFilterEntity },
-          { placeholder: 'Filter Aksi (mis: YEAR_END_CLOSING)', val: filterAction, set: setFilterAction },
-          { placeholder: 'Filter User ID', val: filterUser, set: setFilterUser },
+          { placeholder: 'Filter entitas (mis: fin_fiscal_year)', val: filterEntity, set: setFilterEntity },
+          { placeholder: 'Filter aksi (mis: YEAR_END_CLOSING)', val: filterAction, set: setFilterAction },
+          { placeholder: 'Filter ID pengguna', val: filterUser, set: setFilterUser },
         ].map((f, i) => (
           <input key={i} type="text" value={f.val} onChange={e => { f.set(e.target.value); setPage(1); }}
             placeholder={f.placeholder}
-            className="col-span-1 px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/5 text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-green/40 placeholder:text-text-secondary/70" />
+            className="input col-span-1 text-xs" />
         ))}
         <input type="date" value={filterFrom} onChange={e => { setFilterFrom(e.target.value); setPage(1); }}
-          className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/5 text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-green/40" />
+          className="input text-xs" />
         <input type="date" value={filterTo} onChange={e => { setFilterTo(e.target.value); setPage(1); }}
-          className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/5 text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-green/40" />
+          className="input text-xs" />
       </div>
 
       {/* Events */}
       {loading ? (
-        <div className="text-center py-12 text-text-secondary text-sm animate-pulse">Memuat audit trail...</div>
+        <div className="text-center py-12 text-text-secondary text-sm animate-pulse">Memuat jejak audit...</div>
       ) : events.length === 0 ? (
-        <div className="text-center py-12 text-text-secondary text-sm">Belum ada audit event tercatat.</div>
+        <div className="text-center py-12 text-text-secondary text-sm">Belum ada peristiwa audit tercatat.</div>
       ) : (
         <div className="space-y-2">
           {events.map(event => {
@@ -160,11 +166,11 @@ export default function AuditTrailWorkspace({ startDate, endDate }: { startDate?
             return (
               <div
                 key={event.id}
-                className="bg-white/5 rounded-xl border border-white/10 overflow-hidden transition-all"
+                className="fin-card overflow-hidden transition-all"
               >
                 <button
                   onClick={() => setExpandedId(isExpanded ? null : event.id)}
-                  className="w-full flex items-start gap-3 p-4 text-left hover:bg-white/5 transition-colors"
+                  className="w-full flex items-start gap-3 p-4 text-left hover:bg-slate-50/80 transition-colors"
                 >
                   {/* Timeline Dot */}
                   <div className="mt-1 shrink-0 w-2 h-2 rounded-full bg-brand-green/70" />
@@ -174,9 +180,9 @@ export default function AuditTrailWorkspace({ startDate, endDate }: { startDate?
                       <span className={`px-2.5 py-1 rounded-full text-sm font-semibold ${actionColor(event.event_type)}`}>
                         {event.event_type}
                       </span>
-                      <span className="text-sm font-mono text-text-secondary">{event.entity_name}</span>
+                      <span className="text-sm text-text-secondary">{event.entity_name}</span>
                       {event.entity_id && (
-                        <span className="text-xs font-mono text-text-secondary/70">{event.entity_id.slice(0, 8)}...</span>
+                        <span className="text-xs text-text-secondary/70">{event.entity_id.slice(0, 8)}...</span>
                       )}
                     </div>
                     {description && (
@@ -191,21 +197,21 @@ export default function AuditTrailWorkspace({ startDate, endDate }: { startDate?
                       }) : '—'}
                     </p>
                     {event.user_id && (
-                      <p className="text-xs font-mono text-text-secondary/70 mt-0.5">{event.user_id.slice(0, 8)}...</p>
+                      <p className="text-xs text-text-secondary/70 mt-0.5">{event.user_id.slice(0, 8)}...</p>
                     )}
-                    <span className="text-sm font-medium text-brand-green mt-1 block">{isExpanded ? '▲ Sembunyikan' : '▼ Lihat Diff'}</span>
+                    <span className="text-sm font-medium text-brand-green mt-1 block">{isExpanded ? '▲ Sembunyikan' : '▼ Lihat perubahan'}</span>
                   </div>
                 </button>
 
                 {/* Expanded: JSON Diff Viewer */}
                 {isExpanded && (
-                  <div className="border-t border-white/10 px-6 py-4 bg-black/20">
+                  <div className="border-t border-[#E2E8F0] px-6 py-4 bg-[#F8FAFF]">
                     <p className="text-sm font-bold text-text-secondary mb-2">Perubahan field (sebelum → sesudah)</p>
                     <DiffViewer before={event.before_data ?? {}} after={event.after_data ?? {}} />
-                    <div className="mt-3 pt-3 border-t border-white/10 grid grid-cols-2 gap-4">
+                    <div className="mt-3 pt-3 border-t border-[#E2E8F0] grid grid-cols-2 gap-4">
                       <div>
-                        <p className="text-sm font-semibold text-text-secondary mb-1">Before State:</p>
-                        <pre className="text-[13px] font-mono text-red-300/80 bg-red-500/5 rounded p-2 overflow-auto max-h-28">
+                        <p className="text-sm font-semibold text-text-secondary mb-1">Kondisi sebelum:</p>
+                        <pre className="text-[13px] text-red-300/80 bg-red-500/5 rounded p-2 overflow-auto max-h-28">
                           {JSON.stringify(
                             Object.fromEntries(Object.entries(event.before_data ?? {}).filter(([k]) => k !== '_description')),
                             null, 2
@@ -213,8 +219,8 @@ export default function AuditTrailWorkspace({ startDate, endDate }: { startDate?
                         </pre>
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-text-secondary mb-1">After State:</p>
-                        <pre className="text-[13px] font-mono text-brand-primary-soft/80 bg-brand-light-green0/5 rounded p-2 overflow-auto max-h-28">
+                        <p className="text-sm font-semibold text-text-secondary mb-1">Kondisi sesudah:</p>
+                        <pre className="text-[13px] text-brand-primary-soft/80 bg-brand-light-green0/5 rounded p-2 overflow-auto max-h-28">
                           {JSON.stringify(
                             Object.fromEntries(Object.entries(event.after_data ?? {}).filter(([k]) => k !== '_description')),
                             null, 2
@@ -234,15 +240,15 @@ export default function AuditTrailWorkspace({ startDate, endDate }: { startDate?
       {totalPages > 1 && (
         <div className="flex justify-center gap-2 pt-2">
           <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
-            className="px-3 py-2 text-sm rounded-lg bg-white/10 text-text-secondary hover:bg-white/15 disabled:opacity-40 transition-colors">
-            ← Prev
+            className="btn-outline-soft rounded-full px-3.5 py-1.5 text-xs font-semibold disabled:opacity-40">
+            ← Sebelumnya
           </button>
           <span className="px-3 py-2 text-sm text-text-secondary">
             {page} / {totalPages}
           </span>
           <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
-            className="px-3 py-2 text-sm rounded-lg bg-white/10 text-text-secondary hover:bg-white/15 disabled:opacity-40 transition-colors">
-            Next →
+            className="btn-outline-soft rounded-full px-3.5 py-1.5 text-xs font-semibold disabled:opacity-40">
+            Berikutnya →
           </button>
         </div>
       )}

@@ -82,6 +82,8 @@ interface TableSearchBarProps {
   totalItems: number;
   filteredCount: number;
   className?: string;
+  /** Tampilkan tombol "Cari" terpisah. Default true; Finance mematikannya (cukup tekan Enter / ketik langsung). */
+  showSubmitButton?: boolean;
 }
 
 export function TableSearchBar({
@@ -93,6 +95,7 @@ export function TableSearchBar({
   totalItems,
   filteredCount,
   className,
+  showSubmitButton = true,
 }: TableSearchBarProps) {
   return (
     <form
@@ -122,6 +125,7 @@ export function TableSearchBar({
           </button>
         )}
       </div>
+      {showSubmitButton && (
       <button
         type="submit"
         className="inline-flex items-center gap-1.5 rounded-lg border border-[#DCE3EB] bg-slate-50 px-3 py-1.5 text-xs font-semibold text-[#163D64] transition-colors hover:bg-blue-50 hover:text-[#0876CD]"
@@ -129,6 +133,7 @@ export function TableSearchBar({
         <Search size={13} />
         Cari
       </button>
+      )}
       {query && (
         <button
           type="button"
@@ -165,7 +170,7 @@ export function TablePagination({
   totalItems,
   onPageChange,
   onPageSizeChange,
-  pageSizeOptions = [10, 25, 50, 100],
+  pageSizeOptions = [10, 20, 30],
   className,
 }: TablePaginationProps) {
   if (totalItems === 0) return null;

@@ -13,6 +13,7 @@ import { getUserFacingApiError } from '@/lib/api/error-message';
 import { useAuth } from '@/contexts/AuthContext';
 import { canPerform } from '@/lib/access/capability-contract';
 import { Modal } from '@/components/ui/Modal';
+import { TablePagination, TableSearchBar, useTablePagination } from '@/components/ui/TablePagination';
 
 // =============================================================================
 // PERIOD CLOSING WORKSPACE
@@ -71,6 +72,10 @@ const statusColor = (s: string) => {
   return m[s] ?? 'bg-amber-50 text-amber-700 border border-amber-200';
 };
 
+const STATUS_TEXT: Record<string, string> = { OPEN: 'Terbuka', CLOSED: 'Ditutup', LOCKED: 'Terkunci', PENDING_APPROVAL: 'Menunggu Persetujuan', APPROVED: 'Disetujui', COMPLETED: 'Selesai', REJECTED: 'Ditolak' };
+const statusText = (s: string) => STATUS_TEXT[s] ?? s;
+const statusLabelClass = (s: string) => (['OPEN', 'APPROVED', 'COMPLETED'].includes(s) ? 'is-ok' : ['CLOSED', 'LOCKED'].includes(s) ? 'is-idle' : 'is-warn');
+const periodMatcher = (p: FiscalPeriod, q: string) => `periode ${p.period_number ?? ''} kuartal ${Math.ceil(Number(p.period_number || 1) / 3)} ${p.status} ${statusText(p.status)} ${p.start_date ?? ''} ${p.end_date ?? ''}`.toLowerCase().includes(q);
 const formatRp = (v: number) => `Rp ${v.toLocaleString('id-ID')}`;
 const formatDate = (d?: string | null) => d ? new Date(d).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 const hasEnded = (d?: string | null) => Boolean(d && new Date(d).getTime() <= Date.now());
@@ -116,6 +121,7 @@ export default function PeriodClosingWorkspace() {
   const [closingRequests, setClosingRequests] = useState<PeriodClosingRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [periodStatusFilter, setPeriodStatusFilter] = useState<'ALL' | 'OPEN' | 'CLOSED'>('ALL');
   const [activeSection, setActiveSection] = useState<'periods' | 'requests' | 'yearEnd' | 'rollback'>('periods');
   const currentYear = new Date().getFullYear();
   const [selectedFiscalYearId, setSelectedFiscalYearId] = useState('');
@@ -351,6 +357,8 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
   });
 
   const visiblePeriods = selectedFiscalYearId ? periods.filter((period) => period.fiscal_year_id === selectedFiscalYearId) : periods;
+  const statusFilteredPeriods = periodStatusFilter === 'ALL' ? visiblePeriods : visiblePeriods.filter(p => (periodStatusFilter === 'OPEN' ? p.status === 'OPEN' : p.status !== 'OPEN'));
+  const periodPage = useTablePagination(statusFilteredPeriods, periodMatcher, 10);
   const openPeriods  = visiblePeriods.filter(p => p.status === 'OPEN');
   const closedPeriods = visiblePeriods.filter(p => p.status !== 'OPEN');
   const closedYears  = fiscalYears.filter(y => y.status === 'CLOSED');
@@ -365,7 +373,7 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
   ];
 
   return (
-    <div className="space-y-8">
+    <div className="finance-scope space-y-8">
       {/* Toast */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium max-w-sm
@@ -378,27 +386,27 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
       <div>
         <h2 className="page-title">Tutup Buku & Manajemen Periode</h2>
         <p className="text-xs text-text-secondary mt-0.5">
-          Period Guard · Checklist Validator · Year-End Closing · Storno Rollback
+          Pengaman periode · Validasi checklist · Tutup buku tahunan · Pembalikan storno
         </p>
       </div>
 
       {/* Stats Bar */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-4 text-center shadow-2xs">
-          <p className="text-3xl font-black text-emerald-700">{openPeriods.length}</p>
-          <p className="text-xs text-slate-600 mt-1 font-medium">Periode Aktif (OPEN)</p>
+        <div className="kpi-card text-center" data-accent="emerald">
+          <p className="text-3xl font-bold text-emerald-700">{openPeriods.length}</p>
+          <p className="text-xs text-slate-600 mt-1 font-medium">Periode Aktif</p>
         </div>
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center shadow-2xs">
-          <p className="text-3xl font-black text-slate-600">{closedPeriods.length}</p>
+        <div className="kpi-card text-center" data-accent="navy">
+          <p className="text-3xl font-bold text-slate-600">{closedPeriods.length}</p>
           <p className="text-xs text-slate-600 mt-1 font-medium">Periode Ditutup</p>
         </div>
-        <div className="bg-blue-50/70 border border-blue-200/80 rounded-xl p-4 text-center shadow-2xs">
-          <p className="text-3xl font-black text-[#203D91]">{fiscalYears.length}</p>
+        <div className="kpi-card text-center" data-accent="blue">
+          <p className="text-3xl font-bold text-[#203D91]">{fiscalYears.length}</p>
           <p className="text-xs text-slate-600 mt-1 font-medium">Tahun Fiskal</p>
         </div>
       </div>
 
-      <div role="tablist" aria-label="Bagian tutup buku" className="flex items-end gap-1 overflow-x-auto border-b border-slate-200">
+      <div role="tablist" aria-label="Bagian tutup buku" className="fin-subtabs">
         {sectionTabs.map((tab) => {
           const selected = activeSection === tab.id;
           return <button
@@ -409,10 +417,10 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
             role="tab"
             aria-selected={selected}
             onClick={() => setActiveSection(tab.id)}
-            className={`-mb-px inline-flex shrink-0 items-center gap-2 rounded-t-xl border px-4 py-2.5 text-xs font-semibold transition-colors ${selected ? 'border-slate-200 border-b-white bg-white text-[#203D91] shadow-sm' : 'border-transparent bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+            data-active={selected}
           >
             {tab.label}
-            {tab.count !== undefined && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${selected ? 'bg-blue-50 text-[#203D91]' : 'bg-slate-200 text-slate-600'}`}>{tab.count}</span>}
+            {tab.count !== undefined && <span className={`ml-1 text-[11px] font-semibold opacity-80`}>{tab.count}</span>}
           </button>;
         })}
       </div>
@@ -432,7 +440,7 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
                 {!fiscalYears.length && <option value="">Belum dikonfigurasi</option>}
               </select>
             </label>
-            {canOperateFinance && <div className="flex gap-2"><button type="button" disabled={!selectedFiscalYearId || fiscalYears.find((year) => year.id === selectedFiscalYearId)?.status !== 'OPEN'} onClick={() => openCalendarEditor(selectedFiscalYearId)} title="Kalender hanya dapat diubah jika tahun buku masih OPEN dan belum ditutup." className="rounded-lg border border-[#203D91] px-4 py-2 text-sm font-semibold text-[#203D91] hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50">Ubah Kalender</button><button type="button" onClick={() => openCalendarEditor()} className="rounded-lg bg-[#203D91] px-4 py-2 text-sm font-semibold text-white hover:bg-[#182E6E]">Tahun Baru</button></div>}
+            {canOperateFinance && <div className="flex gap-2"><button type="button" disabled={!selectedFiscalYearId || fiscalYears.find((year) => year.id === selectedFiscalYearId)?.status !== 'OPEN'} onClick={() => openCalendarEditor(selectedFiscalYearId)} title="Kalender hanya dapat diubah jika tahun buku masih OPEN dan belum ditutup." className="btn-outline-soft rounded-full px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50">Ubah Kalender</button><button type="button" onClick={() => openCalendarEditor()} className="btn-final rounded-full px-4 py-2 text-sm font-semibold">Tahun Baru</button></div>}
           </div>
         </div>
         {loading ? (
@@ -440,9 +448,18 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
         ) : !selectedFiscalYearId || visiblePeriods.length === 0 ? (
           <div className="text-center py-8 space-y-3">
             <p className="text-slate-500 text-sm">Belum ada kalender untuk perusahaan ini. Buat tahun buku dan atur batas tanggal setiap periode sebelum transaksi diposting.</p>
-            {canOperateFinance && <button type="button" onClick={() => openCalendarEditor()} className="rounded-lg bg-[#203D91] px-4 py-2 text-sm font-semibold text-white hover:bg-[#182E6E]">Buat Kalender Periode</button>}
+            {canOperateFinance && <button type="button" onClick={() => openCalendarEditor()} className="btn-final rounded-full px-4 py-2 text-sm font-semibold">Buat Kalender Periode</button>}
           </div>
         ) : (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <TableSearchBar showSubmitButton={false} className="flex-1" query={periodPage.query} onQueryChange={periodPage.setQuery} onSearchSubmit={periodPage.applySearch} onReset={periodPage.resetSearch} placeholder="Cari periode, kuartal, atau status..." totalItems={statusFilteredPeriods.length} filteredCount={periodPage.totalItems} />
+              <select value={periodStatusFilter} onChange={(event) => { setPeriodStatusFilter(event.target.value as 'ALL' | 'OPEN' | 'CLOSED'); periodPage.setPage(1); }} aria-label="Filter status periode" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                <option value="ALL">Semua status</option>
+                <option value="OPEN">Terbuka</option>
+                <option value="CLOSED">Ditutup</option>
+              </select>
+            </div>
           <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-2xs">
             <table className="w-full text-sm">
               <thead>
@@ -453,7 +470,7 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {visiblePeriods.map(p => {
+                {periodPage.paginatedItems.map(p => {
                   const activeRequest = closingRequests.find((request) =>
                     request.closing_type === 'MONTHLY'
                     && request.fiscal_period_id === p.id
@@ -461,13 +478,13 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
                   );
                   return (
                   <tr key={p.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="py-2.5 px-3 text-slate-500 font-mono text-xs">{p.period_number ?? '—'}</td>
+                    <td className="py-2.5 px-3 text-slate-500 text-xs">{p.period_number ?? '—'}</td>
                     <td className="py-2.5 px-3 text-slate-900 font-semibold">Periode #{p.period_number ?? '—'} <span className="ml-1 text-xs font-medium text-slate-500">Kuartal {Math.ceil(Number(p.period_number || 1) / 3)}</span></td>
                     <td className="py-2.5 px-3 text-slate-600 text-xs">{formatDate(p.start_date)}</td>
                     <td className="py-2.5 px-3 text-slate-600 text-xs">{formatDate(p.end_date)}</td>
                     <td className="py-2.5 px-3">
-                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${statusColor(p.status)}`}>
-                        {p.status}
+                      <span className={`status-label ${statusLabelClass(p.status)}`}>
+                        {statusText(p.status)}
                       </span>
                     </td>
                     <td className="py-2.5 px-3">
@@ -476,7 +493,7 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
                           <button
                             type="button"
                             onClick={() => executeClosing(activeRequest.id)}
-                            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#203D91] text-white hover:bg-[#182E6E] transition-all shadow-2xs"
+                            className="btn-final rounded-full px-3 py-1.5 text-xs font-semibold"
                           >
                             Jalankan Penutupan
                           </button>
@@ -485,7 +502,7 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
                             <button
                               type="button"
                               onClick={() => approveClosing(activeRequest.id)}
-                              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-600 hover:text-white transition-all shadow-2xs"
+                              className="px-3.5 py-1.5 text-xs font-semibold rounded-full bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-600 hover:text-white transition-all shadow-2xs"
                             >
                               Setujui Penutupan
                             </button>
@@ -493,7 +510,7 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
                             <button
                               type="button"
                               onClick={() => setActiveSection('requests')}
-                              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 transition-all"
+                              className="px-3.5 py-1.5 text-xs font-semibold rounded-full bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 transition-all"
                               title="Permintaan sudah diajukan dan menunggu persetujuan Finance lain."
                             >
                               Menunggu Persetujuan
@@ -505,7 +522,7 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
                             onClick={() => closePeriod(p.id)}
                             disabled={!hasEnded(p.end_date) || (closingLoading && closingPeriodId === p.id)}
                             title={!hasEnded(p.end_date) ? 'Penutupan tersedia setelah periode berakhir.' : undefined}
-                            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#E7F2FF] text-[#203D91] border border-[#BAE6FD] hover:bg-[#203D91] hover:text-white transition-all shadow-2xs disabled:opacity-50"
+                            className="px-3.5 py-1.5 text-xs font-semibold rounded-full bg-[#E7F2FF] text-[#203D91] border border-[#BAE6FD] hover:bg-[#203D91] hover:text-white transition-all shadow-2xs disabled:opacity-50"
                           >
                             {closingLoading && closingPeriodId === p.id ? 'Memproses…' : hasEnded(p.end_date) ? 'Ajukan Penutupan' : 'Menunggu Akhir Periode'}
                           </button>
@@ -513,7 +530,7 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
                         {p.status === 'CLOSED' && (
                           <button
                             onClick={() => reopenPeriod(p.id)}
-                            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-600 hover:text-white transition-all shadow-2xs"
+                            className="px-3.5 py-1.5 text-xs font-semibold rounded-full bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-600 hover:text-white transition-all shadow-2xs"
                           >
                             Buka kembali
                           </button>
@@ -525,6 +542,8 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
                 })}
               </tbody>
             </table>
+          </div>
+          <TablePagination page={periodPage.page} totalPages={periodPage.totalPages} pageSize={periodPage.pageSize} totalItems={periodPage.totalItems} onPageChange={periodPage.setPage} onPageSizeChange={periodPage.setPageSize} pageSizeOptions={[10, 20, 30]} />
           </div>
         )}
       </div>}
@@ -547,13 +566,13 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
                     <td className="py-2.5 px-3 text-xs text-slate-600">{formatDate(request.created_at)}</td>
                     <td className="py-2.5 px-3 text-xs">{request.closing_type === 'YEAR_END' ? 'Tahunan' : 'Bulanan'}</td>
                     <td className="py-2.5 px-3 text-xs">{period ? `Periode #${period.period_number}` : year?.fiscal_year_name ?? '—'}</td>
-                    <td className="py-2.5 px-3"><span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${statusColor(request.status)}`}>{request.status}</span></td>
+                    <td className="py-2.5 px-3"><span className={`status-label ${statusLabelClass(request.status)}`}>{statusText(request.status)}</span></td>
                     <td className="py-2.5 px-3"><div className="flex gap-1.5">
                       {request.status === 'PENDING_APPROVAL' && canOperateFinance && (
-                        <button onClick={() => approveClosing(request.id)} disabled={request.requested_by === user?.id} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#E7F2FF] text-[#203D91] border border-[#BAE6FD] disabled:opacity-50" title={request.requested_by === user?.id ? 'Pemohon tidak dapat menyetujui permintaannya sendiri.' : undefined}>Setujui</button>
+                        <button onClick={() => approveClosing(request.id)} disabled={request.requested_by === user?.id} className="px-3.5 py-1.5 text-xs font-semibold rounded-full bg-[#E7F2FF] text-[#203D91] border border-[#BAE6FD] disabled:opacity-50" title={request.requested_by === user?.id ? 'Pemohon tidak dapat menyetujui permintaannya sendiri.' : undefined}>Setujui</button>
                       )}
                       {request.status === 'APPROVED' && canOperateFinance && (
-                        <button onClick={() => executeClosing(request.id)} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#203D91] text-white">Jalankan Penutupan</button>
+                        <button onClick={() => executeClosing(request.id)} className="btn-final rounded-full px-3 py-1.5 text-xs font-semibold">Jalankan Penutupan</button>
                       )}
                       {request.status === 'COMPLETED' && <span className="text-xs text-slate-500">Selesai</span>}
                     </div></td>
@@ -569,7 +588,7 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
       {activeSection === 'yearEnd' && <div role="tabpanel" id="closing-panel-yearEnd" aria-labelledby="closing-tab-yearEnd" className="bg-white rounded-2xl border border-slate-200 p-6 shadow-2xs">
         <h3 className="section-title mb-1">Tutup Buku Tahunan</h3>
         <p className="text-xs text-slate-500 mb-4">
-          Zero-out akun nominal (4xxx, 5xxx, 6xxx) → selisih laba/rugi masuk ke <span className="font-mono text-[#203D91] font-semibold">3200 Laba Ditahan</span>
+          Nolkan akun nominal (4xxx, 5xxx, 6xxx) → selisih laba/rugi masuk ke <span className="text-[#203D91] font-semibold">3200 Laba Ditahan</span>
         </p>
 
         <div className="flex gap-3 items-center flex-wrap">
@@ -587,7 +606,7 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
             <button
               type="button"
               onClick={() => executeClosing(activeYearEndRequest.id)}
-              className="px-4 py-2 text-sm font-semibold rounded-lg bg-[#203D91] text-white hover:bg-[#182E6E] transition-colors shadow-2xs"
+              className="btn-final rounded-full px-4 py-2 text-sm font-semibold"
             >
               Jalankan Tutup Buku Tahunan
             </button>
@@ -596,7 +615,7 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
               <button
                 type="button"
                 onClick={() => approveClosing(activeYearEndRequest.id)}
-                className="px-4 py-2 text-sm font-semibold rounded-lg bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-600 hover:text-white transition-colors"
+                className="px-4 py-2 text-sm font-semibold rounded-full bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-600 hover:text-white transition-colors"
               >
                 Setujui Tutup Buku Tahunan
               </button>
@@ -604,7 +623,7 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
               <button
                 type="button"
                 onClick={() => setActiveSection('requests')}
-                className="px-4 py-2 text-sm font-semibold rounded-lg bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 transition-colors"
+                className="px-4 py-2 text-sm font-semibold rounded-full bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 transition-colors"
                 title="Permintaan sudah diajukan dan menunggu persetujuan Finance lain."
               >
                 Menunggu Persetujuan
@@ -615,7 +634,7 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
               type="button"
               onClick={executeYearEnd}
               disabled={!selectedYearId || yearEndLoading}
-              className="px-4 py-2 text-sm font-semibold rounded-lg bg-[#203D91] text-white hover:bg-[#182E6E] transition-colors shadow-2xs disabled:opacity-50"
+              className="btn-final rounded-full px-4 py-2 text-sm font-semibold disabled:opacity-50"
             >
               {yearEndLoading ? 'Memproses…' : 'Ajukan Tutup Buku Tahunan'}
             </button>
@@ -637,13 +656,13 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
               </div>
               <div>
                 <p className="text-xs text-slate-500">Laba / Rugi Bersih</p>
-                <p className={`text-sm font-black ${yearEndResult.is_profit ? 'text-emerald-700' : 'text-red-600'}`}>
+                <p className={`text-sm font-bold ${yearEndResult.is_profit ? 'text-emerald-700' : 'text-red-600'}`}>
                   {yearEndResult.is_profit ? '+' : '-'}{formatRp(Math.abs(yearEndResult.net_profit_loss))}
                 </p>
               </div>
             </div>
             <p className="text-xs text-slate-500 mt-2 text-center">
-              Jurnal Penutup ID: <span className="font-mono text-xs text-slate-700">{yearEndResult.closing_entry_id.slice(0, 8)}...</span>
+              Jurnal Penutup ID: <span className="text-xs text-slate-700">{yearEndResult.closing_entry_id.slice(0, 8)}...</span>
               · {yearEndResult.nominal_accounts_closed} akun nominal ditutup
             </p>
           </div>
@@ -656,7 +675,7 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
           <h3 className="text-sm font-bold text-red-700 mb-1">Rollback Tutup Buku Tahunan (Storno)</h3>
           <p className="text-xs text-slate-500 mb-4">
             Hanya Superadmin / Direktur. Menerbitkan jurnal pembalik atas jurnal penutup tahunan.
-            Riwayat data historis tetap tersimpan (Immutable Audit Trail).
+            Riwayat data historis tetap tersimpan (jejak audit permanen).
           </p>
           <div className="flex gap-3 flex-wrap">
             <select
@@ -664,9 +683,9 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
               onChange={e => setRollbackYearId(e.target.value || null)}
               className="px-3 py-2 text-sm rounded-lg border border-red-200 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500/30"
             >
-              <option value="">— Pilih Tahun yang Akan Di-rollback —</option>
+              <option value="">— Pilih Tahun yang Akan Dibalik —</option>
               {closedYears.map(y => (
-                <option key={y.id} value={y.id}>{y.fiscal_year_name} (CLOSED)</option>
+                <option key={y.id} value={y.id}>{y.fiscal_year_name} (Ditutup)</option>
               ))}
             </select>
           </div>
@@ -719,7 +738,7 @@ const executeYearEnd = async () => runOnce(`execute-year-end:${selectedYearId}`,
           </div>
           <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
             <button type="button" disabled={calendarSaving} onClick={() => setCalendarModalOpen(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600">Batal</button>
-            <button type="submit" disabled={calendarSaving} className="rounded-lg bg-[#203D91] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{calendarSaving ? 'Menyimpan…' : calendarEditingYearId ? 'Simpan Perubahan' : 'Simpan Kalender'}</button>
+            <button type="submit" disabled={calendarSaving} className="btn-final rounded-full px-4 py-2 text-sm font-semibold disabled:opacity-50">{calendarSaving ? 'Menyimpan…' : calendarEditingYearId ? 'Simpan Perubahan' : 'Simpan Kalender'}</button>
           </div>
         </form>
       </Modal>

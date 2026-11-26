@@ -1,0 +1,126 @@
+/*
+ * Finance visual standard (revisi desain Finance — Marka_ERP.pdf).
+ * Semua aturan berlaku di bawah wrapper `.finance-scope` sehingga modul lain tidak terpengaruh.
+ */
+.finance-scope,
+.finance-scope button,
+.finance-scope input,
+.finance-scope select,
+.finance-scope textarea,
+.finance-scope table {
+  font-family: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif !important;
+}
+
+/* Angka tidak boleh "dempet": pakai angka tabular + sedikit letter-spacing. */
+.finance-scope .tabular-nums,
+.finance-scope .font-mono,
+.finance-scope .data-table td {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.005em;
+}
+/* Angka/ID yang sebelumnya monospace tetap memakai Plus Jakarta Sans. */
+.finance-scope .font-mono { font-family: inherit !important; }
+
+/* Teks tidak perlu terlalu bold: turunkan font-black/extrabold menjadi semibold/bold. */
+.finance-scope .font-black { font-weight: 700; }
+.finance-scope .font-extrabold { font-weight: 700; }
+
+/* ── Kartu seragam ───────────────────────────────── */
+.finance-scope .fin-card {
+  border-radius: 16px;
+  border: 1px solid #E2E8F0;
+  background: #fff;
+  padding: 16px 18px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.finance-scope .kpi-card {
+  border-radius: 16px;
+  padding: 16px 18px;
+  border: 1px solid #E2E8F0;
+  border-left-width: 4px;
+  border-left-color: var(--fin-accent, #0876CD);
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.finance-scope .kpi-card[data-accent="blue"]    { --fin-accent: #0876CD; }
+.finance-scope .kpi-card[data-accent="navy"]    { --fin-accent: #163D64; }
+.finance-scope .kpi-card[data-accent="amber"]   { --fin-accent: #D97706; }
+.finance-scope .kpi-card[data-accent="emerald"] { --fin-accent: #059669; }
+.finance-scope .kpi-card[data-accent="purple"]  { --fin-accent: #7C3AED; }
+.finance-scope .kpi-card[data-accent="rose"]    { --fin-accent: #E11D48; }
+
+/* ── Warna nominal: hijau untuk plus, merah untuk minus ── */
+.finance-scope .amount-pos { color: #059669; font-weight: 600; }
+.finance-scope .amount-neg { color: #DC2626; font-weight: 600; }
+
+/* ── Tabel: hierarki data (kolom less-priority lebih redup) ── */
+.finance-scope .data-table th {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.finance-scope .data-table td { font-weight: 500; }
+.finance-scope .cell-muted { color: #94A3B8; font-weight: 400; font-size: 11px; }
+.finance-scope .data-table th.col-center,
+.finance-scope .data-table td.col-center { text-align: center; }
+
+/* ── Sub-tab / pemilih subhalaman: satu format pill ── */
+.finance-scope .fin-subtabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  border: 1px solid #E2E8F0;
+  background: #F8FAFC;
+}
+.finance-scope .fin-subtabs > button,
+.finance-scope .fin-subtabs .tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 10px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  background: transparent;
+  white-space: nowrap;
+}
+.finance-scope .fin-subtabs > button:hover { background: #fff; color: #0F172A; }
+.finance-scope .fin-subtabs > button[data-active="true"],
+.finance-scope .fin-subtabs .tab-btn.active {
+  background: #163D64;
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+}
+
+/* ── Hierarki tombol ─────────────────────────────── */
+/* Primer final = paling gelap (aksi terakhir dalam sebuah alur). */
+.finance-scope .btn-final {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  border-radius: 9999px; padding: 8px 18px; font-size: 12px; font-weight: 700;
+  background: #0B2540; color: #fff; border: 1px solid #0B2540;
+}
+.finance-scope .btn-final:hover:not(:disabled) { background: #163D64; }
+/* Aksi sekunder seragam: outline pill. */
+.finance-scope .btn-outline-soft {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border-radius: 9999px; padding: 7px 14px; font-size: 12px; font-weight: 600;
+  background: #fff; color: #163D64; border: 1px solid #BFD3E6;
+}
+.finance-scope .btn-outline-soft:hover:not(:disabled) { background: #EFF6FF; }
+/* Label status (bukan tombol): tanpa bingkai tombol, tidak ada hover/cursor. */
+.finance-scope .status-label {
+  display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+  font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px;
+  cursor: default; user-select: none;
+}
+.finance-scope .status-label.is-ok   { background: #ECFDF5; color: #047857; }
+.finance-scope .status-label.is-warn { background: #FFFBEB; color: #B45309; }
+.finance-scope .status-label.is-idle { background: #F1F5F9; color: #64748B; }
+
+/* Baris sudah dibukukan: redup agar mudah dibedakan dari yang perlu tindakan. */
+.finance-scope tr.row-settled td { opacity: 0.62; }
+.finance-scope tr.row-settled:hover td { opacity: 1; }
