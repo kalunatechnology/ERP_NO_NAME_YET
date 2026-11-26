@@ -206,6 +206,20 @@ export class HrService {
     if (!timePattern.test(startTime) || !timePattern.test(endTime) || endTime <= startTime) {
       throw new ValidationError('Jam mulai dan selesai lembur wajib valid, dan jam selesai harus setelah jam mulai.');
     }
+    const duplicate = await prisma.hr_overtime_request.findFirst({
+      where: {
+        company_id: companyId,
+        user_id: userId,
+        work_date: workDate,
+        start_time: startTime,
+        end_time: endTime,
+        status: { not: 'REJECTED' },
+      },
+      select: { id: true, status: true },
+    });
+    if (duplicate) {
+      throw new ConflictError(`Pengajuan lembur untuk tanggal dan jam tersebut sudah ada (${duplicate.status}). Periksa Riwayat Lembur Saya.`);
+    }
     const { rate } = await this.resolveOvertimeHourlyRate(companyId, emp);
     const amount = Math.round(rate * hours * 100) / 100;
     const created = await prisma.hr_overtime_request.create({
@@ -455,7 +469,7 @@ export class HrService {
   private static async resolveOvertimePrice(companyId: string, row: any) {
     const storedRate = Number(row.overtime_rate ?? 0);
     const storedAmount = Number(row.overtime_amount ?? 0);
-    if (storedRate > 0 && storedAmount > 0) return { rate: storedRate, amount: storedAmount };
+    if (storedRate > 0 && storedAmount > 0) return { overtime_rate: storedRate, overtime_amount: storedAmount };
     const employee = await prisma.master_employee.findFirst({
       where: { id: row.employee_id, company_id: companyId, employment_status: 'ACTIVE' },
     });
@@ -465,7 +479,7 @@ export class HrService {
     if (rate <= 0 || amount <= 0) {
       throw new ValidationError('Tarif lembur belum tersedia. Lengkapi tarif umum atau tarif khusus pada profil karyawan sebelum memproses lembur ini.');
     }
-    return { rate, amount };
+    return { overtime_rate: rate, overtime_amount: amount };
   }
 
   /** Tier 2: Verifikasi operasional oleh Anak Buah HR. */

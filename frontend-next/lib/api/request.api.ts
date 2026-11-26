@@ -118,13 +118,22 @@ export const requestApi = {
   listNonMeetingRequests: async (page = 1) => {
     type RequestFeed = { total: number; rows: NonMeetingRequest[] };
     type RequestFeedResponse = RequestFeed | { success: true; data: RequestFeed };
-    const [leaveResponse, otherResponse] = await Promise.all([
-      api.get<RequestFeedResponse>("/api/v1/requests", { params: { type: 'LEAVE', page, pageSize: 50 } }),
-      api.get<RequestFeedResponse>("/api/v1/requests", { params: { type: 'OTHER', page, pageSize: 50 } }),
-    ]);
     const unwrap = (payload: RequestFeedResponse): RequestFeed => 'data' in payload ? payload.data : payload;
-    const leave = unwrap(leaveResponse.data);
-    const other = unwrap(otherResponse.data);
+    const loadAll = async (type: 'LEAVE' | 'OTHER') => {
+      const pageSize = 100;
+      const firstResponse = await api.get<RequestFeedResponse>("/api/v1/requests", { params: { type, page, pageSize } });
+      const first = unwrap(firstResponse.data);
+      const totalPages = Math.ceil(first.total / pageSize);
+      if (totalPages <= 1) return first;
+      const remaining = await Promise.all(Array.from({ length: totalPages - 1 }, (_, index) =>
+        api.get<RequestFeedResponse>("/api/v1/requests", { params: { type, page: page + index + 1, pageSize } }),
+      ));
+      return { total: first.total, rows: [
+        ...first.rows,
+        ...remaining.flatMap((response) => unwrap(response.data).rows),
+      ] };
+    };
+    const [leave, other] = await Promise.all([loadAll('LEAVE'), loadAll('OTHER')]);
     return {
       total: leave.total + other.total,
       rows: [...leave.rows, ...other.rows]

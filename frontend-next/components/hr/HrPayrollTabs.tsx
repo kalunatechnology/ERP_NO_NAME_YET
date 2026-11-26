@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Wallet,
   CheckCircle2,
@@ -9,6 +9,10 @@ import {
   RefreshCw,
   Eye,
   X,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  CalendarDays,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
@@ -87,15 +91,21 @@ const formatIdr = (val: unknown) =>
 
 const formatRateInput = (value: unknown) => value == null ? "" : String(value);
 
-function resolveOvertimePrice(overtime: OvertimeItem, employee?: EmployeeItem) {
+function resolveOvertimePrice(overtime: OvertimeItem, employee?: EmployeeItem, defaultRate = 0) {
   const storedRate = Number(overtime.overtime_rate ?? 0);
   const storedAmount = Number(overtime.overtime_amount ?? 0);
   if (storedRate > 0 && storedAmount > 0) return { rate: storedRate, amount: storedAmount };
 
+  const employeeRate = Number(employee?.overtime_hourly_rate ?? 0);
+  const configuredRate = employeeRate > 0 ? employeeRate : defaultRate;
+  const hours = Number(overtime.duration_hours);
+  if (configuredRate > 0 && Number.isFinite(hours) && hours > 0) {
+    return { rate: configuredRate, amount: Math.round(configuredRate * hours * 100) / 100 };
+  }
+
   const hourlyRate = Number(employee?.standard_hourly_rate ?? 0);
   const monthlySalary = Number(employee?.monthly_salary ?? 0);
   const baseHourlyRate = hourlyRate > 0 ? hourlyRate : monthlySalary > 0 ? monthlySalary / 173 : 0;
-  const hours = Number(overtime.duration_hours);
   if (employee?.employment_status !== "ACTIVE" || baseHourlyRate <= 0 || !Number.isFinite(hours) || hours <= 0) return null;
   const rate = Math.round(baseHourlyRate * 1.5 * 100) / 100;
   return { rate, amount: Math.round(rate * hours * 100) / 100 };
@@ -456,28 +466,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
               <div className="p-4 border-b border-slate-200 font-bold text-sm text-[#163D64]">
                 Riwayat Lembur Saya ({myOvertimes.length})
               </div>
-              <div className="divide-y divide-slate-100 max-h-80 overflow-y-auto text-xs">
-                {myOvertimes.length === 0 ? (
-                  <div className="p-6 text-center text-slate-500">Belum ada pengajuan lembur.</div>
-                ) : (
-                  myOvertimes.map((ot) => (
-                    <div key={ot.id} className="p-4 flex items-center justify-between gap-3">
-                      <div>
-                        <div className="font-semibold text-slate-900">
-                          {String(ot.work_date).slice(0, 10)} ({ot.start_time}–{ot.end_time}, {ot.duration_hours} jam)
-                        </div>
-                        <div className="text-slate-600 mt-0.5">{ot.reason}</div>
-                        <div className="text-[11px] text-[#0876CD] font-semibold mt-0.5">
-                          Estimasi Upah: {overtimePayLabel(ot)}
-                        </div>
-                      </div>
-                      <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-700">
-                        {ot.status}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
+              <OvertimeReviewTable rows={myOvertimes} employees={[]} mode="personal" onDetail={setSelectedOvertime} onReload={loadData} />
             </div>
           </div>
 
@@ -558,88 +547,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
             <div className="p-4 border-b border-slate-200 font-bold text-sm text-[#163D64]">
               Antrean &amp; Persetujuan Lembur (Tier 1 &amp; Tier 2 HR)
             </div>
-            <div className="divide-y divide-slate-100 text-xs">
-              {companyOvertimes.length === 0 ? (
-                <div className="p-6 text-center text-slate-500">Belum ada pengajuan lembur perusahaan.</div>
-              ) : (
-                companyOvertimes.map((ot) => {
-                  const employee = employees.find((row) => row.id === ot.employee_id);
-                  const price = resolveOvertimePrice(ot, employee);
-                  return (
-                  <div key={ot.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="font-semibold text-slate-900">
-                        {overtimeEmployeeLabel(ot)} • {String(ot.work_date).slice(0, 10)} ({ot.duration_hours} jam)
-                      </div>
-                      <div className="text-slate-600">{ot.reason}</div>
-                      <div className="text-[11px] text-slate-500">{ot.project_id ? `Proyek: ${ot.project_code || ""} ${ot.project_name || ""}` : "Proyek tidak tertaut"}</div>
-                      <div className="text-[11px] font-semibold text-[#0876CD]">Upah Lembur: {price ? formatIdr(price.amount) : "Belum dapat dihitung"}</div>
-                      {!price && <div className="mt-1 text-[11px] font-medium text-amber-700">Lengkapi gaji bulanan atau tarif per jam pada profil karyawan sebelum memproses lembur.</div>}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-700">{ot.status}</span>
-                      <button type="button" onClick={() => setSelectedOvertime(ot)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-[#163D64] hover:bg-slate-50"><Eye size={13}/> Detail</button>
-                      {ot.status === "SUBMITTED" && (
-                        <button
-                          type="button"
-                          disabled={!price}
-                          title={!price ? "Profil upah karyawan belum cukup untuk menghitung lembur." : "Verifikasi pengajuan lembur"}
-                          onClick={async () => {
-                            try {
-                              await api.post(`/api/v1/hr/overtimes/${ot.id}/verify`);
-                              toast.success("Lembur diverifikasi.");
-                              await loadData();
-                            } catch (err: unknown) {
-                              toast.error(getApiErrorDetail(err, "Profil upah belum tersedia. Lengkapi gaji bulanan atau tarif per jam."));
-                            }
-                          }}
-                          className="rounded-lg bg-[#0876CD] px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          Verifikasi
-                        </button>
-                      )}
-                      {["SUBMITTED", "VERIFIED_HR_STAFF"].includes(ot.status) && (
-                        <>
-                          <button
-                            type="button"
-                            disabled={!price}
-                            title={!price ? "Profil upah karyawan belum cukup untuk menghitung lembur." : "Setujui pengajuan lembur"}
-                            onClick={async () => {
-                              try {
-                                await api.post(`/api/v1/hr/overtimes/${ot.id}/approve`);
-                                toast.success("Lembur disetujui (APPROVED).");
-                                await loadData();
-                              } catch (err: unknown) {
-                                toast.error(getApiErrorDetail(err, "Profil upah belum tersedia. Lengkapi gaji bulanan atau tarif per jam."));
-                              }
-                            }}
-                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            <CheckCircle2 size={13} /> Approve
-                          </button>
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                await api.post(`/api/v1/hr/overtimes/${ot.id}/reject`, { reason: "Ditolak oleh HR" });
-                                toast.success("Lembur ditolak.");
-                                await loadData();
-                              } catch (err: unknown) {
-                                toast.error(err instanceof Error ? err.message : "Gagal menolak lembur.");
-                              }
-                            }}
-                            className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer"
-                          >
-                            <XCircle size={13} /> Reject
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  );
-                })
-              )}
-            </div>
+              <OvertimeReviewTable rows={companyOvertimes} employees={employees} defaultRate={Number(defaultOvertimeRate) || 0} mode="ops" onDetail={setSelectedOvertime} onReload={loadData} />
           </div>
 
           <div className="rounded-2xl border border-[#E2E8F0] bg-white overflow-hidden">
@@ -852,67 +760,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
               <div className="p-4 border-b border-slate-200 font-bold text-sm text-[#163D64]">
                 Final Approval Lembur (Kepala HR Tier 1)
               </div>
-              <div className="divide-y divide-slate-100 text-xs">
-                {companyOvertimes.filter((o) => ["SUBMITTED", "VERIFIED_HR_STAFF"].includes(o.status)).length === 0 ? (
-                  <div className="p-5 text-center text-slate-500">
-                    Belum ada pengajuan lembur yang menunggu persetujuan Kepala HR.
-                  </div>
-                ) : (
-                  companyOvertimes
-                    .filter((o) => ["SUBMITTED", "VERIFIED_HR_STAFF"].includes(o.status))
-                    .map((ot) => {
-                      const employee = employees.find((row) => row.id === ot.employee_id);
-                      const price = resolveOvertimePrice(ot, employee);
-                      return (
-                      <div key={ot.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <div className="font-semibold text-slate-900">
-                            {overtimeEmployeeLabel(ot)} • {String(ot.work_date).slice(0, 10)} ({ot.duration_hours} jam — {price ? formatIdr(price.amount) : "Belum dapat dihitung"})
-                          </div>
-                          <div className="text-[11px] text-slate-500">{ot.project_id ? `Proyek: ${ot.project_code || ""} ${ot.project_name || ""}` : "Proyek tidak tertaut"}</div>
-                          <div className="text-slate-600">{ot.reason}</div>
-                          {!price && <div className="mt-1 text-[11px] font-medium text-amber-700">Lengkapi gaji bulanan atau tarif per jam pada profil karyawan sebelum memproses lembur.</div>}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button type="button" onClick={() => setSelectedOvertime(ot)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-[#163D64] hover:bg-slate-50"><Eye size={13}/> Detail</button>
-                          <button
-                            type="button"
-                            disabled={!price}
-                            title={!price ? "Profil upah karyawan belum cukup untuk menghitung lembur." : "Setujui lembur sebagai Kepala HR"}
-                            onClick={async () => {
-                              try {
-                                await api.post(`/api/v1/hr/overtimes/${ot.id}/approve`);
-                                toast.success("Lembur disetujui (APPROVED).");
-                                await loadData();
-                              } catch (err: unknown) {
-                                toast.error(getApiErrorDetail(err, "Profil upah belum tersedia. Lengkapi gaji bulanan atau tarif per jam."));
-                              }
-                            }}
-                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            <CheckCircle2 size={13} /> Approve
-                          </button>
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                await api.post(`/api/v1/hr/overtimes/${ot.id}/reject`, { reason: "Ditolak oleh Kepala HR" });
-                                toast.success("Lembur ditolak.");
-                                await loadData();
-                              } catch (err: unknown) {
-                                toast.error(err instanceof Error ? err.message : "Gagal menolak lembur.");
-                              }
-                            }}
-                            className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer"
-                          >
-                            <XCircle size={13} /> Reject
-                          </button>
-                        </div>
-                      </div>
-                      );
-                    })
-                )}
-              </div>
+              <OvertimeReviewTable rows={companyOvertimes} employees={employees} defaultRate={Number(defaultOvertimeRate) || 0} mode="lead" onDetail={setSelectedOvertime} onReload={loadData} />
             </div>
           )}
 
@@ -1180,6 +1028,122 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
         </div>
       )}
       {selectedOvertime && <OvertimeDetailModal overtime={selectedOvertime} onClose={() => setSelectedOvertime(null)} />}
+    </div>
+  );
+}
+
+function OvertimeReviewTable({
+  rows, employees, defaultRate = 0, mode, onDetail, onReload,
+}: {
+  rows: OvertimeItem[];
+  employees: EmployeeItem[];
+  defaultRate?: number;
+  mode: "ops" | "lead" | "personal";
+  onDetail: (row: OvertimeItem) => void;
+  onReload: () => Promise<void>;
+}) {
+  const [query, setQuery] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
+  const [month, setMonth] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [status, setStatus] = useState("ALL");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const visibleRows = useMemo(() => {
+    const sourceRows = mode === "lead" ? rows.filter((row) => ["SUBMITTED", "VERIFIED_HR_STAFF"].includes(row.status)) : rows;
+    const q = query.trim().toLowerCase();
+    return sourceRows.filter((row) => {
+      const workDate = String(row.work_date).slice(0, 10);
+      const employee = employees.find((item) => item.id === row.employee_id);
+      const searchText = [row.id, overtimeEmployeeLabel({ employee_name: employee?.employee_name ?? row.employee_name, employee_number: employee?.employee_number ?? row.employee_number }), row.reason, row.project_name, row.project_code].join(" ").toLowerCase();
+      if (q && !searchText.includes(q)) return false;
+      if (employeeId && row.employee_id !== employeeId) return false;
+      if (month && !workDate.startsWith(month)) return false;
+      if (fromDate && workDate < fromDate) return false;
+      if (toDate && workDate > toDate) return false;
+      if (status !== "ALL" && row.status !== status) return false;
+      return true;
+    }).sort((left, right) => String(right.work_date).localeCompare(String(left.work_date)));
+  }, [rows, employees, mode, query, employeeId, month, fromDate, toDate, status]);
+
+  const maxPage = Math.max(1, Math.ceil(visibleRows.length / pageSize));
+  const safePage = Math.min(page, maxPage);
+  const pageRows = visibleRows.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const changeFilter = (setter: (value: string) => void) => (value: string) => { setter(value); setPage(1); };
+
+  const runAction = async (row: OvertimeItem, action: "verify" | "approve" | "reject") => {
+    setBusyId(row.id);
+    try {
+      if (action === "reject") await api.post(`/api/v1/hr/overtimes/${row.id}/reject`, { reason: "Ditolak oleh HR" });
+      else await api.post(`/api/v1/hr/overtimes/${row.id}/${action}`);
+      toast.success(action === "verify" ? "Lembur diverifikasi." : action === "approve" ? "Lembur disetujui." : "Lembur ditolak.");
+      await onReload();
+    } catch (error: unknown) {
+      const responseData = (error as { response?: { data?: unknown } })?.response?.data;
+      const serverMessage = typeof responseData === "string" ? responseData : JSON.stringify(responseData ?? "");
+      if (/status lembur tidak valid|sudah diproses|status.{0,20}(APPROVED|REJECTED|VERIFIED)/i.test(serverMessage)) {
+        await onReload();
+        toast.error("Status lembur sudah berubah. Daftar telah dimuat ulang; periksa status terbaru.");
+      } else {
+        toast.error(getApiErrorDetail(error, "Aksi belum berhasil. Periksa status dan kelengkapan tarif karyawan, lalu muat ulang."));
+      }
+    } finally { setBusyId(null); }
+  };
+
+  const availableStatuses = Array.from(new Set(rows.map((row) => row.status))).sort();
+  return (
+    <div className="text-xs">
+      <div className="grid gap-2 border-b border-slate-100 bg-[#F8FAFC] p-3 sm:grid-cols-2 xl:grid-cols-6">
+        <label className="relative sm:col-span-2 xl:col-span-2">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input value={query} onChange={(event) => changeFilter(setQuery)(event.target.value)} placeholder="Cari karyawan, alasan, proyek…" className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3" />
+        </label>
+        {mode !== "personal" && <select value={employeeId} onChange={(event) => changeFilter(setEmployeeId)(event.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-2.5"><option value="">Semua karyawan</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.employee_name} ({employee.employee_number})</option>)}</select>}
+        <label className="relative"><CalendarDays size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input aria-label="Filter bulan" type="month" value={month} onChange={(event) => changeFilter(setMonth)(event.target.value)} className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-2" /></label>
+        <input aria-label="Tanggal mulai filter" type="date" value={fromDate} onChange={(event) => changeFilter(setFromDate)(event.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-2" />
+        <input aria-label="Tanggal akhir filter" type="date" value={toDate} onChange={(event) => changeFilter(setToDate)(event.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-2" />
+        <select value={status} onChange={(event) => changeFilter(setStatus)(event.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-2.5"><option value="ALL">Semua status</option>{availableStatuses.map((value) => <option key={value} value={value}>{value}</option>)}</select>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[1050px] border-collapse text-left">
+          <thead className="bg-[#F8FAFC] text-[10px] uppercase tracking-wide text-slate-500"><tr>
+            {mode !== "personal" && <th className="px-4 py-3 font-bold">Karyawan</th>}
+            <th className="px-4 py-3 font-bold">Tanggal &amp; Waktu</th><th className="px-4 py-3 font-bold">Durasi</th><th className="px-4 py-3 font-bold">Tarif / Estimasi</th><th className="px-4 py-3 font-bold">Alasan &amp; Proyek</th><th className="px-4 py-3 font-bold">Status</th><th className="px-4 py-3 text-right font-bold">Aksi</th>
+          </tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {pageRows.map((row) => {
+              const employee = employees.find((item) => item.id === row.employee_id);
+              const price = resolveOvertimePrice(row, employee, defaultRate);
+              const canDecide = ["SUBMITTED", "VERIFIED_HR_STAFF"].includes(row.status);
+              const duplicateTime = row.status !== "REJECTED" && rows.some((other) => other.id !== row.id && other.status !== "REJECTED" && other.employee_id === row.employee_id && String(other.work_date).slice(0, 10) === String(row.work_date).slice(0, 10) && other.start_time < row.end_time && other.end_time > row.start_time);
+              return <tr key={row.id} className="align-top hover:bg-slate-50/70">
+                {mode !== "personal" && <td className="px-4 py-3"><div className="font-semibold text-slate-900">{overtimeEmployeeLabel({ employee_name: employee?.employee_name ?? row.employee_name, employee_number: employee?.employee_number ?? row.employee_number })}</div><div className="mt-1 font-mono text-[10px] text-slate-400">{row.id.slice(0, 8)}</div></td>}
+                <td className="whitespace-nowrap px-4 py-3"><div className="font-semibold text-slate-800">{String(row.work_date).slice(0, 10)}</div><div className="mt-1 text-slate-500">{row.start_time || "—"}–{row.end_time || "—"}</div>{duplicateTime&&<span className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-bold text-amber-800">Jam tumpang tindih</span>}</td>
+                <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-700">{row.duration_hours} jam</td>
+                <td className="whitespace-nowrap px-4 py-3"><div className="text-slate-500">{price ? `${formatIdr(price.rate)}/jam` : "Tarif belum tersedia"}</div><div className="mt-1 font-bold text-[#0876CD]">{price ? formatIdr(price.amount) : "Belum dihitung"}</div></td>
+                <td className="max-w-[300px] px-4 py-3"><div className="line-clamp-2 font-medium text-slate-800">{row.reason || "—"}</div><div className="mt-1 line-clamp-1 text-[10px] text-slate-500">{row.project_id ? `${row.project_code || ""} ${row.project_name || ""}`.trim() : "Proyek tidak tertaut"}</div></td>
+                <td className="px-4 py-3"><span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-700">{row.status}</span></td>
+                <td className="px-4 py-3"><div className="flex min-w-max justify-end gap-1.5">
+                  <button type="button" onClick={() => onDetail(row)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 px-2.5 font-semibold text-[#163D64]"><Eye size={13}/>Detail</button>
+                  {mode === "ops" && row.status === "SUBMITTED" && <button type="button" disabled={!price || busyId === row.id} onClick={() => void runAction(row, "verify")} className="h-8 rounded-lg bg-[#0876CD] px-2.5 font-semibold text-white disabled:opacity-50">Verifikasi</button>}
+                  {mode !== "personal" && canDecide && <>
+                    <button type="button" disabled={!price || busyId === row.id} onClick={() => void runAction(row, "approve")} className="h-8 rounded-lg bg-emerald-600 px-2.5 font-semibold text-white disabled:opacity-50">{busyId === row.id ? "Menyimpan…" : "ACC"}</button>
+                    <button type="button" disabled={busyId === row.id} onClick={() => void runAction(row, "reject")} className="h-8 rounded-lg bg-red-600 px-2.5 font-semibold text-white disabled:opacity-50">Tolak</button>
+                  </>}
+                </div></td>
+              </tr>;
+            })}
+            {pageRows.length === 0 && <tr><td colSpan={mode === "personal" ? 6 : 7} className="px-4 py-12 text-center text-slate-500">Tidak ada pengajuan lembur yang cocok dengan filter.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-[11px] text-slate-600">
+        <div className="flex items-center gap-2"><span>Menampilkan {visibleRows.length ? (safePage - 1) * pageSize + 1 : 0}–{Math.min(safePage * pageSize, visibleRows.length)} dari {visibleRows.length}</span><label className="ml-2 flex items-center gap-1.5">Baris<select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }} className="h-8 rounded-lg border border-slate-200 bg-white px-2"><option value={10}>10</option><option value={25}>25</option><option value={50}>50</option></select></label></div>
+        <div className="flex items-center gap-1"><button type="button" aria-label="Halaman sebelumnya" disabled={safePage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 disabled:opacity-40"><ChevronLeft size={15}/></button><span className="min-w-16 text-center">Halaman {safePage} / {maxPage}</span><button type="button" aria-label="Halaman berikutnya" disabled={safePage >= maxPage} onClick={() => setPage((value) => Math.min(maxPage, value + 1))} className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 disabled:opacity-40"><ChevronRight size={15}/></button></div>
+      </div>
     </div>
   );
 }

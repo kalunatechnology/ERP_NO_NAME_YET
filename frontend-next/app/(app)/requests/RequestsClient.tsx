@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, ArrowRight, AtSign, Bold, Calendar, CalendarDays, Check, CheckCircle2, Clock, Clock3, Coffee, Briefcase, Eye, FileDown, FileSpreadsheet, FileText, Filter, Italic, Link2, MapPin, Plus, Repeat, Save, Search, Send, ShieldCheck, Strikethrough, Trash2, UserCircle2, Video, X, ClipboardList } from "lucide-react";
+import { ArrowLeft, ArrowRight, AtSign, Bold, Calendar, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, Clock3, Coffee, Briefcase, Eye, FileDown, FileSpreadsheet, FileText, Filter, Italic, Link2, MapPin, Plus, Repeat, Save, Search, Send, ShieldCheck, Strikethrough, Trash2, UserCircle2, Video, X, ClipboardList } from "lucide-react";
 import toast from "react-hot-toast";
 import { MeetingDetail, MeetingRequestSummary, NonMeetingRequest, requestApi } from "@/lib/api/request.api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -84,6 +84,13 @@ export default function RequestsClient(){
   const [statusFilter,setStatusFilter]=useState<'ALL'|'DRAFT'|'SCHEDULED'|'COMPLETED'>('ALL');
   const [typeFilter,setTypeFilter]=useState<'ALL'|'RECURRING'|'NON_RECURRING'>('ALL');
   const [nonMeetingTypeFilter,setNonMeetingTypeFilter]=useState<'ALL'|'LEAVE'|'OTHER'>('ALL');
+  const [requestEmployeeFilter,setRequestEmployeeFilter]=useState('');
+  const [requestStatusFilter,setRequestStatusFilter]=useState('ALL');
+  const [requestMonthFilter,setRequestMonthFilter]=useState('');
+  const [requestFromDate,setRequestFromDate]=useState('');
+  const [requestToDate,setRequestToDate]=useState('');
+  const [requestPage,setRequestPage]=useState(1);
+  const [requestPageSize,setRequestPageSize]=useState(10);
 
   const meetingCounts = useMemo(() => {
     let draft = 0;
@@ -141,9 +148,25 @@ export default function RequestsClient(){
       if (nonMeetingTypeFilter !== 'ALL') {
         if (item.request_type !== nonMeetingTypeFilter) return false;
       }
+      if (requestEmployeeFilter && item.created_by_id !== requestEmployeeFilter) return false;
+      if (requestStatusFilter !== 'ALL' && item.status !== requestStatusFilter) return false;
+      const filterDate = String(item.start_at || item.created_at || '').slice(0, 10);
+      if (requestMonthFilter && !filterDate.startsWith(requestMonthFilter)) return false;
+      if (requestFromDate && filterDate < requestFromDate) return false;
+      if (requestToDate && filterDate > requestToDate) return false;
       return true;
     });
-  }, [nonMeetingRequests, searchQuery, nonMeetingTypeFilter]);
+  }, [nonMeetingRequests, searchQuery, nonMeetingTypeFilter, requestEmployeeFilter, requestStatusFilter, requestMonthFilter, requestFromDate, requestToDate]);
+  const requestEmployees = useMemo(() => {
+    const unique = new Map<string, string>();
+    for (const item of nonMeetingRequests) if (item.created_by_id) unique.set(item.created_by_id, item.requester_user?.name || 'Karyawan');
+    return Array.from(unique.entries()).sort((a,b)=>a[1].localeCompare(b[1],'id'));
+  }, [nonMeetingRequests]);
+  const requestStatuses = useMemo(() => Array.from(new Set(nonMeetingRequests.map((item)=>item.status))).sort(), [nonMeetingRequests]);
+  const requestMaxPage = Math.max(1, Math.ceil(filteredNonMeeting.length / requestPageSize));
+  const safeRequestPage = Math.min(requestPage, requestMaxPage);
+  const pagedNonMeeting = filteredNonMeeting.slice((safeRequestPage - 1) * requestPageSize, safeRequestPage * requestPageSize);
+  useEffect(() => { setRequestPage(1); }, [searchQuery, nonMeetingTypeFilter, requestEmployeeFilter, requestStatusFilter, requestMonthFilter, requestFromDate, requestToDate]);
 
   const openMeeting=useCallback(async(id:string,occurrenceDate?:string)=>{try{const detail=await requestApi.getMeeting(id,occurrenceDate);setSelected(detail);setPersonInCharge(detail.request?.assignee_user_id??detail.notetaker_user_id??"");const loadedMinutes={summary:detail.minutes?.summary??"",opening_notes:detail.minutes?.opening_notes??"",general_discussion:markdownToRichText(detail.minutes?.general_discussion??""),conclusion:detail.minutes?.conclusion??"",decisions:detail.minutes?.decisions.map(item=>item.decision_text).join("\n")??"",action_items:detail.minutes?.action_items.map(item=>item.title).join("\n")??""};setMinutes(loadedMinutes);setSavedMinutes(loadedMinutes);return detail;}catch(error){toast.error(getUserFacingApiError(error,"Detail meeting belum dapat dimuat. Muat ulang halaman, lalu coba lagi."));return null;}},[]);
   const load=useCallback(async()=>{setLoading(true);try{const [rows,team,nonMeet]=await Promise.all([requestApi.listMeetings(),requestApi.listTeamMembers(),requestApi.listNonMeetingRequests()]);setMeetings(rows);setMembers(team);setNonMeetingRequests(nonMeet.rows??[]);if(typeof window!=="undefined"){const params=new URLSearchParams(window.location.search);const id=params.get("meeting");const date=params.get("date")||params.get("occurrenceDate");const shouldOpenNotes=params.get("note")==="1"||params.get("openNotes")==="1"||params.get("openNotes")==="true";if(id){const detail=await openMeeting(id,date||undefined);if(detail&&shouldOpenNotes){setNotesOpen(true);}}}}catch(error){toast.error(getUserFacingApiError(error,"Data meeting dan request belum dapat dimuat. Periksa akses, lalu coba lagi."));}finally{setLoading(false);}},[openMeeting]);
@@ -177,7 +200,18 @@ export default function RequestsClient(){
       setLeaveRejectionRemarks("");
       await load();
     } catch (error) {
-      toast.error(getUserFacingApiError(error, 'Keputusan cuti belum tersimpan. Muat ulang daftar dan coba lagi.'));
+      const responseData = (error as { response?: { data?: unknown } })?.response?.data;
+      const serverMessage = typeof responseData === 'string' ? responseData : JSON.stringify(responseData ?? '');
+      if (/sudah diproses|tidak menunggu HR|sudah disetujui|status.{0,20}APPROVED/i.test(serverMessage)) {
+        await load();
+        if (/sudah disetujui|status.{0,20}APPROVED/i.test(serverMessage)) {
+          toast.success('Pengajuan ini sudah disetujui. Daftar telah diperbarui.');
+        } else {
+          toast.error('Status pengajuan sudah berubah. Daftar telah dimuat ulang; periksa status terbaru.');
+        }
+      } else {
+        toast.error(getUserFacingApiError(error, 'Keputusan cuti belum tersimpan. Muat ulang daftar dan coba lagi.'));
+      }
     } finally {
       setLeaveDecisionBusyId(null);
     }
@@ -487,6 +521,7 @@ export default function RequestsClient(){
 
         {/* Bottom Row: Segmented Filters for Request (Leave / Other) */}
         {activeTab === 'request' && (
+          <>
           <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[#F0F0F0]">
             <div className="flex items-center gap-2">
               <span className="text-3xs font-bold text-[#64748B] uppercase tracking-wider hidden sm:inline">Kategori:</span>
@@ -519,9 +554,17 @@ export default function RequestsClient(){
               </div>
             </div>
             <div className="text-3xs text-[#64748B]">
-              Total <strong>{filteredNonMeeting.length}</strong> request ditampilkan
+              Total <strong>{filteredNonMeeting.length}</strong> request sesuai filter
             </div>
           </div>
+          <div className="grid gap-2 border-t border-[#F0F0F0] pt-3 sm:grid-cols-2 lg:grid-cols-5">
+            <select value={requestEmployeeFilter} onChange={(event)=>setRequestEmployeeFilter(event.target.value)} className="h-9 rounded-lg border border-[#E2E8F0] bg-white px-3 text-xs text-[#334155]"><option value="">Semua karyawan</option>{requestEmployees.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select>
+            <select value={requestStatusFilter} onChange={(event)=>setRequestStatusFilter(event.target.value)} className="h-9 rounded-lg border border-[#E2E8F0] bg-white px-3 text-xs text-[#334155]"><option value="ALL">Semua status</option>{requestStatuses.map((status)=><option key={status} value={status}>{status}</option>)}</select>
+            <label className="relative"><CalendarDays size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input aria-label="Filter bulan pengajuan" type="month" value={requestMonthFilter} onChange={(event)=>setRequestMonthFilter(event.target.value)} className="h-9 w-full rounded-lg border border-[#E2E8F0] bg-white pl-9 pr-2 text-xs"/></label>
+            <input aria-label="Filter tanggal mulai pengajuan" type="date" value={requestFromDate} onChange={(event)=>setRequestFromDate(event.target.value)} className="h-9 rounded-lg border border-[#E2E8F0] bg-white px-3 text-xs"/>
+            <input aria-label="Filter tanggal akhir pengajuan" type="date" value={requestToDate} onChange={(event)=>setRequestToDate(event.target.value)} className="h-9 rounded-lg border border-[#E2E8F0] bg-white px-3 text-xs"/>
+          </div>
+          </>
         )}
       </div>
       </section>
@@ -659,117 +702,44 @@ export default function RequestsClient(){
 
       {/* ── Request Izin / Cuti Tab Content ── */}
       {activeTab === 'request' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-          {loading && [1, 2, 3, 4].map(item => (
-            <div key={item} className="h-32 rounded-[20px] bg-white border border-[#E2E8F0] animate-pulse p-4.5" />
-          ))}
-
-          {!loading && filteredNonMeeting.length === 0 && (
-            <div className="col-span-full rounded-[20px] bg-white border border-[#E2E8F0] p-12 text-center text-xs text-[#64748B]">
-              Belum ada request izin atau cuti yang dibuat.
+        <div className="overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-2xs">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
+            <div><h2 className="text-sm font-bold text-[#163D64]">Daftar Pengajuan Cuti &amp; Request</h2><p className="mt-0.5 text-[11px] text-slate-500">Periksa pemohon, tanggal, lampiran, status, dan keputusan.</p></div>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">{filteredNonMeeting.length} data</span>
+          </div>
+          {loading ? <div className="p-12 text-center text-xs text-slate-500">Memuat daftar pengajuan…</div> : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1120px] border-collapse text-left text-xs">
+                <thead className="bg-[#F8FAFC] text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Nomor / Jenis</th><th className="px-4 py-3">Pemohon / Detail</th><th className="px-4 py-3">Tanggal Cuti</th><th className="px-4 py-3">Tanggal Pengajuan</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">PIC</th><th className="px-4 py-3 text-right">Aksi</th></tr></thead>
+                <tbody className="divide-y divide-slate-100">
+                  {pagedNonMeeting.map((req) => {
+                    const isLeave = req.request_type === 'LEAVE';
+                    const awaitingHr = isLeave && ['PENDING_HR', 'REGISTERED'].includes(req.status);
+                    const approved = ['APPROVED', 'COMPLETED'].includes(req.status);
+                    return <tr key={req.id} className="align-top hover:bg-slate-50/70">
+                      <td className="whitespace-nowrap px-4 py-3"><div className="font-mono font-bold text-[#163D64]">#{req.request_number}</div><span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[9px] font-bold ${isLeave?'bg-amber-100 text-amber-800':'bg-emerald-100 text-emerald-800'}`}>{isLeave?'CUTI / IZIN':'REQUEST LAIN'}</span></td>
+                      <td className="max-w-[360px] px-4 py-3"><div className="font-semibold text-slate-900">{req.requester_user?.name || 'Karyawan'} · {req.title}</div><p className="mt-1 whitespace-normal text-slate-600">{req.description || 'Tanpa deskripsi'}</p>{isLeave&&req.attachment_url&&<RequestAttachmentPreview attachmentUrl={req.attachment_url} forHr={hrTier<=2}/>}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-700">{isLeave&&req.start_at&&req.end_at?<><div className="font-semibold">{displayDateOnly(req.start_at)}</div><div className="mt-1 text-slate-500">s/d {displayDateOnly(req.end_at)}</div></>:<span className="text-slate-400">—</span>}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-600">{req.created_at?new Date(req.created_at).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'}):'—'}</td>
+                      <td className="px-4 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${approved?'bg-emerald-50 text-emerald-800':req.status==='REJECTED'?'bg-red-50 text-red-700':awaitingHr&&hrTier===1?'bg-amber-50 text-amber-800':'bg-slate-100 text-slate-700'}`}>{req.status==='PENDING_HR'||(awaitingHr&&hrTier===1)?'MENUNGGU HR':req.status==='APPROVED'?'DISETUJUI':req.status==='REJECTED'?'DITOLAK':req.status}</span></td>
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-600">{req.assignee_user?.name||'—'}</td>
+                      <td className="px-4 py-3"><div className="flex min-w-[190px] flex-wrap justify-end gap-1.5">
+                        {hrTier===1&&awaitingHr&&<>
+                          {rejectingLeaveId===req.id?<div className="flex w-full flex-wrap justify-end gap-1.5"><input value={leaveRejectionRemarks} onChange={(event)=>setLeaveRejectionRemarks(event.target.value)} placeholder="Alasan penolakan wajib" aria-label="Alasan penolakan cuti" className="h-8 min-w-40 flex-1 rounded-lg border border-red-200 px-2" disabled={leaveDecisionBusyId===req.id}/><button type="button" onClick={()=>void decideLeaveRequest(req,'REJECT')} disabled={leaveDecisionBusyId===req.id||!leaveRejectionRemarks.trim()} className="h-8 rounded-lg bg-red-600 px-2.5 font-bold text-white disabled:opacity-50">{leaveDecisionBusyId===req.id?'…':'Konfirmasi Tolak'}</button><button type="button" onClick={()=>{setRejectingLeaveId(null);setLeaveRejectionRemarks('');}} className="h-8 rounded-lg border border-slate-200 px-2">Batal</button></div>:<><button type="button" onClick={()=>{setRejectingLeaveId(req.id);setLeaveRejectionRemarks('');}} className="h-8 rounded-lg border border-red-200 px-2.5 font-bold text-red-700">Tolak</button><button type="button" onClick={()=>void decideLeaveRequest(req,'APPROVE')} disabled={leaveDecisionBusyId===req.id} className="h-8 rounded-lg bg-emerald-600 px-2.5 font-bold text-white disabled:opacity-50">{leaveDecisionBusyId===req.id?'Menyimpan…':'ACC Cuti'}</button></>}
+                        </>}
+                        {isLeave&&req.attachment_url&&hrTier>2&&<span className="text-[10px] text-slate-400">Lampiran</span>}
+                      </div></td>
+                    </tr>;
+                  })}
+                  {pagedNonMeeting.length===0&&<tr><td colSpan={7} className="px-4 py-12 text-center text-slate-500">Tidak ada pengajuan yang cocok dengan filter.</td></tr>}
+                </tbody>
+              </table>
             </div>
           )}
-
-          {filteredNonMeeting.map(req => {
-            const isLeave = req.request_type === 'LEAVE';
-            return (
-              <div
-                key={req.id}
-                className="p-4.5 rounded-[20px] bg-white border border-[#E2E8F0] hover:border-[#2B7A42]/60 hover:shadow-card-md hover:-translate-y-0.5 transition-all duration-150 shadow-2xs flex flex-col justify-between gap-3"
-              >
-                <div className="space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className={cn(
-                        "w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border",
-                        isLeave ? "bg-amber-50 border-amber-200 text-amber-700" : "bg-emerald-50 border-emerald-200 text-emerald-700"
-                      )}>
-                        {isLeave ? <Coffee size={16} /> : <Briefcase size={16} />}
-                      </div>
-                      <div className="min-w-0">
-                        <span className="text-3xs font-mono font-bold text-[#64748B] uppercase block tracking-wider">
-                          #{req.request_number}
-                        </span>
-                        <span className={cn(
-                          "inline-block px-1.5 py-0.2 rounded text-[10px] font-extrabold uppercase",
-                          isLeave ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"
-                        )}>
-                          {isLeave ? "Cuti / Izin" : "Permohonan Lain"}
-                        </span>
-                      </div>
-                    </div>
-
-                    <span className={cn(
-                      "px-2.5 py-0.5 rounded-full border text-3xs font-extrabold uppercase tracking-wide",
-                      req.status === 'COMPLETED' || req.status === 'APPROVED'
-                        ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                        : req.status === 'REJECTED'
-                        ? "bg-red-50 text-red-700 border-red-200"
-                        : req.status === 'PENDING_HR' || (isLeave && hrTier === 1 && req.status === 'REGISTERED')
-                        ? "bg-amber-50 text-amber-800 border-amber-200"
-                        : "bg-amber-50 text-amber-800 border-amber-200"
-                    )}>
-                      {req.status === 'PENDING_HR' || (isLeave && hrTier === 1 && req.status === 'REGISTERED') ? 'MENUNGGU HR' : req.status === 'APPROVED' ? 'DISETUJUI' : req.status === 'REJECTED' ? 'DITOLAK' : req.status}
-                    </span>
-                  </div>
-
-                  <div>
-                    <h4 className="text-sm font-bold text-[#0F172A] line-clamp-1">{req.title}</h4>
-                    <p className="mt-1 text-xs text-[#64748B] line-clamp-2 leading-relaxed">
-                      {req.description || "Tanpa deskripsi"}
-                    </p>
-                    {isLeave && <p className="mt-1 text-[11px] font-semibold text-[#475569]">Pemohon: {req.requester_user?.name || 'Karyawan'}</p>}
-                    {isLeave && req.start_at && req.end_at && (
-                      <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-[#2B7A42]">
-                        <CalendarDays size={13} /> {displayDateOnly(req.start_at)} – {displayDateOnly(req.end_at)}
-                      </p>
-                    )}
-                    {isLeave && req.attachment_url && <RequestAttachmentPreview attachmentUrl={req.attachment_url} forHr={hrTier <= 2} />}
-                  </div>
-                </div>
-
-                <div className="border-t border-[#F0F0F0] pt-2.5 flex items-center justify-between text-2xs text-[#64748B]">
-                  <span>
-                    {req.created_at ? new Date(req.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
-                  </span>
-                  {req.assignee_user && (
-                    <span className="font-bold text-[#163D64] px-2 py-0.5 rounded bg-[#E7F2FF]">
-                      PIC: {req.assignee_user.name}
-                    </span>
-                  )}
-                </div>
-                {hrTier === 1 && isLeave && ['PENDING_HR', 'REGISTERED'].includes(req.status) && (
-                  <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[#F0F0F0] pt-3">
-                    {rejectingLeaveId === req.id ? (
-                      <>
-                        <input
-                          value={leaveRejectionRemarks}
-                          onChange={(event) => setLeaveRejectionRemarks(event.target.value)}
-                          placeholder="Alasan penolakan wajib diisi"
-                          aria-label="Alasan penolakan cuti"
-                          className="h-9 min-w-52 flex-1 rounded-lg border border-red-200 bg-white px-3 text-xs"
-                          disabled={leaveDecisionBusyId === req.id}
-                        />
-                        <button type="button" onClick={() => void decideLeaveRequest(req, 'REJECT')} disabled={leaveDecisionBusyId === req.id || !leaveRejectionRemarks.trim()} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-red-600 px-3 text-xs font-bold text-white disabled:opacity-50">
-                          {leaveDecisionBusyId === req.id ? 'Menyimpan…' : 'Konfirmasi Tolak'}
-                        </button>
-                        <button type="button" onClick={() => { setRejectingLeaveId(null); setLeaveRejectionRemarks(''); }} disabled={leaveDecisionBusyId === req.id} className="h-9 rounded-lg border border-[#D7E2EE] px-3 text-xs font-semibold text-[#475569]">Batal</button>
-                      </>
-                    ) : (
-                      <>
-                        <button type="button" onClick={() => { setRejectingLeaveId(req.id); setLeaveRejectionRemarks(''); }} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 px-3 text-xs font-bold text-red-700 hover:bg-red-50">
-                          <X size={14} /> Tolak
-                        </button>
-                        <button type="button" onClick={() => void decideLeaveRequest(req, 'APPROVE')} disabled={leaveDecisionBusyId === req.id} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50">
-                          <CheckCircle2 size={14} /> {leaveDecisionBusyId === req.id ? 'Menyimpan…' : 'ACC Cuti'}
-                        </button>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-[11px] text-slate-600">
+            <div className="flex items-center gap-3"><span>Menampilkan {filteredNonMeeting.length?(safeRequestPage-1)*requestPageSize+1:0}–{Math.min(safeRequestPage*requestPageSize,filteredNonMeeting.length)} dari {filteredNonMeeting.length}</span><label className="flex items-center gap-1.5">Baris<select value={requestPageSize} onChange={(event)=>{setRequestPageSize(Number(event.target.value));setRequestPage(1);}} className="h-8 rounded-lg border border-slate-200 bg-white px-2"><option value={10}>10</option><option value={25}>25</option><option value={50}>50</option></select></label></div>
+            <div className="flex items-center gap-1"><button type="button" aria-label="Halaman sebelumnya" disabled={safeRequestPage<=1} onClick={()=>setRequestPage((value)=>Math.max(1,value-1))} className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 disabled:opacity-40"><ChevronLeft size={15}/></button><span className="min-w-20 text-center">Halaman {safeRequestPage} / {requestMaxPage}</span><button type="button" aria-label="Halaman berikutnya" disabled={safeRequestPage>=requestMaxPage} onClick={()=>setRequestPage((value)=>Math.min(requestMaxPage,value+1))} className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 disabled:opacity-40"><ChevronRight size={15}/></button></div>
+          </div>
         </div>
       )}
 
