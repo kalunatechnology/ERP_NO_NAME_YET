@@ -22,6 +22,33 @@ hrRouter.post('/overtimes/my', async (req, res, next) => {
   }
 });
 
+hrRouter.get('/overtimes/my/rate', async (req, res, next) => {
+  try {
+    const data = await HrService.getMyOvertimePricing(req.companyId!, req.user!.id);
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+hrRouter.get('/overtimes/rate-settings', requireModuleTier('HR', 2), async (req, res, next) => {
+  try {
+    const data = await HrService.getOvertimeRateSettings(req.companyId!);
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+hrRouter.put('/overtimes/rate-settings', requireModuleTier('HR', 1), async (req, res, next) => {
+  try {
+    const data = await HrService.updateOvertimeRateSettings(req.companyId!, req.tenantId ?? null, req.body);
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+});
+
 hrRouter.get('/overtimes/my', async (req, res, next) => {
   try {
     const results = await HrService.listMyOvertimes(req.companyId!, req.user!.id);

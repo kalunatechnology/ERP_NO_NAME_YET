@@ -53,6 +53,7 @@ interface EmployeeItem {
   employment_status: string;
   monthly_salary: number | string | null;
   standard_hourly_rate?: number | string | null;
+  overtime_hourly_rate?: number | string | null;
   cost_center_id?: string | null;
   user_id?: string | null;
   linked_user?: { id: string; full_name: string; email: string } | null;
@@ -62,6 +63,12 @@ interface CostCenterItem {
   id: string;
   cost_center_code: string;
   cost_center_name: string;
+}
+
+interface MyOvertimePricing {
+  configured: boolean;
+  overtime_hourly_rate: number | null;
+  source?: "EMPLOYEE_OVERRIDE" | "COMPANY_DEFAULT" | "PROFILE_FORMULA";
 }
 
 interface EmployeeUserOption {
@@ -74,6 +81,8 @@ const formatIdr = (val: unknown) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(
     Number(val ?? 0),
   );
+
+const formatRateInput = (value: unknown) => value == null ? "" : String(value);
 
 function resolveOvertimePrice(overtime: OvertimeItem, employee?: EmployeeItem) {
   const storedRate = Number(overtime.overtime_rate ?? 0);
@@ -112,6 +121,13 @@ interface HrPayrollTabsProps {
 export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }: HrPayrollTabsProps) {
   const [loading, setLoading] = useState(true);
   const [myOvertimes, setMyOvertimes] = useState<OvertimeItem[]>([]);
+  const [myOvertimePricing, setMyOvertimePricing] = useState<MyOvertimePricing>({ configured: false, overtime_hourly_rate: null });
+  const [defaultOvertimeRate, setDefaultOvertimeRate] = useState("");
+  const [savingDefaultOvertimeRate, setSavingDefaultOvertimeRate] = useState(false);
+  const [defaultOvertimeRateSaveStatus, setDefaultOvertimeRateSaveStatus] = useState<"idle" | "saved" | "error">("idle");
+  const [overtimeRateEdits, setOvertimeRateEdits] = useState<Record<string, string>>({});
+  const [savingEmployeeOvertimeRates, setSavingEmployeeOvertimeRates] = useState<Record<string, boolean>>({});
+  const [savedEmployeeOvertimeRates, setSavedEmployeeOvertimeRates] = useState<Record<string, boolean>>({});
   const [myPayslips, setMyPayslips] = useState<any[]>([]);
   const [companyOvertimes, setCompanyOvertimes] = useState<OvertimeItem[]>([]);
   const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([]);
@@ -119,7 +135,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
   const [employeeUserOptions, setEmployeeUserOptions] = useState<EmployeeUserOption[]>([]);
   const [employeeUserOptionsError, setEmployeeUserOptionsError] = useState(false);
   const [employeeCreateOpen, setEmployeeCreateOpen] = useState(false);
-  const [newEmployee, setNewEmployee] = useState({ employee_name: "", employee_number: "", monthly_salary: "", standard_hourly_rate: "", cost_center_id: "" });
+  const [newEmployee, setNewEmployee] = useState({ employee_name: "", employee_number: "", monthly_salary: "", standard_hourly_rate: "", overtime_hourly_rate: "", cost_center_id: "" });
   const [costCenters, setCostCenters] = useState<CostCenterItem[]>([]);
 
   const [otForm, setOtForm] = useState({
@@ -149,12 +165,16 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [myOtRes, mySlipRes] = await Promise.all([
+      const [myOtRes, mySlipRes, myRateRes, companyRateRes] = await Promise.all([
         api.get("/api/v1/hr/overtimes/my").catch(() => ({ data: { results: [] } })),
         api.get("/api/v1/hr/payslips/my").catch(() => ({ data: { results: [] } })),
+        api.get("/api/v1/hr/overtimes/my/rate").catch(() => ({ data: { data: { configured: false, overtime_hourly_rate: null } } })),
+        hrTier <= 2 ? api.get("/api/v1/hr/overtimes/rate-settings").catch(() => ({ data: { data: { default_overtime_hourly_rate: null } } })) : Promise.resolve({ data: { data: { default_overtime_hourly_rate: null } } }),
       ]);
       setMyOvertimes(myOtRes.data?.results ?? []);
       setMyPayslips(mySlipRes.data?.results ?? []);
+      setMyOvertimePricing(myRateRes.data?.data ?? { configured: false, overtime_hourly_rate: null });
+      setDefaultOvertimeRate(formatRateInput(companyRateRes.data?.data?.default_overtime_hourly_rate));
 
       if (hrTier <= 2 || financeTier <= 1) {
         const [compOtRes, runsRes, empRes, costCenterRes, userOptionsRes] = await Promise.all([
@@ -185,16 +205,19 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
         setCostCenters(costCenterRes.data?.results ?? []);
         const edits: Record<string, string> = {};
         const rateEdits: Record<string, string> = {};
+        const overtimeRatesByEmployee: Record<string, string> = {};
         const profileEdits: Record<string, { name: string; number: string; status: string }> = {};
         const costCenterEditsByEmployee: Record<string, string> = {};
         for (const e of empList) {
           edits[e.id] = e.monthly_salary == null ? "" : String(e.monthly_salary);
           rateEdits[e.id] = e.standard_hourly_rate == null ? "" : String(e.standard_hourly_rate);
+          overtimeRatesByEmployee[e.id] = formatRateInput(e.overtime_hourly_rate);
           profileEdits[e.id] = { name: e.employee_name, number: e.employee_number, status: e.employment_status };
           costCenterEditsByEmployee[e.id] = String(e.cost_center_id ?? "");
         }
         setSalaryEdits(edits);
         setHourlyRateEdits(rateEdits);
+        setOvertimeRateEdits(overtimeRatesByEmployee);
         setEmployeeProfileEdits(profileEdits);
         setCostCenterEdits(costCenterEditsByEmployee);
         setEmployeeUserEdits({});
@@ -208,8 +231,67 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
     void loadData();
   }, [loadData]);
 
+  const saveDefaultOvertimeRate = async () => {
+    if (hrTier !== 1 || savingDefaultOvertimeRate) return;
+    setSavingDefaultOvertimeRate(true);
+    setDefaultOvertimeRateSaveStatus("idle");
+    try {
+      const response = await api.put("/api/v1/hr/overtimes/rate-settings", {
+        default_overtime_hourly_rate: defaultOvertimeRate.trim() ? Number(defaultOvertimeRate) : null,
+      });
+      setDefaultOvertimeRate(formatRateInput(response.data?.data?.default_overtime_hourly_rate));
+      setDefaultOvertimeRateSaveStatus("saved");
+      try {
+        const myRate = await api.get("/api/v1/hr/overtimes/my/rate");
+        setMyOvertimePricing(myRate.data?.data ?? { configured: false, overtime_hourly_rate: null });
+      } catch {
+        // HR settings may be available even if this account has no linked employee profile.
+      }
+    } catch (err: unknown) {
+      setDefaultOvertimeRateSaveStatus("error");
+      toast.error(getApiErrorDetail(err, "Gagal menyimpan tarif lembur umum."));
+    } finally {
+      setSavingDefaultOvertimeRate(false);
+    }
+  };
+
+  const saveEmployeeOvertimeRate = async (employee: EmployeeItem) => {
+    if (hrTier > 2 || savingEmployeeOvertimeRates[employee.id]) return;
+    const inputRate = overtimeRateEdits[employee.id] ?? "";
+    const numericRate = inputRate.trim() ? Number(inputRate) : null;
+    if (numericRate !== null && (!Number.isFinite(numericRate) || numericRate <= 0)) {
+      toast.error("Tarif lembur khusus harus lebih dari nol atau dikosongkan untuk memakai tarif umum.");
+      setOvertimeRateEdits((current) => ({ ...current, [employee.id]: formatRateInput(employee.overtime_hourly_rate) }));
+      return;
+    }
+    setSavingEmployeeOvertimeRates((current) => ({ ...current, [employee.id]: true }));
+    setSavedEmployeeOvertimeRates((current) => ({ ...current, [employee.id]: false }));
+    try {
+      const response = await api.put(`/api/v1/hr/employees/${employee.id}`, { overtime_hourly_rate: numericRate });
+      const savedRate = response.data?.data?.overtime_hourly_rate ?? null;
+      setEmployees((current) => current.map((row) => row.id === employee.id ? { ...row, overtime_hourly_rate: savedRate } : row));
+      setOvertimeRateEdits((current) => ({ ...current, [employee.id]: formatRateInput(savedRate) }));
+      setSavedEmployeeOvertimeRates((current) => ({ ...current, [employee.id]: true }));
+      try {
+        const myRate = await api.get("/api/v1/hr/overtimes/my/rate");
+        setMyOvertimePricing(myRate.data?.data ?? { configured: false, overtime_hourly_rate: null });
+      } catch {
+        // The edited employee may not be linked to the current HR account.
+      }
+    } catch (err: unknown) {
+      setOvertimeRateEdits((current) => ({ ...current, [employee.id]: formatRateInput(employee.overtime_hourly_rate) }));
+      toast.error(getApiErrorDetail(err, `Gagal menyimpan tarif lembur ${employee.employee_name}.`));
+    } finally {
+      setSavingEmployeeOvertimeRates((current) => ({ ...current, [employee.id]: false }));
+    }
+  };
+
   const handleSubmitOvertime = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!myOvertimePricing.configured || !myOvertimePricing.overtime_hourly_rate) {
+      toast.error("Tarif lembur belum tersedia. Minta HR menetapkan tarif umum atau tarif khusus pada profil karyawan.");
+      return;
+    }
     setSubmittingOt(true);
     try {
       await api.post("/api/v1/hr/overtimes/my", {
@@ -220,11 +302,17 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
       setOtForm((p) => ({ ...p, reason: "" }));
       await loadData();
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Gagal mengajukan lembur.");
+      toast.error(getApiErrorDetail(err, "Gagal mengajukan lembur."));
     } finally {
       setSubmittingOt(false);
     }
   };
+
+  const overtimeHourlyRate = Number(myOvertimePricing.overtime_hourly_rate ?? 0);
+  const overtimeHours = Number(otForm.duration_hours || 0);
+  const overtimeTotalEstimate = myOvertimePricing.configured && Number.isFinite(overtimeHours)
+    ? Math.round(overtimeHourlyRate * overtimeHours * 100) / 100
+    : null;
 
   if (loading) {
     return (
@@ -310,6 +398,33 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                   />
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Tarif Lembur per Jam</label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={myOvertimePricing.configured ? formatIdr(overtimeHourlyRate) : "Belum diatur"}
+                    className="w-full h-9 rounded-xl border border-slate-200 bg-slate-100 px-3 text-slate-700"
+                    aria-label="Tarif lembur per jam"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Estimasi Total Lembur</label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={overtimeTotalEstimate === null ? "Belum dapat dihitung" : formatIdr(overtimeTotalEstimate)}
+                    className="w-full h-9 rounded-xl border border-slate-200 bg-slate-100 px-3 text-slate-700"
+                    aria-label="Estimasi total upah lembur"
+                  />
+                </div>
+              </div>
+              <p className={`text-[11px] leading-4 ${myOvertimePricing.configured ? "text-slate-500" : "text-amber-700"}`}>
+                {myOvertimePricing.configured
+                  ? "Tarif mengikuti pengaturan HR: tarif khusus karyawan, lalu tarif umum perusahaan. Jika keduanya kosong, sistem memakai rumus dari profil upah."
+                  : "Tarif belum tersedia. Minta HR menetapkan tarif umum atau tarif khusus karyawan; bila keduanya kosong, lengkapi profil upah."}
+              </p>
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Alasan / Pekerjaan Lembur</label>
                 <textarea
@@ -323,7 +438,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
               </div>
               <button
                 type="submit"
-                disabled={submittingOt}
+                disabled={submittingOt || !myOvertimePricing.configured}
                 className="inline-flex items-center gap-2 rounded-xl bg-[#0876CD] hover:bg-[#163D64] px-4 py-2.5 font-semibold text-white cursor-pointer disabled:opacity-50"
               >
                 <Send size={14} />
@@ -559,8 +674,14 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                   {employeeCreateOpen ? "Tutup Form" : "+ Tambah Karyawan"}
                 </button>
               </div>
+              <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-sky-50/60 px-4 py-3 text-xs">
+                <label htmlFor="default-overtime-rate-ops" className="font-semibold text-slate-700">Tarif lembur umum per jam</label>
+                <input id="default-overtime-rate-ops" type="number" min="0.01" step="100" value={defaultOvertimeRate} disabled={hrTier !== 1 || savingDefaultOvertimeRate} onChange={(event) => { setDefaultOvertimeRate(event.target.value); setDefaultOvertimeRateSaveStatus("idle"); }} onBlur={() => void saveDefaultOvertimeRate()} placeholder="Contoh: 50000" className="h-9 w-44 rounded-lg border border-slate-200 bg-white px-3 disabled:bg-slate-100" />
+                <span className="text-slate-500">Berlaku sebagai default; tarif khusus karyawan akan menggantikannya. Kosong memakai rumus dari profil upah.</span>
+                {savingDefaultOvertimeRate ? <span className="font-medium text-sky-700">Menyimpan…</span> : defaultOvertimeRateSaveStatus === "saved" ? <span className="font-medium text-emerald-700">Tersimpan</span> : null}
+              </div>
               {employeeCreateOpen && (
-                <form className="grid gap-2 border-b border-slate-100 bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-5" onSubmit={async (event) => {
+                <form className="grid gap-2 border-b border-slate-100 bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-6" onSubmit={async (event) => {
                   event.preventDefault();
                   try {
                     await api.post("/api/v1/hr/employees", {
@@ -568,10 +689,11 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                       employee_number: newEmployee.employee_number,
                       monthly_salary: newEmployee.monthly_salary.trim() ? Number(newEmployee.monthly_salary) : null,
                       standard_hourly_rate: newEmployee.standard_hourly_rate.trim() ? Number(newEmployee.standard_hourly_rate) : null,
+                      overtime_hourly_rate: newEmployee.overtime_hourly_rate.trim() ? Number(newEmployee.overtime_hourly_rate) : null,
                       cost_center_id: newEmployee.cost_center_id || null,
                       employment_status: "ACTIVE",
                     });
-                    setNewEmployee({ employee_name: "", employee_number: "", monthly_salary: "", standard_hourly_rate: "", cost_center_id: "" });
+                    setNewEmployee({ employee_name: "", employee_number: "", monthly_salary: "", standard_hourly_rate: "", overtime_hourly_rate: "", cost_center_id: "" });
                     setEmployeeCreateOpen(false);
                     toast.success("Profil karyawan dibuat. Admin dapat menautkan akun user saat membuat akun.");
                     await loadData();
@@ -582,13 +704,14 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                   <input required placeholder="Nama lengkap karyawan" value={newEmployee.employee_name} onChange={(e) => setNewEmployee((value) => ({ ...value, employee_name: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
                   <input required placeholder="Nomor karyawan" value={newEmployee.employee_number} onChange={(e) => setNewEmployee((value) => ({ ...value, employee_number: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
                   <input type="number" min="0.01" step="1000" placeholder="Gaji bulanan (opsional)" value={newEmployee.monthly_salary} onChange={(e) => setNewEmployee((value) => ({ ...value, monthly_salary: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
-                  <input type="number" min="0.01" step="100" placeholder="Tarif per jam (opsional)" value={newEmployee.standard_hourly_rate} onChange={(e) => setNewEmployee((value) => ({ ...value, standard_hourly_rate: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
+                  <input type="number" min="0.01" step="100" placeholder="Tarif dasar per jam (opsional)" value={newEmployee.standard_hourly_rate} onChange={(e) => setNewEmployee((value) => ({ ...value, standard_hourly_rate: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
+                  <input type="number" min="0.01" step="100" placeholder="Tarif lembur khusus (opsional)" value={newEmployee.overtime_hourly_rate} onChange={(e) => setNewEmployee((value) => ({ ...value, overtime_hourly_rate: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
                   <select value={newEmployee.cost_center_id} onChange={(e) => setNewEmployee((value) => ({ ...value, cost_center_id: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3">
                     <option value="">Cost center (opsional)</option>
                     {costCenters.map((center) => <option key={center.id} value={center.id}>{center.cost_center_code} — {center.cost_center_name}</option>)}
                   </select>
                   <button type="submit" className="h-9 rounded-lg bg-emerald-600 px-3 font-semibold text-white">Simpan Karyawan</button>
-                  <p className="text-[11px] leading-4 text-slate-500 sm:col-span-2 xl:col-span-5">Profil dibuat tanpa akun user. Admin menautkannya pada saat membuat akun; lengkapi gaji dan cost center sebelum payroll.</p>
+                  <p className="text-[11px] leading-4 text-slate-500 sm:col-span-2 xl:col-span-6">Profil dibuat tanpa akun user. Admin menautkannya pada saat membuat akun; tarif lembur khusus bersifat opsional dan akan menggantikan tarif umum.</p>
                 </form>
               )}
               <div className="divide-y divide-slate-100 text-xs">
@@ -661,11 +784,15 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                           min="0.01"
                           step="100"
                           aria-label={`Tarif per jam ${emp.employee_name}`}
-                          placeholder="Tarif per jam (opsional)"
+                          placeholder="Tarif dasar per jam (opsional)"
                           value={hourlyRateEdits[emp.id] ?? ""}
                           onChange={(e) => setHourlyRateEdits((p) => ({ ...p, [emp.id]: e.target.value }))}
                           className="h-9 w-44 rounded-lg border border-slate-200 bg-slate-50 px-3"
                         />
+                        <div className="flex flex-col gap-1">
+                          <input type="number" min="0.01" step="100" aria-label={`Tarif lembur khusus per jam ${emp.employee_name}`} placeholder="Lembur khusus (kosong = umum)" value={overtimeRateEdits[emp.id] ?? ""} onChange={(event) => { setOvertimeRateEdits((current) => ({ ...current, [emp.id]: event.target.value })); setSavedEmployeeOvertimeRates((current) => ({ ...current, [emp.id]: false })); }} onBlur={() => void saveEmployeeOvertimeRate(emp)} disabled={savingEmployeeOvertimeRates[emp.id]} className="h-9 w-52 rounded-lg border border-slate-200 bg-slate-50 px-3 disabled:opacity-60" />
+                          {savingEmployeeOvertimeRates[emp.id] ? <span className="text-[10px] text-sky-700">Menyimpan…</span> : savedEmployeeOvertimeRates[emp.id] ? <span className="text-[10px] text-emerald-700">Tersimpan</span> : null}
+                        </div>
                         <button
                           type="button"
                           onClick={async () => {
@@ -893,8 +1020,14 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                   {employeeCreateOpen ? "Tutup Form" : "+ Tambah Karyawan"}
                 </button>
               </div>
+              <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-sky-50/60 px-4 py-3 text-xs">
+                <label htmlFor="default-overtime-rate-lead" className="font-semibold text-slate-700">Tarif lembur umum per jam</label>
+                <input id="default-overtime-rate-lead" type="number" min="0.01" step="100" value={defaultOvertimeRate} disabled={savingDefaultOvertimeRate} onChange={(event) => { setDefaultOvertimeRate(event.target.value); setDefaultOvertimeRateSaveStatus("idle"); }} onBlur={() => void saveDefaultOvertimeRate()} placeholder="Contoh: 50000" className="h-9 w-44 rounded-lg border border-slate-200 bg-white px-3 disabled:bg-slate-100" />
+                <span className="text-slate-500">Tarif khusus karyawan akan menggantikan default. Kosong memakai rumus profil upah.</span>
+                {savingDefaultOvertimeRate ? <span className="font-medium text-sky-700">Menyimpan…</span> : defaultOvertimeRateSaveStatus === "saved" ? <span className="font-medium text-emerald-700">Tersimpan</span> : null}
+              </div>
               {employeeCreateOpen && (
-                <form className="grid gap-2 border-b border-slate-100 bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-5" onSubmit={async (event) => {
+                <form className="grid gap-2 border-b border-slate-100 bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-6" onSubmit={async (event) => {
                   event.preventDefault();
                   try {
                     await api.post("/api/v1/hr/employees", {
@@ -902,10 +1035,11 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                       employee_number: newEmployee.employee_number,
                       monthly_salary: newEmployee.monthly_salary.trim() ? Number(newEmployee.monthly_salary) : null,
                       standard_hourly_rate: newEmployee.standard_hourly_rate.trim() ? Number(newEmployee.standard_hourly_rate) : null,
+                      overtime_hourly_rate: newEmployee.overtime_hourly_rate.trim() ? Number(newEmployee.overtime_hourly_rate) : null,
                       cost_center_id: newEmployee.cost_center_id || null,
                       employment_status: "ACTIVE",
                     });
-                    setNewEmployee({ employee_name: "", employee_number: "", monthly_salary: "", standard_hourly_rate: "", cost_center_id: "" });
+                    setNewEmployee({ employee_name: "", employee_number: "", monthly_salary: "", standard_hourly_rate: "", overtime_hourly_rate: "", cost_center_id: "" });
                     setEmployeeCreateOpen(false);
                     toast.success("Profil karyawan dibuat. Admin dapat menautkan akun user saat membuat akun.");
                     await loadData();
@@ -916,13 +1050,14 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                   <input required placeholder="Nama lengkap karyawan" value={newEmployee.employee_name} onChange={(e) => setNewEmployee((value) => ({ ...value, employee_name: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
                   <input required placeholder="Nomor karyawan" value={newEmployee.employee_number} onChange={(e) => setNewEmployee((value) => ({ ...value, employee_number: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
                   <input type="number" min="0.01" step="1000" placeholder="Gaji bulanan (opsional)" value={newEmployee.monthly_salary} onChange={(e) => setNewEmployee((value) => ({ ...value, monthly_salary: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
-                  <input type="number" min="0.01" step="100" placeholder="Tarif per jam (opsional)" value={newEmployee.standard_hourly_rate} onChange={(e) => setNewEmployee((value) => ({ ...value, standard_hourly_rate: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
+                  <input type="number" min="0.01" step="100" placeholder="Tarif dasar per jam (opsional)" value={newEmployee.standard_hourly_rate} onChange={(e) => setNewEmployee((value) => ({ ...value, standard_hourly_rate: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
+                  <input type="number" min="0.01" step="100" placeholder="Tarif lembur khusus (opsional)" value={newEmployee.overtime_hourly_rate} onChange={(e) => setNewEmployee((value) => ({ ...value, overtime_hourly_rate: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
                   <select value={newEmployee.cost_center_id} onChange={(e) => setNewEmployee((value) => ({ ...value, cost_center_id: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3">
                     <option value="">Cost center (opsional)</option>
                     {costCenters.map((center) => <option key={center.id} value={center.id}>{center.cost_center_code} — {center.cost_center_name}</option>)}
                   </select>
                   <button type="submit" className="h-9 rounded-lg bg-emerald-600 px-3 font-semibold text-white">Simpan Karyawan</button>
-                  <p className="text-[11px] leading-4 text-slate-500 sm:col-span-2 xl:col-span-5">Profil dibuat tanpa akun user. Admin menautkannya pada saat membuat akun; lengkapi gaji dan cost center sebelum payroll.</p>
+                  <p className="text-[11px] leading-4 text-slate-500 sm:col-span-2 xl:col-span-6">Profil dibuat tanpa akun user. Admin menautkannya pada saat membuat akun; tarif lembur khusus bersifat opsional dan menggantikan tarif umum.</p>
                 </form>
               )}
               <div className="divide-y divide-slate-100 text-xs">
@@ -995,11 +1130,15 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                           min="0.01"
                           step="100"
                           aria-label={`Tarif per jam ${emp.employee_name}`}
-                          placeholder="Tarif per jam (opsional)"
+                          placeholder="Tarif dasar per jam (opsional)"
                           value={hourlyRateEdits[emp.id] ?? ""}
                           onChange={(e) => setHourlyRateEdits((p) => ({ ...p, [emp.id]: e.target.value }))}
                           className="h-9 w-44 rounded-lg border border-slate-200 bg-slate-50 px-3"
                         />
+                        <div className="flex flex-col gap-1">
+                          <input type="number" min="0.01" step="100" aria-label={`Tarif lembur khusus per jam ${emp.employee_name}`} placeholder="Lembur khusus (kosong = umum)" value={overtimeRateEdits[emp.id] ?? ""} onChange={(event) => { setOvertimeRateEdits((current) => ({ ...current, [emp.id]: event.target.value })); setSavedEmployeeOvertimeRates((current) => ({ ...current, [emp.id]: false })); }} onBlur={() => void saveEmployeeOvertimeRate(emp)} disabled={savingEmployeeOvertimeRates[emp.id]} className="h-9 w-52 rounded-lg border border-slate-200 bg-slate-50 px-3 disabled:opacity-60" />
+                          {savingEmployeeOvertimeRates[emp.id] ? <span className="text-[10px] text-sky-700">Menyimpan…</span> : savedEmployeeOvertimeRates[emp.id] ? <span className="text-[10px] text-emerald-700">Tersimpan</span> : null}
+                        </div>
                         <button
                           type="button"
                           onClick={async () => {

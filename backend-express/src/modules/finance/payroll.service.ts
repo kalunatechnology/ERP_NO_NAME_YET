@@ -208,6 +208,9 @@ export class PayrollService {
     const hourlyRate = input.standard_hourly_rate === undefined || input.standard_hourly_rate === null || String(input.standard_hourly_rate).trim() === ''
       ? null
       : amount(input.standard_hourly_rate, 'Tarif per jam', false);
+    const overtimeRate = input.overtime_hourly_rate === undefined || input.overtime_hourly_rate === null || String(input.overtime_hourly_rate).trim() === ''
+      ? null
+      : amount(input.overtime_hourly_rate, 'Tarif lembur per jam', false);
     const costCenterId = String(input.cost_center_id ?? '').trim();
     if (costCenterId && !await prisma.master_cost_center.findFirst({ where: { id: costCenterId, company_id: companyId, status: 'ACTIVE' }, select: { id: true } })) throw new ValidationError('Cost center tidak aktif atau bukan milik perusahaan ini.');
     const duplicate = await prisma.master_employee.findFirst({ where: { company_id: companyId, employee_number: employeeNumber } });
@@ -218,7 +221,7 @@ export class PayrollService {
       id: crypto.randomUUID(), company_id: companyId, tenant_id: tenantId, created_by_id: userId,
       employee_number: employeeNumber, employee_name: employeeName, monthly_salary: salary,
       employment_status: employmentStatus, department_id: input.department_id || null, cost_center_id: costCenterId || null,
-      party_id: input.party_id || null, standard_hourly_rate: hourlyRate, user_id: null,
+      party_id: input.party_id || null, standard_hourly_rate: hourlyRate, overtime_hourly_rate: overtimeRate, user_id: null,
     } });
   }
 
@@ -269,6 +272,15 @@ export class PayrollService {
       } else {
         data.standard_hourly_rate = amount(rawRate, 'Tarif per jam');
         if (data.standard_hourly_rate <= 0) throw new ValidationError('Tarif per jam harus lebih dari nol atau dikosongkan.');
+      }
+    }
+    if (input.overtime_hourly_rate !== undefined) {
+      const rawRate = input.overtime_hourly_rate;
+      if (rawRate === null || String(rawRate).trim() === '') {
+        data.overtime_hourly_rate = null;
+      } else {
+        data.overtime_hourly_rate = amount(rawRate, 'Tarif lembur per jam');
+        if (data.overtime_hourly_rate <= 0) throw new ValidationError('Tarif lembur per jam harus lebih dari nol atau dikosongkan untuk memakai tarif umum.');
       }
     }
     if (input.department_id !== undefined) data.department_id = input.department_id || null;

@@ -1577,11 +1577,22 @@ model master_employee {
   monthly_salary       Decimal? @map("monthly_salary") @db.Decimal(18, 2)
   cost_center_id       String?  @map("cost_center_id")
   standard_hourly_rate Decimal?
+  overtime_hourly_rate Decimal? @map("overtime_hourly_rate") @db.Decimal(18, 2)
 
   @@unique([company_id, user_id])
   @@index([tenant_id, company_id])
   @@index([tenant_id, company_id, user_id])
   @@map("master_employee")
+}
+
+model hr_company_overtime_setting {
+  company_id                    String   @id @map("company_id")
+  tenant_id                     String?  @map("tenant_id")
+  default_overtime_hourly_rate  Decimal? @map("default_overtime_hourly_rate") @db.Decimal(18, 2)
+  created_at                    DateTime @default(now()) @map("created_at")
+  updated_at                    DateTime @updatedAt @map("updated_at")
+
+  @@map("hr_company_overtime_setting")
 }
 
 model master_warehouse {

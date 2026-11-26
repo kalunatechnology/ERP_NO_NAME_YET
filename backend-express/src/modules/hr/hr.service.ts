@@ -35,6 +35,16 @@ export async function ensureHrTables(): Promise<void> {
       );
     `);
     await prisma.$executeRawUnsafe(`ALTER TABLE "hr_overtime_request" ADD COLUMN IF NOT EXISTS "project_id" TEXT;`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "master_employee" ADD COLUMN IF NOT EXISTS "overtime_hourly_rate" DECIMAL(18, 2);`);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "hr_company_overtime_setting" (
+        "company_id" TEXT PRIMARY KEY,
+        "tenant_id" TEXT,
+        "default_overtime_hourly_rate" DECIMAL(18, 2),
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
     await prisma.$executeRawUnsafe(
       `ALTER TABLE "fin_payroll_run"
        ADD COLUMN IF NOT EXISTS "hr_approved_by_id" TEXT,
@@ -59,6 +69,51 @@ export class HrService {
     });
     if (!emp) throw new NotFoundError('Profil karyawan aktif untuk akun ini');
     return emp;
+  }
+
+  static async getOvertimeRateSettings(companyId: string) {
+    await ensureHrTables();
+    const setting = await prisma.hr_company_overtime_setting.findUnique({ where: { company_id: companyId } });
+    return { default_overtime_hourly_rate: setting?.default_overtime_hourly_rate == null ? null : Number(setting.default_overtime_hourly_rate) };
+  }
+
+  static async updateOvertimeRateSettings(companyId: string, tenantId: string | null, input: any) {
+    await ensureHrTables();
+    const rawRate = input.default_overtime_hourly_rate;
+    const rate = rawRate === null || rawRate === undefined || String(rawRate).trim() === '' ? null : Number(rawRate);
+    if (rate !== null && (!Number.isFinite(rate) || rate <= 0)) {
+      throw new ValidationError('Tarif lembur umum harus lebih dari nol atau dikosongkan untuk memakai rumus profil upah.');
+    }
+    const setting = await prisma.hr_company_overtime_setting.upsert({
+      where: { company_id: companyId },
+      create: { company_id: companyId, tenant_id: tenantId, default_overtime_hourly_rate: rate },
+      update: { tenant_id: tenantId, default_overtime_hourly_rate: rate },
+    });
+    return { default_overtime_hourly_rate: setting.default_overtime_hourly_rate == null ? null : Number(setting.default_overtime_hourly_rate) };
+  }
+
+  static async resolveOvertimeHourlyRate(companyId: string, employee: { monthly_salary: any; standard_hourly_rate: any; overtime_hourly_rate?: any }) {
+    const employeeRate = Number(employee.overtime_hourly_rate ?? 0);
+    if (Number.isFinite(employeeRate) && employeeRate > 0) return { rate: employeeRate, source: 'EMPLOYEE_OVERRIDE' as const };
+    const { default_overtime_hourly_rate: companyRate } = await this.getOvertimeRateSettings(companyId);
+    if (companyRate && companyRate > 0) return { rate: companyRate, source: 'COMPANY_DEFAULT' as const };
+    const fallback = this.computeOvertimeAmount(employee, 1);
+    return { rate: fallback.configured ? fallback.rate : 0, source: 'PROFILE_FORMULA' as const };
+  }
+
+  static async getMyOvertimePricing(companyId: string, userId: string) {
+    await ensureHrTables();
+    const employee = await prisma.master_employee.findFirst({
+      where: { company_id: companyId, user_id: userId, employment_status: 'ACTIVE' },
+      select: { monthly_salary: true, standard_hourly_rate: true, overtime_hourly_rate: true },
+    });
+    if (!employee) return { configured: false, overtime_hourly_rate: null };
+    const estimate = await this.resolveOvertimeHourlyRate(companyId, employee);
+    return {
+      configured: estimate.rate > 0,
+      overtime_hourly_rate: estimate.rate > 0 ? estimate.rate : null,
+      source: estimate.source,
+    };
   }
 
   static computeOvertimeAmount(emp: { monthly_salary: any; standard_hourly_rate: any }, hours: number) {
@@ -88,10 +143,11 @@ export class HrService {
     if (!Number.isFinite(workDate.getTime())) {
       throw new ValidationError('Tanggal kerja lembur tidak valid.');
     }
-    const { rate, amount, configured } = this.computeOvertimeAmount(emp, hours);
-    if (!configured) {
-      throw new ValidationError('Profil upah Anda belum diatur. Hubungi HR untuk mengisi gaji bulanan atau tarif per jam sebelum mengajukan lembur.');
+    const { rate } = await this.resolveOvertimeHourlyRate(companyId, emp);
+    if (rate <= 0) {
+      throw new ValidationError('Tarif lembur belum diatur. Minta HR mengisi tarif umum atau tarif khusus pada profil karyawan.');
     }
+    const amount = Math.round(rate * hours * 100) / 100;
     return prisma.hr_overtime_request.create({
       data: {
         id: crypto.randomUUID(),
@@ -154,7 +210,8 @@ export class HrService {
       return Number.isFinite(d.getTime()) ? d.toISOString().slice(11, 16) : '';
     };
     const workDate = new Date(input.work_date);
-    const { rate, amount } = this.computeOvertimeAmount(emp, hours);
+    const { rate } = await this.resolveOvertimeHourlyRate(companyId, emp);
+    const amount = Math.round(rate * hours * 100) / 100;
     return prisma.hr_overtime_request.create({
       data: {
         id: crypto.randomUUID(),
@@ -246,11 +303,12 @@ export class HrService {
       where: { id: row.employee_id, company_id: companyId, employment_status: 'ACTIVE' },
     });
     if (!employee) throw new ValidationError('Profil karyawan aktif tidak ditemukan untuk menghitung upah lembur.');
-    const estimate = this.computeOvertimeAmount(employee, Number(row.duration_hours ?? 0));
-    if (!estimate.configured || estimate.rate <= 0 || estimate.amount <= 0) {
-      throw new ValidationError('Profil upah belum tersedia. Lengkapi gaji bulanan atau tarif per jam sebelum memproses lembur ini.');
+    const { rate } = await this.resolveOvertimeHourlyRate(companyId, employee);
+    const amount = Math.round(rate * Number(row.duration_hours ?? 0) * 100) / 100;
+    if (rate <= 0 || amount <= 0) {
+      throw new ValidationError('Tarif lembur belum tersedia. Lengkapi tarif umum atau tarif khusus pada profil karyawan sebelum memproses lembur ini.');
     }
-    return { rate: estimate.rate, amount: estimate.amount };
+    return { rate, amount };
   }
 
   /** Tier 2: Verifikasi operasional oleh Anak Buah HR. */
