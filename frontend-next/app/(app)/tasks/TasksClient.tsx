@@ -647,9 +647,20 @@ export default function TasksClient() {
       setLoadError("");
     } catch (error) {
       if (revision !== fetchRevision.current) return;
-      const message = getApiErrorDetail(error, "Data task belum dapat dimuat. Gunakan Refresh untuk mencoba kembali.");
+      const apiError = error as {
+        config?: { url?: string };
+        response?: { status?: number; data?: { detail?: unknown; request_id?: unknown } };
+      };
+      const detail = String(apiError.response?.data?.detail ?? "");
+      const isGenericValidation = apiError.response?.status === 400
+        && detail === "Sebagian data belum sesuai. Periksa kembali isian yang wajib diisi, lalu coba lagi.";
+      const endpoint = apiError.config?.url?.split("?")[0];
+      const requestId = typeof apiError.response?.data?.request_id === "string" ? apiError.response.data.request_id : "";
+      const reference = requestId ? ` Referensi: ${requestId}.` : "";
+      const message = isGenericValidation
+        ? `Server gagal memvalidasi permintaan saat memuat data Tugas Harian${endpoint ? ` (${endpoint})` : ""}. Ini bukan kesalahan pengajuan cuti. Muat ulang; jika berulang, kirim referensi ini ke admin.${reference}`
+        : getApiErrorDetail(error, "Data task belum dapat dimuat. Gunakan Refresh untuk mencoba kembali.");
       setLoadError(message);
-      toast.error(message);
     } finally {
       if (revision === fetchRevision.current) {
         setLoading(false);

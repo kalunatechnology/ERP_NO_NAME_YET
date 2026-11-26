@@ -462,13 +462,21 @@ export class ProjectsService {
         select: { main_task_id: true },
       }),
       db.project_daily_task?.findMany({
-        where: { ...tenantScope, company_id: companyId, assignee_id: user.id },
-        select: { weekly_task: { select: { main_task_id: true } } },
+        where: { ...tenantScope, company_id: companyId, owner_id: user.id },
+        select: { weekly_task_id: true },
       }) ?? Promise.resolve([]),
     ]);
-    const dailyMainIds = ownDaily
-      .map((row: any) => row?.weekly_task?.main_task_id)
-      .filter((id: unknown): id is string => Boolean(id));
+    const dailyWeeklyIds = [...new Set(ownDaily
+      .map((row: { weekly_task_id?: string | null }) => row.weekly_task_id)
+      .filter((id: unknown): id is string => Boolean(id)))];
+    const dailyParentWeeklyTasks = dailyWeeklyIds.length
+      ? await db.project_weekly_task.findMany({
+        where: { ...tenantScope, company_id: companyId, id: { in: dailyWeeklyIds } },
+        select: { main_task_id: true },
+      })
+      : [];
+    const dailyMainIds = dailyParentWeeklyTasks
+      .map((row: { main_task_id: string }) => row.main_task_id);
     const mainIds = [...new Set([...assignments, ...ownWeekly].map((row: { main_task_id: string }) => row.main_task_id).concat(dailyMainIds))];
     const assignedMainTasks = mainIds.length
       ? await db.project_main_task.findMany({

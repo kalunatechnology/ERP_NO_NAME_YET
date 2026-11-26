@@ -199,6 +199,7 @@ export function errorHandler(
   }
 
   if (err instanceof Prisma.PrismaClientValidationError) {
+    console.error('[prisma-validation]', req.requestId, err.message);
     res.status(400).json({
       success: false,
       error: 'VALIDATION_ERROR',

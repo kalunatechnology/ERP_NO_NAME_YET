@@ -172,6 +172,13 @@ static async createRequest(
         throw new ValidationError('Email peserta eksternal meeting tidak valid.');
       }
     }
+  } else if (request_type === 'LEAVE') {
+    if (!meetingStart || !meetingEnd || Number.isNaN(meetingStart.getTime()) || Number.isNaN(meetingEnd.getTime())) {
+      throw new ValidationError('Tanggal mulai dan selesai wajib diisi untuk cuti/izin.');
+    }
+    if (meetingEnd < meetingStart) {
+      throw new ValidationError('Tanggal selesai cuti harus sama dengan atau setelah tanggal mulai.');
+    }
   } else if (crm_opportunity_id || external_participants.length) {
     throw new ValidationError('Tautan Opportunity dan peserta eksternal hanya berlaku untuk Meeting.');
   }
