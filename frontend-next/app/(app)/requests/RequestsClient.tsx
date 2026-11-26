@@ -21,6 +21,8 @@ const weekDays=[{value:1,label:"Sen"},{value:2,label:"Sel"},{value:3,label:"Rab"
 
 function localIso(date:string,time:string){const value=new Date(`${date}T${time}`);if(Number.isNaN(value.getTime()))throw new Error("Waktu tidak valid");return value.toISOString();}
 function displayDate(value:string){return new Date(value).toLocaleString("id-ID",{dateStyle:"medium",timeStyle:"short"});}
+function displayDateOnly(value:string){return new Date(value).toLocaleDateString("id-ID",{dateStyle:"medium"});}
+function localDateBoundaryIso(date:string,endOfDay=false){const value=new Date(`${date}T00:00:00`);if(Number.isNaN(value.getTime()))throw new Error("Tanggal cuti tidak valid");if(endOfDay)value.setHours(23,59,59,999);return value.toISOString();}
 function displayOccurrenceDate(value:string){return new Date(`${value}T00:00:00`).toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"short",year:"numeric"});}
 function isHttpUrl(value:string){return /^https?:\/\/\S+$/i.test(value.trim());}
 function isVideoMeetingUrl(value:string){return isHttpUrl(value)&&/(meet\.google\.com|zoom\.us|teams\.microsoft\.com|webex\.com)/i.test(value);}
@@ -699,13 +701,15 @@ export default function RequestsClient(){
 
                     <span className={cn(
                       "px-2.5 py-0.5 rounded-full border text-3xs font-extrabold uppercase tracking-wide",
-                      req.status === 'COMPLETED' || req.status === 'REGISTERED' || req.status === 'APPROVED'
+                      req.status === 'COMPLETED' || req.status === 'APPROVED'
                         ? "bg-emerald-50 text-emerald-800 border-emerald-200"
                         : req.status === 'REJECTED'
                         ? "bg-red-50 text-red-700 border-red-200"
+                        : req.status === 'PENDING_HR' || (isLeave && hrTier === 1 && req.status === 'REGISTERED')
+                        ? "bg-amber-50 text-amber-800 border-amber-200"
                         : "bg-amber-50 text-amber-800 border-amber-200"
                     )}>
-                      {req.status === 'PENDING_HR' ? 'MENUNGGU HR' : req.status === 'APPROVED' ? 'DISETUJUI' : req.status === 'REJECTED' ? 'DITOLAK' : req.status}
+                      {req.status === 'PENDING_HR' || (isLeave && hrTier === 1 && req.status === 'REGISTERED') ? 'MENUNGGU HR' : req.status === 'APPROVED' ? 'DISETUJUI' : req.status === 'REJECTED' ? 'DITOLAK' : req.status}
                     </span>
                   </div>
 
@@ -717,7 +721,7 @@ export default function RequestsClient(){
                     {isLeave && <p className="mt-1 text-[11px] font-semibold text-[#475569]">Pemohon: {req.requester_user?.name || 'Karyawan'}</p>}
                     {isLeave && req.start_at && req.end_at && (
                       <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-[#2B7A42]">
-                        <Clock3 size={13} /> {displayDate(req.start_at)} – {displayDate(req.end_at)}
+                        <CalendarDays size={13} /> {displayDateOnly(req.start_at)} – {displayDateOnly(req.end_at)}
                       </p>
                     )}
                     {isLeave && req.attachment_url && <RequestAttachmentPreview attachmentUrl={req.attachment_url} forHr={hrTier <= 2} />}
@@ -1320,13 +1324,14 @@ function NewNonMeetingRequestModal({members,busy,onClose,onSuccess}:{members:Mem
     event.preventDefault();
     if(!title.trim()){toast.error('Judul request wajib diisi.');return;}
     if(type==='LEAVE'&&(!startAt||!endAt)){toast.error('Tanggal dan jam mulai serta selesai wajib diisi untuk cuti/izin.');return;}
-    if(type==='LEAVE'&&startAt&&endAt&&endAt<=startAt){toast.error('Waktu selesai cuti harus setelah waktu mulai.');return;}
+    if(type==='LEAVE'&&startAt&&endAt&&endAt<startAt){toast.error('Tanggal selesai cuti harus sama dengan atau setelah tanggal mulai.');return;}
+    if(type==='OTHER'&&startAt&&endAt&&endAt<=startAt){toast.error('Waktu selesai harus setelah waktu mulai.');return;}
     setSubmitting(true);
     try{
       await requestApi.createNonMeetingRequest({
         request_type:type,title:title.trim(),description:description.trim()||undefined,
-        start_at:startAt?new Date(startAt).toISOString():undefined,
-        end_at:endAt?new Date(endAt).toISOString():undefined,
+        start_at:startAt?(type==='LEAVE'?localDateBoundaryIso(startAt):new Date(startAt).toISOString()):undefined,
+        end_at:endAt?(type==='LEAVE'?localDateBoundaryIso(endAt,true):new Date(endAt).toISOString()):undefined,
         attachment_url:attachmentUrl||undefined,
         assignee_user_id:type==='OTHER'&&assigneeId?assigneeId:undefined,
       });
@@ -1341,13 +1346,13 @@ function NewNonMeetingRequestModal({members,busy,onClose,onSuccess}:{members:Mem
         <button type="button" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full bg-[#F4F6FB] text-[#64748B] hover:bg-[#E8F5E9]"><X size={18}/></button>
       </div>
       <div className="flex gap-2 rounded-xl bg-[#F4F6FB] p-1">
-        {(['LEAVE','OTHER'] as const).map(t=><button key={t} type="button" onClick={()=>setType(t)} className={`flex-1 rounded-lg py-2.5 text-sm font-bold transition ${type===t?'bg-white text-[#2B7A42] shadow-sm':'text-[#64748B] hover:text-[#2B7A42]'}`}>{t==='LEAVE'?'Cuti / Izin':'Other Request'}</button>)}
+        {(['LEAVE','OTHER'] as const).map(t=><button key={t} type="button" onClick={()=>{setType(t);setStartAt('');setEndAt('');}} className={`flex-1 rounded-lg py-2.5 text-sm font-bold transition ${type===t?'bg-white text-[#2B7A42] shadow-sm':'text-[#64748B] hover:text-[#2B7A42]'}`}>{t==='LEAVE'?'Cuti / Izin':'Other Request'}</button>)}
       </div>
       <Field label="Judul Request" required value={title} onChange={setTitle}/>
       <TextArea label="Deskripsi" rows={4} value={description} onChange={setDescription}/>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={type==='LEAVE'?'Mulai Cuti (tanggal & jam)':'Mulai (opsional)'} type="datetime-local" required={type==='LEAVE'} value={startAt} onChange={setStartAt}/>
-        <Field label={type==='LEAVE'?'Selesai Cuti (tanggal & jam)':'Selesai (opsional)'} type="datetime-local" required={type==='LEAVE'} value={endAt} onChange={setEndAt}/>
+        <Field label={type==='LEAVE'?'Tanggal Mulai Cuti':'Mulai (opsional)'} type={type==='LEAVE'?'date':'datetime-local'} required={type==='LEAVE'} value={startAt} onChange={setStartAt}/>
+        <Field label={type==='LEAVE'?'Tanggal Selesai Cuti':'Selesai (opsional)'} type={type==='LEAVE'?'date':'datetime-local'} required={type==='LEAVE'} value={endAt} onChange={setEndAt}/>
       </div>
       {type==='OTHER'&&<div><span className="mb-2 block text-sm font-bold text-[#0876CD]">Assign kepada</span><SearchableSelect value={assigneeId} onChange={setAssigneeId} placeholder="Pilih anggota (opsional)" emptyOptionLabel="Pilih anggota (opsional)" searchPlaceholder="Cari nama atau role anggota..." options={members.map(m=>({value:String(m.id),label:`${m.name} — ${m.role}`,sublabel:m.email}))}/></div>}
       {type==='LEAVE'&&<div className="rounded-xl bg-[#FFF9E6] border border-[#F5C842] px-4 py-3 text-xs text-[#7A5C00]">Permohonan cuti/izin akan otomatis diarahkan ke HR atau Eksekutif yang bertanggung jawab. Anda tidak perlu memilih tujuan.</div>}

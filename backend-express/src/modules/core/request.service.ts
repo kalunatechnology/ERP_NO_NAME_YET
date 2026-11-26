@@ -1579,7 +1579,12 @@ static async getRequests(params: {
       SELECT
         logs.*,
 
-        wi.current_state,
+        CASE
+          WHEN rt.status IN ('PENDING_HR', 'APPROVED', 'REJECTED') THEN rt.status
+          WHEN wi.current_state IN ('PENDING_HR', 'APPROVED', 'REJECTED') THEN wi.current_state
+          WHEN rt.status IS NOT NULL THEN rt.status
+          ELSE wi.current_state
+        END AS current_state,
 
         au.full_name
           AS assignee_full_name,
@@ -1641,6 +1646,16 @@ static async getRequests(params: {
           NOT ${hasCompanyId}::boolean
 
           OR wi.company_id =
+            ${effectiveCompanyId}::text
+        )
+
+      LEFT JOIN request_ticket rt
+        ON rt.id = logs.entity_id
+
+        AND (
+          NOT ${hasCompanyId}::boolean
+
+          OR rt.company_id =
             ${effectiveCompanyId}::text
         )
 
