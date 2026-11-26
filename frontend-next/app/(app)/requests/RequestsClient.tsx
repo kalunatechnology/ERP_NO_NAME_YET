@@ -68,6 +68,9 @@ export default function RequestsClient(){
   const [selected,setSelected]=useState<MeetingDetail|null>(null);
   const [loading,setLoading]=useState(true);
   const [busy,setBusy]=useState(false);
+  const [leaveDecisionBusyId,setLeaveDecisionBusyId]=useState<string | null>(null);
+  const [rejectingLeaveId,setRejectingLeaveId]=useState<string | null>(null);
+  const [leaveRejectionRemarks,setLeaveRejectionRemarks]=useState("");
   const [createOpen,setCreateOpen]=useState(false);
   const [notesOpen,setNotesOpen]=useState(false);
   const [createForm,setCreateForm]=useState<CreateForm>(initialCreate);
@@ -157,6 +160,26 @@ export default function RequestsClient(){
   const shouldOpenNotes = searchParams?.get('note') === '1' || searchParams?.get('openNotes') === '1' || searchParams?.get('openNotes') === 'true' || Boolean(queryNoteId);
 
   useEffect(() => { void load(); }, [load]);
+
+  async function decideLeaveRequest(request: NonMeetingRequest, decision: 'APPROVE' | 'REJECT') {
+    const remarks = leaveRejectionRemarks.trim();
+    if (decision === 'REJECT' && !remarks) {
+      toast.error('Isi alasan penolakan cuti terlebih dahulu.');
+      return;
+    }
+    setLeaveDecisionBusyId(request.id);
+    try {
+      await requestApi.decideLeaveRequest(request.id, decision, remarks || undefined);
+      toast.success(decision === 'APPROVE' ? 'Pengajuan cuti disetujui.' : 'Pengajuan cuti ditolak. Pemohon sudah diberi notifikasi.');
+      setRejectingLeaveId(null);
+      setLeaveRejectionRemarks("");
+      await load();
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, 'Keputusan cuti belum tersimpan. Muat ulang daftar dan coba lagi.'));
+    } finally {
+      setLeaveDecisionBusyId(null);
+    }
+  }
 
   useEffect(() => {
     const targetMeeting = queryMeetingId
@@ -676,11 +699,13 @@ export default function RequestsClient(){
 
                     <span className={cn(
                       "px-2.5 py-0.5 rounded-full border text-3xs font-extrabold uppercase tracking-wide",
-                      req.status === 'COMPLETED' || req.status === 'REGISTERED'
+                      req.status === 'COMPLETED' || req.status === 'REGISTERED' || req.status === 'APPROVED'
                         ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                        : "bg-neutral-100 text-neutral-700 border-neutral-200"
+                        : req.status === 'REJECTED'
+                        ? "bg-red-50 text-red-700 border-red-200"
+                        : "bg-amber-50 text-amber-800 border-amber-200"
                     )}>
-                      {req.status}
+                      {req.status === 'PENDING_HR' ? 'MENUNGGU HR' : req.status === 'APPROVED' ? 'DISETUJUI' : req.status === 'REJECTED' ? 'DITOLAK' : req.status}
                     </span>
                   </div>
 
@@ -689,6 +714,7 @@ export default function RequestsClient(){
                     <p className="mt-1 text-xs text-[#64748B] line-clamp-2 leading-relaxed">
                       {req.description || "Tanpa deskripsi"}
                     </p>
+                    {isLeave && <p className="mt-1 text-[11px] font-semibold text-[#475569]">Pemohon: {req.requester_user?.name || 'Karyawan'}</p>}
                     {isLeave && req.start_at && req.end_at && (
                       <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-[#2B7A42]">
                         <Clock3 size={13} /> {displayDate(req.start_at)} – {displayDate(req.end_at)}
@@ -708,6 +734,35 @@ export default function RequestsClient(){
                     </span>
                   )}
                 </div>
+                {hrTier === 1 && isLeave && ['PENDING_HR', 'REGISTERED'].includes(req.status) && (
+                  <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[#F0F0F0] pt-3">
+                    {rejectingLeaveId === req.id ? (
+                      <>
+                        <input
+                          value={leaveRejectionRemarks}
+                          onChange={(event) => setLeaveRejectionRemarks(event.target.value)}
+                          placeholder="Alasan penolakan wajib diisi"
+                          aria-label="Alasan penolakan cuti"
+                          className="h-9 min-w-52 flex-1 rounded-lg border border-red-200 bg-white px-3 text-xs"
+                          disabled={leaveDecisionBusyId === req.id}
+                        />
+                        <button type="button" onClick={() => void decideLeaveRequest(req, 'REJECT')} disabled={leaveDecisionBusyId === req.id || !leaveRejectionRemarks.trim()} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-red-600 px-3 text-xs font-bold text-white disabled:opacity-50">
+                          {leaveDecisionBusyId === req.id ? 'Menyimpan…' : 'Konfirmasi Tolak'}
+                        </button>
+                        <button type="button" onClick={() => { setRejectingLeaveId(null); setLeaveRejectionRemarks(''); }} disabled={leaveDecisionBusyId === req.id} className="h-9 rounded-lg border border-[#D7E2EE] px-3 text-xs font-semibold text-[#475569]">Batal</button>
+                      </>
+                    ) : (
+                      <>
+                        <button type="button" onClick={() => { setRejectingLeaveId(req.id); setLeaveRejectionRemarks(''); }} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 px-3 text-xs font-bold text-red-700 hover:bg-red-50">
+                          <X size={14} /> Tolak
+                        </button>
+                        <button type="button" onClick={() => void decideLeaveRequest(req, 'APPROVE')} disabled={leaveDecisionBusyId === req.id} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50">
+                          <CheckCircle2 size={14} /> {leaveDecisionBusyId === req.id ? 'Menyimpan…' : 'ACC Cuti'}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}

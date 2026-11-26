@@ -71,6 +71,7 @@ export interface NonMeetingRequest {
   status: string;
   priority: string;
   created_by_id: string;
+  requester_user?: { id: string; name: string; email: string | null } | null;
   assignee_user_id: string | null;
   assignee_user: { id: string; name: string; email: string } | null;
   start_at: string | null;
@@ -132,4 +133,6 @@ export const requestApi = {
   },
   createNonMeetingRequest: async (payload: CreateNonMeetingInput) =>
     (await api.post("/api/v1/requests", payload)).data,
+  decideLeaveRequest: async (requestId: string, decision: 'APPROVE' | 'REJECT', remarks?: string) =>
+    (await api.post(`/api/v1/requests/${requestId}/hr-decision`, { decision, remarks })).data,
 };

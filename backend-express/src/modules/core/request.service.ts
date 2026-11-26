@@ -243,7 +243,7 @@ static async createRequest(
 
   const initialStatus = is_draft
     ? 'DRAFT'
-    : 'REGISTERED';
+    : request_type === 'LEAVE' ? 'PENDING_HR' : 'REGISTERED';
 
   /**
    * Workflow instance tetap menjadi status backplane.
@@ -265,10 +265,8 @@ static async createRequest(
       workflow_code: `INTERNAL_${request_type}`,
       current_state: initialStatus,
 
-      status: is_draft
-        ? 'DRAFT'
-        : 'COMPLETED',
-      completed_at: is_draft ? null : new Date(),
+      status: is_draft ? 'DRAFT' : request_type === 'LEAVE' ? 'IN_PROGRESS' : 'COMPLETED',
+      completed_at: is_draft || request_type === 'LEAVE' ? null : new Date(),
 
       started_at: new Date(),
     } });
@@ -292,7 +290,7 @@ static async createRequest(
       priority,
       status: initialStatus,
       submitted_at: is_draft ? null : new Date(),
-      completed_at: is_draft ? null : new Date(),
+      completed_at: is_draft || request_type === 'LEAVE' ? null : new Date(),
     } });
 
     if (request_type === 'MEETING' && meetingStart && meetingEnd) {
@@ -579,6 +577,77 @@ static async createRequest(
     : null;
   return { ...requestData, ...(createdMeeting ? { meeting_id: createdMeeting.id } : {}) };
 }
+
+  static async decideLeaveByHr(params: {
+    requestId: string;
+    decision: 'APPROVE' | 'REJECT';
+    remarks?: string;
+    approverUserId: string;
+    companyId: string;
+  }) {
+    const { requestId, decision, approverUserId, companyId } = params;
+    const remarks = String(params.remarks ?? '').trim();
+    if (decision === 'REJECT' && !remarks) throw new ValidationError('Alasan penolakan cuti wajib diisi.');
+
+    const ticket = await prisma.request_ticket.findFirst({
+      where: { id: requestId, company_id: companyId, request_type: 'LEAVE', cancelled_at: null },
+      select: { id: true, requester_user_id: true, request_number: true, title: true, status: true, workflow_instance_id: true },
+    });
+    if (!ticket) throw new NotFoundError('Pengajuan cuti');
+    if (!['PENDING_HR', 'REGISTERED'].includes(ticket.status)) {
+      throw new ValidationError(`Pengajuan cuti sudah diproses atau tidak menunggu HR (status: ${ticket.status}).`);
+    }
+
+    const nextStatus = decision === 'APPROVE' ? 'APPROVED' : 'REJECTED';
+    const now = new Date();
+    await prisma.$transaction(async (tx) => {
+      const changed = await tx.request_ticket.updateMany({
+        where: { id: ticket.id, company_id: companyId, status: { in: ['PENDING_HR', 'REGISTERED'] }, cancelled_at: null },
+        data: { status: nextStatus, completed_at: now },
+      });
+      if (changed.count !== 1) throw new ValidationError('Pengajuan cuti sudah diproses pengguna lain. Muat ulang daftar.');
+      await tx.core_workflow_instance.update({
+        where: { id: ticket.workflow_instance_id },
+        data: { current_state: nextStatus, status: 'COMPLETED', completed_at: now },
+      });
+      await tx.core_workflow_approval.create({
+        data: {
+          id: crypto.randomUUID(),
+          company_id: companyId,
+          workflow_instance_id: ticket.workflow_instance_id,
+          approver_user_id: approverUserId,
+          created_by_id: approverUserId,
+          approval_level: 'HR_TIER_1_LEAVE',
+          decision,
+          remarks,
+          decided_at: now,
+        },
+      });
+    });
+
+    await AuditService.logDeltaEvent({
+      entity: 'core_internal_request',
+      entityId: ticket.id,
+      action: `HR_LEAVE_${decision}`,
+      before: { status: ticket.status },
+      after: { status: nextStatus, approval_level: 'HR_TIER_1_LEAVE', remarks },
+      userId: approverUserId,
+      companyId,
+      description: `HR Tier 1 ${decision === 'APPROVE' ? 'menyetujui' : 'menolak'} pengajuan cuti ${ticket.request_number}.`,
+    });
+
+    await this.createNotification({
+      title: decision === 'APPROVE' ? 'Pengajuan cuti disetujui' : 'Pengajuan cuti ditolak',
+      message: `${ticket.request_number} — ${ticket.title}${remarks ? `. Catatan HR: ${remarks}` : ''}`,
+      action_url: `/requests?tab=request&requestId=${ticket.id}`,
+      notification_type: 'HR_LEAVE_DECISION',
+      priority: decision === 'APPROVE' ? 'MEDIUM' : 'HIGH',
+      recipient_user_id: ticket.requester_user_id,
+      actor_user_id: approverUserId,
+      company_id: companyId,
+    });
+    return { id: ticket.id, status: nextStatus, decision, remarks };
+  }
 
   // ---------------------------------------------------------------------------
   // 2. LEGACY OM ENDPOINT (DISABLED)
@@ -1592,6 +1661,13 @@ static async getRequests(params: {
       feedRows[0]?.total_count ?? 0,
     );
 
+  const requesterIds = [...new Set(feedRows.map((log) => log.user_id).filter((id): id is string => Boolean(id)))];
+  const requesterUsers = requesterIds.length ? await prisma.iam_user.findMany({
+    where: { id: { in: requesterIds } },
+    select: { id: true, full_name: true, email: true },
+  }) : [];
+  const requesterById = new Map(requesterUsers.map((requester) => [requester.id, requester]));
+
   const rows =
     feedRows.map((log) => {
       const payload =
@@ -1691,6 +1767,12 @@ static async getRequests(params: {
         created_by_id:
           payload.created_by_id ||
           log.user_id,
+
+        requester_user: log.user_id ? {
+          id: log.user_id,
+          name: requesterById.get(log.user_id)?.full_name || requesterById.get(log.user_id)?.email || 'Karyawan',
+          email: requesterById.get(log.user_id)?.email || null,
+        } : null,
 
         company_id:
           payload.company_id ||

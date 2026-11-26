@@ -12,7 +12,7 @@ import { RequestService } from './request.service';
 import { ReadThroughCache } from '../../utils/read-through-cache';
 import { ForbiddenError, ValidationError, NotFoundError } from '../../utils/errors';
 import { RoleCode } from '../../types/roles';
-import { requireActiveRole } from '../../middlewares/rbac.middleware';
+import { requireActiveRole, requireModuleTier } from '../../middlewares/rbac.middleware';
 import { sendSuccess, sendError } from '../../utils/response';
 import prisma from '../../config/database';
 import { MeetingRequestService } from './meeting-request.service';
@@ -570,6 +570,25 @@ requestRouter.post('/:id/approve-exec', requireActiveRole(RoleCode.PROJECT_MANAG
       companyId: activeCompanyId(req),
     });
     invalidateRequestFeedCache();
+    sendSuccess(res, result);
+  } catch (err) { next(err); }
+});
+
+requestRouter.post('/:id/hr-decision', requireModuleTier('HR', 1), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const decision = String(req.body?.decision ?? '').toUpperCase();
+    if (!['APPROVE', 'REJECT'].includes(decision)) {
+      return sendError(res, 'decision wajib diisi (APPROVE atau REJECT).', 400);
+    }
+    const result = await RequestService.decideLeaveByHr({
+      requestId: req.params.id,
+      decision: decision as 'APPROVE' | 'REJECT',
+      remarks: req.body?.remarks,
+      approverUserId: activeUserId(req),
+      companyId: activeCompanyId(req),
+    });
+    invalidateRequestFeedCache();
+    requestFeedCache.clear();
     sendSuccess(res, result);
   } catch (err) { next(err); }
 });
