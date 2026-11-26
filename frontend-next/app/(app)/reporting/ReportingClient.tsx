@@ -663,7 +663,7 @@ export default function ReportingClient() {
               <title>Laporan Finansial & Observabilitas Proyek - Marka+ ERP</title>
               <style>
                 @page { size: A4; margin: 18mm; }
-                body { font-family: 'Fira Sans', sans-serif; color: #1E293B; line-height: 1.5; }
+                body { font-family: 'Plus Jakarta Sans Variable', 'Plus Jakarta Sans', sans-serif; color: #1E293B; line-height: 1.5; }
                 header { border-bottom: 3px solid #163D64; padding-bottom: 16px; margin-bottom: 28px; }
                 h1 { color: #17358F; margin: 0; font-size: 26px; } h2 { color: #163D64; margin-top: 28px; }
                 table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 12px; }

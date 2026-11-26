@@ -6,6 +6,100 @@ import { FinanceService } from './finance.service';
 import { FinanceDocumentService } from './finance-document.service';
 import { PeriodClosingService } from './period-closing.service';
 import { BudgetingService } from './budgeting.service';
+import { isUsableModuleAssignment } from '../../utils/module-assignments';
+
+async function notifyFinanceOfGeneratedPayroll(tx: Prisma.TransactionClient, params: {
+  companyId: string;
+  tenantId: string | null;
+  actorId: string | null;
+  run: { id: string; run_number: string; net_total: Prisma.Decimal | number; status: string };
+}) {
+  const scope = { company_id: params.companyId };
+  const tenantScope = params.tenantId ? { tenant_id: params.tenantId } : {};
+  const now = new Date();
+  const entitlement = await tx.iam_company_module_access.findFirst({
+    where: {
+      ...scope,
+      ...tenantScope,
+      module_code: 'FINANCE',
+      enabled: true,
+      allow_read: true,
+      AND: [
+        { OR: [{ effective_from: null }, { effective_from: { lte: now } }] },
+        { OR: [{ effective_until: null }, { effective_until: { gte: now } }] },
+      ],
+    },
+    select: { id: true },
+  });
+  if (!entitlement) return 0;
+
+  const memberships = await tx.iam_user_company_membership.findMany({
+    where: { company_id: params.companyId, status: 'ACTIVE' },
+    select: { user_id: true },
+  });
+  const memberIds = memberships.map((membership) => membership.user_id);
+  if (!memberIds.length) return 0;
+
+  const assignments = await tx.iam_user_module_assignment.findMany({
+    where: {
+      ...scope,
+      ...tenantScope,
+      user_id: { in: memberIds },
+      module_code: 'FINANCE',
+      status: 'ACTIVE',
+      tier_level: 1,
+      AND: [
+        { OR: [{ effective_from: null }, { effective_from: { lte: now } }] },
+        { OR: [{ effective_until: null }, { effective_until: { gte: now } }] },
+      ],
+    },
+    include: { role_profile: { select: { profile_code: true, is_active: true } } },
+  });
+  const recipientIds = [...new Set(assignments
+    .filter((assignment) => isUsableModuleAssignment({
+      ...assignment,
+      profile_active: assignment.role_profile?.is_active,
+      profile_code: assignment.role_profile?.profile_code ?? assignment.profile_code,
+    }, 'FINANCE'))
+    .map((assignment) => assignment.user_id))];
+  if (!recipientIds.length) return 0;
+
+  const activeUsers = await tx.iam_user.findMany({
+    where: { ...tenantScope, id: { in: recipientIds }, status: 'ACTIVE', is_active: true },
+    select: { id: true },
+  });
+  if (!activeUsers.length) return 0;
+
+  const targetUrl = '/finance?tab=payroll';
+  const nextStep = params.run.status === 'POSTED'
+    ? 'Payroll sudah diposting. Finance dapat melanjutkan pengelolaan pembayarannya.'
+    : params.run.status === 'APPROVED'
+      ? 'Payroll sudah disetujui. Finance dapat mem-posting ke GL lalu mengelola pembayarannya.'
+      : params.run.status === 'HR_APPROVED'
+        ? 'Payroll menunggu review Finance. Setelah disetujui dan diposting, Finance dapat mengelola pembayarannya.'
+        : 'Setelah HR menyetujui, Finance dapat meninjau payroll, mem-posting ke GL, lalu mengelola pembayarannya.';
+  const rows = activeUsers.map((user) => {
+    const hash = crypto.createHash('sha256').update(`payroll-generated:${params.run.id}:${user.id}`).digest('hex');
+    const id = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+    return {
+      ...scope,
+      id,
+      created_by_id: params.actorId,
+      actor_id: params.actorId,
+      recipient_id: user.id,
+      category: 'PAYROLL_GENERATED',
+      title: 'Payroll baru perlu dikelola',
+      description: `Payroll ${params.run.run_number} berhasil dibuat dengan total gaji bersih Rp ${Number(params.run.net_total).toLocaleString('id-ID')}. ${nextStep}`,
+      target_url: targetUrl,
+      is_read: false,
+      created_at: now,
+      updated_at: now,
+      reference_type: 'PAYROLL_RUN',
+      reference_id: params.run.id,
+    };
+  });
+  return (await tx.core_app_notification.createMany({ data: rows, skipDuplicates: true })).count;
+}
 
 const amount = (value: unknown, label: string, allowZero = true) => {
   const n = Number(value ?? 0);
@@ -200,6 +294,30 @@ export class PayrollService {
     return prisma.fin_payroll_run.findMany({ where: { company_id: companyId }, include: { lines: true }, orderBy: [{ period_start: 'desc' }, { created_at: 'desc' }], take: 100 });
   }
 
+  static async backfillGeneratedNotifications(dateStart: Date, dateEnd: Date) {
+    const runs = await prisma.fin_payroll_run.findMany({
+      where: {
+        created_at: { gte: dateStart, lt: dateEnd },
+        status: { in: ['DRAFT', 'HR_APPROVED', 'APPROVED', 'POSTED'] },
+      },
+      select: {
+        id: true, tenant_id: true, company_id: true, created_by_id: true,
+        run_number: true, net_total: true, status: true,
+      },
+      orderBy: [{ company_id: 'asc' }, { created_at: 'asc' }],
+    });
+    let notificationsCreated = 0;
+    for (const run of runs) {
+      notificationsCreated += await prisma.$transaction((tx) => notifyFinanceOfGeneratedPayroll(tx, {
+        companyId: run.company_id,
+        tenantId: run.tenant_id,
+        actorId: run.created_by_id,
+        run,
+      }));
+    }
+    return { payrollRuns: runs.length, notificationsCreated };
+  }
+
   static async createRun(companyId: string, tenantId: string | null, userId: string, input: any, runId?: string) {
     const start = new Date(input.period_start);
     const end = new Date(input.period_end);
@@ -238,7 +356,11 @@ export class PayrollService {
         : await tx.fin_payroll_run.create({ data: { id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId, run_number: number, period_start: start, period_end: end, status: 'DRAFT', gross_total: grossTotal, deduction_total: deductionTotal, employer_contribution_total: employerTotal, net_total: netTotal } });
       await tx.fin_payroll_line.deleteMany({ where: { company_id: companyId, payroll_run_id: savedRun.id } });
       await tx.fin_payroll_line.createMany({ data: lineData.map((line) => ({ ...line, payroll_run_id: savedRun.id })) });
-      return tx.fin_payroll_run.findFirst({ where: { id: savedRun.id, company_id: companyId }, include: { lines: true } });
+      const result = await tx.fin_payroll_run.findFirst({ where: { id: savedRun.id, company_id: companyId }, include: { lines: true } });
+      if (!runId && result) {
+        await notifyFinanceOfGeneratedPayroll(tx, { companyId, tenantId, actorId: userId, run: result });
+      }
+      return result;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 

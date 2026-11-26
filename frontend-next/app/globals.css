@@ -8,8 +8,7 @@
     --sidebar-w: 230px;
     --topbar-h: 64px;
     --right-panel-w: 260px;
-    --font-fira-sans: "Fira Sans", sans-serif;
-    --font-fira-sans-condensed: "Fira Sans", sans-serif;
+    --font-plus-jakarta-sans: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   }
 
   @media (min-width: 1900px) {
@@ -18,10 +17,12 @@
 
   html {
     @apply scroll-smooth;
+    font-family: var(--font-plus-jakarta-sans);
   }
 
   body {
     @apply font-sans text-text-primary bg-bg-lighter antialiased;
+    font-family: var(--font-plus-jakarta-sans);
   }
 
   * {

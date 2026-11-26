@@ -47,7 +47,6 @@ import { canRequestApi, isLevel1FinanceUser } from "@/lib/access/module-contract
 import { canPerform } from "@/lib/access/capability-contract";
 import { FinanceModuleSidebar } from "@/components/finance/FinanceModuleSidebar";
 import dynamic from "next/dynamic";
-import "@fontsource-variable/plus-jakarta-sans";
 import "@/app/finance-theme.css";
 
 const FixedAssetsWorkspace = dynamic(() => import("@/components/finance/FixedAssetsWorkspace"), { ssr: false });

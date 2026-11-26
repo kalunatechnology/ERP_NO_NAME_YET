@@ -53,7 +53,7 @@ const config: Config = {
 
       /* ── Typography (Strictly Aligned with Implementation Guideline) ─ */
       fontFamily: {
-        sans: ["Fira Sans", "ui-sans-serif", "system-ui", "-apple-system", "'Segoe UI'", "sans-serif"],
+        sans: ["Plus Jakarta Sans Variable", "Plus Jakarta Sans", "ui-sans-serif", "system-ui", "-apple-system", "'Segoe UI'", "sans-serif"],
       },
       fontSize: {
         "3xs": ["9px", { lineHeight: "12px" }],

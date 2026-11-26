@@ -1,12 +1,12 @@
 /**
  * File: frontend-next/app/layout.tsx
  *
- * Purpose: Root layout with network-independent local Fira Sans typography and a
+ * Purpose: Root layout with network-independent local Plus Jakarta Sans typography and a
  * single Marka+ icon source shared by the browser tab and login page.
  */
 import type { Metadata } from "next";
 
-import "./fira-sans.css";
+import "@fontsource-variable/plus-jakarta-sans";
 import "./globals.css";
 
 import { AuthProvider } from "@/contexts/AuthContext";
@@ -49,7 +49,7 @@ export default function RootLayout({
                 duration: 4000,
                 style: {
                   fontFamily:
-                    "var(--font-fira-sans), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif",
+                    "var(--font-plus-jakarta-sans), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif",
                   fontSize: "14px",
                   borderRadius: "14px",
                   border: "1px solid #E8E8E8",
