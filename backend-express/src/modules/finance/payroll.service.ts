@@ -415,13 +415,11 @@ export class PayrollService {
         center.id,
         departmentIdsByCode.get(String(center.cost_center_code ?? '').trim().toUpperCase()) ?? [],
       ]));
-      await FinanceService.ensureStandardCOA(companyId, tx);
-      const [expense, salaryPayable, taxPayable, bpjsPayable] = await Promise.all([
-        tx.fin_account.findFirst({ where: { company_id: companyId, account_code: '6100', status: 'ACTIVE', account_type: 'EXPENSE' } }),
-        tx.fin_account.findFirst({ where: { company_id: companyId, account_code: '2150', status: 'ACTIVE', account_type: 'LIABILITY' } }),
-        tx.fin_account.findFirst({ where: { company_id: companyId, account_code: '2160', status: 'ACTIVE', account_type: 'LIABILITY' } }),
-        tx.fin_account.findFirst({ where: { company_id: companyId, account_code: '2170', status: 'ACTIVE', account_type: 'LIABILITY' } }),
-      ]);
+      const payrollAccounts = await FinanceService.ensurePayrollCOA(companyId, tx);
+      const expense = payrollAccounts.get('6100');
+      const salaryPayable = payrollAccounts.get('2150');
+      const taxPayable = payrollAccounts.get('2160');
+      const bpjsPayable = payrollAccounts.get('2170');
       if (!expense || !salaryPayable || !taxPayable || !bpjsPayable) throw new ValidationError('COA Payroll belum lengkap. Pastikan 6100, 2150, 2160, dan 2170 aktif.');
       const fiscalPeriod = await tx.fin_fiscal_period.findFirst({ where: { id: period.id, company_id: companyId }, select: { fiscal_year_id: true } });
       const budgetLines = fiscalPeriod?.fiscal_year_id ? await tx.fin_budget_line.findMany({

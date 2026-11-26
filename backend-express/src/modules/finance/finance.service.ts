@@ -125,6 +125,41 @@ export class FinanceService {
     return map;
   }
 
+  static async ensurePayrollCOA(companyId: string, db: any = prisma) {
+    const payrollCodes = ['6100', '2150', '2160', '2170'];
+    const defaults = DEFAULT_COA.filter((account) => payrollCodes.includes(account.code));
+    const existing = await db.fin_account.findMany({
+      where: { company_id: companyId, account_code: { in: payrollCodes } },
+    });
+    const byCode = new Map<string, any>(existing.map((account: any) => [account.account_code, account]));
+
+    for (const item of defaults) {
+      let account = byCode.get(item.code);
+      if (!account) {
+        account = await db.fin_account.create({
+          data: {
+            id: crypto.randomUUID(),
+            company_id: companyId,
+            account_code: item.code,
+            account_name: item.name,
+            account_type: item.type,
+            normal_balance: item.balance,
+            allow_manual_posting: true,
+            reconciliation_required: false,
+            status: 'ACTIVE',
+          },
+        });
+      } else if (account.status !== 'ACTIVE') {
+        account = await db.fin_account.update({
+          where: { id: account.id },
+          data: { status: 'ACTIVE', updated_at: new Date() },
+        });
+      }
+      byCode.set(item.code, account);
+    }
+    return byCode;
+  }
+
   static async ensureJournal(companyId: string | null, code: string, name: string, type = 'GENERAL', db: any = prisma) {
     let journal = await db.fin_journal.findFirst({
       where: {

@@ -40,6 +40,7 @@ export function PayrollWorkspace({ canOperate = false }: { canOperate?: boolean 
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [busyMessage, setBusyMessage] = useState("Memproses payroll. Tunggu sampai server merespons…");
   const actionLock = useRef(false);
   const [employeeForm, setEmployeeForm] = useState<any>({ id: "", employee_number: "", employee_name: "", monthly_salary: "", cost_center_id: "" });
   const [periodStart, setPeriodStart] = useState(initialStart);
@@ -100,6 +101,11 @@ export function PayrollWorkspace({ canOperate = false }: { canOperate?: boolean 
 
   const runAction = async (run: Row, action: string, payload: Row = {}) => {
     if (actionLock.current) return; actionLock.current = true;
+    setBusyMessage(action === "post" || action === "post-gl"
+      ? "Memposting jurnal payroll ke GL dan memperbarui realisasi anggaran…"
+      : action === "pay"
+        ? "Memproses pembayaran gaji melalui rekening bank…"
+        : "Memproses payroll. Tunggu sampai server merespons…");
     setBusy(true); setError(""); setNotice("");
     try {
       if (action === "delete") await api.delete(`/api/v1/finance/payroll/runs/${run.id}`);
@@ -108,7 +114,15 @@ export function PayrollWorkspace({ canOperate = false }: { canOperate?: boolean 
       else if (action === "post-gl") await api.post(`/api/v1/hr/payroll/${run.id}/post-gl`);
       else if (action === "pay" && canReviewAsFinance) await api.post(`/api/v1/hr/payroll/${run.id}/pay`, payload);
       else await api.post(`/api/v1/finance/payroll/runs/${run.id}/${action}`, payload);
-      setPayingRun(null); setNotice(`Payroll ${run.run_number} diperbarui.`); await load();
+      setPayingRun(null);
+      setNotice(action === "post" || action === "post-gl"
+        ? `Payroll ${run.run_number} berhasil diposting ke GL.`
+        : action === "pay"
+          ? `Pembayaran payroll ${run.run_number} berhasil diproses.`
+          : `Payroll ${run.run_number} diperbarui.`);
+      void api.get("/api/v1/finance/payroll/runs")
+        .then((response) => setRuns(unwrapRows(response.data)))
+        .catch(() => setNotice(`Payroll ${run.run_number} berhasil diproses, tetapi daftar belum tersinkron. Tekan Muat ulang.`));
     }
     catch (cause) { setError(getApiErrorDetail(cause, `Aksi ${action} belum dapat diproses.`)); }
     finally { actionLock.current = false; setBusy(false); }
@@ -150,7 +164,7 @@ export function PayrollWorkspace({ canOperate = false }: { canOperate?: boolean 
   };
 
   return <div className="flex flex-col gap-5">
-    {busy && actionLock.current && <div role="status" aria-live="polite" className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-[1px]"><div className="flex items-center gap-3 rounded-xl bg-white px-5 py-4 text-sm font-medium text-blue-900 shadow-xl"><RefreshCw size={18} className="animate-spin" />Memproses payroll. Tunggu sampai server merespons…</div></div>}
+    {busy && actionLock.current && <div role="status" aria-live="polite" className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-[1px]"><div className="flex items-center gap-3 rounded-xl bg-white px-5 py-4 text-sm font-medium text-blue-900 shadow-xl"><RefreshCw size={18} className="animate-spin" />{busyMessage}</div></div>}
     <section className="fin-card">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="flex items-center gap-2 text-lg font-semibold"><Banknote className="text-[#163D64]" /> Payroll &amp; Gaji Karyawan</h2><p className="mt-1 text-xs text-slate-600">Kelola master gaji, buat payroll bulanan, ajukan persetujuan, posting akrual ke buku besar, lalu bayar gaji bersih melalui rekening bank.</p></div><button type="button" onClick={() => void load()} disabled={busy} className="rounded-full border border-slate-200 p-2 hover:bg-slate-50" title="Muat ulang"><RefreshCw size={15} /></button></div>
       {error && <div role="alert" className={`mt-3 rounded-xl p-3 text-xs ${/cost.?center/i.test(error) ? "bg-amber-50 text-amber-900" : "bg-red-50 text-red-700"}`}>{error}{/cost.?center/i.test(error) && <span> — Buat cost center dulu di Master Perusahaan, lalu pilih pada baris karyawan.</span>}</div>}{notice && <div className="mt-3 rounded-xl bg-emerald-50 p-3 text-xs text-emerald-700">{notice}</div>}

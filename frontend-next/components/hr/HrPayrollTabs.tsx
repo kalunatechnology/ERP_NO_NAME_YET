@@ -12,6 +12,7 @@ import {
 import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
 import { localDateKey } from "@/lib/utils";
+import { getApiErrorDetail } from "@/lib/api/project.api";
 
 interface OvertimeItem {
   id: string;
@@ -74,10 +75,24 @@ const formatIdr = (val: unknown) =>
     Number(val ?? 0),
   );
 
-const overtimePayLabel = (overtime: Pick<OvertimeItem, "overtime_rate" | "overtime_amount">) =>
-  Number(overtime.overtime_rate) > 0 && Number(overtime.overtime_amount) > 0
-    ? formatIdr(overtime.overtime_amount)
-    : "Belum dapat dihitung";
+function resolveOvertimePrice(overtime: OvertimeItem, employee?: EmployeeItem) {
+  const storedRate = Number(overtime.overtime_rate ?? 0);
+  const storedAmount = Number(overtime.overtime_amount ?? 0);
+  if (storedRate > 0 && storedAmount > 0) return { rate: storedRate, amount: storedAmount };
+
+  const hourlyRate = Number(employee?.standard_hourly_rate ?? 0);
+  const monthlySalary = Number(employee?.monthly_salary ?? 0);
+  const baseHourlyRate = hourlyRate > 0 ? hourlyRate : monthlySalary > 0 ? monthlySalary / 173 : 0;
+  const hours = Number(overtime.duration_hours);
+  if (employee?.employment_status !== "ACTIVE" || baseHourlyRate <= 0 || !Number.isFinite(hours) || hours <= 0) return null;
+  const rate = Math.round(baseHourlyRate * 1.5 * 100) / 100;
+  return { rate, amount: Math.round(rate * hours * 100) / 100 };
+}
+
+const overtimePayLabel = (overtime: OvertimeItem, employee?: EmployeeItem) => {
+  const price = resolveOvertimePrice(overtime, employee);
+  return price ? formatIdr(price.amount) : "Belum dapat dihitung";
+};
 
 const overtimeEmployeeLabel = (overtime: Pick<OvertimeItem, "employee_name" | "employee_number">) => {
   const name = String(overtime.employee_name ?? "").trim();
@@ -426,7 +441,10 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
               {companyOvertimes.length === 0 ? (
                 <div className="p-6 text-center text-slate-500">Belum ada pengajuan lembur perusahaan.</div>
               ) : (
-                companyOvertimes.map((ot) => (
+                companyOvertimes.map((ot) => {
+                  const employee = employees.find((row) => row.id === ot.employee_id);
+                  const price = resolveOvertimePrice(ot, employee);
+                  return (
                   <div key={ot.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <div className="font-semibold text-slate-900">
@@ -434,23 +452,26 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                       </div>
                       <div className="text-slate-600">{ot.reason}</div>
                       <div className="text-[11px] text-slate-500">{ot.project_id ? `Proyek: ${ot.project_code || ""} ${ot.project_name || ""}` : "Proyek tidak tertaut"}</div>
-                      <div className="text-[11px] font-semibold text-[#0876CD]">Upah Lembur: {overtimePayLabel(ot)}</div>
+                      <div className="text-[11px] font-semibold text-[#0876CD]">Upah Lembur: {price ? formatIdr(price.amount) : "Belum dapat dihitung"}</div>
+                      {!price && <div className="mt-1 text-[11px] font-medium text-amber-700">Lengkapi gaji bulanan atau tarif per jam pada profil karyawan sebelum memproses lembur.</div>}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-700">{ot.status}</span>
                       {ot.status === "SUBMITTED" && (
                         <button
                           type="button"
+                          disabled={!price}
+                          title={!price ? "Profil upah karyawan belum cukup untuk menghitung lembur." : "Verifikasi pengajuan lembur"}
                           onClick={async () => {
                             try {
                               await api.post(`/api/v1/hr/overtimes/${ot.id}/verify`);
                               toast.success("Lembur diverifikasi.");
                               await loadData();
                             } catch (err: unknown) {
-                              toast.error(err instanceof Error ? err.message : "Gagal verifikasi.");
+                              toast.error(getApiErrorDetail(err, "Profil upah belum tersedia. Lengkapi gaji bulanan atau tarif per jam."));
                             }
                           }}
-                          className="rounded-lg bg-[#0876CD] px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer"
+                          className="rounded-lg bg-[#0876CD] px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           Verifikasi
                         </button>
@@ -459,16 +480,18 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                         <>
                           <button
                             type="button"
+                            disabled={!price}
+                            title={!price ? "Profil upah karyawan belum cukup untuk menghitung lembur." : "Setujui pengajuan lembur"}
                             onClick={async () => {
                               try {
                                 await api.post(`/api/v1/hr/overtimes/${ot.id}/approve`);
                                 toast.success("Lembur disetujui (APPROVED).");
                                 await loadData();
                               } catch (err: unknown) {
-                                toast.error(err instanceof Error ? err.message : "Gagal approve lembur.");
+                                toast.error(getApiErrorDetail(err, "Profil upah belum tersedia. Lengkapi gaji bulanan atau tarif per jam."));
                               }
                             }}
-                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer"
+                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <CheckCircle2 size={13} /> Approve
                           </button>
@@ -491,7 +514,8 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                       )}
                     </div>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -702,28 +726,34 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                 ) : (
                   companyOvertimes
                     .filter((o) => ["SUBMITTED", "VERIFIED_HR_STAFF"].includes(o.status))
-                    .map((ot) => (
+                    .map((ot) => {
+                      const employee = employees.find((row) => row.id === ot.employee_id);
+                      const price = resolveOvertimePrice(ot, employee);
+                      return (
                       <div key={ot.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
                         <div>
                           <div className="font-semibold text-slate-900">
-                            {overtimeEmployeeLabel(ot)} • {String(ot.work_date).slice(0, 10)} ({ot.duration_hours} jam — {overtimePayLabel(ot)})
+                            {overtimeEmployeeLabel(ot)} • {String(ot.work_date).slice(0, 10)} ({ot.duration_hours} jam — {price ? formatIdr(price.amount) : "Belum dapat dihitung"})
                           </div>
                           <div className="text-[11px] text-slate-500">{ot.project_id ? `Proyek: ${ot.project_code || ""} ${ot.project_name || ""}` : "Proyek tidak tertaut"}</div>
                           <div className="text-slate-600">{ot.reason}</div>
+                          {!price && <div className="mt-1 text-[11px] font-medium text-amber-700">Lengkapi gaji bulanan atau tarif per jam pada profil karyawan sebelum memproses lembur.</div>}
                         </div>
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
+                            disabled={!price}
+                            title={!price ? "Profil upah karyawan belum cukup untuk menghitung lembur." : "Setujui lembur sebagai Kepala HR"}
                             onClick={async () => {
                               try {
                                 await api.post(`/api/v1/hr/overtimes/${ot.id}/approve`);
                                 toast.success("Lembur disetujui (APPROVED).");
                                 await loadData();
                               } catch (err: unknown) {
-                                toast.error(err instanceof Error ? err.message : "Gagal approve lembur.");
+                                toast.error(getApiErrorDetail(err, "Profil upah belum tersedia. Lengkapi gaji bulanan atau tarif per jam."));
                               }
                             }}
-                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer"
+                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <CheckCircle2 size={13} /> Approve
                           </button>
@@ -744,7 +774,8 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
                           </button>
                         </div>
                       </div>
-                    ))
+                      );
+                    })
                 )}
               </div>
             </div>
