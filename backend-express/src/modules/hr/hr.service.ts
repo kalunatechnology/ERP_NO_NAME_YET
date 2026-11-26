@@ -151,6 +151,35 @@ export class HrService {
     };
   }
 
+  static async quoteLeavePayForRequests(companyId: string, requests: Array<{ id: string; userId: string | null; hours: number }>) {
+    await ensureHrTables();
+    const userIds = [...new Set(requests.map((request) => request.userId).filter((id): id is string => Boolean(id)))];
+    if (!userIds.length) return new Map<string, any>();
+    const [employees, settings] = await Promise.all([
+      prisma.master_employee.findMany({
+        where: { company_id: companyId, user_id: { in: userIds }, employment_status: 'ACTIVE' },
+        select: { user_id: true, monthly_salary: true, leave_hourly_rate: true },
+      }),
+      this.getLeaveRateSettings(companyId),
+    ]);
+    const employeeByUser = new Map(employees.map((employee) => [employee.user_id, employee]));
+    return new Map(requests.map((request) => {
+      const employee = request.userId ? employeeByUser.get(request.userId) : null;
+      if (!employee) return [request.id, null];
+      const leaveRate = Number(employee.leave_hourly_rate ?? settings.default_leave_hourly_rate ?? 0);
+      const salary = Number(employee.monthly_salary ?? 0);
+      const baseHourlyRate = salary > 0 ? salary / 173 : 0;
+      const configured = leaveRate > 0 && baseHourlyRate > 0;
+      return [request.id, {
+        configured,
+        hours: request.hours,
+        leave_hourly_rate: leaveRate > 0 ? leaveRate : null,
+        base_hourly_rate: baseHourlyRate > 0 ? baseHourlyRate : null,
+        total_amount: configured ? Math.round((leaveRate + baseHourlyRate) * request.hours * 100) / 100 : null,
+      }];
+    }));
+  }
+
   static async resolveOvertimeHourlyRate(companyId: string, employee: { monthly_salary: any; standard_hourly_rate: any; overtime_hourly_rate?: any }) {
     const employeeRate = Number(employee.overtime_hourly_rate ?? 0);
     if (Number.isFinite(employeeRate) && employeeRate > 0) return { rate: employeeRate, source: 'EMPLOYEE_OVERRIDE' as const };
