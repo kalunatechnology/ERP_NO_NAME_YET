@@ -209,3 +209,12 @@ hrFinanceRouter.post('/payroll/:id/post-gl', requireModuleAccess('FINANCE'), req
     next(err);
   }
 });
+
+hrFinanceRouter.post('/payroll/:id/pay', requireModuleAccess('FINANCE'), requireModuleTier('FINANCE', 1), async (req, res, next) => {
+  try {
+    const payment = await PayrollService.pay(req.companyId!, req.tenantId ?? null, req.params.id, req.user!.id, req.body);
+    res.json({ success: true, data: payment });
+  } catch (err) {
+    next(err);
+  }
+});
