@@ -52,6 +52,13 @@ export default function RequestsClient(){
   }, [user?.module_assignments, userRole]);
   const canDeleteMeeting = userRole === "super_admin" || hrTier <= 2;
   const [activeTab,setActiveTab]=useState<'meeting'|'request'|'overtime'|'hr_ops'|'hr_lead'>('meeting');
+  useEffect(() => {
+    if (activeTab === "hr_ops" && hrTier > 2) {
+      setActiveTab("overtime");
+    } else if (activeTab === "hr_lead" && hrTier !== 1) {
+      setActiveTab("overtime");
+    }
+  }, [activeTab, hrTier]);
   const [editingMeeting, setEditingMeeting] = useState<MeetingDetail | null>(null);
   const [meetings,setMeetings]=useState<MeetingRequestSummary[]>([]);
   const [nonMeetingRequests,setNonMeetingRequests]=useState<NonMeetingRequest[]>([]);
@@ -333,7 +340,7 @@ export default function RequestsClient(){
               <span>Lembur &amp; Slip Gaji</span>
             </button>
 
-            {(hrTier <= 2 || financeTier <= 1) && (
+            {hrTier <= 2 && (
               <button
                 onClick={() => setActiveTab('hr_ops')}
                 className={cn(
@@ -348,7 +355,7 @@ export default function RequestsClient(){
               </button>
             )}
 
-            {(hrTier === 1 || financeTier <= 1) && (
+            {hrTier === 1 && (
               <button
                 onClick={() => setActiveTab('hr_lead')}
                 className={cn(
@@ -692,7 +699,7 @@ export default function RequestsClient(){
         </div>
       )}
 
-      {(activeTab === 'overtime' || activeTab === 'hr_ops' || activeTab === 'hr_lead') && (
+      {(activeTab === 'overtime' || (activeTab === 'hr_ops' && hrTier <= 2) || (activeTab === 'hr_lead' && hrTier === 1)) && (
         <HrPayrollTabs
           section={activeTab === 'overtime' ? 'overtime' : activeTab === 'hr_ops' ? 'ops' : 'lead'}
           hrTier={hrTier}

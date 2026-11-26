@@ -340,7 +340,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier, isStaff = false }:
 
       {hrTier >= 3 && (
         <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs leading-5 text-sky-950">
-          Halaman ini adalah layanan HR pribadi. Profil karyawan dan gaji bulanan dikelola oleh HR Tier 2 atau Tier 1 di tab <strong>Operasional HR &amp; Payroll</strong>; minta admin perusahaan memberi akses HR yang sesuai bila Anda bertugas mengelola data tersebut.
+          Halaman ini adalah layanan HR pribadi. Profil karyawan dan pengaturan payroll hanya tersedia bagi HR Tier 1 atau Tier 2. Minta admin perusahaan memberi akses HR yang sesuai bila Anda bertugas mengelola data tersebut.
         </div>
       )}
 
