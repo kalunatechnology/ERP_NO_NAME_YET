@@ -337,17 +337,11 @@ financeRouter.delete('/payroll/runs/:id', requireFinanceRole([RoleCode.FINANCE])
 financeRouter.post('/payroll/runs/:id/submit', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
   try { sendSuccess(res, await PayrollService.setStatus(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), 'SUBMIT')); } catch (err) { next(err); }
 });
-financeRouter.post('/payroll/runs/:id/approve', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), enforceSoD({
-  getCreatorId: async (req) => (await prisma.fin_payroll_run.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) }, select: { created_by_id: true } }))?.created_by_id ?? null,
-  action: 'approve-payroll-run',
-}), async (req, res, next) => {
-  try { sendSuccess(res, await PayrollService.setStatus(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), 'APPROVE', hasLevel1FinanceBypass(req.user))); } catch (err) { next(err); }
+financeRouter.post('/payroll/runs/:id/approve', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try { sendSuccess(res, await PayrollService.setStatus(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), 'APPROVE')); } catch (err) { next(err); }
 });
-financeRouter.post('/payroll/runs/:id/post', requireFinanceRole([RoleCode.FINANCE]), enforceSoD({
-  getCreatorId: async (req) => (await prisma.fin_payroll_run.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) }, select: { created_by_id: true } }))?.created_by_id ?? null,
-  action: 'post-payroll-run',
-}), async (req, res, next) => {
-  try { sendSuccess(res, await PayrollService.post(activeCompanyId(req), req.tenantId ?? null, req.params.id, authenticatedFinanceUserId(req), hasLevel1FinanceBypass(req.user))); } catch (err) { next(err); }
+financeRouter.post('/payroll/runs/:id/post', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try { sendSuccess(res, await PayrollService.post(activeCompanyId(req), req.tenantId ?? null, req.params.id, authenticatedFinanceUserId(req))); } catch (err) { next(err); }
 });
 financeRouter.post('/payroll/runs/:id/pay', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
   try { sendSuccess(res, await PayrollService.pay(activeCompanyId(req), req.tenantId ?? null, req.params.id, authenticatedFinanceUserId(req), req.body)); } catch (err) { next(err); }

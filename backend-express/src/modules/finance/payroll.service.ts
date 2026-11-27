@@ -395,7 +395,7 @@ export class PayrollService {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
-  static async setStatus(companyId: string, runId: string, userId: string, action: 'SUBMIT' | 'APPROVE', allowSelfApproval = false) {
+  static async setStatus(companyId: string, runId: string, userId: string, action: 'SUBMIT' | 'APPROVE') {
     const run = await prisma.fin_payroll_run.findFirst({ where: { id: runId, company_id: companyId } });
     if (!run) throw new NotFoundError('Payroll run');
     if (action === 'SUBMIT') {
@@ -403,17 +403,15 @@ export class PayrollService {
       return prisma.fin_payroll_run.update({ where: { id: runId }, data: { status: 'PENDING_APPROVAL' } });
     }
     if (run.status !== 'PENDING_APPROVAL') throw new ConflictError('Payroll run tidak menunggu persetujuan.');
-    if (!allowSelfApproval && run.created_by_id === userId) throw new ConflictError('Pembuat payroll tidak boleh menyetujui payroll yang sama.');
     return prisma.fin_payroll_run.update({ where: { id: runId }, data: { status: 'APPROVED', approved_by_id: userId, approved_at: new Date() } });
   }
 
-  static async post(companyId: string, tenantId: string | null, runId: string, userId: string, allowSelfApproval = false) {
+  static async post(companyId: string, tenantId: string | null, runId: string, userId: string) {
     return prisma.$transaction(async (tx) => {
       const run = await tx.fin_payroll_run.findFirst({ where: { id: runId, company_id: companyId }, include: { lines: true } });
       if (!run) throw new NotFoundError('Payroll run');
       if (run.status === 'POSTED' && run.journal_entry_id) return run;
       if (run.status !== 'APPROVED') throw new ConflictError('Payroll harus disetujui sebelum diposting.');
-      if (!allowSelfApproval && run.created_by_id === userId) throw new ConflictError('Pembuat payroll tidak boleh memposting payroll yang sama.');
       if (!run.lines.length) throw new ValidationError('Payroll run tidak memiliki rincian karyawan.');
       const date = new Date(run.period_end);
       const period = await PeriodClosingService.ensureOpenPostingPeriod(tx, date, companyId, tenantId, userId);

@@ -674,9 +674,6 @@ export class HrService {
     if (run.status !== 'HR_APPROVED') {
       throw new ConflictError('Payroll run harus berstatus HR_APPROVED sebelum direview Finance.');
     }
-    if (decision === 'APPROVE' && run.created_by_id === financeUserId) {
-      throw new ForbiddenError('Pembuat draft payroll tidak boleh melakukan ACC Finance pada run yang sama.');
-    }
     if (decision === 'REJECT') {
       return prisma.fin_payroll_run.update({
         where: { id: runId },
