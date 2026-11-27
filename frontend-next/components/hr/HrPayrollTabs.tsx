@@ -766,7 +766,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
 
           <div className="rounded-2xl border border-[#E2E8F0] bg-white overflow-hidden">
             <div className="p-4 border-b border-slate-200 font-bold text-sm text-[#163D64]">
-              Payroll Runs — HR-ACC &amp; Gerbang Review Finance (COA 6100 &amp; GL)
+              Payroll Runs — HR-ACC &amp; Gerbang Review Finance (COA 6101 &amp; GL)
             </div>
             <div className="divide-y divide-slate-100 text-xs">
               {payrollRuns.length === 0 ? (
@@ -789,21 +789,39 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       {hrTier === 1 && run.status === "DRAFT" && (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await api.post(`/api/v1/hr/payroll/${run.id}/hr-approve`);
-                              toast.success("Payroll di-ACC Kepala HR (HR_APPROVED).");
-                              await loadData();
-                            } catch (err: unknown) {
-                              toast.error(err instanceof Error ? err.message : "Gagal HR-ACC.");
-                            }
-                          }}
-                          className="rounded-lg bg-[#0876CD] px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer"
-                        >
-                          HR-ACC
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!window.confirm(`Hapus payroll ${run.run_number} sebelum HR-ACC?`)) return;
+                              try {
+                                await api.delete(`/api/v1/hr/payroll/${run.id}`);
+                                toast.success(`Payroll ${run.run_number} dihapus.`);
+                                await loadData();
+                              } catch (err: unknown) {
+                                toast.error(err instanceof Error ? err.message : "Gagal menghapus payroll.");
+                              }
+                            }}
+                            className="rounded-lg border border-red-200 px-3 py-1.5 text-[11px] font-semibold text-red-700 cursor-pointer"
+                          >
+                            Hapus
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await api.post(`/api/v1/hr/payroll/${run.id}/hr-approve`);
+                                toast.success("Payroll di-ACC Kepala HR (HR_APPROVED).");
+                                await loadData();
+                              } catch (err: unknown) {
+                                toast.error(err instanceof Error ? err.message : "Gagal HR-ACC.");
+                              }
+                            }}
+                            className="rounded-lg bg-[#0876CD] px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer"
+                          >
+                            HR-ACC
+                          </button>
+                        </>
                       )}
                       {financeTier <= 1 && run.status === "HR_APPROVED" && (
                         <>
@@ -851,7 +869,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
                               toast.success("Payroll berhasil diposting ke General Ledger (POSTED).");
                               await loadData();
                             } catch (err: unknown) {
-                              toast.error(err instanceof Error ? err.message : "Gagal post GL (cek periode & budget COA 6100).");
+                              toast.error(err instanceof Error ? err.message : "Gagal post GL. Periksa periode dan status COA 6101.");
                             }
                           }}
                           className="rounded-lg bg-[#163D64] px-3 py-1.5 text-[11px] font-semibold text-white cursor-pointer"

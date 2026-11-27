@@ -63,6 +63,7 @@ export const DEFAULT_COA = [
   { code: '5102', name: 'Selisih Harga Perolehan & Revaluasi Material (PPV / PUP)', type: 'EXPENSE', balance: 'DEBIT', parent_code: null },
   // 6000 - BEBAN OPERASIONAL
   { code: '6100', name: 'Beban Gaji & SDM', type: 'EXPENSE', balance: 'DEBIT', parent_code: null },
+  { code: '6101', name: 'Beban Operasional & Lapangan', type: 'EXPENSE', balance: 'DEBIT', parent_code: null },
   { code: '6200', name: 'Beban Operasional Kantor', type: 'EXPENSE', balance: 'DEBIT', parent_code: null },
   { code: '6210', name: 'Beban Selisih Opname & Penghapusan Persediaan (Write-Off)', type: 'EXPENSE', balance: 'DEBIT', parent_code: null },
 ];
@@ -126,7 +127,7 @@ export class FinanceService {
   }
 
   static async ensurePayrollCOA(companyId: string, db: any = prisma) {
-    const payrollCodes = ['6100', '2150', '2160', '2170'];
+    const payrollCodes = ['6101', '2150', '2160', '2170'];
     const defaults = DEFAULT_COA.filter((account) => payrollCodes.includes(account.code));
     const existing = await db.fin_account.findMany({
       where: { company_id: companyId, account_code: { in: payrollCodes } },

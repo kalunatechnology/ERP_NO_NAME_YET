@@ -5,7 +5,6 @@ import { ConflictError, NotFoundError, ValidationError } from '../../utils/error
 import { FinanceService } from './finance.service';
 import { FinanceDocumentService } from './finance-document.service';
 import { PeriodClosingService } from './period-closing.service';
-import { BudgetingService } from './budgeting.service';
 import { isUsableModuleAssignment } from '../../utils/module-assignments';
 
 async function notifyFinanceOfGeneratedPayroll(tx: Prisma.TransactionClient, params: {
@@ -107,6 +106,9 @@ const amount = (value: unknown, label: string, allowZero = true) => {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 };
 
+const decimalSum = (values: Array<Prisma.Decimal | number | string | null | undefined>): Prisma.Decimal =>
+  values.reduce<Prisma.Decimal>((sum, value) => sum.plus(value ?? 0), new Prisma.Decimal(0));
+
 function normalizeLines(lines: any[]) {
   if (!Array.isArray(lines) || lines.length === 0) throw new ValidationError('Tambahkan setidaknya satu karyawan ke payroll run.');
   const seen = new Set<string>();
@@ -132,7 +134,7 @@ function normalizeLines(lines: any[]) {
       employee_tax: tax,
       employee_bpjs: employeeBpjs,
       employer_bpjs: employerBpjs,
-      net_salary: Math.round((gross + allowances - tax - employeeBpjs + Number.EPSILON) * 100) / 100,
+      net_salary: Math.round((gross + allowances + overtimePay - tax - employeeBpjs + Number.EPSILON) * 100) / 100,
     };
   });
 }
@@ -358,10 +360,10 @@ export class PayrollService {
           employee_bpjs: line.employee_bpjs, employer_bpjs: line.employer_bpjs, net_salary: line.net_salary,
         };
       });
-      const grossTotal = lineData.reduce((sum, line) => sum + Number(line.gross_salary) + Number(line.allowances), 0);
-      const deductionTotal = lineData.reduce((sum, line) => sum + Number(line.employee_tax) + Number(line.employee_bpjs), 0);
-      const employerTotal = lineData.reduce((sum, line) => sum + Number(line.employer_bpjs), 0);
-      const netTotal = grossTotal - deductionTotal;
+      const grossTotal = decimalSum(lineData.flatMap((line) => [line.gross_salary, line.allowances, line.overtime_pay]));
+      const deductionTotal = decimalSum(lineData.flatMap((line) => [line.employee_tax, line.employee_bpjs]));
+      const employerTotal = decimalSum(lineData.map((line) => line.employer_bpjs));
+      const netTotal = grossTotal.minus(deductionTotal);
       const number = run?.run_number ?? `PAY-${start.toISOString().slice(0, 7).replace('-', '')}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
       const savedRun = runId
         ? await tx.fin_payroll_run.update({ where: { id: runId }, data: { period_start: start, period_end: end, gross_total: grossTotal, deduction_total: deductionTotal, employer_contribution_total: employerTotal, net_total: netTotal } })
@@ -376,11 +378,21 @@ export class PayrollService {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
-  static async deleteDraft(companyId: string, runId: string) {
-    const run = await prisma.fin_payroll_run.findFirst({ where: { id: runId, company_id: companyId } });
-    if (!run) throw new NotFoundError('Payroll run');
-    if (run.status !== 'DRAFT') throw new ConflictError('Payroll hanya dapat dihapus saat masih DRAFT.');
-    return prisma.fin_payroll_run.delete({ where: { id: runId } });
+  static async deleteRun(companyId: string, runId: string, actor: 'HR' | 'FINANCE') {
+    return prisma.$transaction(async (tx) => {
+      const run = await tx.fin_payroll_run.findFirst({ where: { id: runId, company_id: companyId } });
+      if (!run) throw new NotFoundError('Payroll run');
+      if (run.status === 'POSTED' || run.status === 'PAID' || run.journal_entry_id || run.payment_journal_entry_id) {
+        throw new ConflictError('Payroll yang sudah diposting atau dibayar tidak dapat dihapus.');
+      }
+      if (actor === 'HR' && run.status !== 'DRAFT') {
+        throw new ConflictError('HR hanya dapat menghapus payroll sebelum ACC HR (status DRAFT).');
+      }
+      if (actor === 'FINANCE' && !['DRAFT', 'PENDING_APPROVAL', 'HR_APPROVED', 'APPROVED'].includes(run.status)) {
+        throw new ConflictError('Finance hanya dapat menghapus payroll yang belum diposting.');
+      }
+      return tx.fin_payroll_run.delete({ where: { id: runId } });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   static async setStatus(companyId: string, runId: string, userId: string, action: 'SUBMIT' | 'APPROVE', allowSelfApproval = false) {
@@ -405,77 +417,29 @@ export class PayrollService {
       if (!run.lines.length) throw new ValidationError('Payroll run tidak memiliki rincian karyawan.');
       const date = new Date(run.period_end);
       const period = await PeriodClosingService.ensureOpenPostingPeriod(tx, date, companyId, tenantId, userId);
-      const costCenterIds = [...new Set(run.lines.map((line) => line.cost_center_id).filter((id): id is string => Boolean(id)))];
-      const activeCostCenters = await tx.master_cost_center.findMany({ where: { company_id: companyId, id: { in: costCenterIds }, status: 'ACTIVE' }, select: { id: true, cost_center_code: true, cost_center_name: true } });
-      if (activeCostCenters.length !== costCenterIds.length) throw new ValidationError('Setiap baris payroll harus memakai cost center aktif milik perusahaan.');
-      const employees = await tx.master_employee.findMany({ where: { company_id: companyId, id: { in: run.lines.map((line) => line.employee_id) } }, select: { id: true, department_id: true } });
-      const departmentByEmployeeId = new Map(employees.map((employee) => [employee.id, employee.department_id]));
-      const [masterDepartments, coreDepartments] = await Promise.all([
-        tx.master_department.findMany({ where: { company_id: companyId, status: 'ACTIVE' }, select: { id: true, department_code: true } }),
-        (tx as any).core_department.findMany({ where: { company_id: companyId, is_active: true }, select: { id: true, code: true, is_cost_center: true } }).catch(() => []),
-      ]);
-      const departmentIdsByCode = new Map<string, string[]>();
-      for (const department of masterDepartments) {
-        const code = String(department.department_code ?? '').trim().toUpperCase();
-        if (code) departmentIdsByCode.set(code, [...(departmentIdsByCode.get(code) ?? []), department.id]);
-      }
-      for (const department of coreDepartments.filter((row: any) => row.is_cost_center !== false)) {
-        const code = String(department.code ?? '').trim().toUpperCase();
-        if (code) departmentIdsByCode.set(code, [...(departmentIdsByCode.get(code) ?? []), department.id]);
-      }
-      const defaultDepartmentIdsByCostCenterId = new Map(activeCostCenters.map((center) => [
-        center.id,
-        departmentIdsByCode.get(String(center.cost_center_code ?? '').trim().toUpperCase()) ?? [],
-      ]));
       const payrollAccounts = await FinanceService.ensurePayrollCOA(companyId, tx);
-      const expense = payrollAccounts.get('6100');
+      const expense = payrollAccounts.get('6101');
       const salaryPayable = payrollAccounts.get('2150');
       const taxPayable = payrollAccounts.get('2160');
       const bpjsPayable = payrollAccounts.get('2170');
-      if (!expense || !salaryPayable || !taxPayable || !bpjsPayable) throw new ValidationError('COA Payroll belum lengkap. Pastikan 6100, 2150, 2160, dan 2170 aktif.');
-      const fiscalPeriod = await tx.fin_fiscal_period.findFirst({ where: { id: period.id, company_id: companyId }, select: { fiscal_year_id: true } });
-      const budgetLines = fiscalPeriod?.fiscal_year_id ? await tx.fin_budget_line.findMany({
-        where: { company_id: companyId, account_id: expense.id, cost_center_id: { in: costCenterIds }, project_id: null, budget: { status: 'ACTIVE', fiscal_year_id: fiscalPeriod.fiscal_year_id } },
-        select: { cost_center_id: true, department_id: true, period_allocations: { select: { fiscal_period_id: true, amount: true } } },
-      }) : [];
-      const uncoveredLines: typeof run.lines = [];
-      const budgetDepartmentByEmployeeId = new Map<string, string | null>();
-      for (const line of run.lines) {
-        const employeeDepartmentId = departmentByEmployeeId.get(line.employee_id) ?? null;
-        const candidates = budgetLines.filter((budgetLine) => budgetLine.cost_center_id === line.cost_center_id
-          && (!budgetLine.period_allocations.length || budgetLine.period_allocations.some((allocation) => allocation.fiscal_period_id === period.id && Number(allocation.amount) > 0)));
-        const inferredDepartments = line.cost_center_id ? defaultDepartmentIdsByCostCenterId.get(line.cost_center_id) ?? [] : [];
-        const matching = employeeDepartmentId
-          ? candidates.filter((budgetLine) => !budgetLine.department_id || budgetLine.department_id === employeeDepartmentId)
-          : candidates.filter((budgetLine) => !budgetLine.department_id || inferredDepartments.includes(budgetLine.department_id));
-        if (matching.length) {
-          budgetDepartmentByEmployeeId.set(line.employee_id, matching.find((budgetLine) => budgetLine.department_id)?.department_id ?? null);
-          continue;
-        }
-        uncoveredLines.push(line);
-      }
-      if (uncoveredLines.length) {
-        const missing = [...new Set(uncoveredLines.map((line) => {
-          const center = activeCostCenters.find((item) => item.id === line.cost_center_id);
-          return center ? `${center.cost_center_code} — ${center.cost_center_name}` : String(line.cost_center_id);
-        }))];
-        throw new ValidationError(`Budget aktif akun 6100 untuk tahun/periode ${String(run.period_end).slice(0, 10)} belum mencakup Cost Center: ${missing.join(', ')}. Cocokkan akun, Cost Center, departemen karyawan, dan alokasi periode.`);
-      }
+      if (!expense || !salaryPayable || !taxPayable || !bpjsPayable) throw new ValidationError('COA Payroll belum lengkap. Pastikan 6101, 2150, 2160, dan 2170 aktif.');
+      const grossTotal = decimalSum(run.lines.flatMap((line) => [line.gross_salary, line.allowances, line.overtime_pay]));
+      const deductionTotal = decimalSum(run.lines.flatMap((line) => [line.employee_tax, line.employee_bpjs]));
+      const netTotal = grossTotal.minus(deductionTotal);
       const journalBook = await FinanceService.ensureJournal(companyId, 'GJ', 'General Journal', 'GENERAL', tx);
       const doc = await FinanceDocumentService.ensure(tx, { tenantId, companyId, userId, documentType: 'PAYROLL', documentNumber: run.run_number, documentDate: run.period_end, postingDate: date, status: 'POSTED' });
       const journalId = crypto.randomUUID();
       await tx.fin_journal_entry.create({ data: { id: journalId, tenant_id: tenantId, company_id: companyId, created_by_id: userId, journal_id: journalBook.id, fiscal_period_id: period.id, entry_number: run.run_number, posting_date: date, description: `Akrual payroll ${run.run_number}`, source_document_id: doc.id, status: 'POSTED' } });
-      const journalLines: any[] = run.lines.map((line) => ({ id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId, journal_entry_id: journalId, account_id: expense.id, cost_center_id: line.cost_center_id, department_id: budgetDepartmentByEmployeeId.get(line.employee_id) ?? departmentByEmployeeId.get(line.employee_id) ?? null, debit_base: new Prisma.Decimal(Number(line.gross_salary) + Number(line.allowances) + Number(line.employer_bpjs)), credit_base: new Prisma.Decimal(0), transaction_amount: new Prisma.Decimal(Number(line.gross_salary) + Number(line.allowances) + Number(line.employer_bpjs)) }));
-      const taxTotal = run.lines.reduce((sum, line) => sum + Number(line.employee_tax), 0);
-      const bpjsTotal = run.lines.reduce((sum, line) => sum + Number(line.employee_bpjs) + Number(line.employer_bpjs), 0);
-      journalLines.push({ id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId, journal_entry_id: journalId, account_id: salaryPayable.id, credit_base: new Prisma.Decimal(Number(run.net_total)), debit_base: new Prisma.Decimal(0), transaction_amount: new Prisma.Decimal(Number(run.net_total)) });
-      if (taxTotal) journalLines.push({ id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId, journal_entry_id: journalId, account_id: taxPayable.id, credit_base: new Prisma.Decimal(taxTotal), debit_base: new Prisma.Decimal(0), transaction_amount: new Prisma.Decimal(taxTotal) });
-      if (bpjsTotal) journalLines.push({ id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId, journal_entry_id: journalId, account_id: bpjsPayable.id, credit_base: new Prisma.Decimal(bpjsTotal), debit_base: new Prisma.Decimal(0), transaction_amount: new Prisma.Decimal(bpjsTotal) });
+      const expenseTotal = decimalSum(run.lines.flatMap((line) => [line.gross_salary, line.allowances, line.overtime_pay, line.employer_bpjs]));
+      const journalLines: any[] = [{ id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId, journal_entry_id: journalId, account_id: expense.id, cost_center_id: null, department_id: null, debit_base: expenseTotal, credit_base: new Prisma.Decimal(0), transaction_amount: expenseTotal }];
+      const taxTotal = decimalSum(run.lines.map((line) => line.employee_tax));
+      const bpjsTotal = decimalSum(run.lines.flatMap((line) => [line.employee_bpjs, line.employer_bpjs]));
+      journalLines.push({ id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId, journal_entry_id: journalId, account_id: salaryPayable.id, credit_base: netTotal, debit_base: new Prisma.Decimal(0), transaction_amount: netTotal });
+      if (!taxTotal.isZero()) journalLines.push({ id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId, journal_entry_id: journalId, account_id: taxPayable.id, credit_base: taxTotal, debit_base: new Prisma.Decimal(0), transaction_amount: taxTotal });
+      if (!bpjsTotal.isZero()) journalLines.push({ id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId, created_by_id: userId, journal_entry_id: journalId, account_id: bpjsPayable.id, credit_base: bpjsTotal, debit_base: new Prisma.Decimal(0), transaction_amount: bpjsTotal });
       await tx.fin_journal_line.createMany({ data: journalLines });
-      const journal = { id: journalId, tenant_id: tenantId, company_id: companyId, fiscal_period_id: period.id, posting_date: date, description: `Akrual payroll ${run.run_number}`, created_by_id: userId };
-      await BudgetingService.recordJournalActuals(tx, journal, journalLines);
       await FinanceDocumentService.markPosted(tx, doc.id, userId, date);
-      return tx.fin_payroll_run.update({ where: { id: run.id }, data: { status: 'POSTED', journal_entry_id: journalId } });
+      return tx.fin_payroll_run.update({ where: { id: run.id }, data: { gross_total: grossTotal, deduction_total: deductionTotal, net_total: netTotal, status: 'POSTED', journal_entry_id: journalId } });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 30000 });
   }
 

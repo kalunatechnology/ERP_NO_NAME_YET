@@ -139,6 +139,15 @@ hrRouter.get('/payroll/runs', requireModuleTier('HR', 2), async (req, res, next)
   }
 });
 
+hrRouter.delete('/payroll/:id', requireModuleTier('HR', 1), async (req, res, next) => {
+  try {
+    const deleted = await PayrollService.deleteRun(req.companyId!, req.params.id, 'HR');
+    res.json({ success: true, data: deleted });
+  } catch (err) {
+    next(err);
+  }
+});
+
 hrRouter.post('/payroll/draft', requireModuleTier('HR', 2), async (req, res, next) => {
   try {
     const run = await HrService.generatePayrollDraft(

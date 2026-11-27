@@ -332,7 +332,7 @@ financeRouter.put('/payroll/runs/:id', requireFinanceRole([RoleCode.FINANCE]), a
   try { sendSuccess(res, await PayrollService.createRun(activeCompanyId(req), req.tenantId ?? null, authenticatedFinanceUserId(req), req.body, req.params.id)); } catch (err) { next(err); }
 });
 financeRouter.delete('/payroll/runs/:id', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
-  try { sendSuccess(res, await PayrollService.deleteDraft(activeCompanyId(req), req.params.id)); } catch (err) { next(err); }
+  try { sendSuccess(res, await PayrollService.deleteRun(activeCompanyId(req), req.params.id, 'FINANCE')); } catch (err) { next(err); }
 });
 financeRouter.post('/payroll/runs/:id/submit', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
   try { sendSuccess(res, await PayrollService.setStatus(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), 'SUBMIT')); } catch (err) { next(err); }
