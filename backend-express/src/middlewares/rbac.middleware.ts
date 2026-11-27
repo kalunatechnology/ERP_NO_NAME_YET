@@ -120,7 +120,8 @@ function requiredModuleCapability(req: Request): string {
   if (['GET', 'HEAD', 'OPTIONS'].includes(method)) return 'READ';
   if (method === 'DELETE') return 'DELETE';
   const path = req.originalUrl.split('?')[0] ?? req.path;
-  if (/\/(?:approve|reject|execute|close|post|verify|authorize|validate|disburse)(?:-[^/?]+)*(?:\/|$)/i.test(path)) return 'APPROVE';
+  if (/\/(?:delete|remove|void)(?:-[^/?]+)*(?:\/|$)/i.test(path)) return 'DELETE';
+  if (/\/(?:approve|reject|execute|close|post|verify|authorize|validate|disburse|review|decide|archive)(?:-[^/?]+)*(?:\/|$)/i.test(path)) return 'APPROVE';
   return 'WRITE';
 }
 
@@ -145,11 +146,12 @@ export function restrictActiveRoleMutations(policy: ActiveRoleMutationPolicy) {
     if (!req.user) return next(new UnauthorizedError());
     if (isSuperAdmin(req.user.roles)) return next();
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method.toUpperCase())) return next();
-    if (req.moduleAccess?.accessMode !== 'ASSIGNMENT' && hasModuleOverride(req)) return next();
+    // Assignment-scoped requests have already been checked against the module
+    // capability for this action. Do not re-impose a legacy enum restriction.
+    if (req.moduleAccess?.accessMode === 'ASSIGNMENT') return next();
+    if (hasModuleOverride(req)) return next();
 
-    const activeRole = req.moduleAccess?.accessMode === 'ASSIGNMENT'
-      ? req.user.active_role_code ?? ''
-      : req.user.active_role_code ?? req.user.roles[0] ?? '';
+    const activeRole = req.user.active_role_code ?? req.user.roles[0] ?? '';
     if (!policy.restrictedRoles.includes(activeRole)) return next();
 
     const requestPath = req.originalUrl.split('?')[0] ?? req.path;

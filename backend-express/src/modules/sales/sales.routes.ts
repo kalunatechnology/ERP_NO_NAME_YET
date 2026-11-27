@@ -13,6 +13,7 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '.
 import { queueWebhookEvent } from '../crm/crm-outbound-webhook.service';
 import { moveOpportunityStage } from '../crm/crm-pipeline.service';
 import { RoleCode } from '../../types/roles';
+import { isUsableModuleAssignment } from '../../utils/module-assignments';
 
 export const salesRouter = Router();
 
@@ -21,7 +22,12 @@ function activeCompanyId(req: Request): string {
   return req.companyId;
 }
 
-const isActiveSales = (req: Request) => String(req.user?.active_role_code ?? '').trim().toUpperCase().replace(/^ROLE-/, '') === RoleCode.SALES;
+const isActiveSales = (req: Request) => String(req.user?.active_role_code ?? '').trim().toUpperCase().replace(/^ROLE-/, '') === RoleCode.SALES
+  || (req.user?.module_assignments ?? []).some((assignment: any) =>
+    ['SALES', 'CRM'].includes(String(assignment.module_code || '').trim().toUpperCase())
+    && isUsableModuleAssignment(assignment)
+    && String(assignment.data_scope || '').trim().toUpperCase() === 'OWN',
+  );
 const assertSalesOwnsRecord = (req: Request, record: { created_by_id?: string | null } | null | undefined) => {
   if (isActiveSales(req) && record?.created_by_id !== req.user?.id) {
     throw new ForbiddenError('Sales hanya dapat mengubah data yang dibuat sendiri. CRM Lead dapat mengubah seluruh data Sales.');

@@ -247,6 +247,15 @@ hrRouter.delete('/employees/:id', requireModuleTier('HR', 2), async (req, res, n
 });
 
 // --- FINANCE: Gerbang ACC & Posting ke GL Akuntansi ---
+hrFinanceRouter.delete('/payroll/:id/finance-delete', requireModuleAccess('FINANCE'), requireModuleTier('FINANCE', 1), async (req, res, next) => {
+  try {
+    const deleted = await PayrollService.deleteRun(req.companyId!, req.params.id, 'FINANCE');
+    res.json({ success: true, data: deleted });
+  } catch (err) {
+    next(err);
+  }
+});
+
 hrFinanceRouter.post('/payroll/:id/finance-review', requireModuleAccess('FINANCE'), requireModuleTier('FINANCE', 1), async (req, res, next) => {
   try {
     const decision = String(req.body.decision || '').toUpperCase() === 'REJECT' ? 'REJECT' : 'APPROVE';

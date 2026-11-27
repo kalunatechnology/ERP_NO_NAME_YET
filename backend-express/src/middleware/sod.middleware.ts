@@ -192,16 +192,30 @@ export function requireFinanceRole(roles: string[]) {
         ? 'READ'
         : method === 'DELETE'
           ? 'DELETE'
-          : /\/(?:approve|reject|execute|close|post|verify|authorize)(?:\/|$)/i.test(path)
+          : /\/(?:delete|remove|void)(?:-[^/?]+)*(?:\/|$)/i.test(path)
+            ? 'DELETE'
+            : /\/(?:approve|reject|execute|close|post|verify|authorize|validate|disburse|review|decide|archive)(?:-[^/?]+)*(?:\/|$)/i.test(path)
             ? 'APPROVE'
             : 'WRITE';
-      const hasCapability = ((req.user as any)?.module_assignments ?? []).some((assignment: any) =>
-        isUsableModuleAssignment(assignment, 'FINANCE')
-          && hasModuleAssignmentCapability(assignment, capability),
+      const moduleCode = String(req.moduleAccess.moduleCode || 'FINANCE').trim().toUpperCase();
+      const assignments = ((req.user as any)?.module_assignments ?? []).filter((assignment: any) =>
+        isUsableModuleAssignment(assignment, moduleCode),
       );
-      return hasCapability
+      const override = ((req.user as any)?.permission_overrides ?? []).find((item: any) =>
+        String(item.module_code || '').trim().toUpperCase() === moduleCode
+        && String(item.action_code || '').trim().toUpperCase() === capability,
+      );
+      if (String(override?.effect || '').trim().toUpperCase() === 'DENY') {
+        return next(new ForbiddenError(`Capability ${capability} ditolak secara eksplisit pada modul ${moduleCode}.`));
+      }
+      const hasCapability = assignments.some((assignment: any) =>
+        hasModuleAssignmentCapability(assignment, capability),
+      );
+      const hasOverrideGrant = assignments.length > 0
+        && String(override?.effect || '').trim().toUpperCase() === 'ALLOW';
+      return hasCapability || hasOverrideGrant
         ? next()
-        : next(new ForbiddenError(`Role Profile Finance tidak memiliki capability ${capability}.`));
+        : next(new ForbiddenError(`Role Profile ${moduleCode} tidak memiliki capability ${capability}.`));
     }
     if (roles.includes(activeRole) || isSuperAdmin(assignedRoles)) {
       return next();

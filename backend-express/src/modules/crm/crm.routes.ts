@@ -14,6 +14,7 @@ import { createCrudRouter } from '../../utils/crud-factory';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { requireActiveRole, requireAdminForWrite } from '../../middlewares/rbac.middleware';
 import { isCompanyAdmin, isSuperAdmin, RoleCode } from '../../types/roles';
+import { hasModuleAssignmentCapability, isUsableModuleAssignment } from '../../utils/module-assignments';
 import { queueWebhookEvent } from './crm-outbound-webhook.service';
 import { CRM_OPEN_STAGES, moveOpportunityStage, normalizeCrmStage } from './crm-pipeline.service';
 
@@ -24,7 +25,12 @@ const normalizeOptionalCustomerEmail = (value: unknown) => {
   const email = String(value ?? '').trim().toLowerCase();
   return ['-', '—', '–', 'n/a', 'na', 'null'].includes(email) ? '' : email;
 };
-const isActiveSales = (req: Request) => activeCRMRole(req) === RoleCode.SALES;
+const isActiveSales = (req: Request) => activeCRMRole(req) === RoleCode.SALES
+  || (req.user?.module_assignments ?? []).some((assignment: any) =>
+    ['CRM', 'SALES'].includes(String(assignment.module_code || '').trim().toUpperCase())
+    && isUsableModuleAssignment(assignment)
+    && String(assignment.data_scope || '').trim().toUpperCase() === 'OWN',
+  );
 const assertSalesOwnsRecord = (req: Request, record: { created_by_id?: string | null } | null | undefined) => {
   if (isActiveSales(req) && record?.created_by_id !== req.user?.id) {
     throw new ForbiddenError('Sales hanya dapat mengubah data yang dibuat sendiri. CRM Lead dapat mengubah data seluruh Sales.');
@@ -1453,8 +1459,14 @@ crmRouter.delete('/customer-inquiries/:id', async (req: Request, res: Response, 
   try {
     const roles = req.user?.roles ?? [];
     const activeRoleCode = String(req.user?.active_role_code ?? '').trim().toUpperCase().replace(/^ROLE-/, '');
-    const canDeleteAnyLead = isCompanyAdmin(roles) || isSuperAdmin(roles) || activeRoleCode === RoleCode.CRM_LEAD;
-    if (!canDeleteAnyLead && activeRoleCode !== RoleCode.SALES) {
+    const hasAssignedGlobalDelete = (req.user?.module_assignments ?? []).some((assignment: any) =>
+      isUsableModuleAssignment(assignment, 'CRM')
+      && String(assignment.data_scope || '').trim().toUpperCase() === 'ALL'
+      && hasModuleAssignmentCapability(assignment, 'DELETE'),
+    );
+    const canDeleteAnyLead = isCompanyAdmin(roles) || isSuperAdmin(roles)
+      || activeRoleCode === RoleCode.CRM_LEAD || hasAssignedGlobalDelete;
+    if (!canDeleteAnyLead && activeRoleCode !== RoleCode.SALES && !isActiveSales(req)) {
       throw new ForbiddenError('Lead hanya dapat dihapus oleh pembuatnya, CRM Lead, atau Company Admin.');
     }
 

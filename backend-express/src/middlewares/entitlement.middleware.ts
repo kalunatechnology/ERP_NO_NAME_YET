@@ -9,7 +9,7 @@
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../config/database';
 import { ForbiddenError, UnauthorizedError } from '../utils/errors';
-import { isSuperAdmin } from '../types/roles';
+import { isCompanyAdmin, isSuperAdmin } from '../types/roles';
 import { hasModuleAssignmentCapability, isUsableModuleAssignment } from '../utils/module-assignments';
 
 /**
@@ -119,7 +119,15 @@ export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' =
         || normalizedModule === 'HRMS';
 
       const accessMode = String((access as any).access_mode || 'LEGACY').trim().toUpperCase();
-      if (accessMode === 'ASSIGNMENT') {
+      const activeAssignments = (req.user.module_assignments ?? []).filter((assignment: any) =>
+        candidateModules.some((candidate) => isUsableModuleAssignment(assignment, candidate))
+      );
+      // Module assignments are authoritative for operational users even when
+      // an older company entitlement row still says LEGACY. Company Admin keeps
+      // the delegated legacy path; Super Admin is handled above.
+      const useAssignmentAccess = !isCompanyAdmin(req.user.roles)
+        && (accessMode === 'ASSIGNMENT' || activeAssignments.length > 0);
+      if (useAssignmentAccess) {
         const overrides = req.user.permission_overrides ?? [];
         const readOverride = overrides.find((override: any) =>
           candidateModules.includes(String(override.module_code || '').toUpperCase())
@@ -133,9 +141,7 @@ export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' =
           return next(new ForbiddenError(`Akses ${effectiveMode} modul ${normalizedModule} ditolak secara eksplisit.`));
         }
 
-        const assignments = (req.user.module_assignments ?? []).filter((assignment: any) =>
-          candidateModules.some((candidate) => isUsableModuleAssignment(assignment, candidate))
-        );
+        const assignments = activeAssignments;
         if (!assignments.length && isHrSelfService) {
           req.moduleAccess = {
             moduleCode: normalizedModule,

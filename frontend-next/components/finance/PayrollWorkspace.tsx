@@ -108,7 +108,7 @@ export function PayrollWorkspace({ canOperate = false }: { canOperate?: boolean 
         : "Memproses payroll. Tunggu sampai server merespons…");
     setBusy(true); setError(""); setNotice("");
     try {
-      if (action === "delete") await api.delete(`/api/v1/finance/payroll/runs/${run.id}`);
+      if (action === "delete") await api.delete(`/api/v1/hr/payroll/${run.id}/finance-delete`);
       else if (action === "finance-approve") await api.post(`/api/v1/hr/payroll/${run.id}/finance-review`, { decision: "APPROVE" });
       else if (action === "finance-reject") await api.post(`/api/v1/hr/payroll/${run.id}/finance-review`, { decision: "REJECT", note: "Dikembalikan Finance untuk peninjauan." });
       else if (action === "post-gl") await api.post(`/api/v1/hr/payroll/${run.id}/post-gl`);
