@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, ArrowRight, AtSign, Bold, Calendar, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, Clock3, Coffee, Briefcase, Eye, FileDown, FileSpreadsheet, FileText, Filter, Italic, Link2, MapPin, Plus, Repeat, Save, Search, Send, ShieldCheck, Strikethrough, Trash2, UserCircle2, Video, X, ClipboardList } from "lucide-react";
+import { ArrowLeft, ArrowRight, AtSign, Bold, Calendar, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, Clock3, Coffee, Briefcase, Eye, FileDown, FileSpreadsheet, FileText, Filter, Italic, Link2, List, LayoutGrid, MapPin, Pencil, Plus, Repeat, Save, Search, Send, ShieldCheck, Strikethrough, Trash2, UserCircle2, Video, X, ClipboardList } from "lucide-react";
 import toast from "react-hot-toast";
 import { MeetingDetail, MeetingRequestSummary, NonMeetingRequest, requestApi } from "@/lib/api/request.api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -56,6 +56,7 @@ export default function RequestsClient(){
   }, [user?.module_assignments, userRole]);
   const canDeleteMeeting = userRole === "super_admin" || hrTier <= 2;
   const [activeTab,setActiveTab]=useState<'meeting'|'request'|'overtime'|'hr_ops'|'hr_lead'>('meeting');
+  const [meetingView, setMeetingView] = useState<'cards' | 'table'>('cards');
   useEffect(() => {
     if (activeTab === "hr_ops" && hrTier > 2) {
       setActiveTab("overtime");
@@ -71,6 +72,7 @@ export default function RequestsClient(){
   const [loading,setLoading]=useState(true);
   const [busy,setBusy]=useState(false);
   const [leaveDecisionBusyId,setLeaveDecisionBusyId]=useState<string | null>(null);
+  const [cancelActionBusyId,setCancelActionBusyId]=useState<string | null>(null);
   const [rejectingLeaveId,setRejectingLeaveId]=useState<string | null>(null);
   const [leaveRejectionRemarks,setLeaveRejectionRemarks]=useState("");
   const [createOpen,setCreateOpen]=useState(false);
@@ -215,6 +217,30 @@ export default function RequestsClient(){
     } finally {
       setLeaveDecisionBusyId(null);
     }
+  }
+
+  async function cancelRequest(request: NonMeetingRequest) {
+    if (!window.confirm(`Batalkan request ${request.request_number}? Request yang sudah disetujui akan menunggu persetujuan HR Tier 1.`)) return;
+    const reason = window.prompt('Alasan pembatalan (opsional):')?.trim() || '';
+    setCancelActionBusyId(request.id);
+    try {
+      const result = await requestApi.cancelRequest(request.id, reason);
+      toast.success(result?.approval_required ? 'Permintaan pembatalan dikirim dan menunggu persetujuan HR.' : 'Request berhasil dibatalkan.');
+      await load();
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, 'Request belum dapat dibatalkan. Muat ulang daftar dan coba lagi.'));
+    } finally { setCancelActionBusyId(null); }
+  }
+
+  async function decideCancellation(request: NonMeetingRequest, decision: 'APPROVE' | 'REJECT') {
+    setCancelActionBusyId(request.id);
+    try {
+      await requestApi.decideRequestCancellation(request.id, decision);
+      toast.success(decision === 'APPROVE' ? 'Pembatalan disetujui; request dibatalkan.' : 'Pembatalan ditolak; status request dipulihkan.');
+      await load();
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, 'Keputusan pembatalan belum tersimpan. Muat ulang daftar dan coba lagi.'));
+    } finally { setCancelActionBusyId(null); }
   }
 
   useEffect(() => {
@@ -386,7 +412,7 @@ export default function RequestsClient(){
               )}
             >
               <ClipboardList size={14} />
-              <span>Request (Cuti & Other)</span>
+              <span>Request</span>
               <span className={cn(
                 "px-1.5 py-0.2 rounded-full text-3xs font-extrabold",
                 activeTab === 'request' ? "bg-emerald-100 text-[#2B7A42]" : "bg-neutral-200 text-neutral-600"
@@ -405,7 +431,7 @@ export default function RequestsClient(){
               )}
             >
               <Clock size={14} />
-              <span>Lembur &amp; Slip Gaji</span>
+              <span>Overtime</span>
             </button>
 
             {hrTier <= 2 && (
@@ -419,7 +445,7 @@ export default function RequestsClient(){
                 )}
               >
                 <FileSpreadsheet size={14} />
-                <span>Operasional HR &amp; Payroll</span>
+                <span>Operational</span>
               </button>
             )}
 
@@ -434,38 +460,17 @@ export default function RequestsClient(){
                 )}
               >
                 <ShieldCheck size={14} />
-                <span>Kepala HR &amp; ACC Finance</span>
+                <span>Manage HR</span>
               </button>
             )}
           </div>
 
-          {/* Search Box - Absolute icon in left-3.5 with generous pl-10 ensures ZERO overlap */}
-          <div className="relative min-w-0 w-full sm:w-72">
-            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-neutral-400">
-              <Search size={15} />
-            </div>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={activeTab === 'meeting' ? "Cari judul meeting atau nomor..." : "Cari cuti atau permintaan..."}
-              className="h-9 w-full rounded-xl border border-[#E2E8F0] bg-white pl-10 pr-9 text-xs text-[#0F172A] placeholder:text-[#64748B]/60 outline-none transition-all focus:border-[#163D64] focus:ring-1 focus:ring-[#163D64]/20"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
-                title="Hapus pencarian"
-              >
-                <X size={13} />
-              </button>
-            )}
-          </div>
         </div>
 
         {/* Bottom Row: Segmented Filters for Meeting */}
         {activeTab === 'meeting' && (
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[#F0F0F0]">
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#F0F0F0] xl:flex-nowrap">
+            <div className="relative min-w-[180px] flex-1 xl:max-w-xs"><Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"/><input type="text" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Cari meeting..." className="h-9 w-full rounded-xl border border-[#E2E8F0] bg-white pl-9 pr-8 text-xs outline-none focus:border-[#163D64]"/>{searchQuery&&<button type="button" onClick={()=>setSearchQuery("")} aria-label="Hapus pencarian" className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400"><X size={13}/></button>}</div>
             {/* Type Filter */}
             <div className="flex items-center gap-2">
               <span className="text-3xs font-bold text-[#64748B] uppercase tracking-wider hidden sm:inline">Tipe:</span>
@@ -486,7 +491,7 @@ export default function RequestsClient(){
             </div>
 
             {/* Status Filter as Segmented Control */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-0.5 sm:pb-0">
+            <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-x-auto pb-0.5 sm:pb-0">
               <span className="text-3xs font-bold text-[#64748B] uppercase tracking-wider hidden sm:inline">Status:</span>
               <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-[#F4F6FB] border border-[#E2E8F0] text-2xs font-bold text-[#64748B]">
                 {(['ALL', 'SCHEDULED', 'DRAFT', 'COMPLETED'] as const).map(status => {
@@ -516,19 +521,23 @@ export default function RequestsClient(){
                 })}
               </div>
             </div>
+            <div className="ml-auto flex shrink-0 items-center gap-1 rounded-xl border border-[#E2E8F0] bg-white p-1" role="group" aria-label="Tampilan meeting">
+              <button type="button" onClick={() => setMeetingView('cards')} aria-pressed={meetingView==='cards'} title="Tampilan kartu" className={cn("grid h-7 w-8 place-items-center rounded-lg",meetingView==='cards'?"bg-[#E7F2FF] text-[#163D64]":"text-slate-500")}><LayoutGrid size={14}/></button>
+              <button type="button" onClick={() => setMeetingView('table')} aria-pressed={meetingView==='table'} title="Tampilan tabel" className={cn("grid h-7 w-8 place-items-center rounded-lg",meetingView==='table'?"bg-[#E7F2FF] text-[#163D64]":"text-slate-500")}><List size={14}/></button>
+            </div>
           </div>
         )}
 
         {/* Bottom Row: Segmented Filters for Request (Leave / Other) */}
         {activeTab === 'request' && (
-          <>
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[#F0F0F0]">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 border-t border-[#F0F0F0] pt-2 xl:flex-nowrap xl:overflow-x-auto">
+            <div className="relative min-w-[180px] flex-1 xl:max-w-[260px]"><Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"/><input type="text" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Cari request..." className="h-9 w-full rounded-xl border border-[#E2E8F0] bg-white pl-9 pr-8 text-xs outline-none focus:border-[#163D64]"/>{searchQuery&&<button type="button" onClick={()=>setSearchQuery("")} aria-label="Hapus pencarian" className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400"><X size={13}/></button>}</div>
+            <div className="flex shrink-0 items-center gap-2">
               <span className="text-3xs font-bold text-[#64748B] uppercase tracking-wider hidden sm:inline">Kategori:</span>
               <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-[#F4F6FB] border border-[#E2E8F0] text-2xs font-bold text-[#64748B]">
                 {(['ALL', 'LEAVE', 'OTHER'] as const).map(t => {
                   const count = t === 'ALL' ? nonMeetingCounts.all : t === 'LEAVE' ? nonMeetingCounts.leave : nonMeetingCounts.other;
-                  const label = t === 'ALL' ? 'Semua Permohonan' : t === 'LEAVE' ? 'Cuti / Izin' : 'Other Request';
+                  const label = t === 'ALL' ? 'Semua' : t === 'LEAVE' ? 'Cuti / Izin' : 'Other';
                   const isActive = nonMeetingTypeFilter === t;
                   return (
                     <button
@@ -553,25 +562,20 @@ export default function RequestsClient(){
                 })}
               </div>
             </div>
-            <div className="text-3xs text-[#64748B]">
-              Total <strong>{filteredNonMeeting.length}</strong> request sesuai filter
-            </div>
+            <select aria-label="Filter karyawan" value={requestEmployeeFilter} onChange={(event)=>setRequestEmployeeFilter(event.target.value)} className="h-9 min-w-36 rounded-lg border border-[#E2E8F0] bg-white px-3 text-xs text-[#334155]"><option value="">Semua karyawan</option>{requestEmployees.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select>
+            <select aria-label="Filter status" value={requestStatusFilter} onChange={(event)=>setRequestStatusFilter(event.target.value)} className="h-9 min-w-32 rounded-lg border border-[#E2E8F0] bg-white px-3 text-xs text-[#334155]"><option value="ALL">Semua status</option>{requestStatuses.map((status)=><option key={status} value={status}>{status}</option>)}</select>
+            <label className="relative shrink-0"><CalendarDays size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input aria-label="Filter bulan pengajuan" type="month" value={requestMonthFilter} onChange={(event)=>setRequestMonthFilter(event.target.value)} className="h-9 w-36 rounded-lg border border-[#E2E8F0] bg-white pl-9 pr-2 text-xs"/></label>
+            <input aria-label="Filter tanggal mulai pengajuan" type="date" value={requestFromDate} onChange={(event)=>setRequestFromDate(event.target.value)} className="h-9 w-36 shrink-0 rounded-lg border border-[#E2E8F0] bg-white px-3 text-xs"/>
+            <input aria-label="Filter tanggal akhir pengajuan" type="date" value={requestToDate} onChange={(event)=>setRequestToDate(event.target.value)} className="h-9 w-36 shrink-0 rounded-lg border border-[#E2E8F0] bg-white px-3 text-xs"/>
+            <div className="ml-auto shrink-0 whitespace-nowrap text-3xs text-[#64748B]">Total <strong>{filteredNonMeeting.length}</strong></div>
           </div>
-          <div className="grid gap-2 border-t border-[#F0F0F0] pt-3 sm:grid-cols-2 lg:grid-cols-5">
-            <select value={requestEmployeeFilter} onChange={(event)=>setRequestEmployeeFilter(event.target.value)} className="h-9 rounded-lg border border-[#E2E8F0] bg-white px-3 text-xs text-[#334155]"><option value="">Semua karyawan</option>{requestEmployees.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select>
-            <select value={requestStatusFilter} onChange={(event)=>setRequestStatusFilter(event.target.value)} className="h-9 rounded-lg border border-[#E2E8F0] bg-white px-3 text-xs text-[#334155]"><option value="ALL">Semua status</option>{requestStatuses.map((status)=><option key={status} value={status}>{status}</option>)}</select>
-            <label className="relative"><CalendarDays size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input aria-label="Filter bulan pengajuan" type="month" value={requestMonthFilter} onChange={(event)=>setRequestMonthFilter(event.target.value)} className="h-9 w-full rounded-lg border border-[#E2E8F0] bg-white pl-9 pr-2 text-xs"/></label>
-            <input aria-label="Filter tanggal mulai pengajuan" type="date" value={requestFromDate} onChange={(event)=>setRequestFromDate(event.target.value)} className="h-9 rounded-lg border border-[#E2E8F0] bg-white px-3 text-xs"/>
-            <input aria-label="Filter tanggal akhir pengajuan" type="date" value={requestToDate} onChange={(event)=>setRequestToDate(event.target.value)} className="h-9 rounded-lg border border-[#E2E8F0] bg-white px-3 text-xs"/>
-          </div>
-          </>
         )}
       </div>
       </section>
 
       {/* ── Meeting Tab Content ── */}
       {activeTab === 'meeting' && (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-3.5">
+        <div className={meetingView === 'cards' ? "grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-3.5" : "block overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white"}>
           {loading && [1, 2, 3, 4, 5, 6].map(item => (
             <div key={item} className="h-44 rounded-[20px] bg-white border border-[#E2E8F0] animate-pulse p-4.5" />
           ))}
@@ -582,7 +586,16 @@ export default function RequestsClient(){
             </div>
           )}
 
-          {filteredMeetings.map(row => {
+          {meetingView === 'table' && !loading && filteredMeetings.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] border-collapse text-left text-xs">
+                <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Meeting</th><th className="px-4 py-3">Jenis</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Tanggal</th><th className="px-4 py-3">Aksi</th></tr></thead>
+                <tbody className="divide-y divide-slate-100">{filteredMeetings.map((row) => { const isDraft = row.status === "DRAFT" || row.request?.status === "DRAFT"; const isCompleted = row.status === "COMPLETED"; const isRecurring = row.recurrence_type === "RECURRING"; const venueValues = [row.location, row.meeting_url].filter(Boolean) as string[]; const joinUrl = row.meeting_url || (row.location && !isHttpUrl(row.location) ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(row.location)}` : row.location); return <tr key={row.id} className="hover:bg-slate-50/70"><td className="max-w-[360px] px-4 py-3"><button type="button" onClick={() => void openMeeting(row.id)} className="text-left"><span className="block font-semibold text-slate-900">{row.request?.title || "Tanpa Judul"}</span><span className="mt-0.5 block truncate text-slate-500">{row.request?.description || "Tanpa deskripsi"}</span></button></td><td className="px-4 py-3">{isRecurring ? "Recurring" : "Sekali"}</td><td className="px-4 py-3">{isDraft ? "Draft" : isCompleted ? "Selesai" : "Terjadwal"}</td><td className="whitespace-nowrap px-4 py-3 text-slate-600">{displayDate(row.start_at)}</td><td className="whitespace-nowrap px-4 py-3"><div className="flex items-center gap-2">{canDeleteMeeting&&<button type="button" title="Hapus meeting" aria-label="Hapus meeting" onClick={() => void deleteMeeting(row.id)} className="grid h-8 w-8 place-items-center rounded-lg border border-red-200 text-red-700"><Trash2 size={14}/></button>}{!isDraft&&venueValues.length>0&&<a href={joinUrl || "#"} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 font-semibold text-[#163D64]"><Video size={13}/>Bergabung</a>}<button type="button" onClick={() => void openMeeting(row.id)} className="font-semibold text-[#163D64]">Detail →</button></div></td></tr>; })}</tbody>
+              </table>
+            </div>
+          )}
+
+          {meetingView === 'cards' && filteredMeetings.map(row => {
             const isDraft = row.status === "DRAFT" || row.request?.status === "DRAFT";
             const isCompleted = row.status === "COMPLETED";
             const isRecurring = row.recurrence_type === "RECURRING";
@@ -596,7 +609,7 @@ export default function RequestsClient(){
               >
                 <div className="space-y-2.5">
                   {/* Card Top: Icon Box + Identifier + Status Badge */}
-                  <div className="flex items-start gap-2">
+                  <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className={cn(
                         "w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border",
@@ -618,25 +631,14 @@ export default function RequestsClient(){
                         </span>
                       </div>
                     </div>
-
+                    {isDraft ? (
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-[9px] font-extrabold uppercase text-amber-800"><Clock3 size={11}/>Draft</span>
+                    ) : isCompleted ? (
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[9px] font-extrabold uppercase text-emerald-800"><CheckCircle2 size={11}/>Selesai</span>
+                    ) : (
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#163D64]/30 bg-[#E7F2FF] px-2.5 py-1 text-[9px] font-extrabold uppercase text-[#163D64]"><Check size={11}/>Terjadwal</span>
+                    )}
                   </div>
-
-                    {/* Status has its own row, separate from card actions. */}
-                    <div className="flex flex-wrap items-center gap-2">
-                  {isDraft ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-amber-300 bg-amber-50 text-amber-800 text-3xs font-extrabold uppercase">
-                          <Clock3 size={11} /> DRAFT
-                        </span>
-                      ) : isCompleted ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-emerald-300 bg-emerald-50 text-emerald-800 text-3xs font-extrabold uppercase">
-                          <CheckCircle2 size={11} /> SELESAI
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-[#163D64]/30 bg-[#E7F2FF] text-[#163D64] text-3xs font-extrabold uppercase">
-                          <Check size={11} /> TERJADWAL
-                        </span>
-                      )}
-                    </div>
 
                   {/* Title & Description */}
                   <div>
@@ -646,34 +648,16 @@ export default function RequestsClient(){
                     <p className="mt-1 text-xs text-[#64748B] line-clamp-2 leading-relaxed min-h-[34px]">
                       {row.request?.description || "Tanpa deskripsi"}
                     </p>
+                    <div className="mt-2 flex items-center gap-1.5 text-[10px] font-medium text-[#64748B]"><Clock3 size={12} className="text-[#163D64]"/><span>{displayDate(row.start_at)}</span></div>
                   </div>
 
-                  {/* Unified location / meeting-link field */}
-                  {venueValues.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                      {venueValues.map((value, index) => isHttpUrl(value) ? (
-                        <a key={index} href={value} target="_blank" rel="noreferrer" onClick={event => event.stopPropagation()} title={value} className="inline-flex max-w-full items-center gap-1 rounded-md border border-blue-200/70 bg-blue-50 px-2 py-1 text-[10px] font-semibold text-[#163D64] hover:underline">
-                          {row.meeting_url === value ? <Video size={11} /> : <MapPin size={11} />}
-                          <span className="truncate">Buka lokasi / meeting</span>
-                        </a>
-                      ) : (
-                        <span key={index} title={value} className="inline-flex max-w-full items-center gap-1 rounded-md border border-neutral-200/70 bg-neutral-50 px-2 py-1 text-[10px] font-medium text-[#64748B]">
-                          <MapPin size={11} className="shrink-0" /> <span className="truncate">{value}</span>
-                        </span>
-                      ))}
-                    </div>
-                  )}
                 </div>
 
-                {/* Footer: Date & Detail/Publish Action */}
-                <div className="border-t border-[#F0F0F0] pt-2.5 flex flex-wrap items-center justify-between gap-2 text-2xs">
-                  <div className="flex min-w-0 items-center gap-1.5 text-[#64748B] font-medium">
-                    <Clock3 size={13} className="shrink-0 text-[#163D64]" />
-                    <span>{displayDate(row.start_at)}</span>
-                  </div>
-
+                {/* Footer actions: Hapus, Bergabung, Detail */}
+                <div className="border-t border-[#F0F0F0] pt-2.5 flex items-center justify-end gap-2 text-2xs">
                   <div className="flex flex-wrap items-center gap-2">
-                  {canDeleteMeeting && <button type="button" disabled={busy} onClick={event => { event.stopPropagation(); void deleteMeeting(row.id); }} aria-label={`Hapus meeting ${row.request?.title ?? ""}`} className="inline-flex min-h-9 items-center justify-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-2xs font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"><Trash2 size={13} />Hapus</button>}
+                  {canDeleteMeeting && <button type="button" disabled={busy} onClick={event => { event.stopPropagation(); void deleteMeeting(row.id); }} aria-label={`Hapus meeting ${row.request?.title ?? ""}`} title="Hapus" className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50"><Trash2 size={14} /></button>}
+                  {!isDraft && venueValues.length > 0 && <a href={row.meeting_url || (row.location && !isHttpUrl(row.location) ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(row.location)}` : row.location || "#")} target="_blank" rel="noreferrer" onClick={event => event.stopPropagation()} className="inline-flex min-h-9 items-center justify-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 text-2xs font-bold text-[#163D64]"><Video size={13}/>Bergabung</a>}
                   {isDraft ? (
                     <button
                       type="button"
@@ -716,17 +700,21 @@ export default function RequestsClient(){
                     const isLeave = req.request_type === 'LEAVE';
                     const awaitingHr = isLeave && ['PENDING_HR', 'REGISTERED'].includes(req.status);
                     const approved = ['APPROVED', 'COMPLETED'].includes(req.status);
+                    const cancellationPending = req.status === 'CANCELLATION_PENDING';
+                    const requesterCanCancel = req.created_by_id === user?.id && ['PENDING_HR', 'REGISTERED', 'APPROVED', 'COMPLETED', 'IN_PROGRESS', 'DISBURSED'].includes(req.status);
                     return <tr key={req.id} className="align-top hover:bg-slate-50/70">
                       <td className="whitespace-nowrap px-4 py-3"><div className="font-mono font-bold text-[#163D64]">#{req.request_number}</div><span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[9px] font-bold ${isLeave?'bg-amber-100 text-amber-800':'bg-emerald-100 text-emerald-800'}`}>{isLeave?'CUTI / IZIN':'REQUEST LAIN'}</span></td>
                       <td className="max-w-[360px] px-4 py-3"><div className="font-semibold text-slate-900">{req.requester_user?.name || 'Karyawan'} · {req.title}</div><p className="mt-1 whitespace-normal text-slate-600">{req.description || 'Tanpa deskripsi'}</p>{isLeave&&req.attachment_url&&<RequestAttachmentPreview attachmentUrl={req.attachment_url} forHr={hrTier<=2}/>}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-700">{isLeave&&req.start_at&&req.end_at?<><div className="font-semibold">{displayDateOnly(req.start_at)}</div><div className="mt-1 text-slate-500">s/d {displayDateOnly(req.end_at)}</div></>:<span className="text-slate-400">—</span>}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-600">{req.created_at?new Date(req.created_at).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'}):'—'}</td>
-                      <td className="px-4 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${approved?'bg-emerald-50 text-emerald-800':req.status==='REJECTED'?'bg-red-50 text-red-700':awaitingHr&&hrTier===1?'bg-amber-50 text-amber-800':'bg-slate-100 text-slate-700'}`}>{req.status==='PENDING_HR'||(awaitingHr&&hrTier===1)?'MENUNGGU HR':req.status==='APPROVED'?'DISETUJUI':req.status==='REJECTED'?'DITOLAK':req.status}</span></td>
+                      <td className="px-4 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${cancellationPending?'bg-amber-50 text-amber-800':approved?'bg-emerald-50 text-emerald-800':req.status==='REJECTED'?'bg-red-50 text-red-700':awaitingHr&&hrTier===1?'bg-amber-50 text-amber-800':'bg-slate-100 text-slate-700'}`}>{cancellationPending?'MENUNGGU ACC PEMBATALAN':req.status==='PENDING_HR'||(awaitingHr&&hrTier===1)?'MENUNGGU HR':req.status==='APPROVED'?'DISETUJUI':req.status==='REJECTED'?'DITOLAK':req.status}</span></td>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-600">{req.assignee_user?.name||'—'}</td>
                       <td className="px-4 py-3"><div className="flex min-w-[190px] flex-wrap justify-end gap-1.5">
                         {hrTier===1&&awaitingHr&&<>
                           {rejectingLeaveId===req.id?<div className="flex w-full flex-wrap justify-end gap-1.5"><input value={leaveRejectionRemarks} onChange={(event)=>setLeaveRejectionRemarks(event.target.value)} placeholder="Alasan penolakan wajib" aria-label="Alasan penolakan cuti" className="h-8 min-w-40 flex-1 rounded-lg border border-red-200 px-2" disabled={leaveDecisionBusyId===req.id}/><button type="button" onClick={()=>void decideLeaveRequest(req,'REJECT')} disabled={leaveDecisionBusyId===req.id||!leaveRejectionRemarks.trim()} className="h-8 rounded-lg bg-red-600 px-2.5 font-bold text-white disabled:opacity-50">{leaveDecisionBusyId===req.id?'…':'Konfirmasi Tolak'}</button><button type="button" onClick={()=>{setRejectingLeaveId(null);setLeaveRejectionRemarks('');}} className="h-8 rounded-lg border border-slate-200 px-2">Batal</button></div>:<><button type="button" onClick={()=>{setRejectingLeaveId(req.id);setLeaveRejectionRemarks('');}} className="h-8 rounded-lg border border-red-200 px-2.5 font-bold text-red-700">Tolak</button><button type="button" onClick={()=>void decideLeaveRequest(req,'APPROVE')} disabled={leaveDecisionBusyId===req.id} className="h-8 rounded-lg bg-emerald-600 px-2.5 font-bold text-white disabled:opacity-50">{leaveDecisionBusyId===req.id?'Menyimpan…':'ACC Cuti'}</button></>}
                         </>}
+                        {hrTier===1&&cancellationPending&&<><button type="button" onClick={()=>void decideCancellation(req,'REJECT')} disabled={cancelActionBusyId===req.id} className="h-8 rounded-lg border border-red-200 px-2.5 font-bold text-red-700 disabled:opacity-50">Tolak Batal</button><button type="button" onClick={()=>void decideCancellation(req,'APPROVE')} disabled={cancelActionBusyId===req.id} className="h-8 rounded-lg bg-emerald-600 px-2.5 font-bold text-white disabled:opacity-50">ACC Batal</button></>}
+                        {requesterCanCancel&&<button type="button" onClick={()=>void cancelRequest(req)} disabled={cancelActionBusyId===req.id} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-red-200 px-2.5 font-semibold text-red-700 disabled:opacity-50"><X size={13}/>{cancelActionBusyId===req.id?'Memproses…':'Batalkan'}</button>}
                         {isLeave&&req.attachment_url&&hrTier>2&&<span className="text-[10px] text-slate-400">Lampiran</span>}
                       </div></td>
                     </tr>;
@@ -760,11 +748,11 @@ export default function RequestsClient(){
   );
 }
 
-function ModalBackdrop({children,wide=false}:{children:React.ReactNode;wide?:boolean}){return <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/30 p-3 backdrop-blur-[1px]"><div className={`max-h-[76vh] w-full overflow-y-auto rounded-[24px] bg-white shadow-2xl sm:w-[80vw] ${wide?"max-w-[928px]":"max-w-[784px]"}`}>{children}</div></div>;}
+function ModalBackdrop({children,wide=false}:{children:React.ReactNode;wide?:boolean}){return <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-[#0F172A]/30 p-3 backdrop-blur-[1px] sm:p-5"><div className={`max-h-[calc(100dvh-2rem)] w-full overflow-x-hidden overflow-y-auto overscroll-contain rounded-2xl bg-white shadow-2xl [scrollbar-gutter:stable] sm:max-h-[calc(100dvh-2.5rem)] sm:w-[80vw] ${wide?"max-w-[928px]":"max-w-[784px]"}`}>{children}</div></div>;}
 
 function CreateRequestModal({form,setForm,members,busy,onClose,onSubmit}:{form:CreateForm;setForm:(form:CreateForm)=>void;members:Member[];busy:boolean;onClose:()=>void;onSubmit:(event:FormEvent,draft:boolean)=>void}){const toggleDay=(day:number)=>setForm({...form,recurringDays:form.recurringDays.includes(day)?form.recurringDays.filter(item=>item!==day):[...form.recurringDays,day]});return <ModalBackdrop wide><form onSubmit={event=>{const submitter=(event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement|null;onSubmit(event,submitter?.value==="draft");}} className="grid min-h-[520px] gap-6 p-6 sm:p-8 lg:grid-cols-[2fr_1fr]">
   <section><button type="button" onClick={onClose} className="mb-6 inline-flex items-center gap-3 text-lg font-extrabold text-[#0876CD]"><ArrowLeft size={18}/> New Meeting Request</button><div className="grid gap-4 md:grid-cols-3"><SelectField label="Meeting Type" value={form.recurrenceType} onChange={value=>setForm({...form,recurrenceType:value as CreateForm["recurrenceType"],recurringDays:value==="RECURRING"?(form.recurringDays.length?form.recurringDays:[1,2,3,4,5]):form.recurringDays})}><option value="RECURRING">Recurring</option><option value="NON_RECURRING">Non-Recurring</option></SelectField><Field label="Start Time" type="time" required value={form.startTime} onChange={value=>setForm({...form,startTime:value})}/><Field label="End Time" type="time" required value={form.endTime} onChange={value=>setForm({...form,endTime:value})}/></div><div className="mt-4 grid gap-4 md:grid-cols-2"><Field label={form.recurrenceType==="RECURRING"?"Schedule Start":"Meeting Date"} type="date" required value={form.date} onChange={value=>setForm({...form,date:value,recurrenceEndDate:form.recurrenceEndDate||value})}/>{form.recurrenceType==="RECURRING"&&<Field label="Schedule End" type="date" required value={form.recurrenceEndDate} onChange={value=>setForm({...form,recurrenceEndDate:value})}/>}</div>{form.recurrenceType==="RECURRING"&&<div className="mt-4 rounded-2xl border border-[#CFE0F5] bg-[#F5FAFF] p-3.5"><p className="text-sm font-bold text-[#0876CD]">Repeating days</p><p className="mt-1 text-xs text-[#6B7280]">Default Senin–Jumat. Sabtu/Minggu hanya aktif jika dipilih secara khusus.</p><div className="mt-3 flex flex-wrap gap-2">{weekDays.map(day=><button key={day.value} type="button" aria-pressed={form.recurringDays.includes(day.value)} onClick={()=>toggleDay(day.value)} className={`h-9 min-w-11 rounded-xl border px-3 text-xs font-bold transition ${form.recurringDays.includes(day.value)?"border-[#0876CD] bg-[#0876CD] text-white":"border-[#C9D2E8] bg-white text-[#64748B]"}`}>{day.label}</button>)}</div></div>}<div className="mt-4"><Field label="Lokasi / tautan meeting (opsional)" value={form.location} placeholder="Alamat, Google Maps, Meet, Zoom, atau Teams" onChange={value=>setForm({...form,location:value})}/><p className="mt-1 text-[10px] font-normal text-[#6B7280]">Isi alamat atau satu tautan lokasi / meeting.</p></div><div className="mt-6 space-y-4"><Field label="Ticket Title" required value={form.title} onChange={value=>setForm({...form,title:value})}/><TextArea label="Request Details" rows={6} value={form.description} onChange={value=>setForm({...form,description:value})}/><TextArea label="Agenda — one item per line" rows={3} value={form.agenda} onChange={value=>setForm({...form,agenda:value})}/></div></section>
-  <aside className="flex flex-col"><div className="space-y-7">{form.recurrenceType!=="RECURRING"?(<><SelectField icon={<UserCircle2 size={22}/>} label="Assign team (Opsional)" value={form.assigneeId} onChange={value=>setForm({...form,assigneeId:value})}><option value="">Pilih Staff (Opsional)</option>{members.map(member=><option key={member.id} value={member.id}>{member.name}</option>)}</SelectField><SelectField icon={<FileText size={22}/>} label="Notulis (Opsional)" value={form.notetakerId} onChange={value=>setForm({...form,notetakerId:value})}><option value="">Terbuka untuk semua peserta</option>{members.map(member=><option key={member.id} value={member.id}>{member.name}</option>)}</SelectField></>):(<div className="rounded-2xl border border-[#CFE0F5] bg-[#F5FAFF] p-4 text-xs text-[#0876CD]"><p className="font-extrabold uppercase tracking-wider">Recurring Meeting</p><p className="mt-1 leading-5 text-[#556987]">Notulensi terbuka untuk <strong>siapa saja peserta</strong> yang hadir dalam meeting ini. Tidak perlu menunjuk notulis atau assignee khusus.</p></div>)}<InvitePeoplePicker members={members} selectedIds={form.participantIds} onChange={participantIds=>setForm({...form,participantIds})}/></div><div className="mt-auto space-y-3 pt-10"><button type="submit" name="submit_intent" value="send" disabled={busy} className="flex h-12 w-full items-center justify-center gap-3 rounded-xl bg-[#0876CD] font-bold text-white disabled:opacity-50">Buat Meeting <ArrowRight size={18}/></button><button type="submit" name="submit_intent" value="draft" disabled={busy} className="flex h-12 w-full items-center justify-center gap-3 rounded-xl border-2 border-[#3154C7] font-bold text-[#0876CD] disabled:opacity-50">Simpan Request <FileDown size={18}/></button></div></aside>
+  <aside className="flex flex-col"><div className="space-y-7">{form.recurrenceType!=="RECURRING"?(<><SelectField icon={<UserCircle2 size={22}/>} label="Assign team (Opsional)" value={form.assigneeId} onChange={value=>setForm({...form,assigneeId:value})}><option value="">Pilih Staff (Opsional)</option>{members.map(member=><option key={member.id} value={member.id}>{member.name}</option>)}</SelectField><SelectField icon={<FileText size={22}/>} label="Notulis (Opsional)" value={form.notetakerId} onChange={value=>setForm({...form,notetakerId:value})}><option value="">Tanpa notulis khusus</option>{members.map(member=><option key={member.id} value={member.id}>{member.name}</option>)}</SelectField></>):(<div className="rounded-2xl border border-[#CFE0F5] bg-[#F5FAFF] p-4 text-xs text-[#0876CD]"><p className="font-extrabold uppercase tracking-wider">Recurring Meeting</p><p className="mt-1 leading-5 text-[#556987]">Notulensi dicatat per tanggal meeting.</p></div>)}<InvitePeoplePicker members={members} selectedIds={form.participantIds} onChange={participantIds=>setForm({...form,participantIds})}/></div><div className="mt-auto space-y-3 pt-10"><button type="submit" name="submit_intent" value="send" disabled={busy} className="flex h-12 w-full items-center justify-center gap-3 rounded-xl bg-[#0876CD] font-bold text-white disabled:opacity-50">Buat Meeting <ArrowRight size={18}/></button><button type="submit" name="submit_intent" value="draft" disabled={busy} className="flex h-12 w-full items-center justify-center gap-3 rounded-xl border-2 border-[#3154C7] font-bold text-[#0876CD] disabled:opacity-50">Simpan Request <FileDown size={18}/></button></div></aside>
 </form></ModalBackdrop>;}
 
 function MeetingDetailModal({detail,members,personInCharge,setPersonInCharge,busy,onClose,onReassign,onNotes,onPublishMeeting,canDeleteMeeting,canEditMeeting,onEditMeeting,onDeleteMeeting}:{detail:MeetingDetail;members:Member[];personInCharge:string;setPersonInCharge:(id:string)=>void;busy:boolean;onClose:()=>void;onReassign:()=>void;onNotes:(date:string)=>void;onPublishMeeting:()=>void;canDeleteMeeting:boolean;canEditMeeting:boolean;onEditMeeting:()=>void;onDeleteMeeting:()=>void}){
@@ -789,10 +777,10 @@ function MeetingDetailModal({detail,members,personInCharge,setPersonInCharge,bus
       <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-[#64748B]"><span className="flex items-center gap-2"><Clock3 size={17}/>{displayDate(detail.start_at)}{detail.recurrence_type==="RECURRING"&&detail.recurrence_end_at?` – ${displayOccurrenceDate(detail.recurrence_end_at.slice(0,10))}`:""}</span></div>
       {detail.crm_opportunity&&<div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3"><div className="text-xs text-blue-900"><span className="font-bold">Terkait Opportunity CRM:</span> {detail.crm_opportunity.opportunity_name}</div><a href="/crm?tab=deals" className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-blue-800 hover:bg-blue-100">Buka CRM</a></div>}
       {detail.recurrence_type!=="RECURRING"&&<div className="mt-7 rounded-2xl border border-[#E5E5E5] p-5"><label className="block text-xs font-extrabold tracking-wide text-[#0876CD]">PERSON IN CHARGE<div className="mt-2 flex flex-col gap-3 sm:flex-row"><select value={personInCharge} onChange={event=>setPersonInCharge(event.target.value)} className="h-11 min-w-0 flex-1 rounded-xl border border-[#E2E8F0] bg-white px-4 text-sm outline-none focus:border-[#0876CD]"><option value="">Pilih staff</option>{members.map(member=><option key={member.id} value={member.id}>{member.name}</option>)}</select><button disabled={busy||!personInCharge} onClick={onReassign} className="h-11 rounded-xl bg-[#0876CD] px-6 text-sm font-bold text-white transition hover:bg-[#203D91] disabled:opacity-50">Reassign</button></div></label></div>}
-      <section className="mt-4 flex flex-col gap-3 rounded-2xl border border-[#CFE0F5] bg-[#F5FAFF] p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-extrabold tracking-wide text-[#0876CD]">NOTULENSI MEETING</p><p className="mt-1 text-xs text-[#6B7280]">{detail.recurrence_type==="RECURRING"?"Notulensi terbuka: siapa saja peserta yang hadir dapat menyusun notulensi per tanggal.":"Satu-satunya pengguna yang dapat menyusun dan mempublikasikan notulensi."}</p></div>{detail.recurrence_type==="RECURRING"?(<div className="inline-flex items-center gap-2 self-start rounded-xl bg-white px-3 py-2 text-xs font-bold text-[#0876CD] shadow-sm sm:self-auto"><FileText size={17}/><span>Terbuka untuk semua peserta</span></div>):(<div className="inline-flex items-center gap-2 self-start rounded-xl bg-white px-3 py-2 text-sm font-bold text-[#0876CD] shadow-sm sm:self-auto"><FileText size={17}/><span>{notetakerName}</span>{canEditMinutes&&<span className="rounded-md bg-[#0876CD] px-2 py-0.5 text-[10px] text-white">ANDA</span>}</div>)}</section>
+      <section className="mt-4 flex flex-col gap-3 rounded-2xl border border-[#CFE0F5] bg-[#F5FAFF] p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-extrabold tracking-wide text-[#0876CD]">NOTULENSI MEETING</p><p className="mt-1 text-xs text-[#6B7280]">{detail.recurrence_type==="RECURRING"?"Notulensi dicatat per tanggal meeting.":"Notulensi meeting."}</p></div>{detail.recurrence_type==="RECURRING"?(<div className="inline-flex items-center gap-2 self-start rounded-xl bg-white px-3 py-2 text-xs font-bold text-[#0876CD] shadow-sm sm:self-auto"><FileText size={17}/><span>Per tanggal</span></div>):(<div className="inline-flex items-center gap-2 self-start rounded-xl bg-white px-3 py-2 text-sm font-bold text-[#0876CD] shadow-sm sm:self-auto"><FileText size={17}/><span>{notetakerName}</span>{canEditMinutes&&<span className="rounded-md bg-[#0876CD] px-2 py-0.5 text-[10px] text-white">ANDA</span>}</div>)}</section>
       <div className="mt-5 grid gap-4 md:grid-cols-2"><section className="rounded-2xl border border-[#E5E5E5] p-4"><p className="text-xs font-extrabold tracking-wide text-[#2949B2]">INVITED PEOPLE</p><div className="mt-3 flex flex-wrap gap-2">{detail.participants.filter(item=>item.participant_role!=="ORGANIZER").map(item=><span key={item.id} className="inline-flex items-center gap-2 rounded-lg bg-[#E7F2FF] px-3 py-2 text-xs font-bold text-[#2949B2]"><UserCircle2 size={17}/>{item.user?.full_name??item.user?.email??item.external_name??item.external_email??"Team member"}</span>)}</div></section>{venueValues.length>0&&<section className="rounded-2xl border border-[#E5E5E5] p-4"><p className="text-xs font-extrabold tracking-wide text-[#2949B2]">LOKASI / TAUTAN MEETING</p><div className="mt-3 flex flex-col gap-2">{venueValues.map((value,index)=>isHttpUrl(value)?<a key={index} href={value} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-[#F8FAFC] px-3 text-xs font-semibold text-[#163D64] hover:bg-[#E7F2FF] break-all"><Link2 size={15} className="shrink-0"/>{value}</a>:<span key={index} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-[#F8FAFC] px-3 text-xs text-[#64748B]"><MapPin size={15} className="shrink-0"/>{value}</span>)}</div></section>}</div>
       {detail.recurrence_type==="RECURRING"&&<section className="mt-5 overflow-hidden rounded-2xl border border-[#DDE5F1]"><div className="flex items-center justify-between bg-[#F5FAFF] px-5 py-4"><div><p className="text-sm font-extrabold text-[#0876CD]">Notes</p><p className="mt-1 text-xs text-[#6B7280]">Satu notulensi untuk setiap tanggal meeting</p></div><span className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-[#0876CD]">Terbaru</span></div><div className="max-h-72 divide-y divide-[#EDF0F4] overflow-y-auto">{detail.notes.map(note=>{const notePublished=note.status==="COMPLETED";const noteDraft=note.status==="DRAFT";const canOpen=notePublished||canEditMinutes;const label=note.status==="NOT_CREATED"?"Belum dibuat":noteDraft?"Draft":"Dipublikasikan";return <div key={note.occurrence_date} className={`flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between ${note.is_today?"bg-[#F0F7FF]/70":""}`}><div className="flex items-center gap-3"><span className={`grid h-9 w-9 place-items-center rounded-xl ${notePublished?"bg-[#E6F8EE] text-[#147A43]":noteDraft?"bg-[#FFF5D9] text-[#8A6100]":"bg-[#F1F3F7] text-[#6B7280]"}`}>{notePublished?<Check size={17}/>:<FileText size={17}/>}</span><div><div className="flex items-center gap-2"><p className="text-sm font-bold text-[#243B7A]">{displayOccurrenceDate(note.occurrence_date)}</p>{note.is_today&&<span className="rounded-md bg-[#0876CD] px-2 py-0.5 text-[10px] font-bold text-white tracking-wide">Hari Ini</span>}</div><p className="mt-0.5 text-xs text-[#6B7280]">{label}</p></div></div><button disabled={!canOpen} onClick={()=>onNotes(note.occurrence_date)} className={`h-9 rounded-xl border px-4 text-xs font-bold transition disabled:cursor-not-allowed disabled:border-[#E2E8F0] disabled:text-[#9CA3AF] ${notePublished?"border-[#147A43] text-[#147A43] hover:bg-[#E6F8EE]":noteDraft?"border-[#8A6100] bg-[#FFF5D9] text-[#8A6100] hover:bg-[#FFE9A0]":"border-[#0876CD] text-[#0876CD] hover:bg-[#E7F2FF]"}`}>{notePublished?"Lihat":noteDraft?"Edit Draft":"Buat"}</button></div>})}</div></section>}
-      <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between"><button onClick={onClose} className="h-11 rounded-xl px-5 text-sm font-semibold text-[#64748B] transition hover:bg-[#F4F4F4]">Tutup</button><div className="flex flex-wrap items-center gap-3">{canEditMeeting&&<button type="button" disabled={busy} onClick={onEditMeeting} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#0876CD]/30 bg-[#E7F2FF] px-5 text-sm font-bold text-[#0876CD] hover:bg-[#D5E8FF] disabled:opacity-50"><Save size={17}/>Edit Meeting</button>}{canDeleteMeeting&&<button type="button" disabled={busy} onClick={onDeleteMeeting} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-5 text-sm font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"><Trash2 size={17}/>Hapus Meeting</button>}{isMeetingDraft&&<button disabled={busy} onClick={onPublishMeeting} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0876CD] px-6 text-sm font-bold text-white transition hover:bg-[#203D91] disabled:opacity-50 shadow-sm"><Send size={18}/> Kirim / Publikasikan Meeting</button>}{detail.recurrence_type!=="RECURRING"&&<div className="text-right">{!canOpenMinutes&&<p className="mb-2 text-xs text-[#6B7280]">Hanya {notetakerName} yang dapat membuka editor notulensi.</p>}{isDraft&&canEditMinutes&&!published&&<p className="mb-2 text-xs font-semibold text-[#8A6100]">Draft tersimpan — belum dipublikasikan. Peserta belum mendapat notifikasi.</p>}<button disabled={!canOpenMinutes} onClick={()=>onNotes(detail.selected_occurrence_date)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0876CD] px-6 text-sm font-bold text-white transition hover:bg-[#203D91] disabled:cursor-not-allowed disabled:bg-[#AAB8DF]"><FileText size={18}/>{notesLabel}</button></div>}</div></div>
+      <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between"><button onClick={onClose} className="h-11 rounded-xl px-5 text-sm font-semibold text-[#64748B] transition hover:bg-[#F4F4F4]">Tutup</button><div className="flex flex-wrap items-center gap-3">{canEditMeeting&&<button type="button" title="Edit Meeting" aria-label="Edit Meeting" disabled={busy} onClick={onEditMeeting} className="grid h-11 w-11 place-items-center rounded-xl border border-[#0876CD]/30 bg-[#E7F2FF] text-[#0876CD] hover:bg-[#D5E8FF] disabled:opacity-50"><Pencil size={18}/></button>}{canDeleteMeeting&&<button type="button" disabled={busy} onClick={onDeleteMeeting} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-5 text-sm font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"><Trash2 size={17}/>Hapus Meeting</button>}{isMeetingDraft&&<button disabled={busy} onClick={onPublishMeeting} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0876CD] px-6 text-sm font-bold text-white transition hover:bg-[#203D91] disabled:opacity-50 shadow-sm"><Send size={18}/> Kirim / Publikasikan Meeting</button>}{detail.recurrence_type!=="RECURRING"&&<div className="text-right">{!canOpenMinutes&&<p className="mb-2 text-xs text-[#6B7280]">Hanya {notetakerName} yang dapat membuka editor notulensi.</p>}{isDraft&&canEditMinutes&&!published&&<p className="mb-2 text-xs font-semibold text-[#8A6100]">Draft tersimpan — belum dipublikasikan. Peserta belum mendapat notifikasi.</p>}<button disabled={!canOpenMinutes} onClick={()=>onNotes(detail.selected_occurrence_date)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0876CD] px-6 text-sm font-bold text-white transition hover:bg-[#203D91] disabled:cursor-not-allowed disabled:bg-[#AAB8DF]"><FileText size={18}/>{notesLabel}</button></div>}</div></div>
     </div>
   </div></ModalBackdrop>;
 }
@@ -1195,8 +1183,8 @@ function NotesModal({ detail, members = [], minutes, setMinutes, busy, onClose, 
   }, [members, detail]);
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[#0F172A]/35 p-2 backdrop-blur-[1px] sm:p-4">
-      <div className="flex max-h-[80vh] min-h-0 w-full max-w-[1008px] flex-col overflow-hidden rounded-[22px] bg-white shadow-2xl sm:w-[80vw]">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-hidden bg-[#0F172A]/35 p-2 backdrop-blur-[1px] sm:p-4">
+      <div className="flex max-h-[calc(100dvh-1rem)] min-h-0 w-full max-w-[1008px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:w-[80vw]">
         <header className="flex shrink-0 items-center justify-between gap-4 border-b border-[#EAEAEA] px-4 py-4 sm:px-7">
           <button onClick={onClose} className="inline-flex min-w-0 items-center gap-3 text-left text-[#0876CD]">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#E7F2FF]">
@@ -1204,18 +1192,9 @@ function NotesModal({ detail, members = [], minutes, setMinutes, busy, onClose, 
             </span>
             <span className="min-w-0">
               <strong className="block truncate text-lg">{detail.request?.title}</strong>
-              <span className="block truncate text-xs font-semibold text-[#6B7280]">{displayOccurrenceDate(detail.selected_occurrence_date)}</span>
             </span>
           </button>
-          {published ? (
-            <span className="rounded-lg bg-[#E7F2FF] px-4 py-2 text-xs font-extrabold text-[#0876CD]">COMPLETED</span>
-          ) : (
-            <button disabled={busy} onClick={() => void onSave(false)} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-[#0876CD] px-4 text-sm font-bold text-white transition hover:bg-[#203D91] disabled:opacity-50 sm:px-6">
-              <Save size={18} />
-              <span className="hidden sm:inline">Simpan Draft</span>
-              <span className="sm:hidden">Simpan</span>
-            </button>
-          )}
+          <div className="shrink-0 text-right"><span className="block text-xs font-semibold text-[#6B7280]">{displayOccurrenceDate(detail.selected_occurrence_date)}</span>{published&&<span className="mt-1 inline-block rounded-lg bg-[#E7F2FF] px-2.5 py-1 text-[10px] font-extrabold text-[#0876CD]">PUBLISHED</span>}</div>
         </header>
         {published && (
           <div className="mx-4 mt-4 rounded-xl border border-[#CFE3F6] bg-[#F1F8FE] px-4 py-3 text-sm text-[#0876CD] sm:mx-7">
@@ -1227,14 +1206,11 @@ function NotesModal({ detail, members = [], minutes, setMinutes, busy, onClose, 
             <strong>Draft tersimpan.</strong> Notulensi ini belum dipublikasikan — peserta belum mendapat notifikasi. Klik <strong>Publikasikan</strong> setelah selesai mengedit.
           </div>
         )}
-        <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 sm:p-7 lg:grid-cols-[minmax(0,1.8fr)_minmax(300px,1fr)] lg:overflow-hidden">
+        <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto overscroll-contain p-4 [scrollbar-gutter:stable] sm:p-6 lg:grid-cols-[minmax(0,1.8fr)_minmax(300px,1fr)] lg:overflow-hidden">
           <RichTextEditor disabled={published} value={minutes.general_discussion} onChange={value => setMinutes(old => ({ ...old, general_discussion: value }))} members={taggableMembers} />
           <aside className="grid content-start gap-4 overflow-visible lg:overflow-y-auto lg:pr-1">
             <div className="rounded-2xl border border-[#E5E5E5] bg-[#FCFCFC] p-4">
               <TextArea disabled={published} label="Ringkasan" hint="Gambaran singkat hasil meeting" rows={3} value={minutes.summary} onChange={value => setMinutes(old => ({ ...old, summary: value }))} />
-            </div>
-            <div className="rounded-2xl border border-[#E5E5E5] bg-[#FCFCFC] p-4">
-              <TextArea disabled={published} label="Keputusan" hint="Tulis satu keputusan per baris" rows={4} value={minutes.decisions} onChange={value => setMinutes(old => ({ ...old, decisions: value }))} />
             </div>
             <div className="rounded-2xl border border-[#E5E5E5] bg-[#FCFCFC] p-4">
               <TextArea disabled={published} label="Action Item" hint="Tulis satu tindak lanjut per baris" rows={4} value={minutes.action_items} onChange={value => setMinutes(old => ({ ...old, action_items: value }))} />
@@ -1325,7 +1301,6 @@ function NewNonMeetingRequestModal({members,busy,onClose,onSuccess}:{members:Mem
         <Field label={type==='LEAVE'?'Tanggal Selesai Cuti':'Selesai (opsional)'} type={type==='LEAVE'?'date':'datetime-local'} required={type==='LEAVE'} value={endAt} onChange={setEndAt}/>
       </div>
       {type==='OTHER'&&<div><span className="mb-2 block text-sm font-bold text-[#0876CD]">Assign kepada</span><SearchableSelect value={assigneeId} onChange={setAssigneeId} placeholder="Pilih anggota (opsional)" emptyOptionLabel="Pilih anggota (opsional)" searchPlaceholder="Cari nama atau role anggota..." options={members.map(m=>({value:String(m.id),label:`${m.name} — ${m.role}`,sublabel:m.email}))}/></div>}
-      {type==='LEAVE'&&<div className="rounded-xl bg-[#FFF9E6] border border-[#F5C842] px-4 py-3 text-xs text-[#7A5C00]">Permohonan cuti/izin akan otomatis diarahkan ke HR atau Eksekutif yang bertanggung jawab. Anda tidak perlu memilih tujuan.</div>}
       {type==='LEAVE'&&<div><span className="mb-1.5 block text-xs font-bold text-[#0F172A]">Lampiran foto (opsional)</span><label className="inline-flex cursor-pointer items-center rounded-lg border border-[#D7E2EE] bg-white px-3 py-2 text-xs font-semibold text-[#163D64]">{uploadingAttachment?'Mengunggah…':'Pilih foto'}<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={uploadingAttachment||submitting} onChange={async(event)=>{const file=event.target.files?.[0];event.target.value='';if(!file)return;setUploadingAttachment(true);try{setAttachmentUrl(await uploadHrEvidence(file));setAttachmentName(file.name);toast.success('Lampiran foto tersimpan.');}catch(error){toast.error(error instanceof Error?error.message:'Foto gagal diunggah.');}finally{setUploadingAttachment(false);}}}/></label>{attachmentName&&<span className="ml-2 text-[11px] text-emerald-700">{attachmentName}</span>}<p className="mt-1 text-[10px] text-[#64748B]">JPG, PNG, WebP maksimal 4 MB. Disimpan internal.</p></div>}
       <div className="flex gap-3 pt-2">
         <button type="button" onClick={onClose} className="flex-1 h-11 rounded-xl border-2 border-[#E2E8F0] font-bold text-[#64748B] hover:bg-[#F4F6FB]">Batal</button>

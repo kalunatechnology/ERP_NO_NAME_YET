@@ -593,6 +593,26 @@ requestRouter.post('/:id/hr-decision', requireModuleTier('HR', 1), async (req: R
   } catch (err) { next(err); }
 });
 
+requestRouter.post('/:id/cancel-request', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await RequestService.cancelRequest({ requestId: req.params.id, requesterUserId: activeUserId(req), companyId: activeCompanyId(req), reason: req.body?.reason });
+    invalidateRequestFeedCache();
+    requestFeedCache.clear();
+    sendSuccess(res, result);
+  } catch (err) { next(err); }
+});
+
+requestRouter.post('/:id/cancel-decision', requireModuleTier('HR', 1), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const decision = String(req.body?.decision ?? '').toUpperCase();
+    if (!['APPROVE', 'REJECT'].includes(decision)) return sendError(res, 'decision wajib diisi (APPROVE atau REJECT).', 400);
+    const result = await RequestService.decideRequestCancellation({ requestId: req.params.id, decision: decision as 'APPROVE' | 'REJECT', remarks: req.body?.remarks, approverUserId: activeUserId(req), companyId: activeCompanyId(req) });
+    invalidateRequestFeedCache();
+    requestFeedCache.clear();
+    sendSuccess(res, result);
+  } catch (err) { next(err); }
+});
+
 // Level 3: Finance Disbursement
 requestRouter.post('/:id/disburse', requireActiveRole(RoleCode.FINANCE), async (req: Request, res: Response, next: NextFunction) => {
   try {

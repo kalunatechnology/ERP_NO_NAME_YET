@@ -144,4 +144,8 @@ export const requestApi = {
     (await api.post("/api/v1/requests", payload)).data,
   decideLeaveRequest: async (requestId: string, decision: 'APPROVE' | 'REJECT', remarks?: string) =>
     (await api.post(`/api/v1/requests/${requestId}/hr-decision`, { decision, remarks })).data,
+  cancelRequest: async (requestId: string, reason?: string) =>
+    (await api.post(`/api/v1/requests/${requestId}/cancel-request`, { reason })).data,
+  decideRequestCancellation: async (requestId: string, decision: 'APPROVE' | 'REJECT', remarks?: string) =>
+    (await api.post(`/api/v1/requests/${requestId}/cancel-decision`, { decision, remarks })).data,
 };

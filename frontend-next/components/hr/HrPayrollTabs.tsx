@@ -90,6 +90,11 @@ const formatIdr = (val: unknown) =>
   );
 
 const formatRateInput = (value: unknown) => value == null ? "" : String(value);
+const formatAmountInput = (value: unknown) => {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  return digits ? Number(digits).toLocaleString("id-ID") : "";
+};
+const parseAmountInput = (value: string) => value.replace(/\D/g, "");
 
 function resolveOvertimePrice(overtime: OvertimeItem, employee?: EmployeeItem, defaultRate = 0) {
   const storedRate = Number(overtime.overtime_rate ?? 0);
@@ -148,7 +153,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
   const [employeeUserOptions, setEmployeeUserOptions] = useState<EmployeeUserOption[]>([]);
   const [employeeUserOptionsError, setEmployeeUserOptionsError] = useState(false);
   const [employeeCreateOpen, setEmployeeCreateOpen] = useState(false);
-  const [newEmployee, setNewEmployee] = useState({ employee_name: "", employee_number: "", monthly_salary: "", standard_hourly_rate: "", overtime_hourly_rate: "", cost_center_id: "" });
+  const [newEmployee, setNewEmployee] = useState({ employee_name: "", employee_number: "", monthly_salary: "", overtime_hourly_rate: "", cost_center_id: "" });
   const [costCenters, setCostCenters] = useState<CostCenterItem[]>([]);
 
   const [otForm, setOtForm] = useState({
@@ -173,7 +178,6 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
   });
   const [generatingPayroll, setGeneratingPayroll] = useState(false);
   const [salaryEdits, setSalaryEdits] = useState<Record<string, string>>({});
-  const [hourlyRateEdits, setHourlyRateEdits] = useState<Record<string, string>>({});
   const [employeeProfileEdits, setEmployeeProfileEdits] = useState<Record<string, { name: string; number: string; status: string }>>({});
   const [costCenterEdits, setCostCenterEdits] = useState<Record<string, string>>({});
   const [employeeUserEdits, setEmployeeUserEdits] = useState<Record<string, string>>({});
@@ -220,19 +224,16 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
         setEmployeeUserOptionsError(Boolean(userOptionsRes.data?.error));
         setCostCenters(costCenterRes.data?.results ?? []);
         const edits: Record<string, string> = {};
-        const rateEdits: Record<string, string> = {};
         const overtimeRatesByEmployee: Record<string, string> = {};
         const profileEdits: Record<string, { name: string; number: string; status: string }> = {};
         const costCenterEditsByEmployee: Record<string, string> = {};
         for (const e of empList) {
           edits[e.id] = e.monthly_salary == null ? "" : String(e.monthly_salary);
-          rateEdits[e.id] = e.standard_hourly_rate == null ? "" : String(e.standard_hourly_rate);
           overtimeRatesByEmployee[e.id] = formatRateInput(e.overtime_hourly_rate);
           profileEdits[e.id] = { name: e.employee_name, number: e.employee_number, status: e.employment_status };
           costCenterEditsByEmployee[e.id] = String(e.cost_center_id ?? "");
         }
         setSalaryEdits(edits);
-        setHourlyRateEdits(rateEdits);
         setOvertimeRateEdits(overtimeRatesByEmployee);
         setEmployeeProfileEdits(profileEdits);
         setCostCenterEdits(costCenterEditsByEmployee);
@@ -591,24 +592,23 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
               </div>
               <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-sky-50/60 px-4 py-3 text-xs">
                 <label htmlFor="default-overtime-rate-ops" className="font-semibold text-slate-700">Tarif lembur umum per jam</label>
-                <input id="default-overtime-rate-ops" type="number" min="0.01" step="100" value={defaultOvertimeRate} disabled={hrTier !== 1 || savingDefaultOvertimeRate} onChange={(event) => { setDefaultOvertimeRate(event.target.value); setDefaultOvertimeRateSaveStatus("idle"); }} onBlur={() => void saveDefaultOvertimeRate()} placeholder="Contoh: 50000" className="h-9 w-44 rounded-lg border border-slate-200 bg-white px-3 disabled:bg-slate-100" />
+                <input id="default-overtime-rate-ops" inputMode="numeric" value={formatAmountInput(defaultOvertimeRate)} disabled={hrTier !== 1 || savingDefaultOvertimeRate} onChange={(event) => { setDefaultOvertimeRate(parseAmountInput(event.target.value)); setDefaultOvertimeRateSaveStatus("idle"); }} onBlur={() => void saveDefaultOvertimeRate()} placeholder="Tarif umum" className="h-9 w-44 rounded-lg border border-slate-200 bg-white px-3 disabled:bg-slate-100" />
                 <span className="text-slate-500">Berlaku sebagai default; tarif khusus karyawan akan menggantikannya. Kosong memakai rumus dari profil upah.</span>
                 {savingDefaultOvertimeRate ? <span className="font-medium text-sky-700">Menyimpan…</span> : defaultOvertimeRateSaveStatus === "saved" ? <span className="font-medium text-emerald-700">Tersimpan</span> : null}
               </div>
               {employeeCreateOpen && (
-                <form className="grid gap-2 border-b border-slate-100 bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-6" onSubmit={async (event) => {
+                <form className="fixed inset-0 z-[70] m-auto grid max-h-[90dvh] w-[min(92vw,720px)] content-start gap-4 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_0_0_100vmax_rgba(15,23,42,0.35)] sm:grid-cols-2" onSubmit={async (event) => {
                   event.preventDefault();
                   try {
                     await api.post("/api/v1/hr/employees", {
                       employee_name: newEmployee.employee_name,
                       employee_number: newEmployee.employee_number,
                       monthly_salary: newEmployee.monthly_salary.trim() ? Number(newEmployee.monthly_salary) : null,
-                      standard_hourly_rate: newEmployee.standard_hourly_rate.trim() ? Number(newEmployee.standard_hourly_rate) : null,
                       overtime_hourly_rate: newEmployee.overtime_hourly_rate.trim() ? Number(newEmployee.overtime_hourly_rate) : null,
                       cost_center_id: newEmployee.cost_center_id || null,
                       employment_status: "ACTIVE",
                     });
-                    setNewEmployee({ employee_name: "", employee_number: "", monthly_salary: "", standard_hourly_rate: "", overtime_hourly_rate: "", cost_center_id: "" });
+                    setNewEmployee({ employee_name: "", employee_number: "", monthly_salary: "", overtime_hourly_rate: "", cost_center_id: "" });
                     setEmployeeCreateOpen(false);
                     toast.success("Profil karyawan dibuat. Admin dapat menautkan akun user saat membuat akun.");
                     await loadData();
@@ -616,137 +616,36 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
                     toast.error(err instanceof Error ? err.message : "Gagal membuat profil karyawan.");
                   }
                 }}>
-                  <input required placeholder="Nama lengkap karyawan" value={newEmployee.employee_name} onChange={(e) => setNewEmployee((value) => ({ ...value, employee_name: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
-                  <input required placeholder="Nomor karyawan" value={newEmployee.employee_number} onChange={(e) => setNewEmployee((value) => ({ ...value, employee_number: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
-                  <input type="number" min="0.01" step="1000" placeholder="Gaji bulanan (opsional)" value={newEmployee.monthly_salary} onChange={(e) => setNewEmployee((value) => ({ ...value, monthly_salary: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
-                  <input type="number" min="0.01" step="100" placeholder="Tarif dasar per jam (opsional)" value={newEmployee.standard_hourly_rate} onChange={(e) => setNewEmployee((value) => ({ ...value, standard_hourly_rate: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
-                  <input type="number" min="0.01" step="100" placeholder="Tarif lembur khusus (opsional)" value={newEmployee.overtime_hourly_rate} onChange={(e) => setNewEmployee((value) => ({ ...value, overtime_hourly_rate: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
-                  <select value={newEmployee.cost_center_id} onChange={(e) => setNewEmployee((value) => ({ ...value, cost_center_id: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3">
-                    <option value="">Cost center (opsional)</option>
+                  <div className="flex items-center justify-between sm:col-span-2"><h3 className="text-base font-bold text-[#163D64]">Tambah Karyawan</h3><button type="button" aria-label="Tutup form" onClick={() => setEmployeeCreateOpen(false)} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 text-slate-600"><X size={16}/></button></div>
+                  <label className="text-xs font-semibold text-slate-700">Nama lengkap <span className="text-red-600">*</span><input required placeholder="Nama lengkap karyawan" value={newEmployee.employee_name} onChange={(e) => setNewEmployee((value) => ({ ...value, employee_name: e.target.value }))} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3" /></label>
+                  <label className="text-xs font-semibold text-slate-700">Kode karyawan <span className="text-red-600">*</span><input required placeholder="Nomor karyawan" value={newEmployee.employee_number} onChange={(e) => setNewEmployee((value) => ({ ...value, employee_number: e.target.value }))} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3" /></label>
+                  <label className="text-xs font-semibold text-slate-700">Nominal gaji<input inputMode="numeric" placeholder="Nominal gaji" value={formatAmountInput(newEmployee.monthly_salary)} onChange={(e) => setNewEmployee((value) => ({ ...value, monthly_salary: parseAmountInput(e.target.value) }))} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-right tabular-nums" /></label>
+                  <label className="text-xs font-semibold text-slate-700">Biaya lembur per jam<input inputMode="numeric" placeholder="Biaya lembur per jam" value={formatAmountInput(newEmployee.overtime_hourly_rate)} onChange={(e) => setNewEmployee((value) => ({ ...value, overtime_hourly_rate: parseAmountInput(e.target.value) }))} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-right tabular-nums" /></label>
+                  <label className="text-xs font-semibold text-slate-700 sm:col-span-2">Posisi / Bidang<select value={newEmployee.cost_center_id} onChange={(e) => setNewEmployee((value) => ({ ...value, cost_center_id: e.target.value }))} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3">
+                    <option value="">Pilih posisi / bidang</option>
                     {costCenters.map((center) => <option key={center.id} value={center.id}>{center.cost_center_code} — {center.cost_center_name}</option>)}
-                  </select>
-                  <button type="submit" className="h-9 rounded-lg bg-emerald-600 px-3 font-semibold text-white">Simpan Karyawan</button>
-                  <p className="text-[11px] leading-4 text-slate-500 sm:col-span-2 xl:col-span-6">Profil dibuat tanpa akun user. Admin menautkannya pada saat membuat akun; tarif lembur khusus bersifat opsional dan akan menggantikan tarif umum.</p>
+                  </select></label>
+                  <button type="submit" className="h-10 rounded-lg bg-emerald-600 px-3 font-semibold text-white sm:col-span-2">Simpan Karyawan</button>
                 </form>
               )}
-              <div className="divide-y divide-slate-100 text-xs">
-                {employees.length === 0 ? (
-                  <div className="p-5 text-center text-slate-500">
-                    Belum ada profil karyawan. HR dapat membuat profil terlebih dahulu; akun user ditautkan oleh Admin saat akun dibuat.
-                  </div>
-                ) : (
-                  employees.map((emp) => (
-                    <div key={emp.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex flex-wrap gap-2">
-                        {emp.user_id ? (
-                          <div className="flex h-9 min-w-56 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-slate-600">
-                            Akun user: {emp.linked_user?.full_name || emp.linked_user?.email || "Tertaut"}
-                          </div>
-                        ) : (
-                          <div className="flex flex-col gap-1">
-                            <select aria-label={`Tautkan akun user ke ${emp.employee_name || emp.employee_number}`} value={employeeUserEdits[emp.id] ?? ""} onChange={(e) => setEmployeeUserEdits((current) => ({ ...current, [emp.id]: e.target.value }))} className="h-9 w-64 rounded-lg border border-amber-200 bg-amber-50 px-3">
-                              <option value="">{employeeUserOptionsError ? "Daftar akun gagal dimuat" : employeeUserOptions.length ? "Belum ditautkan — pilih akun user" : "Tidak ada akun aktif yang belum ditautkan"}</option>
-                              {employeeUserOptions.map((account) => <option key={account.id} value={account.id}>{account.full_name} — {account.email}</option>)}
-                            </select>
-                            {employeeUserOptionsError ? <span className="max-w-64 text-[10px] leading-4 text-red-600">Gagal memuat akun. Muat ulang halaman atau periksa akses HR Anda.</span> : !employeeUserOptions.length && <span className="max-w-64 text-[10px] leading-4 text-slate-500">Minta Admin membuat akun aktif pada perusahaan ini; akun yang sudah tertaut ke karyawan lain tidak ditampilkan.</span>}
-                          </div>
-                        )}
-                        <input
-                          aria-label={`Nama karyawan ${emp.employee_name}`}
-                          placeholder="Nama karyawan"
-                          value={employeeProfileEdits[emp.id]?.name ?? emp.employee_name}
-                          onChange={(e) => setEmployeeProfileEdits((p) => ({ ...p, [emp.id]: { name: e.target.value, number: p[emp.id]?.number ?? emp.employee_number, status: p[emp.id]?.status ?? emp.employment_status } }))}
-                          className="h-9 w-48 rounded-lg border border-slate-200 bg-slate-50 px-3"
-                        />
-                        <input
-                          aria-label={`Nomor karyawan ${emp.employee_name}`}
-                          placeholder="Nomor karyawan"
-                          value={employeeProfileEdits[emp.id]?.number ?? emp.employee_number}
-                          onChange={(e) => setEmployeeProfileEdits((p) => ({ ...p, [emp.id]: { name: p[emp.id]?.name ?? emp.employee_name, number: e.target.value, status: p[emp.id]?.status ?? emp.employment_status } }))}
-                          className="h-9 w-36 rounded-lg border border-slate-200 bg-slate-50 px-3"
-                        />
-                        <select
-                          aria-label={`Status karyawan ${emp.employee_name}`}
-                          value={employeeProfileEdits[emp.id]?.status ?? emp.employment_status}
-                          onChange={(e) => setEmployeeProfileEdits((p) => ({ ...p, [emp.id]: { name: p[emp.id]?.name ?? emp.employee_name, number: p[emp.id]?.number ?? emp.employee_number, status: e.target.value } }))}
-                          className="h-9 rounded-lg border border-slate-200 bg-slate-50 px-3"
-                        >
-                          <option value="ACTIVE">Aktif</option><option value="INACTIVE">Nonaktif</option><option value="TERMINATED">Berakhir</option>
-                        </select>
-                        <select
-                          aria-label={`Cost center ${emp.employee_name}`}
-                          value={costCenterEdits[emp.id] ?? ""}
-                          onChange={(e) => setCostCenterEdits((p) => ({ ...p, [emp.id]: e.target.value }))}
-                          className="h-9 w-52 rounded-lg border border-slate-200 bg-slate-50 px-3"
-                        >
-                          <option value="">Pilih cost center aktif</option>
-                          {costCenters.map((center) => <option key={center.id} value={center.id}>{center.cost_center_code} — {center.cost_center_name}</option>)}
-                        </select>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <input
-                          type="number"
-                          min="0.01"
-                          step="1000"
-                          aria-label={`Gaji bulanan ${emp.employee_name}`}
-                          placeholder="Gaji bulanan"
-                          value={salaryEdits[emp.id] ?? ""}
-                          onChange={(e) => setSalaryEdits((p) => ({ ...p, [emp.id]: e.target.value }))}
-                          className="h-9 w-40 rounded-lg border border-slate-200 bg-slate-50 px-3"
-                        />
-                        <input
-                          type="number"
-                          min="0.01"
-                          step="100"
-                          aria-label={`Tarif per jam ${emp.employee_name}`}
-                          placeholder="Tarif dasar per jam (opsional)"
-                          value={hourlyRateEdits[emp.id] ?? ""}
-                          onChange={(e) => setHourlyRateEdits((p) => ({ ...p, [emp.id]: e.target.value }))}
-                          className="h-9 w-44 rounded-lg border border-slate-200 bg-slate-50 px-3"
-                        />
-                        <div className="flex flex-col gap-1">
-                          <input type="number" min="0.01" step="100" aria-label={`Tarif lembur khusus per jam ${emp.employee_name}`} placeholder="Lembur khusus (kosong = umum)" value={overtimeRateEdits[emp.id] ?? ""} onChange={(event) => { setOvertimeRateEdits((current) => ({ ...current, [emp.id]: event.target.value })); setSavedEmployeeOvertimeRates((current) => ({ ...current, [emp.id]: false })); }} onBlur={() => void saveEmployeeOvertimeRate(emp)} disabled={savingEmployeeOvertimeRates[emp.id]} className="h-9 w-52 rounded-lg border border-slate-200 bg-slate-50 px-3 disabled:opacity-60" />
-                          {savingEmployeeOvertimeRates[emp.id] ? <span className="text-[10px] text-sky-700">Menyimpan…</span> : savedEmployeeOvertimeRates[emp.id] ? <span className="text-[10px] text-emerald-700">Tersimpan</span> : null}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await api.put(`/api/v1/hr/employees/${emp.id}`, {
-                                employee_name: employeeProfileEdits[emp.id]?.name ?? emp.employee_name,
-                                employee_number: employeeProfileEdits[emp.id]?.number ?? emp.employee_number,
-                                employment_status: employeeProfileEdits[emp.id]?.status ?? emp.employment_status,
-                                ...(employeeUserEdits[emp.id] ? { user_id: employeeUserEdits[emp.id] } : {}),
-                                cost_center_id: costCenterEdits[emp.id] || null,
-                                monthly_salary: salaryEdits[emp.id]?.trim() ? Number(salaryEdits[emp.id]) : null,
-                                standard_hourly_rate: hourlyRateEdits[emp.id]?.trim() ? Number(hourlyRateEdits[emp.id]) : null,
-                              });
-                              toast.success(employeeUserEdits[emp.id] ? "Akun user berhasil ditautkan ke profil karyawan." : "Profil upah karyawan diperbarui.");
-                              await loadData();
-                            } catch (err: unknown) {
-                              toast.error(err instanceof Error ? err.message : "Gagal memperbarui gaji.");
-                            }
-                          }}
-                          className="h-9 rounded-lg bg-[#0876CD] px-3 font-semibold text-white cursor-pointer"
-                        >
-                          Simpan Profil
-                        </button>
-                        {emp.employment_status === "ACTIVE" && (
-                          <button type="button" onClick={async () => {
-                            if (!window.confirm(`Nonaktifkan profil ${emp.employee_name}? Riwayat payroll tetap disimpan.`)) return;
-                            try {
-                              await api.delete(`/api/v1/hr/employees/${emp.id}`);
-                              toast.success("Profil karyawan dinonaktifkan. Riwayat payroll tetap tersimpan.");
-                              await loadData();
-                            } catch (err: unknown) {
-                              toast.error(err instanceof Error ? err.message : "Gagal menonaktifkan karyawan.");
-                            }
-                          }} className="h-9 rounded-lg border border-red-200 px-3 font-semibold text-red-700">Nonaktifkan</button>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1180px] border-collapse text-left text-xs">
+                  <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-3">Akun</th><th className="px-3 py-3">Nama</th><th className="px-3 py-3">Kode</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Posisi / Bidang</th><th className="px-3 py-3 text-right">Nominal gaji</th><th className="px-3 py-3 text-right">Biaya lembur / jam</th><th className="sticky right-0 bg-slate-50 px-3 py-3 text-right">Aksi</th></tr></thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {employees.length === 0 ? <tr><td colSpan={8} className="p-6 text-center text-slate-500">Belum ada profil karyawan.</td></tr> : employees.map((emp) => (
+                      <tr key={emp.id} className="align-middle hover:bg-slate-50/70">
+                        <td className="px-3 py-2.5">{emp.user_id ? <span className="block max-w-40 truncate text-slate-600" title={emp.linked_user?.full_name || emp.linked_user?.email || "Tertaut"}>{emp.linked_user?.full_name || emp.linked_user?.email || "Tertaut"}</span> : <select aria-label={`Tautkan akun ke ${emp.employee_name}`} value={employeeUserEdits[emp.id] ?? ""} onChange={(event) => setEmployeeUserEdits((current) => ({ ...current, [emp.id]: event.target.value }))} className="h-9 w-48 rounded-lg border border-amber-200 bg-amber-50 px-2"><option value="">{employeeUserOptionsError ? "Akun gagal dimuat" : employeeUserOptions.length ? "Pilih akun" : "Tidak ada akun"}</option>{employeeUserOptions.map((account) => <option key={account.id} value={account.id}>{account.full_name} — {account.email}</option>)}</select>}</td>
+                        <td className="px-3 py-2.5"><input aria-label={`Nama karyawan ${emp.employee_name}`} value={employeeProfileEdits[emp.id]?.name ?? emp.employee_name} onChange={(event) => setEmployeeProfileEdits((current) => ({ ...current, [emp.id]: { name: event.target.value, number: current[emp.id]?.number ?? emp.employee_number, status: current[emp.id]?.status ?? emp.employment_status } }))} className="h-9 w-44 rounded-lg border border-slate-200 bg-white px-2.5" /></td>
+                        <td className="px-3 py-2.5"><input aria-label={`Kode karyawan ${emp.employee_name}`} value={employeeProfileEdits[emp.id]?.number ?? emp.employee_number} onChange={(event) => setEmployeeProfileEdits((current) => ({ ...current, [emp.id]: { name: current[emp.id]?.name ?? emp.employee_name, number: event.target.value, status: current[emp.id]?.status ?? emp.employment_status } }))} className="h-9 w-28 rounded-lg border border-slate-200 bg-white px-2.5" /></td>
+                        <td className="px-3 py-2.5"><select aria-label={`Status karyawan ${emp.employee_name}`} value={employeeProfileEdits[emp.id]?.status ?? emp.employment_status} onChange={(event) => setEmployeeProfileEdits((current) => ({ ...current, [emp.id]: { name: current[emp.id]?.name ?? emp.employee_name, number: current[emp.id]?.number ?? emp.employee_number, status: event.target.value } }))} className="h-9 rounded-lg border border-slate-200 bg-white px-2"><option value="ACTIVE">Aktif</option><option value="INACTIVE">Nonaktif</option><option value="TERMINATED">Berakhir</option></select></td>
+                        <td className="px-3 py-2.5"><select aria-label={`Posisi atau bidang ${emp.employee_name}`} value={costCenterEdits[emp.id] ?? ""} onChange={(event) => setCostCenterEdits((current) => ({ ...current, [emp.id]: event.target.value }))} className="h-9 w-52 rounded-lg border border-slate-200 bg-white px-2"><option value="">Pilih bidang</option>{costCenters.map((center) => <option key={center.id} value={center.id}>{center.cost_center_code} — {center.cost_center_name}</option>)}</select></td>
+                        <td className="px-3 py-2.5"><input inputMode="numeric" aria-label={`Nominal gaji ${emp.employee_name}`} placeholder="0" value={formatAmountInput(salaryEdits[emp.id] ?? emp.monthly_salary)} onChange={(event) => setSalaryEdits((current) => ({ ...current, [emp.id]: parseAmountInput(event.target.value) }))} className="h-9 w-32 rounded-lg border border-slate-200 bg-white px-2.5 text-right tabular-nums" /></td>
+                        <td className="px-3 py-2.5"><div className="flex items-center gap-2"><input inputMode="numeric" aria-label={`Biaya lembur per jam ${emp.employee_name}`} placeholder={formatAmountInput(defaultOvertimeRate) || "Tarif umum"} value={formatAmountInput(overtimeRateEdits[emp.id])} onChange={(event) => { setOvertimeRateEdits((current) => ({ ...current, [emp.id]: parseAmountInput(event.target.value) })); setSavedEmployeeOvertimeRates((current) => ({ ...current, [emp.id]: false })); }} onBlur={() => void saveEmployeeOvertimeRate(emp)} disabled={savingEmployeeOvertimeRates[emp.id]} className="h-9 w-32 rounded-lg border border-slate-200 bg-white px-2.5 text-right tabular-nums disabled:opacity-60" />{savingEmployeeOvertimeRates[emp.id] ? <span className="text-[10px] text-sky-700">…</span> : savedEmployeeOvertimeRates[emp.id] ? <span className="text-[10px] text-emerald-700">✓</span> : null}</div></td>
+                        <td className="sticky right-0 whitespace-nowrap bg-white px-3 py-2.5 text-right"><div className="inline-flex gap-1.5"><button type="button" aria-label={`Simpan profil ${emp.employee_name}`} onClick={async () => { try { await api.put(`/api/v1/hr/employees/${emp.id}`, { employee_name: employeeProfileEdits[emp.id]?.name ?? emp.employee_name, employee_number: employeeProfileEdits[emp.id]?.number ?? emp.employee_number, employment_status: employeeProfileEdits[emp.id]?.status ?? emp.employment_status, ...(employeeUserEdits[emp.id] ? { user_id: employeeUserEdits[emp.id] } : {}), cost_center_id: costCenterEdits[emp.id] || null, monthly_salary: salaryEdits[emp.id]?.trim() ? Number(salaryEdits[emp.id]) : null }); toast.success(employeeUserEdits[emp.id] ? "Akun user berhasil ditautkan." : "Profil karyawan diperbarui."); await loadData(); } catch (err: unknown) { toast.error(err instanceof Error ? err.message : "Gagal memperbarui profil."); } }} className="h-9 rounded-lg bg-[#0876CD] px-3 font-semibold text-white">Simpan</button>{emp.employment_status === "ACTIVE" && <button type="button" aria-label={`Nonaktifkan ${emp.employee_name}`} title="Nonaktifkan profil" onClick={async () => { if (!window.confirm(`Nonaktifkan profil ${emp.employee_name}? Riwayat payroll tetap disimpan.`)) return; try { await api.delete(`/api/v1/hr/employees/${emp.id}`); toast.success("Profil karyawan dinonaktifkan."); await loadData(); } catch (err: unknown) { toast.error(err instanceof Error ? err.message : "Gagal menonaktifkan karyawan."); } }} className="grid h-9 w-9 place-items-center rounded-lg border border-red-200 text-red-700"><X size={15}/></button>}</div></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
@@ -754,7 +653,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
       )}
 
       {section === "lead" && (
-        <div className="space-y-6">
+        <div className="grid items-start gap-4 lg:grid-cols-2">
           {hrTier <= 2 && (
             <div className="rounded-2xl border border-[#E2E8F0] bg-white overflow-hidden">
               <div className="p-4 border-b border-slate-200 font-bold text-sm text-[#163D64]">
@@ -885,7 +784,7 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
           </div>
 
           {hrTier === 1 && (
-            <div className="rounded-2xl border border-[#E2E8F0] bg-white overflow-hidden">
+            <div className="rounded-2xl border border-[#E2E8F0] bg-white overflow-hidden xl:col-span-2">
               <div className="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
                 <span className="font-bold text-sm text-[#163D64]">
                   Profil &amp; Data Upah Karyawan ({employees.length})
@@ -896,24 +795,23 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
               </div>
               <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-sky-50/60 px-4 py-3 text-xs">
                 <label htmlFor="default-overtime-rate-lead" className="font-semibold text-slate-700">Tarif lembur umum per jam</label>
-                <input id="default-overtime-rate-lead" type="number" min="0.01" step="100" value={defaultOvertimeRate} disabled={savingDefaultOvertimeRate} onChange={(event) => { setDefaultOvertimeRate(event.target.value); setDefaultOvertimeRateSaveStatus("idle"); }} onBlur={() => void saveDefaultOvertimeRate()} placeholder="Contoh: 50000" className="h-9 w-44 rounded-lg border border-slate-200 bg-white px-3 disabled:bg-slate-100" />
+                <input id="default-overtime-rate-lead" inputMode="numeric" value={formatAmountInput(defaultOvertimeRate)} disabled={savingDefaultOvertimeRate} onChange={(event) => { setDefaultOvertimeRate(parseAmountInput(event.target.value)); setDefaultOvertimeRateSaveStatus("idle"); }} onBlur={() => void saveDefaultOvertimeRate()} placeholder="Tarif umum" className="h-9 w-44 rounded-lg border border-slate-200 bg-white px-3 disabled:bg-slate-100" />
                 <span className="text-slate-500">Tarif khusus karyawan akan menggantikan default. Kosong memakai rumus profil upah.</span>
                 {savingDefaultOvertimeRate ? <span className="font-medium text-sky-700">Menyimpan…</span> : defaultOvertimeRateSaveStatus === "saved" ? <span className="font-medium text-emerald-700">Tersimpan</span> : null}
               </div>
               {employeeCreateOpen && (
-                <form className="grid gap-2 border-b border-slate-100 bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-6" onSubmit={async (event) => {
+                <form className="fixed inset-0 z-[70] m-auto grid max-h-[90dvh] w-[min(92vw,720px)] content-start gap-4 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_0_0_100vmax_rgba(15,23,42,0.35)] sm:grid-cols-2" onSubmit={async (event) => {
                   event.preventDefault();
                   try {
                     await api.post("/api/v1/hr/employees", {
                       employee_name: newEmployee.employee_name,
                       employee_number: newEmployee.employee_number,
                       monthly_salary: newEmployee.monthly_salary.trim() ? Number(newEmployee.monthly_salary) : null,
-                      standard_hourly_rate: newEmployee.standard_hourly_rate.trim() ? Number(newEmployee.standard_hourly_rate) : null,
                       overtime_hourly_rate: newEmployee.overtime_hourly_rate.trim() ? Number(newEmployee.overtime_hourly_rate) : null,
                       cost_center_id: newEmployee.cost_center_id || null,
                       employment_status: "ACTIVE",
                     });
-                    setNewEmployee({ employee_name: "", employee_number: "", monthly_salary: "", standard_hourly_rate: "", overtime_hourly_rate: "", cost_center_id: "" });
+                    setNewEmployee({ employee_name: "", employee_number: "", monthly_salary: "", overtime_hourly_rate: "", cost_center_id: "" });
                     setEmployeeCreateOpen(false);
                     toast.success("Profil karyawan dibuat. Admin dapat menautkan akun user saat membuat akun.");
                     await loadData();
@@ -921,125 +819,40 @@ export function HrPayrollTabs({ section, hrTier, financeTier }: HrPayrollTabsPro
                     toast.error(err instanceof Error ? err.message : "Gagal membuat profil karyawan.");
                   }
                 }}>
-                  <input required placeholder="Nama lengkap karyawan" value={newEmployee.employee_name} onChange={(e) => setNewEmployee((value) => ({ ...value, employee_name: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
-                  <input required placeholder="Nomor karyawan" value={newEmployee.employee_number} onChange={(e) => setNewEmployee((value) => ({ ...value, employee_number: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
-                  <input type="number" min="0.01" step="1000" placeholder="Gaji bulanan (opsional)" value={newEmployee.monthly_salary} onChange={(e) => setNewEmployee((value) => ({ ...value, monthly_salary: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
-                  <input type="number" min="0.01" step="100" placeholder="Tarif dasar per jam (opsional)" value={newEmployee.standard_hourly_rate} onChange={(e) => setNewEmployee((value) => ({ ...value, standard_hourly_rate: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
-                  <input type="number" min="0.01" step="100" placeholder="Tarif lembur khusus (opsional)" value={newEmployee.overtime_hourly_rate} onChange={(e) => setNewEmployee((value) => ({ ...value, overtime_hourly_rate: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3" />
-                  <select value={newEmployee.cost_center_id} onChange={(e) => setNewEmployee((value) => ({ ...value, cost_center_id: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3">
-                    <option value="">Cost center (opsional)</option>
+                  <div className="flex items-center justify-between sm:col-span-2"><h3 className="text-base font-bold text-[#163D64]">Tambah Karyawan</h3><button type="button" aria-label="Tutup form" onClick={() => setEmployeeCreateOpen(false)} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 text-slate-600"><X size={16}/></button></div>
+                  <label className="text-xs font-semibold text-slate-700">Nama lengkap <span className="text-red-600">*</span><input required placeholder="Nama lengkap karyawan" value={newEmployee.employee_name} onChange={(e) => setNewEmployee((value) => ({ ...value, employee_name: e.target.value }))} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3" /></label>
+                  <label className="text-xs font-semibold text-slate-700">Kode karyawan <span className="text-red-600">*</span><input required placeholder="Nomor karyawan" value={newEmployee.employee_number} onChange={(e) => setNewEmployee((value) => ({ ...value, employee_number: e.target.value }))} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3" /></label>
+                  <label className="text-xs font-semibold text-slate-700">Nominal gaji<input inputMode="numeric" placeholder="Nominal gaji" value={formatAmountInput(newEmployee.monthly_salary)} onChange={(e) => setNewEmployee((value) => ({ ...value, monthly_salary: parseAmountInput(e.target.value) }))} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-right tabular-nums" /></label>
+                  <label className="text-xs font-semibold text-slate-700">Biaya lembur per jam<input inputMode="numeric" placeholder="Biaya lembur per jam" value={formatAmountInput(newEmployee.overtime_hourly_rate)} onChange={(e) => setNewEmployee((value) => ({ ...value, overtime_hourly_rate: parseAmountInput(e.target.value) }))} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-right tabular-nums" /></label>
+                  <label className="text-xs font-semibold text-slate-700 sm:col-span-2">Posisi / Bidang<select value={newEmployee.cost_center_id} onChange={(e) => setNewEmployee((value) => ({ ...value, cost_center_id: e.target.value }))} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3">
+                    <option value="">Pilih posisi / bidang</option>
                     {costCenters.map((center) => <option key={center.id} value={center.id}>{center.cost_center_code} — {center.cost_center_name}</option>)}
-                  </select>
-                  <button type="submit" className="h-9 rounded-lg bg-emerald-600 px-3 font-semibold text-white">Simpan Karyawan</button>
-                  <p className="text-[11px] leading-4 text-slate-500 sm:col-span-2 xl:col-span-6">Profil dibuat tanpa akun user. Admin menautkannya pada saat membuat akun; tarif lembur khusus bersifat opsional dan menggantikan tarif umum.</p>
+                  </select></label>
+                  <button type="submit" className="h-10 rounded-lg bg-emerald-600 px-3 font-semibold text-white sm:col-span-2">Simpan Karyawan</button>
                 </form>
               )}
-              <div className="divide-y divide-slate-100 text-xs">
-                {employees.length === 0 ? (
-                  <div className="p-5 text-center text-slate-500">
-                    Belum ada profil karyawan. HR dapat membuat profil terlebih dahulu; akun user ditautkan oleh Admin saat akun dibuat.
-                  </div>
-                ) : (
-                  employees.map((emp) => (
-                    <div key={emp.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex flex-wrap gap-2">
-                        {emp.user_id ? (
-                          <div className="flex h-9 min-w-56 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-slate-600">
-                            Akun user: {emp.linked_user?.full_name || emp.linked_user?.email || "Tertaut"}
-                          </div>
-                        ) : (
-                          <div className="flex flex-col gap-1">
-                            <select aria-label={`Tautkan akun user ke ${emp.employee_name || emp.employee_number}`} value={employeeUserEdits[emp.id] ?? ""} onChange={(e) => setEmployeeUserEdits((current) => ({ ...current, [emp.id]: e.target.value }))} className="h-9 w-64 rounded-lg border border-amber-200 bg-amber-50 px-3">
-                              <option value="">{employeeUserOptionsError ? "Daftar akun gagal dimuat" : employeeUserOptions.length ? "Belum ditautkan — pilih akun user" : "Tidak ada akun aktif yang belum ditautkan"}</option>
-                              {employeeUserOptions.map((account) => <option key={account.id} value={account.id}>{account.full_name} — {account.email}</option>)}
-                            </select>
-                            {employeeUserOptionsError ? <span className="max-w-64 text-[10px] leading-4 text-red-600">Gagal memuat akun. Muat ulang halaman atau periksa akses HR Anda.</span> : !employeeUserOptions.length && <span className="max-w-64 text-[10px] leading-4 text-slate-500">Minta Admin membuat akun aktif pada perusahaan ini; akun yang sudah tertaut ke karyawan lain tidak ditampilkan.</span>}
-                          </div>
-                        )}
-                        <input
-                          aria-label={`Nama karyawan ${emp.employee_name}`}
-                          placeholder="Nama karyawan"
-                          value={employeeProfileEdits[emp.id]?.name ?? emp.employee_name}
-                          onChange={(e) => setEmployeeProfileEdits((p) => ({ ...p, [emp.id]: { name: e.target.value, number: p[emp.id]?.number ?? emp.employee_number, status: p[emp.id]?.status ?? emp.employment_status } }))}
-                          className="h-9 w-48 rounded-lg border border-slate-200 bg-slate-50 px-3"
-                        />
-                        <input
-                          aria-label={`Nomor karyawan ${emp.employee_name}`}
-                          placeholder="Nomor karyawan"
-                          value={employeeProfileEdits[emp.id]?.number ?? emp.employee_number}
-                          onChange={(e) => setEmployeeProfileEdits((p) => ({ ...p, [emp.id]: { name: p[emp.id]?.name ?? emp.employee_name, number: e.target.value, status: p[emp.id]?.status ?? emp.employment_status } }))}
-                          className="h-9 w-36 rounded-lg border border-slate-200 bg-slate-50 px-3"
-                        />
-                        <select
-                          aria-label={`Status karyawan ${emp.employee_name}`}
-                          value={employeeProfileEdits[emp.id]?.status ?? emp.employment_status}
-                          onChange={(e) => setEmployeeProfileEdits((p) => ({ ...p, [emp.id]: { name: p[emp.id]?.name ?? emp.employee_name, number: p[emp.id]?.number ?? emp.employee_number, status: e.target.value } }))}
-                          className="h-9 rounded-lg border border-slate-200 bg-slate-50 px-3"
-                        >
-                          <option value="ACTIVE">Aktif</option><option value="INACTIVE">Nonaktif</option><option value="TERMINATED">Berakhir</option>
-                        </select>
-                        <select
-                          aria-label={`Cost center ${emp.employee_name}`}
-                          value={costCenterEdits[emp.id] ?? ""}
-                          onChange={(e) => setCostCenterEdits((p) => ({ ...p, [emp.id]: e.target.value }))}
-                          className="h-9 w-52 rounded-lg border border-slate-200 bg-slate-50 px-3"
-                        >
-                          <option value="">Pilih cost center aktif</option>
-                          {costCenters.map((center) => <option key={center.id} value={center.id}>{center.cost_center_code} — {center.cost_center_name}</option>)}
-                        </select>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <input
-                          type="number"
-                          min="0.01"
-                          step="1000"
-                          aria-label={`Gaji bulanan ${emp.employee_name}`}
-                          placeholder="Gaji bulanan"
-                          value={salaryEdits[emp.id] ?? ""}
-                          onChange={(e) => setSalaryEdits((p) => ({ ...p, [emp.id]: e.target.value }))}
-                          className="h-9 w-40 rounded-lg border border-slate-200 bg-slate-50 px-3"
-                        />
-                        <input
-                          type="number"
-                          min="0.01"
-                          step="100"
-                          aria-label={`Tarif per jam ${emp.employee_name}`}
-                          placeholder="Tarif dasar per jam (opsional)"
-                          value={hourlyRateEdits[emp.id] ?? ""}
-                          onChange={(e) => setHourlyRateEdits((p) => ({ ...p, [emp.id]: e.target.value }))}
-                          className="h-9 w-44 rounded-lg border border-slate-200 bg-slate-50 px-3"
-                        />
-                        <div className="flex flex-col gap-1">
-                          <input type="number" min="0.01" step="100" aria-label={`Tarif lembur khusus per jam ${emp.employee_name}`} placeholder="Lembur khusus (kosong = umum)" value={overtimeRateEdits[emp.id] ?? ""} onChange={(event) => { setOvertimeRateEdits((current) => ({ ...current, [emp.id]: event.target.value })); setSavedEmployeeOvertimeRates((current) => ({ ...current, [emp.id]: false })); }} onBlur={() => void saveEmployeeOvertimeRate(emp)} disabled={savingEmployeeOvertimeRates[emp.id]} className="h-9 w-52 rounded-lg border border-slate-200 bg-slate-50 px-3 disabled:opacity-60" />
-                          {savingEmployeeOvertimeRates[emp.id] ? <span className="text-[10px] text-sky-700">Menyimpan…</span> : savedEmployeeOvertimeRates[emp.id] ? <span className="text-[10px] text-emerald-700">Tersimpan</span> : null}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await api.put(`/api/v1/hr/employees/${emp.id}`, {
-                                employee_name: employeeProfileEdits[emp.id]?.name ?? emp.employee_name,
-                                employee_number: employeeProfileEdits[emp.id]?.number ?? emp.employee_number,
-                                employment_status: employeeProfileEdits[emp.id]?.status ?? emp.employment_status,
-                                ...(employeeUserEdits[emp.id] ? { user_id: employeeUserEdits[emp.id] } : {}),
-                                cost_center_id: costCenterEdits[emp.id] || null,
-                                monthly_salary: salaryEdits[emp.id]?.trim() ? Number(salaryEdits[emp.id]) : null,
-                                standard_hourly_rate: hourlyRateEdits[emp.id]?.trim() ? Number(hourlyRateEdits[emp.id]) : null,
-                              });
-                              toast.success(employeeUserEdits[emp.id] ? "Akun user berhasil ditautkan ke profil karyawan." : "Profil upah karyawan diperbarui.");
-                              await loadData();
-                            } catch (err: unknown) {
-                              toast.error(err instanceof Error ? err.message : "Gagal memperbarui gaji.");
-                            }
-                          }}
-                          className="h-9 rounded-lg bg-[#0876CD] px-3 font-semibold text-white cursor-pointer"
-                        >
-                          Simpan Profil
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1180px] border-collapse text-left text-xs">
+                  <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+                    <tr><th className="px-3 py-3">Akun</th><th className="px-3 py-3">Nama</th><th className="px-3 py-3">Kode</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Posisi / Bidang</th><th className="px-3 py-3 text-right">Nominal gaji</th><th className="px-3 py-3 text-right">Biaya lembur / jam</th><th className="sticky right-0 bg-slate-50 px-3 py-3 text-right">Aksi</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {employees.length === 0 ? <tr><td colSpan={8} className="p-6 text-center text-slate-500">Belum ada profil karyawan.</td></tr> : employees.map((emp) => (
+                      <tr key={emp.id} className="align-middle hover:bg-slate-50/70">
+                        <td className="px-3 py-2.5">
+                          {emp.user_id ? <span className="block max-w-40 truncate text-slate-600" title={emp.linked_user?.full_name || emp.linked_user?.email || "Tertaut"}>{emp.linked_user?.full_name || emp.linked_user?.email || "Tertaut"}</span> : <select aria-label={`Tautkan akun ke ${emp.employee_name}`} value={employeeUserEdits[emp.id] ?? ""} onChange={(event) => setEmployeeUserEdits((current) => ({ ...current, [emp.id]: event.target.value }))} className="h-9 w-48 rounded-lg border border-amber-200 bg-amber-50 px-2"><option value="">{employeeUserOptionsError ? "Akun gagal dimuat" : employeeUserOptions.length ? "Pilih akun" : "Tidak ada akun"}</option>{employeeUserOptions.map((account) => <option key={account.id} value={account.id}>{account.full_name} — {account.email}</option>)}</select>}
+                        </td>
+                        <td className="px-3 py-2.5"><input aria-label={`Nama karyawan ${emp.employee_name}`} value={employeeProfileEdits[emp.id]?.name ?? emp.employee_name} onChange={(event) => setEmployeeProfileEdits((current) => ({ ...current, [emp.id]: { name: event.target.value, number: current[emp.id]?.number ?? emp.employee_number, status: current[emp.id]?.status ?? emp.employment_status } }))} className="h-9 w-44 rounded-lg border border-slate-200 bg-white px-2.5" /></td>
+                        <td className="px-3 py-2.5"><input aria-label={`Kode karyawan ${emp.employee_name}`} value={employeeProfileEdits[emp.id]?.number ?? emp.employee_number} onChange={(event) => setEmployeeProfileEdits((current) => ({ ...current, [emp.id]: { name: current[emp.id]?.name ?? emp.employee_name, number: event.target.value, status: current[emp.id]?.status ?? emp.employment_status } }))} className="h-9 w-28 rounded-lg border border-slate-200 bg-white px-2.5" /></td>
+                        <td className="px-3 py-2.5"><select aria-label={`Status karyawan ${emp.employee_name}`} value={employeeProfileEdits[emp.id]?.status ?? emp.employment_status} onChange={(event) => setEmployeeProfileEdits((current) => ({ ...current, [emp.id]: { name: current[emp.id]?.name ?? emp.employee_name, number: current[emp.id]?.number ?? emp.employee_number, status: event.target.value } }))} className="h-9 rounded-lg border border-slate-200 bg-white px-2"><option value="ACTIVE">Aktif</option><option value="INACTIVE">Nonaktif</option><option value="TERMINATED">Berakhir</option></select></td>
+                        <td className="px-3 py-2.5"><select aria-label={`Posisi atau bidang ${emp.employee_name}`} value={costCenterEdits[emp.id] ?? ""} onChange={(event) => setCostCenterEdits((current) => ({ ...current, [emp.id]: event.target.value }))} className="h-9 w-52 rounded-lg border border-slate-200 bg-white px-2"><option value="">Pilih bidang</option>{costCenters.map((center) => <option key={center.id} value={center.id}>{center.cost_center_code} — {center.cost_center_name}</option>)}</select></td>
+                        <td className="px-3 py-2.5"><input inputMode="numeric" aria-label={`Nominal gaji ${emp.employee_name}`} placeholder="0" value={formatAmountInput(salaryEdits[emp.id] ?? emp.monthly_salary)} onChange={(event) => setSalaryEdits((current) => ({ ...current, [emp.id]: parseAmountInput(event.target.value) }))} className="h-9 w-32 rounded-lg border border-slate-200 bg-white px-2.5 text-right tabular-nums" /></td>
+                        <td className="px-3 py-2.5"><div className="flex items-center gap-2"><input inputMode="numeric" aria-label={`Biaya lembur per jam ${emp.employee_name}`} placeholder={formatAmountInput(defaultOvertimeRate) || "Tarif umum"} value={formatAmountInput(overtimeRateEdits[emp.id])} onChange={(event) => { setOvertimeRateEdits((current) => ({ ...current, [emp.id]: parseAmountInput(event.target.value) })); setSavedEmployeeOvertimeRates((current) => ({ ...current, [emp.id]: false })); }} onBlur={() => void saveEmployeeOvertimeRate(emp)} disabled={savingEmployeeOvertimeRates[emp.id]} className="h-9 w-32 rounded-lg border border-slate-200 bg-white px-2.5 text-right tabular-nums disabled:opacity-60" />{savingEmployeeOvertimeRates[emp.id] ? <span className="text-[10px] text-sky-700">…</span> : savedEmployeeOvertimeRates[emp.id] ? <span className="text-[10px] text-emerald-700">✓</span> : null}</div></td>
+                        <td className="sticky right-0 whitespace-nowrap bg-white px-3 py-2.5 text-right"><div className="inline-flex gap-1.5"><button type="button" aria-label={`Simpan profil ${emp.employee_name}`} onClick={async () => { try { await api.put(`/api/v1/hr/employees/${emp.id}`, { employee_name: employeeProfileEdits[emp.id]?.name ?? emp.employee_name, employee_number: employeeProfileEdits[emp.id]?.number ?? emp.employee_number, employment_status: employeeProfileEdits[emp.id]?.status ?? emp.employment_status, ...(employeeUserEdits[emp.id] ? { user_id: employeeUserEdits[emp.id] } : {}), cost_center_id: costCenterEdits[emp.id] || null, monthly_salary: salaryEdits[emp.id]?.trim() ? Number(salaryEdits[emp.id]) : null }); toast.success(employeeUserEdits[emp.id] ? "Akun user berhasil ditautkan." : "Profil karyawan diperbarui."); await loadData(); } catch (err: unknown) { toast.error(err instanceof Error ? err.message : "Gagal memperbarui profil."); } }} className="h-9 rounded-lg bg-[#0876CD] px-3 font-semibold text-white">Simpan</button>{emp.employment_status === "ACTIVE" && <button type="button" aria-label={`Nonaktifkan ${emp.employee_name}`} title="Nonaktifkan profil" onClick={async () => { if (!window.confirm(`Nonaktifkan profil ${emp.employee_name}? Riwayat payroll tetap disimpan.`)) return; try { await api.delete(`/api/v1/hr/employees/${emp.id}`); toast.success("Profil karyawan dinonaktifkan."); await loadData(); } catch (err: unknown) { toast.error(err instanceof Error ? err.message : "Gagal menonaktifkan karyawan."); } }} className="grid h-9 w-9 place-items-center rounded-lg border border-red-200 text-red-700"><X size={15}/></button>}</div></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}

@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   Truck,
   UserCheck,
+  X,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
@@ -30,6 +31,12 @@ interface UniversalInventoryV2Props {
   onRefreshParent?: () => void;
 }
 
+const formatNumericInput = (value: string | number) => {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  return digits ? Number(digits).toLocaleString("id-ID") : "";
+};
+const parseNumericInput = (value: string) => value.replace(/\D/g, "");
+
 export function UniversalInventoryV2Workspace({
   mode,
   onRefreshParent,
@@ -39,6 +46,9 @@ export function UniversalInventoryV2Workspace({
   const [data, setData] = useState<any>(null);
   const [reconciliation, setReconciliation] = useState<any>(null);
   const [verifyingRec, setVerifyingRec] = useState(false);
+  const [moveFormOpen, setMoveFormOpen] = useState(false);
+  const [transferFormOpen, setTransferFormOpen] = useState(false);
+  const [reservationFormOpen, setReservationFormOpen] = useState(false);
 
   // Quick Stock Move (Receipt / Issue)
   const [moveForm, setMoveForm] = useState({
@@ -152,6 +162,7 @@ export function UniversalInventoryV2Workspace({
         condition_status: moveForm.condition_status,
       });
       toast.success(`Mutasi stok (${moveForm.move_type}) berhasil diposting ke Ledger & Saldo K.`);
+      setMoveFormOpen(false);
       await loadOverview();
       onRefreshParent?.();
     } catch (error) {
@@ -181,6 +192,7 @@ export function UniversalInventoryV2Workspace({
       });
       toast.success("Dokumen Transfer Antar-Gudang berhasil dibuat.");
       setTransferForm((p) => ({ ...p, notes: "" }));
+      setTransferFormOpen(false);
       await loadOverview();
     } catch (error) {
       toast.error(getUserFacingApiError(error, "Gagal membuat dokumen transfer."));
@@ -232,6 +244,7 @@ export function UniversalInventoryV2Workspace({
         quantity: Number(resvForm.quantity),
       });
       toast.success("Tahap 1 (Soft-Lock Reservation) berhasil mengunci kuota Available(K).");
+      setReservationFormOpen(false);
       await loadOverview();
     } catch (error) {
       toast.error(getUserFacingApiError(error, "Gagal membuat reservasi stok."));
@@ -356,7 +369,7 @@ export function UniversalInventoryV2Workspace({
             <button
               type="button"
               onClick={() => setPerspective("executive")}
-              className={`rounded-xl px-3.5 py-2 text-xs font-bold transition ${
+              className={`inline-flex h-9 items-center rounded-xl px-3.5 text-xs font-bold transition ${
                 perspective === "executive"
                   ? "bg-[#163D64] text-white shadow-sm"
                   : "bg-white text-[#475569] border border-[#CBD5E1]"
@@ -367,7 +380,7 @@ export function UniversalInventoryV2Workspace({
             <button
               type="button"
               onClick={() => setPerspective("operational")}
-              className={`rounded-xl px-3.5 py-2 text-xs font-bold transition ${
+              className={`inline-flex h-9 items-center rounded-xl px-3.5 text-xs font-bold transition ${
                 perspective === "operational"
                   ? "bg-[#163D64] text-white shadow-sm"
                   : "bg-white text-[#475569] border border-[#CBD5E1]"
@@ -381,15 +394,15 @@ export function UniversalInventoryV2Workspace({
               type="button"
               onClick={() => void handleVerifyReconciliation()}
               disabled={verifyingRec}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3.5 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-100"
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 hover:bg-emerald-100"
             >
               <ShieldCheck size={14} />
-              {verifyingRec ? "Memverifikasi..." : "Verifikasi Rekonsiliasi Ledger == Balance"}
+              {verifyingRec ? "Memverifikasi..." : "Verified: Balance"}
             </button>
             <button
               type="button"
               onClick={() => void loadOverview()}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 py-2 text-xs font-semibold text-[#163D64]"
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 text-xs font-semibold text-[#163D64]"
             >
               <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
             </button>
@@ -487,17 +500,14 @@ export function UniversalInventoryV2Workspace({
         )}
 
         {/* Quick Stock Posting & Canonical Stock Balance Table */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        <div className="space-y-4">
+          {moveFormOpen && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/40 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setMoveFormOpen(false); }}>
           <form
             onSubmit={handleQuickMoveSubmit}
-            className="lg:col-span-4 rounded-2xl border border-[#E2E8F0] bg-white p-4 space-y-3 self-start"
+            className="relative max-h-[90dvh] w-full max-w-xl space-y-3 overflow-y-auto rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-2xl"
           >
-            <h3 className="text-sm font-bold text-[#163D64]">
-              + Posting Mutasi Stok (Ledger & Saldo K)
-            </h3>
-            <p className="text-xs text-[#64748B]">
-              Eksekusi Goods Receipt atau Goods Issue dengan proteksi konkurensi `FOR UPDATE` dan kalkulasi biaya otomatis.
-            </p>
+            <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-bold text-[#163D64]">Posting Mutasi Stok</h3><button type="button" aria-label="Tutup" onClick={() => setMoveFormOpen(false)} className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-slate-500"><X size={15}/></button></div>
+            <details className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-[#64748B]"><summary className="cursor-pointer font-semibold text-[#163D64]">Panduan posting mutasi</summary><p className="mt-2 leading-5">Eksekusi Goods Receipt atau Goods Issue dengan proteksi konkurensi `FOR UPDATE` dan kalkulasi biaya otomatis.</p></details>
             <div className="grid grid-cols-2 gap-2">
               <label className="text-xs font-semibold">
                 Tipe Mutasi
@@ -583,10 +593,10 @@ export function UniversalInventoryV2Workspace({
               <label className="text-xs font-semibold">
                 Harga Per Unit (Rp)
                 <input
-                  type="number"
-                  step="any"
-                  value={moveForm.unit_cost}
-                  onChange={(e) => setMoveForm((p) => ({ ...p, unit_cost: e.target.value }))}
+                  type="text"
+                  inputMode="numeric"
+                  value={formatNumericInput(moveForm.unit_cost)}
+                  onChange={(e) => setMoveForm((p) => ({ ...p, unit_cost: parseNumericInput(e.target.value) }))}
                   className="input mt-1 w-full text-xs"
                 />
               </label>
@@ -596,16 +606,17 @@ export function UniversalInventoryV2Workspace({
               disabled={submittingMove}
               className="btn-primary w-full justify-center py-2 text-xs font-bold"
             >
-              {submittingMove ? "Memposting..." : "Posting ke Stock Ledger"}
+              {submittingMove ? "Memposting..." : "Simpan"}
             </button>
           </form>
+          </div>}
 
           {/* Canonical Stock Identity (K) Table */}
-          <div className="lg:col-span-8 rounded-2xl border border-[#E2E8F0] bg-white p-4">
+          <div className="w-full rounded-2xl border border-[#E2E8F0] bg-white p-4">
             <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
               <div>
                 <h3 className="text-sm font-bold text-[#0F172A]">
-                  Posisi Saldo Stok Kanonis — Tuple Identitas `K` (`inv_stock_balance`)
+                  Rincian Saldo Stok Unik (`K`)
                 </h3>
                 <p className="text-xs text-[#64748B]">
                   Setiap baris direpresentasikan oleh `K = (company, product, location, owner, condition, lot, serial)` bebas hitung-ganda.
@@ -620,10 +631,12 @@ export function UniversalInventoryV2Workspace({
                   placeholder="Cari produk, lokasi, atau kondisi..."
                   totalItems={balances.length}
                   filteredCount={balancesTable.totalItems}
+                  showSubmitButton={false}
                 />
                 <span className="rounded-full bg-[#F1F5F9] px-3 py-1 text-xs font-bold text-[#163D64]">
                   {balances.length} Baris K
                 </span>
+                <button type="button" onClick={() => setMoveFormOpen(true)} className="btn-primary inline-flex h-9 items-center gap-1.5 text-xs"><Plus size={13}/>Posting Mutasi Stok</button>
               </div>
             </div>
 
@@ -631,7 +644,7 @@ export function UniversalInventoryV2Workspace({
               <div className="py-10 text-center text-xs text-[#64748B]">
                 {balances.length
                   ? "Tidak ada saldo stok yang cocok dengan pencarian."
-                  : "Belum ada saldo stok. Gunakan formulir di kiri untuk memposting Goods Receipt pertama."}
+                  : "Belum ada saldo stok. Gunakan tombol Posting Mutasi Stok untuk mencatat mutasi pertama."}
               </div>
             ) : (
               <>
@@ -713,14 +726,13 @@ export function UniversalInventoryV2Workspace({
 
   if (mode === "transfers") {
     return (
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+      <div className="space-y-4">
+        {transferFormOpen && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/40 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setTransferFormOpen(false); }}>
         <form
           onSubmit={handleCreateTransfer}
-          className="lg:col-span-4 rounded-2xl border border-[#E2E8F0] bg-white p-4 space-y-3 self-start"
+          className="relative max-h-[90dvh] w-full max-w-xl space-y-3 overflow-y-auto rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-2xl"
         >
-          <h3 className="text-sm font-bold text-[#163D64]">
-            + Buat Transfer Antar-Gudang (3-Peristiwa)
-          </h3>
+          <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-bold text-[#163D64]">Buat Transfer Transit</h3><button type="button" aria-label="Tutup" onClick={() => setTransferFormOpen(false)} className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-slate-500"><X size={15}/></button></div>
           <p className="text-xs text-[#64748B]">
             Mendukung Dispatch ke Virtual Transit, Penerimaan Parsial/Rusak, dan Resolusi Selisih dengan persamaan konservasi stok.
           </p>
@@ -793,8 +805,9 @@ export function UniversalInventoryV2Workspace({
             {submittingTransfer ? "Membuat..." : "Buat Dokumen Transfer"}
           </button>
         </form>
+        </div>}
 
-        <div className="lg:col-span-8 rounded-2xl border border-[#E2E8F0] bg-white p-4 space-y-4">
+        <div className="w-full rounded-2xl border border-[#E2E8F0] bg-white p-4 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-bold text-[#0F172A]">
               Daftar Transfer Antar-Gudang &amp; Konservasi Stok Transit
@@ -807,7 +820,9 @@ export function UniversalInventoryV2Workspace({
               placeholder="Cari nomor transfer, lokasi, status..."
               totalItems={transfers.length}
               filteredCount={transfersTable.totalItems}
+              showSubmitButton={false}
             />
+            <button type="button" onClick={() => setTransferFormOpen(true)} className="btn-primary inline-flex h-9 items-center gap-1.5 text-xs"><Plus size={13}/>Buat Transfer Transit</button>
           </div>
           {transfersTable.paginatedItems.length === 0 ? (
             <div className="py-10 text-center text-xs text-[#64748B]">
@@ -919,7 +934,7 @@ export function UniversalInventoryV2Workspace({
                         onClick={() => void handleTransferAction(trf.id, "approve")}
                         className="rounded-lg border border-[#163D64] px-3 py-1.5 text-xs font-bold text-[#163D64]"
                       >
-                        1. Approve Transfer
+                        Approve
                       </button>
                     )}
                     {["SUBMITTED", "APPROVED"].includes(trf.status) && (
@@ -928,7 +943,7 @@ export function UniversalInventoryV2Workspace({
                         onClick={() => void handleTransferAction(trf.id, "dispatch")}
                         className="rounded-lg bg-[#163D64] px-3 py-1.5 text-xs font-bold text-white"
                       >
-                        2. Dispatch ke Virtual Transit
+                        Dispatch
                       </button>
                     )}
                   </div>
@@ -952,14 +967,13 @@ export function UniversalInventoryV2Workspace({
 
   if (mode === "reservations") {
     return (
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+      <div className="space-y-4">
+        {reservationFormOpen && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/40 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setReservationFormOpen(false); }}>
         <form
           onSubmit={handleCreateReservation}
-          className="lg:col-span-4 rounded-2xl border border-[#E2E8F0] bg-white p-4 space-y-3 self-start"
+          className="relative max-h-[90dvh] w-full max-w-xl space-y-3 overflow-y-auto rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-2xl"
         >
-          <h3 className="text-sm font-bold text-[#163D64]">
-            + Buat Reservasi Stok 2-Tahap (`Reserve → Allocate`)
-          </h3>
+          <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-bold text-[#163D64]">Buat Reservasi Stok</h3><button type="button" aria-label="Tutup" onClick={() => setReservationFormOpen(false)} className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-slate-500"><X size={15}/></button></div>
           <p className="text-xs text-[#64748B]">
             Tahap 1 (`Reserve`) mengunci `Available(K)`. Tahap 2 (`Allocate`) memindahkan `Reserved` ke `Allocated` secara eksklusif tanpa memotong `Available(K)` dua kali.
           </p>
@@ -1026,11 +1040,12 @@ export function UniversalInventoryV2Workspace({
             disabled={submittingResv}
             className="btn-primary w-full justify-center py-2 text-xs font-bold"
           >
-            {submittingResv ? "Memproses..." : "1. Reserve Stok (Soft-Lock)"}
+            {submittingResv ? "Memproses..." : "Simpan"}
           </button>
         </form>
+        </div>}
 
-        <div className="lg:col-span-8 rounded-2xl border border-[#E2E8F0] bg-white p-4">
+        <div className="w-full rounded-2xl border border-[#E2E8F0] bg-white p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-bold text-[#0F172A]">
               Daftar Reservasi &amp; Alokasi Aktif (`inv_stock_reservation`)
@@ -1043,7 +1058,9 @@ export function UniversalInventoryV2Workspace({
               placeholder="Cari produk, sumber, atau status..."
               totalItems={reservations.length}
               filteredCount={reservationsTable.totalItems}
+              showSubmitButton={false}
             />
+            <button type="button" onClick={() => setReservationFormOpen(true)} className="btn-primary inline-flex h-9 items-center gap-1.5 text-xs"><Plus size={13}/>Buat Reservasi Stok</button>
           </div>
           {reservationsTable.paginatedItems.length === 0 ? (
             <div className="py-10 text-center text-xs text-[#64748B]">
@@ -1096,7 +1113,7 @@ export function UniversalInventoryV2Workspace({
                               onClick={() => void handleReservationAction(r.id, "allocate")}
                               className="rounded bg-indigo-600 px-2 py-1 text-[10px] font-bold text-white"
                             >
-                              Allocate (Picking)
+                              Allocate
                             </button>
                           )}
                           {["RESERVED", "ALLOCATED", "PARTIALLY_ALLOCATED"].includes(r.status) && (
@@ -1106,7 +1123,7 @@ export function UniversalInventoryV2Workspace({
                                 onClick={() => void handleReservationAction(r.id, "fulfill")}
                                 className="rounded bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white"
                               >
-                                Fulfill (Issue)
+                                Fulfill
                               </button>
                               <button
                                 type="button"
@@ -1149,7 +1166,7 @@ export function UniversalInventoryV2Workspace({
           className="rounded-2xl border border-[#E2E8F0] bg-white p-4 space-y-3"
         >
           <h3 className="text-sm font-bold text-[#163D64]">
-            + Kapitalisasi Aset Tetap Idempoten (`asset-bridge.service`)
+            Jadikan Aset Tetap
           </h3>
           <p className="text-xs text-[#64748B]">
             Konversi barang inventori bernilai tinggi / berseri menjadi Aset Tetap (`asset_asset`) secara idempoten tanpa duplikasi.
@@ -1182,9 +1199,10 @@ export function UniversalInventoryV2Workspace({
             <label className="text-xs font-semibold">
               Nilai Perolehan (Rp)
               <input
-                type="number"
-                value={capForm.acquisition_cost}
-                onChange={(e) => setCapForm((p) => ({ ...p, acquisition_cost: e.target.value }))}
+                type="text"
+                inputMode="numeric"
+                value={formatNumericInput(capForm.acquisition_cost)}
+                onChange={(e) => setCapForm((p) => ({ ...p, acquisition_cost: parseNumericInput(e.target.value) }))}
                 className="input mt-1 w-full text-xs"
                 required
               />
@@ -1200,7 +1218,7 @@ export function UniversalInventoryV2Workspace({
             </label>
           </div>
           <button type="submit" className="btn-primary w-full justify-center py-2 text-xs font-bold">
-            Kapitalisasi ke Register Aset Tetap
+            Simpan
           </button>
         </form>
 
@@ -1210,7 +1228,7 @@ export function UniversalInventoryV2Workspace({
           className="rounded-2xl border border-[#E2E8F0] bg-white p-4 space-y-3"
         >
           <h3 className="text-sm font-bold text-[#163D64]">
-            + Serah-Terima Custodian & Lokasi Aset (`asset_assignment_history`)
+            Penugasan &amp; Lokasi Aset
           </h3>
           <p className="text-xs text-[#64748B]">
             Catat penugasan aset ke pemegang (Custodian), pemindahan lokasi, atau pengembalian ke gudang.
@@ -1272,7 +1290,7 @@ export function UniversalInventoryV2Workspace({
             </label>
           </div>
           <button type="submit" className="btn-primary w-full justify-center py-2 text-xs font-bold">
-            Simpan Riwayat Custodian Aset
+            Simpan
           </button>
         </form>
       </div>
@@ -1291,6 +1309,7 @@ export function UniversalInventoryV2Workspace({
             placeholder="Cari kode aset, nama, atau serial..."
             totalItems={assets.length}
             filteredCount={assetsTable.totalItems}
+            showSubmitButton={false}
           />
         </div>
         {assetsTable.paginatedItems.length === 0 ? (

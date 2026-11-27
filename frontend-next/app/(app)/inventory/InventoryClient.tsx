@@ -2,7 +2,7 @@
 
 import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
-import { Archive, Barcode, Download, FileAudio, FileImage, FileSpreadsheet, FileText, FileVideo, FolderOpen, LoaderCircle, Package, Plus, RefreshCw, Save, Upload, Warehouse as WarehouseIcon } from "lucide-react";
+import { Archive, Barcode, Download, FileAudio, FileImage, FileSpreadsheet, FileText, FileVideo, FolderOpen, LoaderCircle, Package, Plus, RefreshCw, Save, Upload, Warehouse as WarehouseIcon, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
@@ -110,6 +110,8 @@ export default function InventoryClient() {
   const [serials, setSerials] = useState<any[]>([]);
   const [documents, setDocuments] = useState<InventoryDocument[]>([]);
   const [productForm, setProductForm] = useState<ProductForm>(blankProduct);
+  const [productFormOpen, setProductFormOpen] = useState(false);
+  const [serialFormOpen, setSerialFormOpen] = useState(false);
   const [categoryForm, setCategoryForm] = useState({ category_code: "", category_name: "", serial_controlled: false });
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editingWarehouseId, setEditingWarehouseId] = useState<string | null>(null);
@@ -200,7 +202,7 @@ export default function InventoryClient() {
       const payload = { ...productForm, product_code: productForm.product_code.trim(), product_name: productForm.product_name.trim() };
       await saveInventoryProduct(payload, editingProductId || undefined);
       toast.success(editingProductId ? "Produk diperbarui." : "Produk ditambahkan.");
-      setProductForm(blankProduct); setEditingProductId(null); await reload();
+      setProductForm(blankProduct); setEditingProductId(null); setProductFormOpen(false); await reload();
     } catch (error: any) { toast.error(error?.response?.data?.detail || "Produk tidak berhasil disimpan."); }
     finally { setBusy(false); }
   };
@@ -265,7 +267,7 @@ export default function InventoryClient() {
   const startEditProduct = (product: any) => {
     setEditingProductId(String(product.id));
     setProductForm({ ...blankProduct, ...product, category_id: String(product.category_id || "") });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setProductFormOpen(true);
   };
 
   const saveSerial = async () => {
@@ -274,6 +276,7 @@ export default function InventoryClient() {
     try {
       await createSerialNumber({ ...serialForm, serial_number: serialForm.serial_number.trim() });
       toast.success("Nomor seri tersimpan di inventori."); setSerialForm({ serial_number: "", product_id: "", current_location_id: "", status: "IN_STOCK" }); await reload();
+      setSerialFormOpen(false);
     } catch (error: any) { toast.error(error?.response?.data?.detail || "Nomor seri gagal disimpan. Pastikan nomor seri belum digunakan."); }
     finally { setBusy(false); }
   };
@@ -350,12 +353,12 @@ export default function InventoryClient() {
   };
 
   const tabs: Array<{ id: TabKey; label: string; icon: typeof Package }> = [
-    { id: "overview", label: "Overview & Saldo Kanonis (K)", icon: Package },
-    { id: "transfers", label: "Transfer 3-Peristiwa (Transit)", icon: WarehouseIcon },
-    { id: "reservations", label: "Reservasi & Alokasi 2-Tahap", icon: Barcode },
-    { id: "assets", label: "Kapitalisasi Aset & Custodian", icon: Archive },
+    { id: "overview", label: "Ringkasan & Saldo Utama (K)", icon: Package },
+    { id: "transfers", label: "Transfer Transit", icon: WarehouseIcon },
+    { id: "reservations", label: "Reservasi & Alokasi", icon: Barcode },
+    { id: "assets", label: "Kapitalisasi & Custodian Aset", icon: Archive },
     { id: "warehouse", label: `Master Gudang & Produk (${warehouses.length})`, icon: WarehouseIcon },
-    { id: "files", label: `Manajemen File (${documents.length})`, icon: FolderOpen },
+    { id: "files", label: `Berkas & Dokumen (${documents.length})`, icon: FolderOpen },
   ];
 
   return (
@@ -414,13 +417,14 @@ export default function InventoryClient() {
                     placeholder="Cari kode atau nama gudang..."
                     totalItems={warehouses.length}
                     filteredCount={warehousesTable.totalItems}
+                    showSubmitButton={false}
                   />
                 </div>
                 <div className="grid gap-3 sm:grid-cols-[1fr_1.5fr_1fr_auto] sm:items-end">
                   <label className="text-xs font-medium">Kode gudang *<input className="input mt-1 w-full" value={warehouseForm.warehouse_code} onChange={(e) => setWarehouseForm({ ...warehouseForm, warehouse_code: e.target.value })} placeholder="WH-JKT" /></label>
                   <label className="text-xs font-medium">Nama gudang *<input className="input mt-1 w-full" value={warehouseForm.warehouse_name} onChange={(e) => setWarehouseForm({ ...warehouseForm, warehouse_name: e.target.value })} placeholder="Gudang Jakarta" /></label>
                   <label className="text-xs font-medium">Jenis gudang<select className="input mt-1 w-full" value={warehouseForm.warehouse_type} onChange={(e) => setWarehouseForm({ ...warehouseForm, warehouse_type: e.target.value })}><option value="STANDARD">Standar</option><option value="RETAIL">Retail</option><option value="TRANSIT">Transit</option><option value="SERVICE">Service</option></select></label>
-                  <button onClick={() => void saveWarehouse()} disabled={busy} className="btn-primary flex items-center justify-center gap-1 text-xs"><Save size={13} />{editingWarehouseId ? "Simpan" : "Tambah gudang"}</button>
+                  <button onClick={() => void saveWarehouse()} disabled={busy} className="btn-primary flex items-center justify-center gap-1 text-xs">{editingWarehouseId ? <Save size={13} /> : <Plus size={13} />}{editingWarehouseId ? "Simpan" : "Tambah gudang"}</button>
                 </div>
                 {warehousesTable.paginatedItems.length > 0 ? (
                   <>
@@ -445,6 +449,7 @@ export default function InventoryClient() {
                     placeholder="Cari gudang, kode, atau nama rak..."
                     totalItems={physicalLocations.length}
                     filteredCount={physicalLocationsTable.totalItems}
+                    showSubmitButton={false}
                   />
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1fr_1fr_auto] lg:items-end">
@@ -490,6 +495,7 @@ export default function InventoryClient() {
                     placeholder="Cari lokasi virtual..."
                     totalItems={virtualLocations.length}
                     filteredCount={virtualLocationsTable.totalItems}
+                    showSubmitButton={false}
                   />
                 </div>
                 {virtualLocationsTable.paginatedItems.length > 0 ? (
@@ -505,7 +511,7 @@ export default function InventoryClient() {
 
             {warehouseSubTab === "categories" && (
               <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
-                <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                   <div><h2 className="text-sm font-bold">Kategori produk dinamis</h2><p className="mt-1 text-xs text-text-secondary">Gunakan kategori umum atau buat sendiri. Hardware memakai kontrol serial sebagai nilai awal; kategori lain dapat diatur sesuai kebutuhan.</p></div>
                   <div className="flex flex-wrap items-center gap-2">
                     <TableSearchBar
@@ -516,8 +522,9 @@ export default function InventoryClient() {
                       placeholder="Cari kode atau nama kategori..."
                       totalItems={categories.length}
                       filteredCount={categoriesTable.totalItems}
+                      showSubmitButton={false}
                     />
-                    <button onClick={() => void addCommonCategories()} disabled={busy} className="btn-ghost text-xs">Tambah kategori umum</button>
+                    <button type="button" onClick={() => void addCommonCategories()} disabled={busy} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-blue-800 transition hover:bg-blue-100 disabled:opacity-50"><Plus size={13}/>Tambah kategori umum</button>
                   </div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-[1fr_1.5fr_auto_auto] sm:items-end">
@@ -539,8 +546,9 @@ export default function InventoryClient() {
 
             {warehouseSubTab === "products" && (
               <div className="space-y-4">
-                <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
-                  <div className="mb-3 flex flex-wrap items-start justify-between gap-2"><div><h2 className="text-sm font-bold">{editingProductId ? "Ubah produk" : "Tambah produk"}</h2><p className="mt-1 text-xs text-text-secondary">Isi katalog satu per satu atau impor banyak produk dengan XLSX.</p></div><div className="flex flex-wrap gap-2"><button onClick={downloadProductTemplate} className="btn-ghost flex items-center gap-1 text-xs"><Download size={13} /> Template XLSX</button><label className={`btn-ghost flex cursor-pointer items-center gap-1 text-xs ${busy ? "pointer-events-none opacity-50" : ""}`}><Upload size={13} /> Impor XLSX<input className="hidden" type="file" accept=".xlsx,.xls" onChange={(event) => void importProducts(event)} /></label></div></div>
+                {productFormOpen && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/40 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) { setProductFormOpen(false); setEditingProductId(null); setProductForm(blankProduct); } }}>
+                <section className="max-h-[90dvh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-[#DCE3EB] bg-white p-5 shadow-2xl">
+                  <div className="mb-3 flex items-center justify-between gap-3"><div><h2 className="text-sm font-bold">{editingProductId ? "Ubah produk" : "Tambah produk"}</h2><p className="mt-1 text-xs text-text-secondary">Isi katalog satu per satu atau impor banyak produk dengan XLSX.</p></div><button type="button" aria-label="Tutup" onClick={() => { setProductFormOpen(false); setEditingProductId(null); setProductForm(blankProduct); }} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 text-slate-600"><X size={16}/></button></div>
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     <label className="text-xs font-medium">Kode produk *<input className="input mt-1 w-full" value={productForm.product_code} onChange={(e) => setProductForm({ ...productForm, product_code: e.target.value })} /></label>
                     <label className="text-xs font-medium">Nama produk *<input className="input mt-1 w-full" value={productForm.product_name} onChange={(e) => setProductForm({ ...productForm, product_name: e.target.value })} /></label>
@@ -566,9 +574,13 @@ export default function InventoryClient() {
                   </div>
                   <div className="mt-3 flex gap-2"><button onClick={() => void saveProduct()} disabled={busy} className="btn-primary flex items-center gap-1 text-xs"><Save size={13} />{busy ? "Menyimpan…" : editingProductId ? "Simpan perubahan" : "Tambah produk"}</button>{editingProductId && <button onClick={() => { setEditingProductId(null); setProductForm(blankProduct); }} className="btn-ghost text-xs">Batal ubah</button>}</div>
                 </section>
+                </div>}
                 <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <h2 className="text-sm font-bold">Katalog produk</h2>
+                    <div className="flex flex-wrap items-center gap-2">
+                    <button type="button" onClick={downloadProductTemplate} className="btn-ghost flex h-9 items-center gap-1 text-xs"><Download size={13} /> Template XLSX</button>
+                    <label className={`btn-ghost flex h-9 cursor-pointer items-center gap-1 text-xs ${busy ? "pointer-events-none opacity-50" : ""}`}><Upload size={13} /> Impor XLSX<input className="hidden" type="file" accept=".xlsx,.xls" onChange={(event) => void importProducts(event)} /></label>
                     <TableSearchBar
                       query={productsTable.query}
                       onQueryChange={productsTable.setQuery}
@@ -577,11 +589,14 @@ export default function InventoryClient() {
                       placeholder="Cari kode, nama, atau kategori..."
                       totalItems={products.length}
                       filteredCount={productsTable.totalItems}
+                      showSubmitButton={false}
                     />
+                    <button type="button" onClick={() => { setEditingProductId(null); setProductForm(blankProduct); setProductFormOpen(true); }} className="btn-primary inline-flex h-9 items-center gap-1.5 text-xs"><Plus size={13}/>Tambah produk</button>
+                    </div>
                   </div>
                   {loading ? <Loading /> : (
                     <>
-                      <div className="overflow-auto rounded-lg border border-slate-200"><table className="w-full min-w-[700px] border-collapse text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-text-secondary"><tr>{["Kode", "Produk", "Kategori", "Tipe", "Kontrol", "Status", "Aksi"].map((label) => <th key={label} className="border-b border-r border-slate-200 p-2.5 font-semibold last:border-r-0">{label}</th>)}</tr></thead><tbody>{productsTable.paginatedItems.map((product, index) => <tr key={product.id} className={cn("transition-colors hover:bg-blue-50/70", index % 2 ? "bg-slate-50/70" : "bg-white")}><td className="border-b border-r border-slate-200 p-2.5 font-mono last:border-r-0">{product.product_code}</td><td className="border-b border-r border-slate-200 p-2.5 font-semibold last:border-r-0">{product.product_name}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{categories.find((category) => category.id === product.category_id)?.category_name || "—"}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{product.product_type}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{product.serial_controlled ? "Serial" : "—"}{product.lot_controlled ? " · Lot" : ""}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{product.status}</td><td className="border-b border-slate-200 p-2.5"><button onClick={() => startEditProduct(product)} className="font-semibold text-blue-700 hover:underline">Ubah</button></td></tr>)}</tbody></table>{!productsTable.paginatedItems.length && <Empty>Tidak ada produk ditemukan.</Empty>}</div>
+                      <div className="overflow-auto rounded-lg border border-slate-200"><table className="w-full border-collapse text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-text-secondary"><tr>{["Kode", "Produk", "Kategori", "Tipe", "Kontrol", "Status", "Aksi"].map((label) => <th key={label} className="border-b border-r border-slate-200 p-2.5 font-semibold last:border-r-0">{label}</th>)}</tr></thead><tbody>{productsTable.paginatedItems.map((product, index) => <tr key={product.id} className={cn("transition-colors hover:bg-blue-50/70", index % 2 ? "bg-slate-50/70" : "bg-white")}><td className="border-b border-r border-slate-200 p-2.5 font-mono last:border-r-0">{product.product_code}</td><td className="border-b border-r border-slate-200 p-2.5 font-semibold last:border-r-0">{product.product_name}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{categories.find((category) => category.id === product.category_id)?.category_name || "—"}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{product.product_type}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{product.serial_controlled ? "Serial" : "—"}{product.lot_controlled ? " · Lot" : ""}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{product.status}</td><td className="border-b border-slate-200 p-2.5"><button onClick={() => startEditProduct(product)} className="font-semibold text-blue-700 hover:underline">Ubah</button></td></tr>)}</tbody></table>{!productsTable.paginatedItems.length && <Empty>Tidak ada produk ditemukan.</Empty>}</div>
                       <TablePagination page={productsTable.page} totalPages={productsTable.totalPages} pageSize={productsTable.pageSize} totalItems={productsTable.totalItems} onPageChange={productsTable.setPage} onPageSizeChange={productsTable.setPageSize} />
                     </>
                   )}
@@ -591,8 +606,9 @@ export default function InventoryClient() {
 
             {warehouseSubTab === "serials" && (
               <div className="space-y-4">
-                <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
-                  <h2 className="text-sm font-bold">Nomor seri &amp; garansi</h2><p className="mt-1 text-xs leading-5 text-text-secondary">Catat serial untuk produk dengan kontrol serial aktif agar bisa dipakai saat pemeriksaan garansi.</p>
+                {serialFormOpen && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/40 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setSerialFormOpen(false); }}>
+                <section className="w-full max-w-2xl rounded-2xl border border-[#DCE3EB] bg-white p-5 shadow-2xl">
+                  <div className="flex items-center justify-between gap-3"><div><h2 className="text-sm font-bold">Tambah Nomor Seri &amp; Garansi</h2><p className="mt-1 text-xs leading-5 text-text-secondary">Catat serial produk agar dapat digunakan saat pemeriksaan garansi.</p></div><button type="button" aria-label="Tutup" onClick={() => setSerialFormOpen(false)} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 text-slate-600"><X size={16}/></button></div>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <div className="text-xs font-medium">
                       <span className="mb-1 block">Produk *</span>
@@ -627,12 +643,14 @@ export default function InventoryClient() {
                         })}
                       />
                     </div>
-                    <button onClick={() => void saveSerial()} disabled={busy} className="btn-primary mt-auto flex items-center justify-center gap-1 text-xs"><Plus size={13} /> Simpan serial</button>
+                    <button type="button" onClick={() => void saveSerial()} disabled={busy} className="btn-primary mt-auto flex items-center justify-center gap-1 text-xs"><Save size={13} /> Simpan</button>
                   </div>
                 </section>
+                </div>}
                 <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <h2 className="text-sm font-bold">Daftar nomor seri</h2>
+                    <div className="flex flex-wrap items-center gap-2">
                     <TableSearchBar
                       query={serialsTable.query}
                       onQueryChange={serialsTable.setQuery}
@@ -641,11 +659,14 @@ export default function InventoryClient() {
                       placeholder="Cari serial, produk, atau lokasi..."
                       totalItems={serials.length}
                       filteredCount={serialsTable.totalItems}
+                      showSubmitButton={false}
                     />
+                    <button type="button" onClick={() => setSerialFormOpen(true)} className="btn-primary inline-flex h-9 items-center gap-1.5 whitespace-nowrap text-xs"><Plus size={13}/>Tambah Nomor Seri &amp; Garansi</button>
+                    </div>
                   </div>
                   {loading ? <Loading /> : (
                     <>
-                      <div className="overflow-auto rounded-lg border border-slate-200"><table className="w-full min-w-[600px] border-collapse text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-text-secondary"><tr>{["Nomor seri", "Produk", "Status", "Lokasi"].map((label) => <th key={label} className="border-b border-r border-slate-200 p-2.5 font-semibold last:border-r-0">{label}</th>)}</tr></thead><tbody>{serialsTable.paginatedItems.map((serial, index) => { const product = products.find((item) => String(item.id) === String(serial.product_id)); const location = warehouseLocations.find((item) => item.id === serial.current_location_id); return <tr key={serial.id} className={cn("transition-colors hover:bg-blue-50/70", index % 2 ? "bg-slate-50/70" : "bg-white")}><td className="border-b border-r border-slate-200 p-2.5 font-mono font-semibold last:border-r-0">{serial.serial_number}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{product?.product_code || "—"} · {product?.product_name || "Produk tidak ditemukan"}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{serial.status}</td><td className="border-b border-slate-200 p-2.5">{location ? `${location.location_code} · ${location.location_name}` : "—"}</td></tr>; })}</tbody></table>{!serialsTable.paginatedItems.length && <Empty>Belum ada nomor seri.</Empty>}</div>
+                      <div className="overflow-auto rounded-lg border border-slate-200"><table className="w-full border-collapse text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-text-secondary"><tr>{["Nomor seri", "Produk", "Status", "Lokasi"].map((label) => <th key={label} className="border-b border-r border-slate-200 p-2.5 font-semibold last:border-r-0">{label}</th>)}</tr></thead><tbody>{serialsTable.paginatedItems.map((serial, index) => { const product = products.find((item) => String(item.id) === String(serial.product_id)); const location = warehouseLocations.find((item) => item.id === serial.current_location_id); return <tr key={serial.id} className={cn("transition-colors hover:bg-blue-50/70", index % 2 ? "bg-slate-50/70" : "bg-white")}><td className="border-b border-r border-slate-200 p-2.5 font-mono font-semibold last:border-r-0">{serial.serial_number}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{product?.product_code || "—"} · {product?.product_name || "Produk tidak ditemukan"}</td><td className="border-b border-r border-slate-200 p-2.5 last:border-r-0">{serial.status}</td><td className="border-b border-slate-200 p-2.5">{location ? `${location.location_code} · ${location.location_name}` : "—"}</td></tr>; })}</tbody></table>{!serialsTable.paginatedItems.length && <Empty>Belum ada nomor seri.</Empty>}</div>
                       <TablePagination page={serialsTable.page} totalPages={serialsTable.totalPages} pageSize={serialsTable.pageSize} totalItems={serialsTable.totalItems} onPageChange={serialsTable.setPage} onPageSizeChange={serialsTable.setPageSize} />
                     </>
                   )}
@@ -699,6 +720,7 @@ export default function InventoryClient() {
               placeholder="Cari judul, kategori, atau nama file..."
               totalItems={documents.length}
               filteredCount={documentsTable.totalItems}
+              showSubmitButton={false}
             />
           </div>
           {loading ? <Loading /> : documentsTable.paginatedItems.length ? (

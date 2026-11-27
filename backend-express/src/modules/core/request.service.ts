@@ -649,6 +649,74 @@ static async createRequest(
     return { id: ticket.id, status: nextStatus, decision, remarks };
   }
 
+  static async cancelRequest(params: { requestId: string; requesterUserId: string; companyId: string; reason?: string }) {
+    const { requestId, requesterUserId, companyId } = params;
+    const reason = String(params.reason ?? '').trim();
+    const ticket = await prisma.request_ticket.findFirst({
+      where: { id: requestId, company_id: companyId, request_type: { in: ['LEAVE', 'OTHER'] }, created_by_id: requesterUserId },
+      select: { id: true, requester_user_id: true, request_number: true, title: true, status: true, workflow_instance_id: true, cancelled_at: true },
+    });
+    if (!ticket) throw new NotFoundError('Request milik Anda');
+    if (ticket.cancelled_at || ['CANCELLED', 'CANCELLATION_PENDING'].includes(ticket.status)) {
+      throw new ValidationError('Request ini sudah dibatalkan atau sedang menunggu persetujuan pembatalan.');
+    }
+
+    const approvalRequired = ['APPROVED', 'COMPLETED', 'IN_PROGRESS', 'DISBURSED'].includes(ticket.status);
+    const now = new Date();
+    if (approvalRequired) {
+      await prisma.$transaction(async (tx) => {
+        const changed = await tx.request_ticket.updateMany({
+          where: { id: ticket.id, company_id: companyId, status: ticket.status, cancelled_at: null },
+          data: { status: 'CANCELLATION_PENDING' },
+        });
+        if (changed.count !== 1) throw new ValidationError('Status request sudah berubah. Muat ulang daftar.');
+        await tx.core_workflow_instance.update({ where: { id: ticket.workflow_instance_id }, data: { current_state: 'CANCELLATION_PENDING' } });
+        await tx.core_workflow_approval.create({ data: {
+          id: crypto.randomUUID(), company_id: companyId, workflow_instance_id: ticket.workflow_instance_id,
+          approver_user_id: null, created_by_id: requesterUserId, approval_level: 'REQUEST_CANCELLATION',
+          decision: 'PENDING', remarks: JSON.stringify({ reason, previous_status: ticket.status }), decided_at: null,
+        } });
+      });
+      await AuditService.logDeltaEvent({ entity: 'core_internal_request', entityId: ticket.id, action: 'REQUEST_CANCELLATION_SUBMITTED', before: { status: ticket.status }, after: { status: 'CANCELLATION_PENDING', reason }, userId: requesterUserId, companyId, description: `Permintaan pembatalan ${ticket.request_number} menunggu persetujuan HR Tier 1.` });
+      return { id: ticket.id, status: 'CANCELLATION_PENDING', approval_required: true };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const changed = await tx.request_ticket.updateMany({
+        where: { id: ticket.id, company_id: companyId, status: ticket.status, cancelled_at: null },
+        data: { status: 'CANCELLED', cancelled_at: now, completed_at: now },
+      });
+      if (changed.count !== 1) throw new ValidationError('Status request sudah berubah. Muat ulang daftar.');
+      await tx.core_workflow_instance.update({ where: { id: ticket.workflow_instance_id }, data: { current_state: 'CANCELLED', status: 'COMPLETED', completed_at: now } });
+    });
+    await AuditService.logDeltaEvent({ entity: 'core_internal_request', entityId: ticket.id, action: 'REQUEST_CANCELLED', before: { status: ticket.status }, after: { status: 'CANCELLED', reason }, userId: requesterUserId, companyId, description: `Request ${ticket.request_number} dibatalkan pemohon.` });
+    return { id: ticket.id, status: 'CANCELLED', approval_required: false };
+  }
+
+  static async decideRequestCancellation(params: { requestId: string; decision: 'APPROVE' | 'REJECT'; remarks?: string; approverUserId: string; companyId: string }) {
+    const { requestId, decision, approverUserId, companyId } = params;
+    const ticket = await prisma.request_ticket.findFirst({ where: { id: requestId, company_id: companyId, status: 'CANCELLATION_PENDING', request_type: { in: ['LEAVE', 'OTHER'] } } });
+    const pending = ticket ? await prisma.core_workflow_approval.findFirst({
+      where: { company_id: companyId, workflow_instance_id: ticket.workflow_instance_id, approval_level: 'REQUEST_CANCELLATION', decision: 'PENDING' },
+      orderBy: { created_at: 'desc' },
+    }) : null;
+    if (!pending || !ticket) throw new NotFoundError('Pembatalan request yang menunggu persetujuan');
+    const metadata = (() => { try { return JSON.parse(pending.remarks || '{}') as { reason?: string; previous_status?: string }; } catch { return {}; } })();
+    const previousStatus = metadata.previous_status || 'APPROVED';
+    const reason = String(params.remarks ?? '').trim();
+    const now = new Date();
+    const nextStatus = decision === 'APPROVE' ? 'CANCELLED' : previousStatus;
+    await prisma.$transaction(async (tx) => {
+      const changed = await tx.request_ticket.updateMany({ where: { id: ticket.id, company_id: companyId, status: 'CANCELLATION_PENDING', cancelled_at: null }, data: decision === 'APPROVE' ? { status: nextStatus, cancelled_at: now, completed_at: now } : { status: nextStatus } });
+      if (changed.count !== 1) throw new ValidationError('Status request sudah berubah. Muat ulang daftar.');
+      await tx.core_workflow_instance.update({ where: { id: ticket.workflow_instance_id }, data: decision === 'APPROVE' ? { current_state: nextStatus, status: 'COMPLETED', completed_at: now } : { current_state: nextStatus } });
+      await tx.core_workflow_approval.update({ where: { id: pending.id }, data: { approver_user_id: approverUserId, created_by_id: pending.created_by_id || approverUserId, decision: decision === 'APPROVE' ? 'CANCEL_APPROVE' : 'CANCEL_REJECT', remarks: JSON.stringify({ ...metadata, decision_remarks: reason }), decided_at: now } });
+    });
+    await AuditService.logDeltaEvent({ entity: 'core_internal_request', entityId: ticket.id, action: `REQUEST_CANCELLATION_${decision}`, before: { status: 'CANCELLATION_PENDING' }, after: { status: nextStatus, remarks: reason }, userId: approverUserId, companyId, description: `HR Tier 1 ${decision === 'APPROVE' ? 'menyetujui' : 'menolak'} pembatalan ${ticket.request_number}.` });
+    await this.createNotification({ title: decision === 'APPROVE' ? 'Pembatalan request disetujui' : 'Pembatalan request ditolak', message: `${ticket.request_number} — ${ticket.title}${reason ? `. Catatan HR: ${reason}` : ''}`, action_url: `/requests?tab=request&requestId=${ticket.id}`, notification_type: 'REQUEST_CANCELLATION_DECISION', priority: decision === 'APPROVE' ? 'MEDIUM' : 'HIGH', recipient_user_id: ticket.requester_user_id, actor_user_id: approverUserId, company_id: companyId });
+    return { id: ticket.id, status: nextStatus, decision };
+  }
+
   // ---------------------------------------------------------------------------
   // 2. LEGACY OM ENDPOINT (DISABLED)
   // ---------------------------------------------------------------------------
@@ -1508,7 +1576,12 @@ static async getRequests(params: {
                 )
                 OR (
                   ${canReviewHrRequests}::boolean = true
-                  AND rs.after_data ->> 'request_type' = 'LEAVE'
+                  AND (rs.after_data ->> 'request_type' = 'LEAVE' OR EXISTS (
+                    SELECT 1 FROM request_ticket cancel_ticket
+                    WHERE cancel_ticket.id = rs.entity_id
+                      AND cancel_ticket.company_id = rs.company_id
+                      AND cancel_ticket.status = 'CANCELLATION_PENDING'
+                  ))
                 )
               )
             )
@@ -1519,7 +1592,12 @@ static async getRequests(params: {
             -- HR Tier 1 can review company leave requests in either access mode.
             (
               ${canReviewHrRequests}::boolean = true
-              AND rs.after_data ->> 'request_type' = 'LEAVE'
+              AND (rs.after_data ->> 'request_type' = 'LEAVE' OR EXISTS (
+                SELECT 1 FROM request_ticket cancel_ticket
+                WHERE cancel_ticket.id = rs.entity_id
+                  AND cancel_ticket.company_id = rs.company_id
+                  AND cancel_ticket.status = 'CANCELLATION_PENDING'
+              ))
             )
 
             -- Executive sees everything
